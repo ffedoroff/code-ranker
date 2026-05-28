@@ -4,8 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "code-split"
-version = "0.1.0a6"
-# NOTE: PEP 440 uses `a6` for alpha.6 (no dot, no dash)
+version = "0.1.0a7"
 description = "Polyglot structural-analysis platform: extract dependency graphs, visualize coupling, track architectural drift."
 readme = "README.md"
 requires-python = ">=3.8"
