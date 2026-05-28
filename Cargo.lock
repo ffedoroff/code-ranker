@@ -296,7 +296,7 @@ dependencies = [
 
 [[package]]
 name = "code-split"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "anyhow",
  "chrono",
@@ -320,7 +320,7 @@ dependencies = [
 
 [[package]]
 name = "code-split-complexity"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "anyhow",
  "code-split-core",
@@ -331,7 +331,7 @@ dependencies = [
 
 [[package]]
 name = "code-split-core"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "chrono",
  "petgraph 0.6.5",
@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "code-split-sema"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "anyhow",
  "code-split-core",
@@ -357,7 +357,7 @@ dependencies = [
 
 [[package]]
 name = "code-split-syn"
-version = "0.1.0-alpha.7"
+version = "0.1.0-alpha.8"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.18.1",

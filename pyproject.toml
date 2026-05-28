@@ -4,11 +4,12 @@ build-backend = "maturin"
 
 [project]
 name = "code-split"
-version = "0.1.0a7"
+version = "0.1.0a8"
 description = "Polyglot structural-analysis platform: extract dependency graphs, visualize coupling, track architectural drift."
 readme = "README.md"
 requires-python = ">=3.8"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "Roman Fedorov", email = "Roman.Fedorov@constructor.tech" }]
 keywords = ["dependency-graph", "coupling", "refactoring", "code-quality", "static-analysis"]
 classifiers = [
