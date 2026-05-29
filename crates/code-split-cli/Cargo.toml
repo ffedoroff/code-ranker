@@ -1,10 +1,12 @@
 [package]
-name = "code-split-cli"
+name = "code-split"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Code Split CLI — pluggable multi-language structural analysis platform."
 
 [[bin]]

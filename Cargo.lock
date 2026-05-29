@@ -295,8 +295,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "code-split-cli"
-version = "0.1.0"
+name = "code-split"
+version = "0.1.0-alpha.11"
 dependencies = [
  "anyhow",
  "chrono",
@@ -320,18 +320,18 @@ dependencies = [
 
 [[package]]
 name = "code-split-complexity"
-version = "0.1.0"
+version = "0.1.0-alpha.11"
 dependencies = [
  "anyhow",
  "code-split-core",
- "rust-code-analysis",
+ "rust-code-analysis-code-split",
  "syn",
  "walkdir",
 ]
 
 [[package]]
 name = "code-split-core"
-version = "0.1.0"
+version = "0.1.0-alpha.11"
 dependencies = [
  "chrono",
  "petgraph 0.6.5",
@@ -341,7 +341,7 @@ dependencies = [
 
 [[package]]
 name = "code-split-sema"
-version = "0.1.0"
+version = "0.1.0-alpha.11"
 dependencies = [
  "anyhow",
  "code-split-core",
@@ -357,7 +357,7 @@ dependencies = [
 
 [[package]]
 name = "code-split-syn"
-version = "0.1.0"
+version = "0.1.0-alpha.11"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.18.1",
@@ -2260,9 +2260,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-code-analysis"
-version = "0.0.25"
-source = "git+https://github.com/ffedoroff/rust-code-analysis?branch=patch%2Fupdate-tree-sitter-0.26.8#2c59d6506891948c87f380b8f17be7c00c047d6e"
+name = "rust-code-analysis-code-split"
+version = "0.0.26-cs.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3b9324bd5110e3d03aa2a301ff9615a802ca8169dd01507e2adf1232e57d341"
 dependencies = [
  "aho-corasick",
  "crossbeam",
@@ -2276,13 +2277,13 @@ dependencies = [
  "serde",
  "termcolor",
  "tree-sitter",
- "tree-sitter-ccomment",
+ "tree-sitter-ccomment-code-split",
  "tree-sitter-java",
  "tree-sitter-javascript",
  "tree-sitter-kotlin-ng",
- "tree-sitter-mozcpp",
- "tree-sitter-mozjs",
- "tree-sitter-preproc",
+ "tree-sitter-mozcpp-code-split",
+ "tree-sitter-mozjs-code-split",
+ "tree-sitter-preproc-code-split",
  "tree-sitter-python",
  "tree-sitter-rust",
  "tree-sitter-typescript",
@@ -2882,9 +2883,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tree-sitter-ccomment"
+name = "tree-sitter-ccomment-code-split"
 version = "0.20.3"
-source = "git+https://github.com/ffedoroff/rust-code-analysis?branch=patch%2Fupdate-tree-sitter-0.26.8#2c59d6506891948c87f380b8f17be7c00c047d6e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83235cd394d3a46206566faf6524b46f2aeb8e8d910ee0d9a1ea5804365c7ca4"
 dependencies = [
  "cc",
  "tree-sitter-language",
@@ -2937,9 +2939,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "009994f150cc0cd50ff54917d5bc8bffe8cad10ca10d81c34da2ec421ae61782"
 
 [[package]]
-name = "tree-sitter-mozcpp"
+name = "tree-sitter-mozcpp-code-split"
 version = "0.20.4"
-source = "git+https://github.com/ffedoroff/rust-code-analysis?branch=patch%2Fupdate-tree-sitter-0.26.8#2c59d6506891948c87f380b8f17be7c00c047d6e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c5bfceb330f0fd6327cb2d9647e46c92c193628962dca4186a3c74ee15e01ddf"
 dependencies = [
  "cc",
  "tree-sitter-cpp",
@@ -2947,9 +2950,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tree-sitter-mozjs"
+name = "tree-sitter-mozjs-code-split"
 version = "0.20.3"
-source = "git+https://github.com/ffedoroff/rust-code-analysis?branch=patch%2Fupdate-tree-sitter-0.26.8#2c59d6506891948c87f380b8f17be7c00c047d6e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24f0056e599a6f8a9459a6bf5d83c39c143cb4bec97f3a88ad7dad4b3865d40d"
 dependencies = [
  "cc",
  "tree-sitter-javascript",
@@ -2957,9 +2961,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "tree-sitter-preproc"
+name = "tree-sitter-preproc-code-split"
 version = "0.20.3"
-source = "git+https://github.com/ffedoroff/rust-code-analysis?branch=patch%2Fupdate-tree-sitter-0.26.8#2c59d6506891948c87f380b8f17be7c00c047d6e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7e374ddbdf97fd8910995c6b2e4d50bd15d9741aa078b9e70bc195c723767b9e"
 dependencies = [
  "cc",
  "tree-sitter-language",

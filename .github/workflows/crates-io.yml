@@ -1,0 +1,49 @@
+name: Publish to crates.io
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install Rust stable
+        run: |
+          if ! command -v rustup > /dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+      - name: Publish crates (bottom-up, retrying on rate-limit)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          for c in code-split-core code-split-syn code-split-complexity code-split-sema code-split; do
+            echo "==> publishing $c"
+            attempt=0
+            until cargo publish -p "$c" --allow-dirty 2>&1 | tee /tmp/pub-$c.log | grep -qE "Published"; do
+              if grep -q "already exists" /tmp/pub-$c.log; then
+                echo "    skip: $c version already on crates.io"
+                break
+              fi
+              if grep -q "Too Many Requests" /tmp/pub-$c.log; then
+                echo "    rate-limited; sleeping 120s"
+                sleep 120
+                attempt=$((attempt+1))
+                if [ "$attempt" -ge 15 ]; then
+                  echo "    giving up after $attempt attempts"
+                  cat /tmp/pub-$c.log | tail -20
+                  exit 1
+                fi
+                continue
+              fi
+              echo "    unexpected error:"
+              cat /tmp/pub-$c.log | tail -20
+              exit 1
+            done
+          done
