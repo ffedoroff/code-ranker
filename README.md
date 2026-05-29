@@ -51,7 +51,7 @@ curl -fsSL https://github.com/ffedoroff/code-split/releases/latest/download/code
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/ffedoroff/code-split/releases/latest/download/code-split-installer.ps1 | iex"
 
 # Rust (Cargo)
-cargo install code-split --version 0.1.0-alpha.9
+cargo install code-split --version 0.1.0-alpha.10
 
 # Node (npm)
 npm install -g code-split
@@ -60,10 +60,10 @@ npm install -g code-split
 pip install code-split
 
 # Docker (Docker Hub)
-docker pull ffedoroff/code-split:0.1.0-alpha.9
+docker pull ffedoroff/code-split:0.1.0-alpha.10
 
 # Docker (GHCR — no anonymous rate limits)
-docker pull ghcr.io/ffedoroff/code-split:0.1.0-alpha.9
+docker pull ghcr.io/ffedoroff/code-split:0.1.0-alpha.10
 ```
 
 All channels ship the same `code-split` binary built from the same Rust source. Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64).

@@ -1,7 +1,8 @@
 name: Publish Docker image
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
@@ -33,6 +34,23 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for binaries on GitHub Release
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          url="https://github.com/ffedoroff/code-split/releases/download/v${v}/code-split-x86_64-unknown-linux-gnu.tar.xz"
+          for i in $(seq 1 60); do
+            if curl -fsI "$url" > /dev/null 2>&1; then
+              echo "binary present at $url"; exit 0
+            fi
+            echo "still waiting for $url ($i/60)…"
+            sleep 20
+          done
+          echo "timeout waiting for release binaries"; exit 1
 
       - name: Compute version and tags
         id: meta

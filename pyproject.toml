@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "code-split"
-version = "0.1.0a9"
+version = "0.1.0a10"
 description = "Polyglot structural-analysis platform: extract dependency graphs, visualize coupling, track architectural drift."
 readme = "README.md"
 requires-python = ">=3.8"
