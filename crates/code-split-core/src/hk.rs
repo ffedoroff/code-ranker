@@ -1,3 +1,4 @@
+use crate::graph::Loc;
 use crate::{Complexity, Coupling, EdgeKind, Graph, NodeId, NodeKind, PluginGraphs};
 use std::collections::{HashMap, HashSet};
 
@@ -36,15 +37,144 @@ fn annotate_graph_hk(graph: &mut Graph) {
         }
         let fi = fan_in.get(&node.id).map(|s| s.len()).unwrap_or(0);
         let fo = fan_out.get(&node.id).map(|s| s.len()).unwrap_or(0);
-        let loc = node.loc.unwrap_or(0) as f64;
-        let hk_term = ((fi * fo) as f64).powi(2);
-        let hk = if loc > 0.0 { loc * hk_term } else { hk_term };
+        let struct_loc = node.loc; // structural LOC, present on aggregate (crate) nodes
 
         let cx = node.complexity.get_or_insert_with(Complexity::default);
+        // When rust-code-analysis produced no LOC (e.g. synthetic crate nodes) but a
+        // structural line count exists, mirror it into `complexity.loc` so the displayed
+        // loc and hk always agree instead of one being blank.
+        if cx.loc.is_none()
+            && let Some(n) = struct_loc
+            && n > 0
+        {
+            cx.loc = Some(Loc {
+                source: n as f64,
+                logical: 0.0,
+                comments: 0.0,
+                blank: 0.0,
+            });
+        }
+        // Henry-Kafura: hk = loc × (fan_in × fan_out)². Uses the same loc that is
+        // displayed; with no loc or no in/out coupling, hk is 0.
+        let loc = cx.loc.as_ref().map(|l| l.source).unwrap_or(0.0);
+        let hk = loc * ((fi * fo) as f64).powi(2);
         cx.coupling = Some(Coupling {
             fan_in: fi as u32,
             fan_out: fo as u32,
             hk,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Edge, Loc, Node};
+
+    fn module(id: &str, complexity_loc: Option<f64>, struct_loc: Option<u32>) -> Node {
+        Node {
+            id: id.into(),
+            kind: NodeKind::Module,
+            name: id.into(),
+            path: "p".into(),
+            parent: None,
+            external: None,
+            visibility: None,
+            loc: struct_loc,
+            line: None,
+            item_count: None,
+            method_count: None,
+            complexity: complexity_loc.map(|s| Complexity {
+                loc: Some(Loc {
+                    source: s,
+                    logical: 0.0,
+                    comments: 0.0,
+                    blank: 0.0,
+                }),
+                ..Default::default()
+            }),
+            cycle_kind: None,
+        }
+    }
+
+    fn uses(from: &str, to: &str) -> Edge {
+        Edge {
+            from: from.into(),
+            to: to.into(),
+            kind: EdgeKind::Uses,
+            unresolved: None,
+            external: None,
+            visibility: None,
+        }
+    }
+
+    fn coupling<'a>(g: &'a Graph, id: &str) -> &'a Coupling {
+        g.nodes
+            .iter()
+            .find(|n| n.id == id)
+            .unwrap()
+            .complexity
+            .as_ref()
+            .unwrap()
+            .coupling
+            .as_ref()
+            .unwrap()
+    }
+
+    #[test]
+    fn hk_is_loc_times_fan_squared() {
+        // A -> B -> C.  B has loc 10, fan_in 1, fan_out 1 → hk = 10·(1·1)² = 10.
+        let mut g = PluginGraphs::default();
+        g.modules.nodes = vec![
+            module("A", Some(4.0), Some(4)),
+            module("B", Some(10.0), Some(10)),
+            module("C", Some(5.0), Some(5)),
+        ];
+        g.modules.edges = vec![uses("A", "B"), uses("B", "C")];
+        annotate_graph_hk(&mut g.modules);
+
+        let b = coupling(&g.modules, "B");
+        assert_eq!((b.fan_in, b.fan_out), (1, 1));
+        assert_eq!(b.hk, 10.0, "hk = loc(10) · (fan_in·fan_out)²");
+    }
+
+    #[test]
+    fn hk_falls_back_to_structural_loc_for_crate_like_nodes() {
+        // Y -> X -> Z.  X is crate-like: only structural node.loc, no complexity.loc.
+        // It must keep an hk (fan_in 1, fan_out 1) AND surface that loc in complexity.loc.
+        let mut g = PluginGraphs::default();
+        g.modules.nodes = vec![
+            module("X", None, Some(10)),
+            module("Y", Some(5.0), Some(5)),
+            module("Z", Some(5.0), Some(5)),
+        ];
+        g.modules.edges = vec![uses("Y", "X"), uses("X", "Z")];
+        annotate_graph_hk(&mut g.modules);
+
+        let x = g.modules.nodes.iter().find(|n| n.id == "X").unwrap();
+        let xc = x.complexity.as_ref().unwrap();
+        assert_eq!(
+            xc.loc.as_ref().unwrap().source,
+            10.0,
+            "structural loc mirrored into complexity.loc so it is displayed"
+        );
+        let cp = xc.coupling.as_ref().unwrap();
+        assert_eq!((cp.fan_in, cp.fan_out), (1, 1));
+        assert_eq!(
+            cp.hk, 10.0,
+            "crate-like node keeps hk from its structural loc"
+        );
+    }
+
+    #[test]
+    fn hk_is_zero_without_any_loc() {
+        // M -> N : M has neither complexity.loc nor structural loc → hk 0 despite fan_out.
+        let mut g = PluginGraphs::default();
+        g.modules.nodes = vec![module("M", None, None), module("N", Some(3.0), Some(3))];
+        g.modules.edges = vec![uses("M", "N")];
+        annotate_graph_hk(&mut g.modules);
+        let m = coupling(&g.modules, "M");
+        assert_eq!(m.fan_out, 1);
+        assert_eq!(m.hk, 0.0, "no loc anywhere → hk 0");
     }
 }
