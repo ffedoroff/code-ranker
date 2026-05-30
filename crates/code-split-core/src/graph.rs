@@ -55,7 +55,7 @@ pub enum NodeKind {
 
 /// Structural cycle kind assigned to every node that participates in an SCC
 /// of size ≥ 2 in its projected graph.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CycleKind {
     /// Rust-specific: a `#[cfg(test)] mod tests { use super::* }` pattern.

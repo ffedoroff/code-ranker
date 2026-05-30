@@ -91,7 +91,7 @@ All channels ship the same `code-split` binary built from the same Rust source. 
 code-split check ./path/to/project
 
 # analyze and write a snapshot JSON + offline HTML report
-code-split report ./path/to/project
+code-split report
 # → .code-split/{project-dir}-{ts}.json + .code-split/index.html
 
 # before / after refactor comparison of two snapshots

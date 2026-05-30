@@ -60,7 +60,7 @@ code-split check [path] [options]
 | Flag | Meaning |
 |---|---|
 | `--threshold <SCOPE[.avg].METRIC=N>` | Hard limit on a metric — a breach fails the check. SCOPE: `file` / `module` / `function` (a single unit on that graph). Add `.avg` for that scope's graph-wide average (e.g. `function.avg.cognitive`). METRIC: `cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`, `loc`. Repeatable. See [ERRORS.md](ERRORS.md#threshold-scopes). |
-| `--cycle-rule <KIND=on\|off>` | Enable or disable a cycle check. KIND: `test-embed`, `mutual`, `chain`. Defaults: `test-embed` off, `mutual` and `chain` on. |
+| `--cycle-rule <KIND=on\|off\|N>` | Configure a cycle check. KIND: `test-embed`, `mutual`, `chain`. Value: `on` (any cycle fails), `off` (ignored), or `N` (allow up to N cycles of that kind — e.g. `chain=7` forbids an 8th). Defaults: `test-embed` off, `mutual`/`chain` on. |
 | `--output-format <fmt>` | Diagnostics format: `human` (default), `json`, `github`, `sarif`. Use `github` for PR annotations, `sarif`/`json` for tooling. |
 | `--top <N>` | Report only the `N` worst violations (ranked worst-first) and suppress the rest. A reporting limit only — it does **not** change the exit code. Default: all. |
 | `--exit-zero` | Return exit code 0 even when violations exist. Useful in non-blocking CI checks. |
@@ -116,6 +116,15 @@ threshold.function.cognitive  ·  CPX  ·  functions graph
 The rule id and group are present in every `--output-format`: the block header
 (`human`), `"rule"` + `"group"` fields (`json`), the annotation title (`github`),
 and `ruleId` plus a fired-rules `tool.driver.rules` catalog (`sarif`).
+
+### Current-values config block
+
+After the findings, the `human` output always prints the project's current
+measured values as ready-to-paste `code-split.toml` blocks — the active
+`[rules.cycles]` policy, plus per-scope thresholds: `single` = the worst single
+unit (max) and `.avg` = the graph-wide average. Numbers use `_` separators. Copy a
+block to pin today's numbers as a baseline that passes now and fails on regression
+(the machine formats `json`/`github`/`sarif` stay pure and omit this).
 
 ## `report`
 

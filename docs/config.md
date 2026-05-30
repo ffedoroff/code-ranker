@@ -33,9 +33,11 @@ paths = [
 ]
 
 [rules.cycles]
+# each kind: false = off, true = strict (any cycle fails, same as 0),
+# or an integer N = allow up to N cycles of that kind (the N+1-th fails).
 test-embed = false   # default — off (Rust #[cfg(test)] back-edge, not a smell)
-mutual     = true    # default — on
-chain      = true    # default — on
+mutual     = true    # default — strict
+chain      = 7       # allow up to 7 chain cycles; pin today's count as a baseline
 
 [rules.thresholds.file]      # a single file (files graph only)
 loc        = 800
@@ -118,14 +120,16 @@ Add a path glob to the ignore list. Repeatable.
 code-split check . --ignore '**/tests/**' --ignore '**/generated/**'
 ```
 
-### `--cycle-rule <KIND=on|off>`
+### `--cycle-rule <KIND=on|off|N>`
 
-Enable or disable a cycle check. `KIND`: `test-embed` | `mutual` | `chain`.
-Defaults: `test-embed` off, `mutual` and `chain` on. Repeatable.
+Configure a cycle check. `KIND`: `test-embed` | `mutual` | `chain`. Value: `on`
+(strict — any cycle fails), `off` (ignored), or an integer `N` (allow up to `N`
+cycles of that kind, fail on the `N+1`-th). Defaults: `test-embed` off, `mutual`
+and `chain` on (= strict). Repeatable.
 
 ```bash
-# also flag test-embed cycles; stop flagging chain cycles
-code-split check . --cycle-rule test-embed=on --cycle-rule chain=off
+# flag test-embed cycles; allow up to 7 chain cycles (forbid an 8th)
+code-split check . --cycle-rule test-embed=on --cycle-rule chain=7
 ```
 
 ### `--threshold <SCOPE[.avg].METRIC=N>`

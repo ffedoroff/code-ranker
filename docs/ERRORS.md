@@ -19,8 +19,11 @@ and the fix.
 
 code-split has **no severity levels**. A rule is either *active* or not:
 
-- **Cycle rules** are on/off. `mutual` and `chain` are on by default;
-  `test-embed` is off. A cycle of an active kind is a violation.
+- **Cycle rules** are on / off / a count budget. `mutual` and `chain` are on by
+  default; `test-embed` is off. A kind's value can be `on`/`true` (any cycle of
+  that kind fails — same as `0`), `off`/`false` (ignored), or an integer `N` (up
+  to `N` cycles of that kind allowed; the `N+1`-th fails). Use `N` to pin today's
+  count and forbid adding more (e.g. `chain=7`).
 - **Threshold rules** are inactive until you set a number. Once set, any unit (or
   graph average) over the limit is a violation.
 
@@ -125,7 +128,10 @@ group are present in every format.
 
 Cycles are structural: they come from the import/dependency graph, not from a
 metric threshold. `mutual` and `chain` are on by default; `test-embed` is off.
-Disable a kind with `--cycle-rule KIND=off` (or `rules.cycles.KIND = false`).
+Each kind takes `on` (strict — any cycle fails), `off` (ignored), or a count
+budget `N` (allow up to `N`, fail on the next): `--cycle-rule chain=off`,
+`--cycle-rule chain=7`, or `rules.cycles.chain = 7`. `check` prints the current
+count per kind in its current-values block so you can paste it as a baseline.
 
 | Rule id | What it flags | How to fix |
 |---------|---------------|------------|
@@ -173,8 +179,9 @@ Threshold rule over source lines of code. Inactive until a limit is set.
 ## Tuning recap
 
 ```bash
-# Disable a cycle kind
+# Disable a cycle kind, or pin today's count as a budget (forbid new ones)
 code-split check --cycle-rule chain=off
+code-split check --cycle-rule chain=7
 
 # Single-unit limits, per kind of unit
 code-split check --threshold file.loc=400 --threshold function.cognitive=25 \
@@ -192,9 +199,9 @@ Equivalent `code-split.toml` (single metrics sit directly under the scope; the
 
 ```toml
 [rules.cycles]
-mutual = true
-chain = false
-test-embed = false
+mutual = true        # strict — any mutual cycle fails (same as 0)
+chain = 7            # allow up to 7 chain cycles; the 8th fails
+test-embed = false   # ignored
 
 [rules.thresholds.module]
 hk = 500000

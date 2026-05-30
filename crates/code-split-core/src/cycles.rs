@@ -50,7 +50,7 @@ fn annotate_graph_cycles(graph: &mut Graph) {
         }
         let kind = classify_scc(scc, graph);
         for &idx in scc {
-            node_kind[idx] = Some(kind.clone());
+            node_kind[idx] = Some(kind);
         }
         cycle_groups.push(CycleGroup {
             kind,
@@ -59,7 +59,7 @@ fn annotate_graph_cycles(graph: &mut Graph) {
     }
 
     for (i, node) in graph.nodes.iter_mut().enumerate() {
-        node.cycle_kind = node_kind[i].clone();
+        node.cycle_kind = node_kind[i];
     }
     graph.cycles = cycle_groups;
 }

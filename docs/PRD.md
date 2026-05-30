@@ -619,7 +619,9 @@ cyclomatic  = 10
 - `--config <PATH | KEY=VALUE>` — load config from an explicit file path, or
   override a single setting inline via a dotted key (repeatable; inline wins)
 - `--ignore <GLOB>` — add a path glob (repeatable, merged with file)
-- `--cycle-rule <KIND=on|off>` — enable or disable a cycle check (e.g. `test-embed=on`)
+- `--cycle-rule <KIND=on|off|N>` — configure a cycle check: `on` (any cycle of
+  that kind fails), `off` (ignored), or an integer `N` (allow up to `N`, fail on
+  the `N+1`-th — e.g. `chain=7` to pin today's count and forbid new ones)
 - `--threshold <SCOPE[.avg].METRIC=N>` — set a threshold (e.g. `file.loc=800`,
   `function.avg.cyclomatic=10`); a breach fails the check (`check` only). SCOPE is
   `file` / `module` / `function` (a single unit on that graph); add `.avg` for
@@ -630,9 +632,10 @@ cyclomatic  = 10
 - `--exit-zero` — exit 0 even when violations are found (`check` only,
   collect-only mode)
 
-**No severity levels**: every rule is binary — enabled (a violation is reported and
-fails `check`) or disabled (not checked). A cycle kind is on/off; a threshold is set or
-unset. There is no warning tier.
+**No severity levels**: there is no warning tier — `check` either passes or fails.
+A threshold is set or unset; a cycle kind is off, strict (`on`/`0`), or carries a
+count budget `N` (up to `N` cycles of that kind allowed). A budget lets teams pin
+today's cycle count and fail only on regressions, without fixing the backlog first.
 
 **Rule ids and self-contained diagnostics**: every violation is identified by its
 dotted rule id — the same string used as the config key and CLI flag (e.g.
@@ -645,6 +648,13 @@ single block copied from the terminal is a complete prompt for an AI assistant.
 The rule id and group are carried in every `--output-format` (block header,
 `json` `rule`/`group` fields, `github` annotation title, `sarif` `ruleId` plus a
 fired-rules `tool.driver.rules` catalog).
+
+**Current-values config block**: after the findings, `human` output always prints
+the project's current measured values as ready-to-paste `code-split.toml` blocks —
+the active `[rules.cycles]` counts per kind, and per-scope thresholds (`single` =
+the worst single unit, `.avg` = the graph-wide average). A team copies the block
+to pin today's numbers as a baseline that passes now and fails on regression. The
+machine formats (`json`/`github`/`sarif`) omit it.
 
 The path of the config file actually used is recorded in the snapshot as `config_file`.
 

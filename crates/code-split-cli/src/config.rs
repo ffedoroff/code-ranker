@@ -35,24 +35,83 @@ pub struct RulesConfig {
     pub thresholds: ThresholdRules,
 }
 
-#[derive(Debug, Deserialize)]
+/// A cycle check: disabled, or enabled with a **maximum allowed count** of cycles
+/// of that kind. In config / on the CLI: `false`/`off` = disabled, `true`/`on` =
+/// `Max(0)` (strict — any cycle fails), and an integer `n` = `Max(n)` (up to `n`
+/// allowed, the `n+1`-th fails — lets you pin today's count and forbid new ones).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CycleRule {
+    Off,
+    Max(u32),
+}
+
+impl CycleRule {
+    /// The allowed-count budget if enabled, else `None` (disabled).
+    pub fn budget(self) -> Option<u32> {
+        match self {
+            CycleRule::Off => None,
+            CycleRule::Max(n) => Some(n),
+        }
+    }
+    pub fn is_off(self) -> bool {
+        matches!(self, CycleRule::Off)
+    }
+}
+
+impl<'de> Deserialize<'de> for CycleRule {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        struct V;
+        impl serde::de::Visitor<'_> for V {
+            type Value = CycleRule;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a bool (on/off) or a non-negative integer (max allowed cycles)")
+            }
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> std::result::Result<CycleRule, E> {
+                Ok(if v { CycleRule::Max(0) } else { CycleRule::Off })
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> std::result::Result<CycleRule, E> {
+                u32::try_from(v)
+                    .map(CycleRule::Max)
+                    .map_err(|_| E::custom("cycle budget must be a non-negative integer"))
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> std::result::Result<CycleRule, E> {
+                Ok(CycleRule::Max(v as u32))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(default)]
 pub struct CycleRules {
-    /// Each cycle kind is either enabled (a cycle of that kind is a violation and
-    /// fails `check`) or disabled (stripped from the snapshot, not reported).
+    /// Each cycle kind is disabled (stripped, never reported) or enabled with a
+    /// max-count budget; a kind over its budget fails `check`.
     #[serde(rename = "test-embed")]
-    pub test_embed: bool,
-    pub mutual: bool,
-    pub chain: bool,
+    pub test_embed: CycleRule,
+    pub mutual: CycleRule,
+    pub chain: CycleRule,
 }
 
 impl Default for CycleRules {
     fn default() -> Self {
         Self {
-            test_embed: false,
-            mutual: true,
-            chain: true,
+            test_embed: CycleRule::Off,
+            mutual: CycleRule::Max(0),
+            chain: CycleRule::Max(0),
         }
+    }
+}
+
+impl CycleRules {
+    /// Budget for a cycle kind: `Some(max)` if enabled, `None` if disabled.
+    pub fn budget_for(self, kind: CycleKind) -> Option<u32> {
+        match kind {
+            CycleKind::TestEmbed => self.test_embed,
+            CycleKind::Mutual => self.mutual,
+            CycleKind::Chain => self.chain,
+        }
+        .budget()
     }
 }
 
@@ -261,9 +320,9 @@ fn apply_cli_overrides(
     cfg.ignore.paths.extend_from_slice(ignore_paths);
 
     for raw in cycle_rules {
-        // Format: "kind=on|off", e.g. "test-embed=on"
+        // Format: "kind=on|off|N", e.g. "test-embed=on", "chain=7"
         let (kind, state) = split_kv(raw, "cycle-rule")?;
-        set_cycle(cfg, kind, parse_on_off(state)?)?;
+        set_cycle(cfg, kind, parse_cycle_rule(state)?)?;
     }
 
     for raw in thresholds {
@@ -295,7 +354,7 @@ fn apply_inline_overrides(cfg: &mut Config, entries: &[&str]) -> Result<()> {
                 .extend(value.split(',').map(|s| s.trim().to_string())),
             _ if key.strip_prefix("rules.cycles.").is_some() => {
                 let kind = key.strip_prefix("rules.cycles.").unwrap();
-                set_cycle(cfg, kind, parse_on_off(value)?)?;
+                set_cycle(cfg, kind, parse_cycle_rule(value)?)?;
             }
             _ if key.strip_prefix("rules.thresholds.").is_some() => {
                 let rest = key.strip_prefix("rules.thresholds.").unwrap();
@@ -309,14 +368,26 @@ fn apply_inline_overrides(cfg: &mut Config, entries: &[&str]) -> Result<()> {
     Ok(())
 }
 
-fn set_cycle(cfg: &mut Config, kind: &str, enabled: bool) -> Result<()> {
+fn set_cycle(cfg: &mut Config, kind: &str, rule: CycleRule) -> Result<()> {
     match kind {
-        "test-embed" => cfg.rules.cycles.test_embed = enabled,
-        "mutual" => cfg.rules.cycles.mutual = enabled,
-        "chain" => cfg.rules.cycles.chain = enabled,
+        "test-embed" => cfg.rules.cycles.test_embed = rule,
+        "mutual" => cfg.rules.cycles.mutual = rule,
+        "chain" => cfg.rules.cycles.chain = rule,
         other => anyhow::bail!("unknown cycle kind {other:?}; expected test-embed|mutual|chain"),
     }
     Ok(())
+}
+
+/// Parse a cycle-rule value: `on`/`true` = strict (`Max(0)`), `off`/`false` =
+/// disabled, or a non-negative integer = max allowed count.
+fn parse_cycle_rule(s: &str) -> Result<CycleRule> {
+    match s {
+        "on" | "true" => Ok(CycleRule::Max(0)),
+        "off" | "false" => Ok(CycleRule::Off),
+        other => other.parse::<u32>().map(CycleRule::Max).with_context(|| {
+            format!("cycle rule must be on|off or a non-negative integer, got {other:?}")
+        }),
+    }
 }
 
 /// Parse a threshold key path into `(scope, is_avg, metric)`. Accepts
@@ -568,7 +639,7 @@ fn apply_cycle_rules_graph(graph: &mut Graph, rules: &CycleRules) {
         (CycleKind::Chain, rules.chain),
     ]
     .into_iter()
-    .filter(|(_, enabled)| !*enabled)
+    .filter(|(_, rule)| rule.is_off())
     .map(|(k, _)| k)
     .collect();
 
@@ -770,16 +841,30 @@ fn check_graph_violations(
     rules: &RulesConfig,
     vs: &mut Vec<Violation>,
 ) {
-    // Cycles: every remaining cycle group is of an enabled kind (disabled kinds
-    // were already stripped by apply_cycle_rules), so each is a violation.
-    // Ranked by SCC size — a larger cycle is grosser.
+    // Cycles: remaining groups are all of enabled kinds (Off kinds were stripped
+    // by apply_cycle_rules). A kind's cycles are reported only when their count
+    // exceeds the kind's budget; with the strict default (budget 0) every cycle is
+    // a violation. Ranked by SCC size — a larger cycle is grosser.
+    let mut counts: HashMap<CycleKind, usize> = HashMap::new();
     for cg in &graph.cycles {
+        *counts.entry(cg.kind).or_insert(0) += 1;
+    }
+    for cg in &graph.cycles {
+        let count = counts[&cg.kind];
+        let budget = rules.cycles.budget_for(cg.kind).unwrap_or(0);
+        if count as u32 <= budget {
+            continue; // within the allowed count
+        }
+        let mut message = describe_cycle(&cg.kind, &cg.nodes);
+        if budget > 0 {
+            message = format!("{message}  (over budget: {count} > {budget})");
+        }
         push(
             vs,
             name,
             cycle_rule_id(&cg.kind),
             String::new(),
-            describe_cycle(&cg.kind, &cg.nodes),
+            message,
             cg.nodes.len() as f64,
         );
     }
@@ -1113,9 +1198,17 @@ mod tests {
     #[test]
     fn cycle_rules_default_test_embed_off_others_on() {
         let d = CycleRules::default();
-        assert!(!d.test_embed, "test-embed defaults off");
-        assert!(d.mutual, "mutual defaults on");
-        assert!(d.chain, "chain defaults on");
+        assert_eq!(d.test_embed, CycleRule::Off, "test-embed defaults off");
+        assert_eq!(
+            d.mutual,
+            CycleRule::Max(0),
+            "mutual defaults strict (0 allowed)"
+        );
+        assert_eq!(
+            d.chain,
+            CycleRule::Max(0),
+            "chain defaults strict (0 allowed)"
+        );
     }
 
     #[test]
@@ -1131,9 +1224,17 @@ mod tests {
             ],
         )
         .unwrap();
-        assert!(cfg.rules.cycles.test_embed, "test-embed enabled");
-        assert!(!cfg.rules.cycles.mutual, "mutual disabled");
-        assert!(cfg.rules.cycles.chain, "chain untouched (default on)");
+        assert_eq!(
+            cfg.rules.cycles.test_embed,
+            CycleRule::Max(0),
+            "test-embed enabled"
+        );
+        assert_eq!(cfg.rules.cycles.mutual, CycleRule::Off, "mutual disabled");
+        assert_eq!(
+            cfg.rules.cycles.chain,
+            CycleRule::Max(0),
+            "chain untouched (default)"
+        );
         assert_eq!(cfg.rules.thresholds.function.single.cognitive, Some(25.0));
         assert_eq!(cfg.rules.thresholds.function.avg.hk, Some(1000.0));
         assert_eq!(
@@ -1201,6 +1302,62 @@ mod tests {
             check_violations(&graphs, &RulesConfig::default()).is_empty(),
             "a stripped cycle is not a violation"
         );
+    }
+
+    #[test]
+    fn cycle_budget_allows_up_to_n_and_fails_on_more() {
+        let mut graphs = PluginGraphs::default();
+        for i in 0..3 {
+            graphs.modules.cycles.push(CycleGroup {
+                kind: CycleKind::Chain,
+                nodes: vec![format!("a{i}"), format!("b{i}"), format!("c{i}")],
+            });
+        }
+        // Budget 3: exactly 3 chain cycles -> within budget, no violation.
+        let mut rules = RulesConfig::default();
+        rules.cycles.chain = CycleRule::Max(3);
+        assert!(
+            check_violations(&graphs, &rules).is_empty(),
+            "3 cycles within budget 3 -> pass"
+        );
+        // Budget 2: 3 > 2 -> every cycle reported, with the over-budget note.
+        rules.cycles.chain = CycleRule::Max(2);
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 3, "over budget -> all cycles reported");
+        assert!(
+            vs[0].message.contains("over budget: 3 > 2"),
+            "got {:?}",
+            vs[0].message
+        );
+    }
+
+    #[test]
+    fn parse_cycle_rule_accepts_on_off_and_int() {
+        assert_eq!(parse_cycle_rule("on").unwrap(), CycleRule::Max(0));
+        assert_eq!(parse_cycle_rule("true").unwrap(), CycleRule::Max(0));
+        assert_eq!(parse_cycle_rule("off").unwrap(), CycleRule::Off);
+        assert_eq!(parse_cycle_rule("false").unwrap(), CycleRule::Off);
+        assert_eq!(parse_cycle_rule("7").unwrap(), CycleRule::Max(7));
+        assert!(parse_cycle_rule("-1").is_err(), "negative rejected");
+        assert!(parse_cycle_rule("nope").is_err(), "garbage rejected");
+    }
+
+    #[test]
+    fn config_toml_parses_cycle_bool_and_int() {
+        let src = "
+[rules.cycles]
+test-embed = false
+mutual = true
+chain = 7
+";
+        let cfg: Config = toml::from_str(src).expect("parse config");
+        assert_eq!(cfg.rules.cycles.test_embed, CycleRule::Off);
+        assert_eq!(
+            cfg.rules.cycles.mutual,
+            CycleRule::Max(0),
+            "true => strict (0)"
+        );
+        assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(7), "int => budget");
     }
 
     #[test]
@@ -1320,8 +1477,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(cfg.plugin.as_deref(), Some("python"));
-        assert!(cfg.rules.cycles.test_embed, "test-embed enabled inline");
-        assert!(!cfg.rules.cycles.mutual, "mutual disabled inline");
+        assert_eq!(
+            cfg.rules.cycles.test_embed,
+            CycleRule::Max(0),
+            "test-embed enabled inline"
+        );
+        assert_eq!(
+            cfg.rules.cycles.mutual,
+            CycleRule::Off,
+            "mutual disabled inline"
+        );
         assert_eq!(cfg.rules.thresholds.function.single.cognitive, Some(25.0));
         assert_eq!(cfg.rules.thresholds.file.avg.hk, Some(1000.0));
         assert!(cfg.ignore.test_modules, "ignore.test_modules set inline");

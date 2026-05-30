@@ -84,8 +84,9 @@ enum Command {
         #[command(flatten)]
         analyze: AnalyzeArgs,
 
-        /// Enable/disable a cycle check: KIND=on|off (e.g. test-embed=on).
-        #[arg(long = "cycle-rule", value_name = "KIND=on|off")]
+        /// Cycle check: KIND=on|off|N. on = any cycle fails; off = ignored; N =
+        /// allow up to N cycles of that kind (e.g. chain=7 forbids a new one).
+        #[arg(long = "cycle-rule", value_name = "KIND=on|off|N")]
         cycle_rules: Vec<String>,
 
         /// Metric threshold: SCOPE[.avg].METRIC=N. SCOPE is file|module|function;
@@ -240,6 +241,8 @@ struct Analyzed {
     roots: HashMap<String, String>,
     git: Option<code_split_core::GitInfo>,
     violations: Vec<config::Violation>,
+    /// Effective cycle-rule policy (for the current-values config dump).
+    cycles: config::CycleRules,
 }
 
 /// Load config, run the plugin, annotate the graphs, and collect violations.
@@ -366,6 +369,7 @@ fn analyze_workspace(
         roots,
         git,
         violations,
+        cycles: cfg.rules.cycles,
     })
 }
 
@@ -395,6 +399,12 @@ fn run_check(
         .and_then(|n| n.to_str())
         .unwrap_or("workspace");
     emit_diagnostics(shown, total, &a.plugin_name, project, output_format);
+
+    // Always surface the current measured values as ready-to-paste config blocks
+    // (human output only — the machine formats stay pure).
+    if matches!(output_format, OutputFormat::Human) {
+        print_current_values(&a.plugin_graphs, &a.cycles);
+    }
 
     if total > 0 && !exit_zero {
         anyhow::bail!("{total} violation(s) found");
@@ -495,6 +505,130 @@ fn print_human_diagnostics(
         "total"
     };
     println!("Summary ({scope}): {breakdown}");
+}
+
+/// The six threshold metrics, in display order.
+const METRICS: [&str; 6] = ["cyclomatic", "cognitive", "hk", "fan_in", "fan_out", "loc"];
+
+/// Print the current measured values per scope as ready-to-paste `code-split.toml`
+/// threshold blocks: the per-unit worst value (`single`) and the graph-wide
+/// average (`avg`). Lets a user pin today's numbers as a baseline that passes.
+fn print_current_values(graphs: &code_split_core::PluginGraphs, cycles: &config::CycleRules) {
+    println!();
+    println!("Current config — copy the blocks below into code-split.toml:");
+
+    // Cycle budgets: today's count per kind (paste to forbid adding more), or
+    // `false` for a disabled kind. `0` = strict — no cycles of that kind allowed.
+    println!();
+    println!(
+        "# cycles: max allowed count per kind (today's count — raise only to allow more; false = off)"
+    );
+    println!("[rules.cycles]");
+    for (key, kind, rule) in [
+        (
+            "test-embed",
+            code_split_core::CycleKind::TestEmbed,
+            cycles.test_embed,
+        ),
+        ("mutual", code_split_core::CycleKind::Mutual, cycles.mutual),
+        ("chain", code_split_core::CycleKind::Chain, cycles.chain),
+    ] {
+        if rule.is_off() {
+            println!("{key:<12}= false");
+        } else {
+            // Today's count = max across graphs, so the pinned budget passes everywhere.
+            let n = [&graphs.modules, &graphs.files, &graphs.functions]
+                .iter()
+                .map(|g| g.cycles.iter().filter(|c| c.kind == kind).count())
+                .max()
+                .unwrap_or(0);
+            println!("{key:<12}= {n}");
+        }
+    }
+
+    // Thresholds: measured numbers to pin as a baseline. Scope == graph.
+    println!();
+    println!("# thresholds: single = the worst single unit (max); avg = the graph-wide average");
+    print_scope_values("file", &graphs.files);
+    print_scope_values("module", &graphs.modules);
+    print_scope_values("function", &graphs.functions);
+}
+
+/// Emit `[rules.thresholds.<scope>]` (per-unit maxima) and
+/// `[rules.thresholds.<scope>.avg]` (graph averages) for one graph.
+fn print_scope_values(scope: &str, graph: &code_split_core::graph::Graph) {
+    // Per-unit maxima across the graph's nodes.
+    let mut max = [0f64; 6];
+    let mut any = false;
+    for n in &graph.nodes {
+        let Some(cx) = &n.complexity else { continue };
+        any = true;
+        max[0] = max[0].max(cx.cyclomatic);
+        max[1] = max[1].max(cx.cognitive);
+        if let Some(c) = &cx.coupling {
+            max[2] = max[2].max(c.hk);
+            max[3] = max[3].max(c.fan_in as f64);
+            max[4] = max[4].max(c.fan_out as f64);
+        }
+        if let Some(l) = &cx.loc {
+            max[5] = max[5].max(l.source);
+        }
+    }
+    if !any {
+        return; // graph not built / no metrics (e.g. Rust has no files graph)
+    }
+    // Per-unit limits use the exact max (a strict `>` check then passes today).
+    print_toml_block(&format!("[rules.thresholds.{scope}]"), &max, false);
+
+    // Graph averages from the precomputed stats; round up so the baseline passes.
+    if let Some(s) = &graph.stats {
+        let avg = [
+            s.cyclomatic,
+            s.cognitive,
+            s.coupling.as_ref().map(|c| c.hk).unwrap_or(0.0),
+            s.coupling.as_ref().map(|c| c.fan_in).unwrap_or(0.0),
+            s.coupling.as_ref().map(|c| c.fan_out).unwrap_or(0.0),
+            s.loc.as_ref().map(|l| l.source).unwrap_or(0.0),
+        ];
+        print_toml_block(&format!("[rules.thresholds.{scope}.avg]"), &avg, true);
+    }
+}
+
+/// Print one TOML table, one `metric = value` line per non-zero metric. With
+/// `round_up`, fractional values (averages) are ceiled so a strict `>` check
+/// still passes at the printed limit.
+fn print_toml_block(header: &str, vals: &[f64; 6], round_up: bool) {
+    let rows: Vec<(&str, u64)> = METRICS
+        .iter()
+        .zip(vals)
+        .filter_map(|(name, &v)| {
+            let n = if round_up { v.ceil() } else { v.round() } as u64;
+            (n > 0).then_some((*name, n))
+        })
+        .collect();
+    if rows.is_empty() {
+        return;
+    }
+    println!();
+    println!("{header}");
+    for (name, v) in rows {
+        println!("{name:<12}= {}", group_digits(v));
+    }
+}
+
+/// Format an integer with `_` thousands separators (e.g. 512712 → "512_712"),
+/// matching the human number syntax accepted by `--threshold` / the config.
+fn group_digits(n: u64) -> String {
+    let s = n.to_string();
+    let len = s.len();
+    let mut out = String::with_capacity(len + len / 3);
+    for (i, ch) in s.chars().enumerate() {
+        if i > 0 && (len - i).is_multiple_of(3) {
+            out.push('_');
+        }
+        out.push(ch);
+    }
+    out
 }
 
 /// Minimal SARIF 2.1.0 document. `ruleId` is the dotted rule id (e.g.

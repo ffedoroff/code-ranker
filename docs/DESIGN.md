@@ -520,9 +520,11 @@ config filters: `config::apply_ignore` (path globs + `test_modules` +
 `config::apply_cycle_rules`, `annotate_hk` + `annotate_stats`.
 
 - **`check`** (the linter): runs the shared analysis core, then
-  `config::check_violations` over enabled cycle checks (`--cycle-rule
-  <KIND=on|off>`) and metric thresholds (`--threshold <SCOPE[.avg].METRIC=N>`).
-  Each rule is binary — no severity tiers. Threshold scopes map one-to-one to the
+  `config::check_violations` over cycle checks (`--cycle-rule <KIND=on|off|N>`,
+  parsed into `config::CycleRule` = `Off` | `Max(n)`; a kind's cycles are reported
+  only when their per-graph count exceeds its budget, so `Max(0)` is strict and
+  `Max(7)` forbids the 8th) and metric thresholds (`--threshold
+  <SCOPE[.avg].METRIC=N>`). No severity tiers. Threshold scopes map one-to-one to the
   graphs: `file` (files graph), `module` (modules graph), `function` (functions
   graph). Each scope is a `config::ScopeThresholds` with a `single` bucket
   (`#[serde(flatten)]`, metrics written directly under the scope table) and an
@@ -541,9 +543,12 @@ config filters: `config::apply_ignore` (path globs + `test_modules` +
   (`human` / `json` / `github` / `sarif`): `human` (`print_human_diagnostics`)
   renders each finding as a self-contained block (rule id, group, `where` = `id —
   path:line`, `issue`, `why`, `fix`, `tune`, `ref`) so it doubles as an AI prompt;
-  `sarif` describes the fired rules under `tool.driver.rules`. Honours `--top <N>`
-  (report only the N worst) and exits non-zero on any violation; `--exit-zero`
-  suppresses the non-zero exit. Writes no files.
+  `sarif` describes the fired rules under `tool.driver.rules`. After the findings,
+  `human` output also calls `print_current_values` — the current per-kind cycle
+  counts and per-scope metric maxima (`single`) / averages (`avg`) as paste-ready
+  `code-split.toml` blocks for baselining (machine formats omit it). Honours
+  `--top <N>` (report only the N worst) and exits non-zero on any violation;
+  `--exit-zero` suppresses the non-zero exit. Writes no files.
 - **`report`**: runs the shared analysis core (re-analyzing the workspace),
   then writes artifacts into `--report-path` (default `.code-split`) per
   `--format` (`json`, `html`; default both). The JSON snapshot records
