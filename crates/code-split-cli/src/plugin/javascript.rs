@@ -989,3 +989,174 @@ fn normalize_path(path: &Path) -> PathBuf {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use code_split_core::graph::Graph;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ── pure helpers ────────────────────────────────────────────────────────
+
+    #[test]
+    fn mod_id_slashes_become_double_colons() {
+        assert_eq!(mod_id("a/b/c"), "mod:a::b::c");
+        assert_eq!(mod_id("x"), "mod:x");
+    }
+
+    #[test]
+    fn file_to_mod_path_strips_extension_and_collapses_index() {
+        let ws = Path::new("/proj");
+        let cases: Vec<(&str, Option<&str>)> = vec![
+            ("/proj/src/lib/utils.ts", Some("src/lib/utils")),
+            ("/proj/src/components/Button.tsx", Some("src/components/Button")),
+            ("/proj/src/index.ts", Some("src")), // index → collapse into dir
+            ("/proj/index.ts", None),            // root index → empty → None
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                file_to_mod_path(ws, Path::new(path)).as_deref(),
+                expected,
+                "for {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_skip_path_skips_vendor_build_and_generated() {
+        let ws = Path::new("/proj");
+        for p in [
+            "/proj/node_modules/x.js",
+            "/proj/dist/x.js",
+            "/proj/build/x.js",
+            "/proj/.git/x.ts",
+            "/proj/a.min.js",
+            "/proj/vite.config.ts",
+            "/proj/legacy.cjs",
+        ] {
+            assert!(is_skip_path(Path::new(p), ws), "should skip {p}");
+        }
+        assert!(
+            !is_skip_path(Path::new("/proj/src/app.ts"), ws),
+            "normal source is not skipped"
+        );
+        assert!(
+            !is_skip_path(Path::new("/other/x.ts"), ws),
+            "path outside the workspace is not skipped"
+        );
+    }
+
+    #[test]
+    fn normalize_path_resolves_parent_and_current() {
+        assert_eq!(normalize_path(Path::new("/a/b/../c")), PathBuf::from("/a/c"));
+        assert_eq!(normalize_path(Path::new("/a/./b")), PathBuf::from("/a/b"));
+        assert_eq!(
+            normalize_path(Path::new("/a/b/c/../../d")),
+            PathBuf::from("/a/d")
+        );
+    }
+
+    #[test]
+    fn resolve_import_relative_resolves_to_indexed_file() {
+        let index: HashMap<String, PathBuf> =
+            HashMap::from([("src/b".to_string(), PathBuf::from("/proj/src/b.ts"))]);
+        let got = resolve_import(
+            "./b",
+            Path::new("/proj/src/a.ts"),
+            Path::new("/proj"),
+            Path::new("/proj/src"),
+            &index,
+        );
+        assert_eq!(got, Some(PathBuf::from("/proj/src/b.ts")));
+    }
+
+    #[test]
+    fn resolve_import_external_package_is_skipped() {
+        let got = resolve_import(
+            "react",
+            Path::new("/proj/src/a.ts"),
+            Path::new("/proj"),
+            Path::new("/proj/src"),
+            &HashMap::new(),
+        );
+        assert_eq!(got, None, "bare package specifiers are not local imports");
+    }
+
+    #[test]
+    fn find_source_root_prefers_existing_src_dir() {
+        let tmp = TempDir::new().unwrap();
+        // No src/ yet → the workspace root is the source root.
+        assert_eq!(find_source_root(tmp.path()), tmp.path());
+        // Once src/ exists, it wins.
+        fs::create_dir(tmp.path().join("src")).unwrap();
+        assert_eq!(find_source_root(tmp.path()), tmp.path().join("src"));
+    }
+
+    // ── end-to-end: a tiny TypeScript project through run() ──────────────────
+
+    fn write(dir: &Path, rel: &str, contents: &str) {
+        let p = dir.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, contents).unwrap();
+    }
+
+    fn has_node(g: &Graph, id: &str) -> bool {
+        g.nodes.iter().any(|n| n.id == id)
+    }
+
+    fn has_edge(g: &Graph, from: &str, to: &str, kind: EdgeKind) -> bool {
+        g.edges
+            .iter()
+            .any(|e| e.from == from && e.to == to && e.kind == kind)
+    }
+
+    #[test]
+    fn run_builds_graphs_for_a_typescript_project() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(
+            root,
+            "src/a.ts",
+            "import { greet } from \"./b\";\n\
+             export class Foo {\n\
+             \x20 bar() { return greet(); }\n\
+             }\n\
+             export function helper() { return 1; }\n",
+        );
+        write(
+            root,
+            "src/b.ts",
+            "export function greet() { return \"hi\"; }\n",
+        );
+
+        let (graphs, _timings) = run(root, false, true).expect("js/ts plugin runs");
+
+        // modules graph: the `src` directory becomes a module node.
+        assert!(has_node(&graphs.modules, "mod:src"), "src module node");
+
+        // functions graph: class, method, and functions are extracted.
+        let f = &graphs.functions;
+        assert!(has_node(f, "impl:src::a::Foo"), "class Foo");
+        assert!(has_node(f, "method:src::a::Foo::bar"), "method Foo.bar");
+        assert!(has_node(f, "fn:src::a::helper"), "function helper");
+        assert!(has_node(f, "fn:src::b::greet"), "function greet");
+
+        // heuristic call edge: Foo.bar() → greet().
+        assert!(
+            has_edge(
+                f,
+                "method:src::a::Foo::bar",
+                "fn:src::b::greet",
+                EdgeKind::Calls
+            ),
+            "expected a call edge bar→greet"
+        );
+
+        // import edge a.ts → b.ts — a `uses` edge between two file nodes.
+        let uses_between_files = f.edges.iter().any(|e| {
+            e.kind == EdgeKind::Uses && e.from.starts_with("file:") && e.to.starts_with("file:")
+        });
+        assert!(uses_between_files, "expected an import edge between files");
+    }
+}
