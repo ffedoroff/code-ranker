@@ -1,4 +1,4 @@
-use crate::crate_node_id;
+use crate::ids::crate_node_id;
 use cargo_metadata::Metadata;
 use code_split_core::{Edge, EdgeKind, GraphBuilder, Node, NodeKind};
 use std::collections::HashSet;

@@ -319,3 +319,245 @@ fn parse_pkg_repr(repr: &str) -> (String, String) {
     // Fallback: use the whole thing as name
     (repr.to_string(), String::new())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{Edge, EdgeKind, Node};
+
+    fn node(id: &str, kind: NodeKind) -> Node {
+        Node {
+            id: id.into(),
+            kind,
+            name: id.into(),
+            path: String::new(),
+            parent: None,
+            external: None,
+            visibility: None,
+            loc: None,
+            line: None,
+            item_count: None,
+            method_count: None,
+            complexity: None,
+            cycle_kind: None,
+        }
+    }
+
+    // ── serde round-trip of the public artifact (P1) ────────────────────────
+
+    fn sample_snapshot() -> Snapshot {
+        let mut graphs = PluginGraphs::default();
+        graphs
+            .modules
+            .nodes
+            .push(node("crate:foo", NodeKind::Crate));
+        Snapshot::new(
+            "report".into(),
+            "/work".into(),
+            "/work/foo".into(),
+            "rust".into(),
+            None,
+            false,
+            HashMap::new(),
+            HashMap::new(),
+            None,
+            Vec::new(),
+            graphs,
+        )
+    }
+
+    #[test]
+    fn snapshot_roundtrips_through_json() {
+        let snap = sample_snapshot();
+        let json = serde_json::to_string(&snap).unwrap();
+        let back: Snapshot = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.schema_version, "1");
+        assert_eq!(back.command, "report");
+        assert_eq!(back.plugin, "rust");
+        assert_eq!(back.target, "/work/foo");
+        assert_eq!(back.graphs.modules.nodes.len(), 1);
+        assert_eq!(back.graphs.modules.nodes[0].id, "crate:foo");
+        // generated_at survives the RFC3339 round-trip to the same instant.
+        assert_eq!(back.generated_at, snap.generated_at);
+    }
+
+    #[test]
+    fn snapshot_omits_absent_optional_fields() {
+        let json = serde_json::to_string(&sample_snapshot()).unwrap();
+        assert!(
+            !json.contains("\"git\""),
+            "None git is not serialized: {json}"
+        );
+        assert!(!json.contains("config_file"), "None config_file is skipped");
+        assert!(!json.contains("timings"), "empty timings is skipped");
+        // local_only == false is skipped via `std::ops::Not::not`.
+        assert!(!json.contains("local_only"));
+    }
+
+    #[test]
+    fn snapshot_keeps_present_optional_fields() {
+        let mut snap = sample_snapshot();
+        snap.git = Some(GitInfo {
+            branch: "main".into(),
+            commit: "abc".into(),
+            dirty_files: 2,
+        });
+        snap.timings.push(StageTime {
+            stage: "parse".into(),
+            ms: 5,
+            detail: String::new(),
+        });
+        let json = serde_json::to_string(&snap).unwrap();
+        let back: Snapshot = serde_json::from_str(&json).unwrap();
+        let git = back.git.unwrap();
+        assert_eq!(git.branch, "main");
+        assert_eq!(git.dirty_files, 2);
+        assert_eq!(back.timings.len(), 1);
+        assert_eq!(back.timings[0].stage, "parse");
+    }
+
+    // ── relativize_path ─────────────────────────────────────────────────────
+
+    #[test]
+    fn relativize_path_empty_stays_empty() {
+        assert_eq!(relativize_path("", Path::new("/p"), &HashMap::new()), "");
+    }
+
+    #[test]
+    fn relativize_path_under_target_uses_target_token() {
+        let got = relativize_path("/p/src/main.rs", Path::new("/p"), &HashMap::new());
+        assert_eq!(got, "{target}/src/main.rs");
+    }
+
+    #[test]
+    fn relativize_path_under_named_root_uses_root_token() {
+        let roots = HashMap::from([("cargo".to_string(), "/home/u/.cargo".to_string())]);
+        let got = relativize_path("/home/u/.cargo/registry/foo.rs", Path::new("/p"), &roots);
+        assert_eq!(got, "{cargo}/registry/foo.rs");
+    }
+
+    #[test]
+    fn relativize_path_longest_root_wins() {
+        // Both roots are prefixes of the path; the longer one (`cargo`) wins.
+        let roots = HashMap::from([
+            ("home".to_string(), "/home/u".to_string()),
+            ("cargo".to_string(), "/home/u/.cargo".to_string()),
+        ]);
+        let got = relativize_path("/home/u/.cargo/x.rs", Path::new("/p"), &roots);
+        assert_eq!(got, "{cargo}/x.rs");
+    }
+
+    #[test]
+    fn relativize_path_unmatched_is_unchanged() {
+        let got = relativize_path("/elsewhere/x.rs", Path::new("/p"), &HashMap::new());
+        assert_eq!(got, "/elsewhere/x.rs");
+    }
+
+    // ── parse_pkg_repr ──────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_pkg_repr_registry_path_and_fallback() {
+        let cases = vec![
+            (
+                "registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.102",
+                ("anyhow", "1.0.102"),
+            ),
+            ("path+file:///path/to/anyhow#1.0.102", ("anyhow", "1.0.102")),
+            ("bare-name-no-hash", ("bare-name-no-hash", "")),
+        ];
+        for (repr, (name, ver)) in cases {
+            let (gn, gv) = parse_pkg_repr(repr);
+            assert_eq!(gn, name, "name for {repr:?}");
+            assert_eq!(gv, ver, "version for {repr:?}");
+        }
+    }
+
+    #[test]
+    fn parse_pkg_repr_git_uses_commit_after_hash() {
+        // Cargo git source ids carry the commit sha after `#`; the `?tag=...`
+        // query is stripped and the repo name is the last path segment.
+        // NB: the returned "version" is the commit, not the tag.
+        let (name, ver) = parse_pkg_repr("git+https://github.com/foo/repo?tag=v0.1.0#a3f9c21");
+        assert_eq!(name, "repo");
+        assert_eq!(ver, "a3f9c21");
+    }
+
+    // ── split_version_boundary ──────────────────────────────────────────────
+
+    #[test]
+    fn split_version_boundary_splits_after_hash_at_first_path_colons() {
+        let got = split_version_boundary("path+file:///p#0.1.0::mod::sub");
+        assert_eq!(
+            got,
+            Some(("path+file:///p#0.1.0".to_string(), "mod::sub".to_string()))
+        );
+    }
+
+    #[test]
+    fn split_version_boundary_none_without_hash_or_path_colons() {
+        assert_eq!(split_version_boundary("mod::sub"), None, "no '#'");
+        assert_eq!(
+            split_version_boundary("has#hash-but-no-colons"),
+            None,
+            "'#' present but no '::' after it"
+        );
+    }
+
+    // ── rewrite_ids ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn rewrite_ids_shortens_single_crate_to_name() {
+        let mut graphs = PluginGraphs::default();
+        graphs
+            .modules
+            .nodes
+            .push(node("crate:path+file:///x/anyhow#1.0.102", NodeKind::Crate));
+        rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
+        assert_eq!(graphs.modules.nodes[0].id, "crate:anyhow");
+    }
+
+    #[test]
+    fn rewrite_ids_disambiguates_name_conflicts_with_version() {
+        // Same crate name at two versions → both keep `@version` suffixes.
+        let mut graphs = PluginGraphs::default();
+        graphs
+            .modules
+            .nodes
+            .push(node("crate:path+file:///a/foo#1.0.0", NodeKind::Crate));
+        graphs
+            .modules
+            .nodes
+            .push(node("crate:path+file:///b/foo#2.0.0", NodeKind::Crate));
+        rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
+        let ids: Vec<&str> = graphs.modules.nodes.iter().map(|n| n.id.as_str()).collect();
+        assert!(ids.contains(&"crate:foo@1.0.0"), "got {ids:?}");
+        assert!(ids.contains(&"crate:foo@2.0.0"), "got {ids:?}");
+    }
+
+    #[test]
+    fn rewrite_ids_rewrites_edge_endpoints_and_file_ids() {
+        let mut graphs = PluginGraphs::default();
+        graphs
+            .modules
+            .nodes
+            .push(node("crate:path+file:///x/anyhow#1.0.102", NodeKind::Crate));
+        graphs
+            .modules
+            .nodes
+            .push(node("file:/x/src/lib.rs", NodeKind::File));
+        graphs.modules.edges.push(Edge {
+            from: "crate:path+file:///x/anyhow#1.0.102".into(),
+            to: "file:/x/src/lib.rs".into(),
+            kind: EdgeKind::Contains,
+            unresolved: None,
+            external: None,
+            visibility: None,
+        });
+        rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
+        // file id is relativized against the target.
+        assert_eq!(graphs.modules.nodes[1].id, "file:{target}/src/lib.rs");
+        // edge endpoints follow the node-id rewrite.
+        assert_eq!(graphs.modules.edges[0].from, "crate:anyhow");
+        assert_eq!(graphs.modules.edges[0].to, "file:{target}/src/lib.rs");
+    }
+}

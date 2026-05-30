@@ -829,3 +829,190 @@ fn py_visibility(name: &str) -> Visibility {
         Visibility::Public
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use code_split_core::graph::Graph;
+    use std::fs;
+    use tempfile::TempDir;
+
+    // ── pure helpers ────────────────────────────────────────────────────────
+
+    #[test]
+    fn mod_id_dots_become_double_colons() {
+        assert_eq!(mod_id("a.b.c"), "mod:a::b::c");
+        assert_eq!(mod_id("single"), "mod:single");
+    }
+
+    #[test]
+    fn file_to_module_path_maps_files_and_packages() {
+        let ws = Path::new("/proj");
+        let cases: Vec<(&str, Option<&str>)> = vec![
+            (
+                "/proj/parser/shops/amazon/pdp.py",
+                Some("parser.shops.amazon.pdp"),
+            ),
+            ("/proj/pkg/__init__.py", Some("pkg")), // package → drops __init__
+            ("/proj/top.py", Some("top")),          // top-level module
+            ("/proj/__init__.py", None),            // root package → no path
+            ("/proj/notes.txt", None),              // not a .py file
+        ];
+        for (path, expected) in cases {
+            let got = file_to_module_path(ws, Path::new(path));
+            assert_eq!(got.as_deref(), expected, "for {path}");
+        }
+    }
+
+    #[test]
+    fn is_skip_path_skips_dot_and_vendor_dirs() {
+        let ws = Path::new("/proj");
+        for p in [
+            "/proj/.git/x.py",
+            "/proj/venv/x.py",
+            "/proj/__pycache__/x.py",
+            "/proj/sub/node_modules/x.py",
+        ] {
+            assert!(is_skip_path(Path::new(p), ws), "should skip {p}");
+        }
+        assert!(
+            !is_skip_path(Path::new("/proj/src/app.py"), ws),
+            "normal source is not skipped"
+        );
+        assert!(
+            !is_skip_path(Path::new("/other/x.py"), ws),
+            "path outside the workspace is not skipped"
+        );
+    }
+
+    #[test]
+    fn absolute_base_resolves_relative_imports() {
+        let cur = "a.b.c";
+        let cases: Vec<(&str, &str, &str)> = vec![
+            ("pkg.sub", "x.y", "pkg.sub"), // absolute import is unchanged
+            (".", cur, "a.b"),             // one dot → drop the current module
+            (".utils", cur, "a.b.utils"),  // one dot + suffix
+            ("..shops", cur, "a.shops"),   // two dots + suffix
+        ];
+        for (base, current, expected) in cases {
+            assert_eq!(
+                absolute_base(base, current),
+                expected,
+                "base={base:?} cur={current:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_import_finds_submodule_and_package() {
+        let index: HashMap<String, PathBuf> = HashMap::from([
+            ("pkg.b".to_string(), PathBuf::from("/p/pkg/b.py")),
+            ("pkg".to_string(), PathBuf::from("/p/pkg/__init__.py")),
+        ]);
+        // `from pkg import b` resolves the submodule AND the package itself.
+        let got = resolve_import("pkg", &["b".to_string()], "pkg.a", &index);
+        assert!(
+            got.contains(&PathBuf::from("/p/pkg/b.py")),
+            "submodule b: {got:?}"
+        );
+        assert!(
+            got.contains(&PathBuf::from("/p/pkg/__init__.py")),
+            "package pkg: {got:?}"
+        );
+    }
+
+    #[test]
+    fn resolve_import_plain_import_resolves_dotted_module() {
+        let index: HashMap<String, PathBuf> =
+            HashMap::from([("pkg.b".to_string(), PathBuf::from("/p/pkg/b.py"))]);
+        let got = resolve_import("pkg.b", &[], "pkg.a", &index);
+        assert_eq!(got, vec![PathBuf::from("/p/pkg/b.py")]);
+    }
+
+    #[test]
+    fn py_visibility_classifies_by_underscore_convention() {
+        assert_eq!(py_visibility("public"), Visibility::Public);
+        assert_eq!(py_visibility("__private"), Visibility::Private);
+        assert_eq!(
+            py_visibility("_protected"),
+            Visibility::Restricted {
+                path: "module".into()
+            }
+        );
+        // A dunder (underscores both ends) is not "private" — it falls through
+        // to the single-underscore rule.
+        assert_eq!(
+            py_visibility("__init__"),
+            Visibility::Restricted {
+                path: "module".into()
+            }
+        );
+    }
+
+    // ── end-to-end: a tiny package through run() ─────────────────────────────
+
+    fn write(dir: &Path, rel: &str, contents: &str) {
+        let p = dir.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, contents).unwrap();
+    }
+
+    fn has_node(g: &Graph, id: &str) -> bool {
+        g.nodes.iter().any(|n| n.id == id)
+    }
+
+    fn has_edge(g: &Graph, from: &str, to: &str, kind: EdgeKind) -> bool {
+        g.edges
+            .iter()
+            .any(|e| e.from == from && e.to == to && e.kind == kind)
+    }
+
+    #[test]
+    fn run_builds_module_file_and_function_graphs_for_a_package() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write(root, "pkg/__init__.py", "");
+        write(
+            root,
+            "pkg/a.py",
+            "from pkg import b\n\
+             \n\
+             class Foo:\n\
+             \x20   def bar(self):\n\
+             \x20       return b.greet()\n\
+             \n\
+             def helper():\n\
+             \x20   return 1\n",
+        );
+        write(root, "pkg/b.py", "def greet():\n    return \"hi\"\n");
+
+        let (graphs, _timings) = run(root, false, true).expect("python plugin runs");
+
+        // modules graph: the package ancestor node exists.
+        assert!(has_node(&graphs.modules, "mod:pkg"), "package node");
+
+        // functions graph: class, method, and free functions are extracted.
+        let f = &graphs.functions;
+        assert!(has_node(f, "impl:pkg::a::Foo"), "class Foo");
+        assert!(has_node(f, "method:pkg::a::Foo::bar"), "method Foo.bar");
+        assert!(has_node(f, "fn:pkg::a::helper"), "function helper");
+        assert!(has_node(f, "fn:pkg::b::greet"), "function greet");
+
+        // heuristic call edge: Foo.bar() → b.greet().
+        assert!(
+            has_edge(
+                f,
+                "method:pkg::a::Foo::bar",
+                "fn:pkg::b::greet",
+                EdgeKind::Calls
+            ),
+            "expected a call edge bar→greet"
+        );
+
+        // import edge a.py → b.py — a `uses` edge between two file nodes.
+        let uses_between_files = f.edges.iter().any(|e| {
+            e.kind == EdgeKind::Uses && e.from.starts_with("file:") && e.to.starts_with("file:")
+        });
+        assert!(uses_between_files, "expected an import edge between files");
+    }
+}

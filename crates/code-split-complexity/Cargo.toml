@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Complexity metrics stage for Code Split: cyclomatic, cognitive, Halstead via rust-code-analysis."
 
 [dependencies]

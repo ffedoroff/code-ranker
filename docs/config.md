@@ -7,11 +7,12 @@ Settings are merged from multiple sources. **Higher priority wins** for the same
 | Priority | Source | Example |
 |---|---|---|
 | 1 | CLI flags | `--ignore '**/tests/**'` |
-| 2 | `--config <file>` | `--config ci/code-split.toml` |
-| 3 | `code-split.toml` in cwd | `./code-split.toml` |
-| 4 | `code-split.toml` in workspace root | `<workspace>/code-split.toml` |
-| 5 | `Cargo.toml` metadata | `[workspace.metadata.code-split]` |
-| 6 | Built-in defaults | `test-embed = allow`, all else = deny |
+| 2 | `--config KEY=VALUE` inline override | `--config rules.thresholds.module.hk=200000` |
+| 3 | `--config <file>` | `--config ci/code-split.toml` |
+| 4 | `code-split.toml` in cwd | `./code-split.toml` |
+| 5 | `code-split.toml` in workspace root | `<workspace>/code-split.toml` |
+| 6 | `Cargo.toml` metadata | `[workspace.metadata.code-split]` |
+| 7 | Built-in defaults | `test-embed` off, `mutual` / `chain` on |
 
 For `ignore.paths` and CLI `--ignore`: lists are **merged** (union), not replaced.  
 For cycle rules and thresholds: CLI **overrides** the file value.
@@ -32,20 +33,38 @@ paths = [
 ]
 
 [rules.cycles]
-test-embed = "allow"   # default
-mutual     = "deny"    # default
-chain      = "deny"    # default
+# each kind: false = off, true = strict (any cycle fails, same as 0),
+# or an integer N = allow up to N cycles of that kind (the N+1-th fails).
+test-embed = false   # default — off (Rust #[cfg(test)] back-edge, not a smell)
+mutual     = true    # default — strict
+chain      = 7       # allow up to 7 chain cycles; pin today's count as a baseline
 
-[rules.thresholds.node]   # any single node exceeds → violation
-hk         = 500_000
-cyclomatic  = 25
-cognitive   = 30
+[rules.thresholds.file]      # a single file (files graph only)
+loc        = 800
+
+[rules.thresholds.file.avg]  # the files-graph average
+loc        = 300
+
+[rules.thresholds.module]    # a single module/crate (modules graph only)
+hk         = 500_000         # `_` separators; or a quoted suffix: hk = "5M"
 fan_out     = 50
 
-[rules.thresholds.avg]    # graph-wide average exceeds → violation
-hk         = 50_000
-cyclomatic  = 10
+[rules.thresholds.function]  # a single function (functions graph only)
+cognitive  = 25
+loc        = 120
+
+[rules.thresholds.function.avg]  # the functions-graph average
+cyclomatic  = 8
 ```
+
+Threshold **scopes** — `file` / `module` / `function` — each apply to a single
+unit on that one graph (the scope *is* the graph), so a file and a function can
+carry different budgets. **Every scope also has an `.avg` sub-table** for that
+scope's graph-wide average. The single and `avg` buckets are independent.
+
+**Values** accept `_` digit separators and `K`/`M`/`G` suffixes (×10³/10⁶/10⁹):
+`5_123_000`, or a quoted `"5M"` in TOML (bare `5M` is invalid TOML), or bare on the
+CLI (`--threshold module.hk=5M`). See [ERRORS.md](ERRORS.md#threshold-scopes).
 
 ---
 
@@ -60,10 +79,10 @@ Useful when you don't want an extra file. Supports the same keys under
 paths = ["**/tests/**"]
 
 [workspace.metadata.code-split.rules.cycles]
-test-embed = "allow"
-mutual     = "deny"
+test-embed = false
+mutual     = true
 
-[workspace.metadata.code-split.rules.thresholds.node]
+[workspace.metadata.code-split.rules.thresholds.module]
 hk = 500_000
 ```
 
@@ -73,14 +92,16 @@ hk = 500_000
 
 All config values can be set or overridden from the command line.
 
-### `--plugin <NAME>`
+### `--plugin <NAME|auto>`
 
-Override the default plugin (`rust`, `python`, or a path to a binary).  
-Falls back to `plugin` in config file, then `"rust"`.
+Select the built-in plugin (`rust`, `python`, or `javascript`).
+Default is `auto`: resolved from `plugin` in the config file, then by project
+markers (`Cargo.toml`→rust, `pyproject.toml`/`setup.py`→python,
+`package.json`/`tsconfig.json`→javascript). Ambiguous or no marker → error.
 
 ```bash
-code-split analyze .                   # uses config.plugin or "rust"
-code-split analyze . --plugin python   # always uses python
+code-split check .                   # auto-detect (or config.plugin)
+code-split check . --plugin python   # always uses python
 ```
 
 ### `--config <FILE>`
@@ -88,7 +109,7 @@ code-split analyze . --plugin python   # always uses python
 Load config from an explicit path instead of auto-discovery.
 
 ```bash
-code-split analyze . --config ci/strict.toml
+code-split check . --config ci/strict.toml
 ```
 
 ### `--ignore <GLOB>`
@@ -96,50 +117,56 @@ code-split analyze . --config ci/strict.toml
 Add a path glob to the ignore list. Repeatable.
 
 ```bash
-code-split analyze . --ignore '**/tests/**' --ignore '**/generated/**'
+code-split check . --ignore '**/tests/**' --ignore '**/generated/**'
 ```
 
-### `--cycle-rule <KIND=SEVERITY>`
+### `--cycle-rule <KIND=on|off|N>`
 
-Override a cycle rule. `KIND`: `test-embed` | `mutual` | `chain`.  
-`SEVERITY`: `allow` | `warn` | `deny`. Repeatable.
+Configure a cycle check. `KIND`: `test-embed` | `mutual` | `chain`. Value: `on`
+(strict — any cycle fails), `off` (ignored), or an integer `N` (allow up to `N`
+cycles of that kind, fail on the `N+1`-th). Defaults: `test-embed` off, `mutual`
+and `chain` on (= strict). Repeatable.
 
 ```bash
-# Suppress test-embed cycles, treat mutual cycles as warnings
-code-split analyze . --cycle-rule test-embed=allow --cycle-rule mutual=warn
+# flag test-embed cycles; allow up to 7 chain cycles (forbid an 8th)
+code-split check . --cycle-rule test-embed=on --cycle-rule chain=7
 ```
 
-### `--threshold <SCOPE.METRIC=N>`
+### `--threshold <SCOPE[.avg].METRIC=N>`
 
-Set a threshold. `SCOPE`: `node` | `avg`. `METRIC`: `hk` | `cyclomatic` |
-`cognitive` | `fan_in` | `fan_out` | `loc`. Repeatable.
+Set a threshold — a breach fails the check. `SCOPE`: `file` | `module` |
+`function` (a single unit on that graph). Add `.avg` for that scope's graph-wide
+average. `METRIC`: `hk` | `cyclomatic` | `cognitive` | `fan_in` | `fan_out` |
+`loc`. `N` accepts `_` separators and `K`/`M`/`G` suffixes (e.g. `5M`, `1_500`).
+Repeatable.
 
 ```bash
-code-split analyze . --threshold node.hk=500000 --threshold avg.cyclomatic=10
+code-split check . --threshold file.loc=800 --threshold function.cognitive=25 \
+  --threshold function.avg.cyclomatic=10
 ```
 
 ### `--exit-zero`
 
-Exit 0 even when `deny` violations are found. Useful in CI when you want to
+Exit 0 even when violations are found. Useful in CI when you want to
 collect the snapshot as an artifact without blocking the pipeline.
 
 ```bash
-code-split analyze . --exit-zero
+code-split check . --exit-zero
 ```
 
-Without this flag, `code-split analyze` exits 1 whenever at least one `deny`
-violation is found — matching the default behaviour of tools like `ruff check`
-and `cargo clippy -- -D warnings`.
+Without this flag, `code-split check` exits 1 whenever at least one violation
+is found — matching the default behaviour of tools like `ruff check`.
 
 ---
 
-## Severity levels
+## Enabled vs disabled
 
-| Level | Effect |
+There are no severity levels. Every rule is binary:
+
+| State | Effect |
 |---|---|
-| `allow` | Strip from snapshot; not shown in reports |
-| `warn`  | Shown in report; exit 0 |
-| `deny`  | Shown in report; exit 1 (unless `--exit-zero`) |
+| enabled (`true` / threshold set) | Violations are reported; `check` exits non-zero (unless `--exit-zero`) |
+| disabled (`false` / threshold unset) | Not checked |
 
 ---
 
@@ -147,14 +174,14 @@ and `cargo clippy -- -D warnings`.
 
 ```yaml
 # collect-only (never blocks the pipeline)
-- run: code-split analyze . --exit-zero
+- run: code-split check . --exit-zero
 
-# linter mode (blocks on any deny violation)
-- run: code-split analyze .
+# linter mode (blocks on any violation)
+- run: code-split check .
 ```
 
 Or with inline overrides to tighten rules in CI without changing `code-split.toml`:
 
 ```bash
-code-split analyze . --cycle-rule chain=deny --threshold node.hk=200000
+code-split check . --cycle-rule test-embed=on --threshold module.hk=200000
 ```

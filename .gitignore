@@ -1,5 +1,13 @@
 .claude/
 .code-split
 /target/
+lcov.info
 crates/code-split-cli/src/assets/data.js
 .DS_Store
+node_modules/
+package.json
+package-lock.json
+__pycache__/
+*.egg-info/
+dist/
+build/

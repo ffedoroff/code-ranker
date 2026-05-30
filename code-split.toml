@@ -1,6 +1,6 @@
 # code-split.toml — project-level configuration for code-split
 #
-# plugin = "rust"   # default plugin; overridden by --plugin
+plugin = "rust"   # default plugin; overridden by --plugin
 #
 # Searched automatically (highest priority first):
 #   1. CLI flags (--ignore, --cycle-rule, --threshold)
@@ -30,27 +30,53 @@ paths = [
 ]
 
 # ── Cycle rules ────────────────────────────────────────────────────────────────
-# allow  — strip from snapshot entirely (not shown in reports)
-# warn   — show in report, exit 0
-# deny   — show in report, exit 1 with --check
+# Each cycle kind: false = off (ignored); true = strict (any cycle fails, = 0);
+# or an integer N = allow up to N cycles of that kind (the N+1-th fails — pin
+# today's count to forbid adding new ones). `check` prints the current counts.
 [rules.cycles]
-test-embed = "allow"   # parent → mod tests → parent (language feature, not a smell)
-mutual     = "deny"    # two nodes that directly depend on each other
-chain      = "deny"    # three or more nodes in a dependency cycle
+test-embed = false   # off — parent → mod tests → parent (language feature, not a smell)
+mutual     = true    # strict — two nodes that directly depend on each other
+chain      = true    # strict — three or more nodes in a dependency cycle
 
 # ── Threshold rules ────────────────────────────────────────────────────────────
-# [rules.thresholds.node]  — flag any single node whose metric exceeds the limit
-# [rules.thresholds.avg]   — flag when the graph-wide average exceeds the limit
+# One scope per graph (the scope IS the graph), each limiting a SINGLE unit:
+#   [rules.thresholds.file]      — a single file     (files graph only)
+#   [rules.thresholds.module]    — a single module   (modules graph only)
+#   [rules.thresholds.function]  — a single function (functions graph only)
+# Each scope also has an `.avg` sub-table for that scope's graph-wide average,
+# e.g. [rules.thresholds.function.avg].
 #
 # Available metrics: hk, cyclomatic, cognitive, fan_in, fan_out, loc
-# Violations are reported with --check; severity is always deny.
+# A set threshold fails `check` when exceeded; unset = not checked.
+# Current baseline below, pasted from `check`'s current-values block. single = the
+# worst single unit (max); avg = the graph-wide average.
 
-# [rules.thresholds.node]
-# hk         = 500_000
-# cyclomatic  = 25
-# cognitive   = 30
-# fan_out     = 50
+[rules.thresholds.module]
+cyclomatic  = 1
+hk          = 82_000
+fan_in      = 20
+fan_out     = 20
+loc         = 2_000
 
-# [rules.thresholds.avg]
-# hk         = 50_000
-# cyclomatic  = 10
+[rules.thresholds.module.avg]
+cyclomatic  = 1
+hk          = 18_000
+fan_in      = 4
+fan_out     = 6
+loc         = 400
+
+[rules.thresholds.function]
+cyclomatic  = 35
+cognitive   = 70
+hk          = 82_000
+fan_in      = 60
+fan_out     = 50
+loc         = 2_000
+
+[rules.thresholds.function.avg]
+cyclomatic  = 4
+cognitive   = 7
+hk          = 12_000
+fan_in      = 5
+fan_out     = 8
+loc         = 50

@@ -1,4 +1,5 @@
 mod crate_graph;
+mod ids;
 mod module_graph;
 
 use anyhow::{Context, Result};
@@ -37,8 +38,4 @@ fn analyze_with(workspace: &Path, builder: &mut GraphBuilder, local_only: bool) 
     crate_graph::contribute(&metadata, builder);
     module_graph::contribute(&metadata, builder)?;
     Ok(())
-}
-
-pub(crate) fn crate_node_id(pkg_id_repr: &str) -> String {
-    format!("crate:{pkg_id_repr}")
 }

@@ -23,7 +23,7 @@
   - [6.2 NFR Exclusions](#62-nfr-exclusions)
 - [7. Public Interfaces](#7-public-interfaces)
   - [7.1 Code Split Unified CLI](#71-code-split-unified-cli)
-  - [7.2 Plugin Binary Contract](#72-plugin-binary-contract)
+  - [7.2 Plugin Model](#72-plugin-model)
   - [7.3 Graph JSON Schema](#73-graph-json-schema)
 - [8. Use Cases](#8-use-cases)
   - [UC-001 Analyze Rust Workspace Offline](#uc-001-analyze-rust-workspace-offline)
@@ -83,8 +83,8 @@ language-specific, non-exportable, or single-level.
 
 **Capabilities**:
 
-- Pluggable analyzer system: each language/framework provides a CLI
-  plugin that emits standard JSON artifacts
+- Built-in analyzer system: each language provides a plugin compiled
+  into the binary that emits standard JSON artifacts
 - Multi-level graph visualization with coupling metrics and node sorting
 - Snapshot diff for before/after refactoring quantification
 
@@ -92,8 +92,8 @@ language-specific, non-exportable, or single-level.
 
 | Term | Definition |
 |------|------------|
-| Plugin | A CLI program that accepts a workspace path and writes three JSON graph files (module, file, function level) to an output directory |
-| Snapshot | A directory containing three JSON graph files produced by a single plugin run |
+| Plugin | A built-in language analyzer (`rust`, `python`, or `javascript`) compiled into the `code-split` binary that analyzes a workspace and produces three graphs (module, file, function level) in-process |
+| Snapshot | A single self-contained JSON file combining metadata and all three graphs produced by a single analysis run |
 | Graph | A directed graph whose nodes are code entities and whose edges are structural relationships (`Contains`, `Uses`, `Calls`) |
 | Level | One of `module`, `file`, `fn` — the granularity of a graph |
 | Node weight | The coupling metric for a node: sum of its incoming and outgoing edge counts |
@@ -156,19 +156,24 @@ activity and is deliberately outside Code Split's scope.
 
 ```
 Step 1 ─ Extract   →   Step 2 ─ Visualize   →   Step 3 ─ Modify   →   Step 4 ─ Diff
-(code-split analyze)       (code-split report)          (User / AI)           (code-split diff)
-outputs JSON            outputs HTML              (we wait)             outputs HTML + MD
+(code-split report)       (code-split report)          (User / AI)           (code-split diff)
+outputs JSON            outputs HTML              (we wait)             outputs HTML
 ```
 
-**Step 1 — Graph Extraction (Plugin)**: A language-specific plugin CLI
-is invoked on the workspace. It writes three JSON artifact files:
-`modules.json`, `files.json`, `functions.json`. No network access or
-LLM is required. Artifacts may be stored as CI artifacts for Step 4.
+**Step 1 — Graph Extraction (Plugin)**: A language-specific built-in
+plugin analyzes the workspace in-process when `code-split report` runs,
+which writes a single JSON snapshot combining all three graphs (modules,
+files, functions). No
+network access or LLM is required. The snapshot may be stored as a CI
+artifact for Step 4. (For a pure CI gate that only lints and writes no
+files, `code-split check` runs the same analysis without producing a
+snapshot.)
 
-**Step 2 — Visualization (Report Generator)**: The `code-split report`
-subcommand reads the snapshot JSON and produces a self-contained offline
-HTML report with interactive graph visualization and sorting by node
-weight. No network access or LLM is required.
+**Step 2 — Visualization (Report Generator)**: The same `code-split report`
+run that analyzes the workspace also produces a self-contained offline
+HTML viewer with interactive graph visualization and sorting by node
+weight — snapshot and HTML are emitted together. No network access or
+LLM is required.
 
 **Step 3 — Modification (User Activity)**: The user reads the report,
 decides what to refactor (manually or with AI assistance), and modifies
@@ -176,8 +181,8 @@ the codebase. Code Split does not participate in this step.
 
 **Step 4 — Diff Analysis (Diff Engine)**: After modification, the user
 re-runs Step 1 to produce a new snapshot. The `code-split diff` subcommand
-compares the two snapshots and produces a diff HTML report and a
-Markdown text report. No network access or LLM is required.
+compares the two existing snapshots and produces a diff HTML report and a
+machine-readable JSON diff. No network access or LLM is required.
 
 ## 4. Scope
 
@@ -189,7 +194,7 @@ Markdown text report. No network access or LLM is required.
 |------|-------|
 | Step 1 | Rust plugin only; module-, file-, and function-level JSON graphs; no AI prompts; no CI integration |
 | Step 2 | Offline HTML report with graph visualization and node sorting by weight |
-| Step 4 | Offline HTML diff report and Markdown text report comparing two snapshots |
+| Step 4 | Offline HTML diff report and machine-readable JSON diff comparing two snapshots |
 
 #### P2 — Follow-On
 
@@ -227,33 +232,45 @@ Markdown text report. No network access or LLM is required.
 - [x] `p1` - **ID**: `cpt-code-split-fr-unified-cli`
 
 All user-facing operations MUST be accessible through a single binary
-`code-split`. The three top-level subcommands map to the workflow steps:
+`code-split`. Running it with no command prints help — every action goes
+through an explicit subcommand; there is no default command. The three
+top-level subcommands map to the workflow steps:
 
 ```
-code-split analyze  <workspace> --plugin <name|path> [--output <file>] [options] [-- <plugin-args>]
-code-split report   --input <snapshot.json> --output <report.html>
-code-split diff     --before <snap-a.json> --after <snap-b.json> [--output <diff.html>]
-code-split compare  --before <snap-a.json> --after <snap-b.json> [--output <summary.json>] [--html]
+code-split check  [path] --plugin <name|auto> [options] [-- <plugin-args>]
+code-split report [path] --plugin <name|auto> [--format json,html] [--before <baseline.json>] [options] [-- <plugin-args>]
+code-split diff   --before <snap-a.json> --after <snap-b.json> [--format html,json]
 ```
 
-`--output` is optional on `analyze`. When omitted, `code-split` saves the
-snapshot as `.code-split/{project-name}-<YYYYMMDD-HHmmss>.json` in the
-**current working directory** (not inside the analyzed project). The
-timestamp and project slug are in the filename; no additional registry is
-created.
+- `check` is the linter: it analyzes the workspace, evaluates cycle rules
+  and thresholds, prints diagnostics, exits non-zero on any violation,
+  and writes **no files**.
+- `report` analyzes the workspace **now** and writes artifacts (a JSON
+  snapshot and/or an HTML viewer). It always re-analyzes. With
+  `--before <baseline.json>` it
+  compares against a baseline in the same run, turning the HTML into a diff
+  view and adding a verdict.
+- `diff` compares two **existing** snapshots (no analysis) and writes a diff
+  HTML report and/or a machine-readable JSON diff.
+
+`report` writes the snapshot to `--report-path` (default `.code-split`) as
+`{project-dir}-{ts}.json`, e.g. `.code-split/user-provisioning-20260526-114144.json`;
+`{project-dir}` is the slugified workspace name and `{ts}` is a local
+`YYYYMMDD-HHMMSS` timestamp. The `--json-name` flag overrides the template
+for named states (e.g., `pr.json`). No additional registry is created.
 
 Each snapshot is a **single self-contained `.json` file** combining
 metadata (command, versions, git state) and all three graphs. See
 `cpt-code-split-fr-snapshot-meta` for the full schema.
 
-`report` and `diff` consume snapshot files produced by `analyze` and
-are plugin-agnostic. Splitting into separate binaries is forbidden at
+`diff` consumes snapshot files produced by `report` and is
+plugin-agnostic. Splitting into separate binaries is forbidden at
 P1; the separation of concerns lives inside the binary.
 
 **Rationale**: One file per snapshot is easier to copy, archive, attach
 to CI artifacts, and pass to `diff`. A timestamped filename means users
 never have to think about naming for routine snapshots; explicit
-`--output` is available for named states (e.g., `snap-before-refactor.json`).
+`--json-name` is available for named states (e.g., `snap-before-refactor.json`).
 
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`
 
@@ -261,14 +278,14 @@ never have to think about naming for routine snapshots; explicit
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-snapshot-meta`
 
-Each `code-split analyze` run produces a single `.json` file. The file
+Each `code-split report` run produces a single `.json` file. The file
 combines metadata and all three graphs in one document:
 
 ```json
 {
   "schema_version": "1",
   "generated_at": "2026-05-22T11:22:33Z",
-  "command": "code-split analyze /path/to/axum-api --plugin rust",
+  "command": "code-split report /path/to/axum-api --plugin rust",
   "workspace": "/Users/alice/projects/code-split",
   "target":    "/Users/alice/projects/axum-api",
   "plugin": "rust",
@@ -312,12 +329,12 @@ Top-level fields:
 - `command` — full command line as typed
 - `workspace` — absolute path to the directory where `code-split` was invoked
 - `target` — absolute path to the analyzed project
-- `plugin` — resolved plugin name or path
+- `plugin` — resolved built-in plugin name (`rust`, `python`, or `javascript`)
 - `config_file` — absolute path of the config file used (`code-split.toml` or `Cargo.toml#metadata.code-split`); omitted when no config file was found
 - `local_only` — boolean
 - `versions` — `code-split` semver at minimum; the Rust plugin adds
-  `plugin_rust` and `rustc`; external plugins add `plugin_<name>`
-  from their `--version` output
+  `plugin_rust` and `rustc`; other built-in plugins add `plugin_<name>`
+  for the language they analyze
 - `roots` — named system prefixes used to relativize node paths
   (e.g. `{cargo}`, `{registry}`, `{rustup}`, `{rust-src}`); resolve formula:
   `roots[name] + "/" + rest` gives the absolute path. The Rust plugin
@@ -327,12 +344,13 @@ Top-level fields:
   `git status --porcelain`); omitted entirely if not a git repository
 - `timings` — per-stage wall-clock timings in milliseconds, in execution
   order; each entry has `stage` (name), `ms` (elapsed), `detail` (human
-  summary); omitted when empty (e.g. external plugins)
+  summary); omitted when empty
 - `graphs` — object with three keys: `modules`, `files`, `functions`;
   each value is a graph object with `nodes` and `edges` arrays
 
-`code-split report` and `code-split diff` read the snapshot file and embed
-the top-level metadata in the generated HTML as a "Snapshot info" panel.
+`code-split report` (with `--before`) and `code-split diff` read snapshot
+files and embed the top-level metadata in the generated HTML as a
+"Snapshot info" panel.
 
 **Rationale**: One file per snapshot is simpler to copy, archive, and
 pass between tools than a directory of four files. The timestamp in the
@@ -341,77 +359,34 @@ filename makes snapshots self-organizing without a registry.
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`,
 `cpt-code-split-actor-ci`
 
-#### Plugin Contract
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-plugin-contract`
-
-A plugin is a CLI program that `code-split analyze` discovers and
-sub-processes. The plugin binary receives a fixed invocation contract:
-
-```
-<plugin-binary> <workspace-path> --output <file> [-- <plugin-args>]
-```
-
-It MUST write a single JSON file to `<file>` containing only the
-`graphs` object:
-
-```json
-{
-  "graphs": {
-    "modules":   { "nodes": [...], "edges": [...] },
-    "files":     { "nodes": [...], "edges": [...] },
-    "functions": { "nodes": [...], "edges": [...] }
-  }
-}
-```
-
-`files` MAY be omitted when the plugin produces no `NodeKind::File`
-nodes (e.g. Rust plugin). `code-split` wraps this output with the top-level metadata fields
-(`command`, `versions`, `git`, etc.) and writes the final snapshot
-file. The plugin MUST exit zero on success and non-zero with a
-structured JSON error on stderr on failure. No network access is
-permitted during plugin execution. Arguments after `--` are forwarded
-verbatim from `code-split analyze` to the plugin binary.
-
-**Rationale**: A standard binary contract decouples plugin
-implementations from consumer tools. Any executable that speaks this
-contract is a valid plugin, regardless of language.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`
-
-#### Plugin Discovery and Registration
+#### Plugin Selection
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-plugin-discovery`
 
-`code-split analyze --plugin <value>` MUST resolve the plugin binary
-through the following ordered lookup, stopping at the first match:
+The plugins are built into the `code-split` binary; the only valid plugin
+names are `rust`, `python`, and `javascript` (covers JS+TS). The
+`--plugin <name>` option (on `check` / `report`) selects one of these
+built-ins. There is no external or dynamic plugin loading.
 
-1. **Path** — `<value>` starts with `./`, `../`, or `/`: execute
-   `<value>` directly as a file-system path.
-2. **Config** — `<value>` matches a name in `code-split.toml`
-   `[plugins.<value>]`: use the `command` key from that section.
-3. **PATH** — `code-split-plugin-<value>` is found on `$PATH`: execute it.
-4. **Built-in** — `<value>` matches a built-in plugin compiled into
-   the `code-split` binary (P1: `rust`; P3: `python`, `go`, `js`, `ts`).
+The plugin is resolved in the following order, stopping at the first match:
 
-If no match is found, `code-split analyze` MUST exit non-zero with a
-human-readable error listing the four lookup steps and what was tried.
+1. **Explicit `--plugin <name>`** on the command line (any value other
+   than `auto`) wins.
+2. Otherwise the **`plugin` key in the config file** (`code-split.toml` /
+   `Cargo.toml#metadata.code-split`), if set and not `auto`.
+3. Otherwise **auto-detect by project markers** in the workspace root
+   (`Cargo.toml` → `rust`; `pyproject.toml` / `setup.py` / `setup.cfg`
+   → `python`; `package.json` / `tsconfig.json` → `javascript`).
 
-Third-party plugins are registered in `code-split.toml` at the workspace
-root:
+If `--plugin` resolves to a name that is not a built-in, or if `auto`
+detection finds more than one marker or none, the analyzing command MUST
+exit non-zero with a human-readable error naming the valid plugins and
+asking for an explicit `--plugin`.
 
-```toml
-[plugins.django]
-command = "code-split-plugin-django"
-
-[plugins.custom]
-command = "./scripts/my-analyzer.sh"
-```
-
-**Rationale**: The four-step lookup supports all use cases — built-in
-convenience, project-scoped custom scripts, globally installed
-community plugins, and path-based ad-hoc plugins — without requiring
-a plugin registry or install step.
+**Rationale**: Built-in-only selection keeps the tool a single binary with
+nothing to install: every supported language ships compiled in, and adding
+a language means adding a built-in plugin rather than wiring up an external
+process.
 
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`
 
@@ -419,8 +394,8 @@ a plugin registry or install step.
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-rust-plugin`
 
-The platform MUST ship a Rust plugin (`code-split-rust`) that implements
-`cpt-code-split-fr-plugin-contract` for Cargo workspaces. The plugin MUST:
+The platform MUST ship a built-in Rust plugin (`--plugin rust`) for Cargo
+workspaces. The plugin MUST:
 
 - Derive the module graph from `cargo metadata` and `mod` declarations
   via syntactic analysis (`syn` crate); in Rust a `.rs` file IS its
@@ -551,12 +526,11 @@ structural analysis today.
 
 - [x] `p3` (Python shipped) - **ID**: `cpt-code-split-fr-lang-plugins`
 
-The platform SHOULD support additional language plugins for Python, Go,
-JavaScript, C#, and PHP, each implementing `cpt-code-split-fr-plugin-contract`
-and emitting conformant JSON artifacts. Framework-specific plugins
-(Django, WordPress, etc.) MAY extend the node and edge kind vocabulary
-with domain-specific types; extensions MUST be backward-compatible with
-the base schema.
+The platform SHOULD support additional built-in language plugins for
+Python, Go, JavaScript, C#, and PHP, each emitting conformant JSON
+artifacts. A built-in plugin MAY extend the node and edge kind vocabulary
+with framework-specific types (e.g. Django, WordPress concepts); such
+extensions MUST be backward-compatible with the base schema.
 
 **Python plugin** (`--plugin python`) is shipped as a built-in in
 `code-split-cli`. It uses `tree-sitter-python` to extract module/package
@@ -572,9 +546,9 @@ parsed, callee names extracted from `call` nodes (plain `identifier` or
 `attribute` access) are matched against the global `Fn`/`Method` name
 index; matching pairs emit `Calls` edges.
 
-**JavaScript / TypeScript plugin** (`--plugin js`, `--plugin ts`,
-`--plugin javascript`, `--plugin typescript`) is shipped as a built-in in
-`code-split-cli`. It uses `tree-sitter-javascript` and
+**JavaScript / TypeScript plugin** (`--plugin javascript`) is shipped as a
+built-in in `code-split-cli`; one plugin handles `.js`, `.jsx`, `.ts`, and
+`.tsx`. It uses `tree-sitter-javascript` and
 `tree-sitter-typescript` to extract module/package structure, classes,
 functions, methods, and import-based `Uses` edges. Supports both ES
 modules (`import`) and CommonJS (`require()`). Emits `Module`, `File`,
@@ -600,21 +574,23 @@ diff layer.
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-config`
 
-`code-split analyze` MUST load a layered configuration from multiple sources.
-Priority order (highest wins for scalars; `ignore.paths` is merged):
+The analyzing commands (`check` / `report`) MUST load a layered
+configuration from multiple sources. Priority order (highest wins for
+scalars; `ignore.paths` is merged):
 
 | Priority | Source |
 |---|---|
 | 1 | CLI flags (`--ignore`, `--cycle-rule`, `--threshold`, `--plugin`) |
-| 2 | `--config <file>` |
-| 3 | `code-split.toml` in cwd, then in target directory |
-| 4 | `Cargo.toml` `[workspace.metadata.code-split]` / `[package.metadata.code-split]` |
-| 5 | Built-in defaults |
+| 2 | `--config KEY=VALUE` inline overrides (dotted key into the config schema) |
+| 3 | `--config <file>` |
+| 4 | `code-split.toml` in cwd, then in target directory |
+| 5 | `Cargo.toml` `[workspace.metadata.code-split]` / `[package.metadata.code-split]` |
+| 6 | Built-in defaults |
 
 **Config file keys** (`code-split.toml` or `Cargo.toml` metadata section):
 
 ```toml
-plugin = "rust"          # default plugin; overridden by --plugin
+plugin = "auto"          # default plugin; "auto" detects by project markers, overridden by --plugin
 
 [ignore]
 paths        = ["**/generated/**"]  # glob patterns matched against node path
@@ -623,31 +599,73 @@ dev_only_crates = true   # strip crates reachable only via [dev-dependencies]
                          # (uses `cargo metadata` for transitive accuracy)
 
 [rules.cycles]
-test-embed = "allow"     # default: allow  (Rust #[cfg(test)] back-edge)
-mutual     = "deny"      # default: deny
-chain      = "deny"      # default: deny
+test-embed = false       # default: off  (Rust #[cfg(test)] back-edge)
+mutual     = true        # default: on
+chain      = true        # default: on
 
-[rules.thresholds.node]  # flag any single node exceeding the limit
+[rules.thresholds.module]  # a single module/crate (modules graph only)
 hk         = 500_000
-cyclomatic  = 25
 
-[rules.thresholds.avg]   # flag when graph-wide average exceeds the limit
-hk         = 50_000
+[rules.thresholds.file]  # a single file (files graph only)
+loc        = 800
+
+[rules.thresholds.function.avg]  # the functions-graph average
 cyclomatic  = 10
 ```
 
 **CLI flags**:
 
-- `--plugin <NAME>` — override default plugin
-- `--config <FILE>` — load config from explicit path
+- `--plugin <NAME|auto>` — override default plugin (`auto` detects by markers)
+- `--config <PATH | KEY=VALUE>` — load config from an explicit file path, or
+  override a single setting inline via a dotted key (repeatable; inline wins)
 - `--ignore <GLOB>` — add a path glob (repeatable, merged with file)
-- `--cycle-rule <KIND=SEVERITY>` — override a cycle rule (e.g. `mutual=warn`)
-- `--threshold <SCOPE.METRIC=N>` — set a threshold (e.g. `node.hk=500000`)
-- `--exit-zero` — exit 0 even when `deny` violations are found (collect-only mode)
+- `--cycle-rule <KIND=on|off|N>` — configure a cycle check: `on` (any cycle of
+  that kind fails), `off` (ignored), or an integer `N` (allow up to `N`, fail on
+  the `N+1`-th — e.g. `chain=7` to pin today's count and forbid new ones)
+- `--threshold <SCOPE[.avg].METRIC=N>` — set a threshold (e.g. `file.loc=800`,
+  `function.avg.cyclomatic=10`); a breach fails the check (`check` only). SCOPE is
+  `file` / `module` / `function` (a single unit on that graph); add `.avg` for
+  that scope's graph-wide average. `N` accepts `_` separators and `K`/`M`/`G`
+  suffixes (e.g. `module.hk=5M`)
+- `--top <N>` — report only the `N` worst violations (`check` only); reporting
+  limit, does not change the exit code
+- `--exit-zero` — exit 0 even when violations are found (`check` only,
+  collect-only mode)
+- `--suggest-config` — also print the current values as a ready-to-paste
+  `code-split.toml` baseline (`check` only; off by default)
 
-**Severity levels**: `allow` (strip from snapshot) · `warn` (report, exit 0) · `deny` (report, exit 1 unless `--exit-zero`).
+**No severity levels**: there is no warning tier — `check` either passes or fails.
+A threshold is set or unset; a cycle kind is off, strict (`on`/`0`), or carries a
+count budget `N` (up to `N` cycles of that kind allowed). A budget lets teams pin
+today's cycle count and fail only on regressions, without fixing the backlog first.
+
+**Rule ids and self-contained diagnostics**: every violation is identified by its
+dotted rule id — the same string used as the config key and CLI flag (e.g.
+`threshold.file.loc`) — and tagged with a concern group: `CYC` (dependency
+cycles), `CPX` (complexity), `CPL` (coupling), `SIZ` (size). The full reference is
+documented in [ERRORS.md](ERRORS.md). The default `human` output renders each
+finding as a self-contained block — rule id, group, location (`id — path:line`),
+measurement, rationale, fix, and the flag/config key that tunes the rule — so a
+single block copied from the terminal is a complete prompt for an AI assistant.
+The rule id and group are carried in every `--output-format` (block header,
+`json` `rule`/`group` fields, `github` annotation title, `sarif` `ruleId` plus a
+fired-rules `tool.driver.rules` catalog).
+
+**Current-values config block (`--suggest-config`)**: with `--suggest-config`,
+`human` output prints — after the findings — the project's current measured values
+as ready-to-paste `code-split.toml` blocks: the `[rules.cycles]` counts per kind,
+and per-scope thresholds (`single` = the worst single unit, `.avg` = the graph-wide
+average). A team copies the block to pin today's numbers as a baseline that passes
+now and fails on regression. Off by default; the machine formats
+(`json`/`github`/`sarif`) omit it.
 
 The path of the config file actually used is recorded in the snapshot as `config_file`.
+
+**Invalid configuration is fatal**: a malformed config file, an unknown threshold
+scope/metric, or a bad inline `--config` / `--threshold` / `--cycle-rule` value
+aborts the command with a non-zero exit and a clear message — the tool never
+silently falls back to defaults, which would drop the user's rules and let
+`check` pass when it should fail (a false green for a CI gate).
 
 **Rationale**: Teams need to suppress expected patterns (e.g. `test-embed`
 cycles, dev-only crate noise) and enforce structural budgets in CI without
@@ -661,9 +679,10 @@ modifying source code.
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-html-report`
 
-The `code-split report` subcommand MUST read a snapshot `.json` file and
-generate a single self-contained offline HTML file. The HTML MUST
-include:
+The `code-split report` subcommand MUST analyze the workspace and, when
+`html` is requested in `--format` (default `json,html`), generate a single
+self-contained offline HTML file alongside the snapshot `.json`. The HTML
+MUST include:
 
 - Interactive graph visualization for each level (module, file,
   function)
@@ -784,13 +803,15 @@ suitable for attaching to PRs or sharing with stakeholders.
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`,
 `cpt-code-split-actor-pr-reviewer`
 
-#### Structured Compare Command
+#### Structured JSON Diff Output
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-compare`
 
-The `code-split compare` subcommand MUST accept two snapshot `.json` files
-and output a machine-readable JSON diff summary. Default output is
-stdout; `--output <file>` writes to a file.
+The `code-split diff` subcommand with `--format json` MUST accept two
+snapshot `.json` files and output a machine-readable JSON diff summary.
+The JSON diff is written to `--report-path` (default `.code-split`) under
+`--json-name` (default `diff.json`). `--format html` (the default) and
+`--format json` are independent and may be combined.
 
 JSON schema:
 
@@ -808,14 +829,17 @@ JSON schema:
 }
 ```
 
-With `--html`, outputs a single self-contained interactive HTML report
-instead of JSON. The report embeds all JS/CSS assets (including Graphviz
-WASM) and both snapshot JSON objects inline — no network required, fully
-offline-capable from `file://`. This is the CI-shareable artifact.
+With `--format html` (the default), `code-split diff` outputs an interactive
+HTML viewer. The report is **fully self-contained**: it embeds all JS/CSS
+assets (including Graphviz WASM) inline **and** embeds both snapshots inline
+as `<script type="application/json">` data, so the single `.html` file opens
+straight from disk with no relative-path reference and no separate `before` /
+`after` JSON files needed. This is the CI-shareable artifact. The HTML and
+JSON outputs come from the same `code-split diff` invocation (`--format html,json`).
 
 **Rationale**: Provides a stable machine-readable interface for CI
-pipelines and scripts; the `--html` flag produces a shareable diff viewer
-without requiring a separate `code-split diff` step.
+pipelines and scripts; the default HTML output is a shareable diff viewer
+produced by the same command.
 
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`,
 `cpt-code-split-actor-pr-reviewer`
@@ -824,7 +848,7 @@ without requiring a separate `code-split diff` step.
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-diff-text-report`
 
-The `code-split compare` subcommand emits a structured JSON summary (see
+`code-split diff --format json` emits a structured JSON summary (see
 `cpt-code-split-fr-compare`) embeddable in CI logs and PR comments. The
 JSON contains node/edge counts and delta per level plus cycle SCC counts.
 
@@ -834,10 +858,11 @@ JSON contains node/edge counts and delta per level plus cycle SCC counts.
 
 - [ ] `p2` - **ID**: `cpt-code-split-fr-ci-diff`
 
-`code-split compare` SHOULD act as a CI linter: exit non-zero when the diff
+`code-split diff` SHOULD act as a CI linter: exit non-zero when the diff
 exceeds configurable thresholds (e.g. new cycles added, HK degraded
 beyond a limit). The base-branch snapshot is fetched from a stored CI
-artifact; the diff JSON is attached to the pull request automatically.
+artifact; the diff JSON (`--format json`) is attached to the pull request
+automatically.
 
 **Actors**: `cpt-code-split-actor-ci`, `cpt-code-split-actor-pr-reviewer`
 
@@ -849,8 +874,8 @@ artifact; the diff JSON is attached to the pull request automatically.
 
 - [x] `p1` - **ID**: `cpt-code-split-nfr-offline`
 
-All P1 components (Rust plugin, `code-split report`, `code-split diff`,
-`code-split compare`) MUST operate without network access. External resources (CDNs, APIs, LLM
+All P1 components (Rust plugin, `code-split check`, `code-split report`,
+`code-split diff`) MUST operate without network access. External resources (CDNs, APIs, LLM
 endpoints) are forbidden at P1. All JavaScript and CSS dependencies in
 generated HTML MUST be bundled into the `code-split` binary as embedded
 assets; no CDN or external resource references in generated HTML.
@@ -907,55 +932,51 @@ across plugin and tool version bumps within a major version.
 
 **Stability**: unstable (pre-1.0)
 
-**Subcommands**:
+**Subcommands**: bare `code-split` prints help — there is no default
+command; every action is an explicit subcommand.
 
 ```
-# Step 1 — extract graphs using a plugin
-code-split analyze  <workspace> --plugin <name|path> [--output <snap.json>] [--local-only] [-- <plugin-args>]
+# Lint — analyze and gate on cycle rules & thresholds; writes no files
+code-split check  [path] --plugin <name|auto> [--threshold ...] [--cycle-rule ...] [--output-format <human|json|github|sarif>] [--exit-zero] [-- <plugin-args>]
 
-# Step 2 — generate HTML visualization report
-code-split report   --input <snap.json> --output <report.html>
+# Steps 1+2 — analyze the workspace and write a snapshot and/or HTML viewer
+code-split report [path] --plugin <name|auto> [--format json,html] [--before <baseline.json>] [--local-only] [-- <plugin-args>]
 
-# Step 4 — compare two snapshots
-code-split compare  --before <snap-a.json> --after <snap-b.json>          # JSON summary → stdout
-code-split compare  --before <snap-a.json> --after <snap-b.json> --html --output diff.html  # interactive HTML
+# Step 4 — compare two existing snapshots (no analysis)
+code-split diff   --before <snap-a.json> --after <snap-b.json> [--format html,json]   # HTML default; JSON for CI
 ```
 
-**Exit codes**: 0 = success; non-zero = failure with structured JSON
-error on stderr.
+Global options accepted by every command: `--config <PATH | KEY=VALUE>`
+(repeatable; inline wins), `--color <when>`, `-v/--verbose`, `-q/--quiet`,
+`-h/--help`, `-V/--version`.
+
+**Exit codes**: 0 = `check` passed (or `--exit-zero`), `report` / `diff`
+completed; non-zero = generic failure, or `check` found a violation;
+failures emit a structured JSON error on stderr.
 
 **Breaking Change Policy**: Adding flags or subcommands is minor;
 renaming or removing flags, changing JSON artifact schema, or changing
 exit-code semantics requires a major-version bump.
 
-### 7.2 Plugin Binary Contract
+### 7.2 Plugin Model
 
 - [x] `p1` - **ID**: `cpt-code-split-interface-plugin-binary`
 
-**Type**: Subprocess contract (any executable)
+**Type**: Built-in, in-process analyzer
 
 **Stability**: unstable (pre-1.0)
 
-Every plugin binary — whether built-in, PATH-discovered, config-
-registered, or path-specified — receives this invocation from
-`code-split analyze`:
+Plugins are compiled into the `code-split` binary and run **in-process**
+when a command analyzes a workspace (`code-split check` / `code-split
+report`). The only plugins are `rust`, `python`, and `javascript`
+(covers JS+TS), selected with `--plugin <name>` (see
+`cpt-code-split-fr-plugin-discovery`). There is no subprocess invocation,
+no external plugin binary, and no external/dynamic plugin loading.
 
-```
-<binary> <workspace-path> --output <tmpfile> [-- <forwarded-plugin-args>]
-```
-
-**Output**: a single JSON file at `<tmpfile>` containing only the
-`graphs` object (`modules`, `files`, `functions`). `code-split` merges
-it with top-level metadata and writes the final snapshot `.json`.
-
-**stderr on failure**: single-line JSON `{ "error": "...", "code": N }`.
-
-This contract is the stable surface for third-party plugin authors.
-Built-in plugins implement the same contract internally.
-
-**Breaking Change Policy**: The binary contract is independently
-versioned. Breaking changes are communicated via a `--contract-version`
-flag added to the invocation.
+Internally each plugin produces the `graphs` object (`modules`, `files`,
+`functions`); `code-split` merges it with the top-level metadata and
+writes the final snapshot `.json`. Adding a language means adding a
+built-in plugin to the binary.
 
 ### 7.3 Graph JSON Schema
 
@@ -1072,19 +1093,24 @@ removals require a major-version bump and migration notes.
 **Actors**: `cpt-code-split-actor-developer`
 
 **Preconditions**: The target directory is a valid Cargo workspace;
-the `code-split-rust` binary is installed.
+the `code-split` binary is installed.
 
 **Main Flow**:
 
-1. Developer runs `code-split analyze . --plugin rust`
-2. Plugin produces `.code-split/snap-20260522-112233.json`
-3. Developer runs `code-split report --input .code-split/snap-20260522-112233.json --output report.html`
-4. Developer opens `report.html` in a browser, sorts modules by coupling
-   weight
-5. Developer identifies the heaviest modules and decides what to refactor
+1. Developer runs `code-split report . --plugin rust` (analyzes the
+   workspace and writes both a snapshot and an HTML viewer in one step)
+2. `code-split` writes `.code-split/axum-api-20260522-112233.json` (the
+   snapshot) and `.code-split/axum-api-20260522-112233.html` (the viewer)
+3. Developer opens `.code-split/axum-api-20260522-112233.html` in a browser,
+   sorts modules by coupling weight
+4. Developer identifies the heaviest modules and decides what to refactor
 
-**Postconditions**: A standalone HTML report exists at `report.html`;
-no network access was required at any step.
+(For a non-blocking lint that gates on cycles/thresholds and writes no
+files, the developer can instead run `code-split check . --plugin rust`.)
+
+**Postconditions**: A self-contained HTML viewer exists at
+`.code-split/axum-api-20260522-112233.html`; no network access was required
+at any step.
 
 **Alternative Flows**:
 
@@ -1102,15 +1128,19 @@ developer has made structural changes to the codebase.
 
 **Main Flow**:
 
-1. Developer runs `code-split analyze . --plugin rust --output .code-split/snap-after.json`
+1. Developer runs `code-split report . --plugin rust --format json --json-name snap-after.json`
 2. Developer runs
-   `code-split diff --before .code-split/snap-before.json --after .code-split/snap-after.json --html diff.html --md diff.md`
-3. Developer opens `diff.html` to see coupling changes color-coded by
-   direction
-4. Developer reads `diff.md` for the text summary including overall
-   coupling verdict
+   `code-split diff --before .code-split/snap-before.json --after .code-split/snap-after.json --format html,json`
+3. Developer opens `.code-split/index.html` to see coupling changes
+   color-coded by direction
+4. Developer reads `.code-split/diff.json` for the machine-readable summary
+   including the overall coupling verdict
 
-**Postconditions**: Diff HTML and Markdown reports exist; the verdict
+(Alternatively, `code-split report . --plugin rust --before .code-split/snap-before.json`
+analyzes and compares in a single run, writing the after snapshot and a
+diff-mode HTML viewer with a verdict.)
+
+**Postconditions**: Diff HTML and JSON reports exist; the verdict
 quantifies whether the refactoring improved the architecture.
 
 **Alternative Flows**:
@@ -1131,11 +1161,12 @@ the PR branch has been pushed.
 
 **Main Flow**:
 
-1. CI downloads the base-branch snapshot to `./snap-base`
-2. CI runs `code-split-rust . --output-dir ./snap-pr`
+1. CI downloads the base-branch snapshot to `.code-split/snap-base.json`
+2. CI runs `code-split report . --plugin rust --format json --json-name snap-pr.json`
 3. CI runs
-   `code-split diff --before ./snap-base --after ./snap-pr --html diff.html --md diff.md`
-4. CI attaches `diff.html` to the PR and posts `diff.md` as a PR comment
+   `code-split diff --before .code-split/snap-base.json --after .code-split/snap-pr.json --format html,json`
+4. CI attaches `.code-split/index.html` to the PR and posts the verdict from
+   `.code-split/diff.json` as a PR comment
 5. PR Reviewer reads the coupling-change summary and diff report without
    local setup
 
@@ -1186,4 +1217,4 @@ as a self-contained HTML report.
 | Function graph too large to visualize in-browser | Medium — unusable HTML report | Implement pagination and level filtering in the report; warn user when node count exceeds threshold |
 | Snapshot schema divergence between plugin versions | Medium — silent diff failures | Enforce schema version check at diff time; abort with structured error on mismatch |
 | Performance regressions on large workspaces | Medium — usability loss | Benchmark suite in CI on a curated 5k and 50k LOC corpus |
-| P3 plugin contract extensions break base schema consumers | Low — only affects P3 adopters | Extensions use optional fields only; base consumers skip unknown fields |
+| P3 schema vocabulary extensions break base snapshot consumers | Low — only affects P3 adopters | Extensions use optional fields only; base consumers skip unknown fields |

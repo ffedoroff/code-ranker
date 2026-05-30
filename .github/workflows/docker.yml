@@ -1,0 +1,90 @@
+name: Publish Docker image
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (without v prefix), e.g. 0.1.0-alpha.8'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write    # required to push to ghcr.io
+
+jobs:
+  push:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wait for binaries on GitHub Release
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          url="https://github.com/ffedoroff/code-split/releases/download/v${v}/code-split-x86_64-unknown-linux-gnu.tar.xz"
+          for i in $(seq 1 60); do
+            if curl -fsI "$url" > /dev/null 2>&1; then
+              echo "binary present at $url"; exit 0
+            fi
+            echo "still waiting for $url ($i/60)…"
+            sleep 20
+          done
+          echo "timeout waiting for release binaries"; exit 1
+
+      - name: Compute version and tags
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            v="${{ inputs.version }}"
+          else
+            v="${GITHUB_REF_NAME#v}"
+          fi
+          owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
+
+          hub="fedoroff/code-split"
+          ghcr="ghcr.io/${owner_lc}/code-split"
+
+          tags="${hub}:${v},${ghcr}:${v}"
+          if echo "$v" | grep -qE "(alpha|beta|rc)"; then
+            tags="${tags},${hub}:alpha,${ghcr}:alpha"
+          else
+            tags="${tags},${hub}:latest,${hub}:alpha,${ghcr}:latest,${ghcr}:alpha"
+          fi
+
+          {
+            echo "version=$v"
+            echo "tags<<EOF"
+            echo "$tags" | tr ',' '\n'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          provenance: false

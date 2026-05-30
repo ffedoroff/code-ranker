@@ -1,4 +1,7 @@
-use crate::{Graph, Snapshot};
+// Import from the defining modules (not the crate-root re-exports) so this module
+// does not depend "up" on the crate root, which would close a dependency cycle.
+use crate::graph::Graph;
+use crate::snapshot::Snapshot;
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -200,5 +203,192 @@ fn diff_graph(before: &Graph, after: &Graph) -> LevelDiff {
         cycle_nodes_after: after.cycles.iter().map(|c| c.nodes.len()).sum(),
         sccs_before: before.cycles.len(),
         sccs_after: after.cycles.len(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::{CycleGroup, CycleKind, Edge, EdgeKind, Node, NodeKind};
+    use crate::snapshot::{GitInfo, PluginGraphs};
+
+    fn node(id: &str) -> Node {
+        Node {
+            id: id.into(),
+            kind: NodeKind::Module,
+            name: id.into(),
+            path: String::new(),
+            parent: None,
+            external: None,
+            visibility: None,
+            loc: None,
+            line: None,
+            item_count: None,
+            method_count: None,
+            complexity: None,
+            cycle_kind: None,
+        }
+    }
+
+    fn ext_node(id: &str) -> Node {
+        Node {
+            external: Some(true),
+            ..node(id)
+        }
+    }
+
+    fn edge(from: &str, to: &str) -> Edge {
+        Edge {
+            from: from.into(),
+            to: to.into(),
+            kind: EdgeKind::Uses,
+            unresolved: None,
+            external: None,
+            visibility: None,
+        }
+    }
+
+    fn graph(nodes: Vec<Node>, edges: Vec<Edge>) -> Graph {
+        Graph {
+            nodes,
+            edges,
+            cycles: Vec::new(),
+            stats: None,
+        }
+    }
+
+    // ── diff_graph: node / edge / affected / external / cycle counts ─────────
+
+    #[test]
+    fn identical_graphs_have_only_unchanged() {
+        let g = graph(vec![node("a"), node("b")], vec![edge("a", "b")]);
+        let d = diff_graph(&g, &g);
+        assert_eq!(d.nodes.unchanged, 2);
+        assert_eq!(d.nodes.added + d.nodes.removed + d.nodes.affected, 0);
+        assert_eq!(d.edges.unchanged, 1);
+        assert_eq!(d.edges.added + d.edges.removed + d.edges.affected, 0);
+    }
+
+    #[test]
+    fn added_and_removed_nodes_are_counted() {
+        let before = graph(vec![node("a"), node("b")], vec![]);
+        let after = graph(vec![node("a"), node("c")], vec![]);
+        let d = diff_graph(&before, &after);
+        assert_eq!(d.nodes.added, 1, "c is new");
+        assert_eq!(d.nodes.removed, 1, "b is gone");
+        assert_eq!(d.nodes.unchanged, 1, "a persists");
+    }
+
+    #[test]
+    fn external_nodes_are_ignored() {
+        // The external node is filtered out — its disappearance is not a removal.
+        let before = graph(vec![node("a"), ext_node("ext")], vec![]);
+        let after = graph(vec![node("a")], vec![]);
+        let d = diff_graph(&before, &after);
+        assert_eq!(d.nodes.removed, 0, "external node is not counted");
+        assert_eq!(d.nodes.unchanged, 1);
+    }
+
+    #[test]
+    fn edge_change_propagates_affected_to_nodes_and_unchanged_edges() {
+        // before: a→b ; after: a→b, a→c (plus the new node c).
+        let before = graph(vec![node("a"), node("b")], vec![edge("a", "b")]);
+        let after = graph(
+            vec![node("a"), node("b"), node("c")],
+            vec![edge("a", "b"), edge("a", "c")],
+        );
+        let d = diff_graph(&before, &after);
+        // c added; a is affected (adjacent to the new edge); b is unchanged.
+        assert_eq!(d.nodes.added, 1, "c");
+        assert_eq!(d.nodes.affected, 1, "a touches the new edge");
+        assert_eq!(d.nodes.unchanged, 1, "b");
+        // a→c is added; a→b persists but its endpoint a changed → affected.
+        assert_eq!(d.edges.added, 1, "a→c");
+        assert_eq!(d.edges.affected, 1, "a→b is unchanged but its node changed");
+        assert_eq!(d.edges.unchanged, 0);
+    }
+
+    #[test]
+    fn cycle_counts_are_read_from_graph_annotations() {
+        let mut before = graph(
+            vec![node("a"), node("b")],
+            vec![edge("a", "b"), edge("b", "a")],
+        );
+        before.cycles = vec![CycleGroup {
+            kind: CycleKind::Mutual,
+            nodes: vec!["a".into(), "b".into()],
+        }];
+        let after = graph(
+            vec![node("a"), node("b")],
+            vec![edge("a", "b"), edge("b", "a")],
+        );
+        let d = diff_graph(&before, &after);
+        assert_eq!(d.sccs_before, 1);
+        assert_eq!(d.cycle_nodes_before, 2);
+        assert_eq!(d.sccs_after, 0, "after carries no cycle annotations");
+        assert_eq!(d.cycle_nodes_after, 0);
+    }
+
+    // ── compare_snapshots + snap_meta ───────────────────────────────────────
+
+    fn snap(modules: Graph, git: Option<GitInfo>, target: &str) -> Snapshot {
+        let graphs = PluginGraphs {
+            modules,
+            files: Graph::new(),
+            functions: Graph::new(),
+        };
+        Snapshot::new(
+            "report".into(),
+            "/w".into(),
+            target.into(),
+            "rust".into(),
+            None,
+            false,
+            HashMap::new(),
+            HashMap::new(),
+            git,
+            Vec::new(),
+            graphs,
+        )
+    }
+
+    #[test]
+    fn compare_identical_snapshots_sets_identical_true() {
+        let g = graph(vec![node("a")], vec![]);
+        let s = compare_snapshots(&snap(g.clone(), None, "/x/proj"), &snap(g, None, "/x/proj"));
+        assert!(s.identical, "no node/edge changes at any level");
+        assert_eq!(s.schema_version, "1");
+    }
+
+    #[test]
+    fn compare_differing_snapshots_sets_identical_false() {
+        let before = snap(graph(vec![node("a")], vec![]), None, "/x/proj");
+        let after = snap(graph(vec![node("a"), node("b")], vec![]), None, "/x/proj");
+        let s = compare_snapshots(&before, &after);
+        assert!(!s.identical);
+        assert_eq!(s.modules.nodes.added, 1);
+    }
+
+    #[test]
+    fn snap_meta_shortens_target_basename_and_commit() {
+        let git = Some(GitInfo {
+            branch: "main".into(),
+            commit: "0123456789abcdef".into(),
+            dirty_files: 0,
+        });
+        let before = snap(
+            graph(vec![node("a")], vec![]),
+            git.clone(),
+            "/home/u/my-project",
+        );
+        let after = snap(graph(vec![node("a")], vec![]), git, "/home/u/my-project");
+        let s = compare_snapshots(&before, &after);
+        assert_eq!(s.before.target, "my-project", "basename only");
+        assert_eq!(
+            s.before.commit.as_deref(),
+            Some("01234567"),
+            "first 8 chars"
+        );
+        assert_eq!(s.before.branch.as_deref(), Some("main"));
     }
 }

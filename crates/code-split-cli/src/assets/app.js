@@ -68,11 +68,13 @@ function updateFilesTab() {
   }
 }
 
+// Recompute everything after the user swaps a snapshot via the upload controls.
 function recomputeAll() {
+  const EMPTY = { graphs: {} };
   const before = window.BEFORE;
   const after  = window.AFTER;
-  window.DIFF   = computeDiff(before, after ?? before);
-  window.CYCLES = computeCycles(before, after ?? before);
+  window.DIFF   = computeDiff(before ?? EMPTY, after ?? before ?? EMPTY);
+  window.CYCLES = computeCycles(before ?? EMPTY, after ?? before ?? EMPTY);
   window.META   = computeMeta(before, after);
 
   buildSummary();
@@ -203,6 +205,28 @@ function setupSnapPopup() {
   });
 }
 
+// Read a snapshot embedded inline in this page (a `<script type="application/json">` tag).
+function readEmbeddedSnapshot(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  const t = el.textContent.trim();
+  return t && t !== 'null' ? JSON.parse(t) : null;
+}
+
+// Parse a snapshot from uploaded file text — either a raw JSON snapshot, or a code-split
+// HTML report with the snapshot embedded (prefer `cs-after`, else `cs-before`).
+function extractSnapshotFromText(text) {
+  const s = text.trim();
+  if (s.startsWith('{')) return JSON.parse(s);
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  const read = id => {
+    const t = doc.getElementById(id)?.textContent?.trim();
+    return t && t !== 'null' ? JSON.parse(t) : null;
+  };
+  return read('cs-after') || read('cs-before');
+}
+
+// Manual snapshot swap: load a different before/after snapshot (.json or .html) into the viewer.
 function setupFileControls() {
   const inputBefore = document.getElementById('input-before');
   const inputAfter  = document.getElementById('input-after');
@@ -220,7 +244,7 @@ function setupFileControls() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-      try { window.BEFORE = JSON.parse(e.target.result); } catch { alert('Invalid JSON'); return; }
+      try { window.BEFORE = extractSnapshotFromText(e.target.result); } catch { alert('Invalid snapshot file'); return; }
       recomputeAll();
     };
     reader.readAsText(file);
@@ -232,7 +256,7 @@ function setupFileControls() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-      try { window.AFTER = JSON.parse(e.target.result); } catch { alert('Invalid JSON'); return; }
+      try { window.AFTER = extractSnapshotFromText(e.target.result); } catch { alert('Invalid snapshot file'); return; }
       recomputeAll();
     };
     reader.readAsText(file);
@@ -305,13 +329,13 @@ function setupGlobalControls() {
 document.addEventListener('DOMContentLoaded', async () => {
   window.nodeSizeMode = 'default';
 
-  // Copy const globals from data.js into mutable window properties
-  // (top-level const/let don't create window.* properties)
-  window.BEFORE = (typeof BEFORE !== 'undefined') ? BEFORE : null;
-  window.AFTER  = (typeof AFTER  !== 'undefined') ? AFTER  : null;
+  // Read the snapshots embedded inline in the page (cs-before / cs-after script tags).
+  window.BEFORE = readEmbeddedSnapshot('cs-before');
+  window.AFTER  = readEmbeddedSnapshot('cs-after');
 
-  window.DIFF   = computeDiff(window.BEFORE, window.AFTER ?? window.BEFORE);
-  window.CYCLES = computeCycles(window.BEFORE, window.AFTER ?? window.BEFORE);
+  const EMPTY = { graphs: {} };
+  window.DIFF   = computeDiff(window.BEFORE ?? EMPTY, window.AFTER ?? window.BEFORE ?? EMPTY);
+  window.CYCLES = computeCycles(window.BEFORE ?? EMPTY, window.AFTER ?? window.BEFORE ?? EMPTY);
   window.META   = computeMeta(window.BEFORE, window.AFTER);
 
   document.querySelectorAll('.view').forEach(setupView);

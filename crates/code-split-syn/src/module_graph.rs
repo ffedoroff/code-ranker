@@ -1,4 +1,4 @@
-use crate::crate_node_id;
+use crate::ids::crate_node_id;
 use anyhow::{Context, Result};
 use cargo_metadata::{Metadata, Package, PackageId, Target};
 use code_split_core::{Edge, EdgeKind, GraphBuilder, Node, NodeId, NodeKind, Visibility};

@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
-use code_split_core::graph::{CycleKind, Graph};
+use code_split_core::graph::{Complexity, CycleKind, Graph, GraphStats, Node};
 use code_split_core::snapshot::PluginGraphs;
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt;
 use std::path::Path;
 
 // ── Config structs ─────────────────────────────────────────────────────────────
@@ -34,64 +35,166 @@ pub struct RulesConfig {
     pub thresholds: ThresholdRules,
 }
 
-#[derive(Debug, Deserialize)]
+/// A cycle check: disabled, or enabled with a **maximum allowed count** of cycles
+/// of that kind. In config / on the CLI: `false`/`off` = disabled, `true`/`on` =
+/// `Max(0)` (strict — any cycle fails), and an integer `n` = `Max(n)` (up to `n`
+/// allowed, the `n+1`-th fails — lets you pin today's count and forbid new ones).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CycleRule {
+    Off,
+    Max(u32),
+}
+
+impl CycleRule {
+    /// The allowed-count budget if enabled, else `None` (disabled).
+    pub fn budget(self) -> Option<u32> {
+        match self {
+            CycleRule::Off => None,
+            CycleRule::Max(n) => Some(n),
+        }
+    }
+    pub fn is_off(self) -> bool {
+        matches!(self, CycleRule::Off)
+    }
+}
+
+impl<'de> Deserialize<'de> for CycleRule {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        struct V;
+        impl serde::de::Visitor<'_> for V {
+            type Value = CycleRule;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a bool (on/off) or a non-negative integer (max allowed cycles)")
+            }
+            fn visit_bool<E: serde::de::Error>(self, v: bool) -> std::result::Result<CycleRule, E> {
+                Ok(if v { CycleRule::Max(0) } else { CycleRule::Off })
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> std::result::Result<CycleRule, E> {
+                u32::try_from(v)
+                    .map(CycleRule::Max)
+                    .map_err(|_| E::custom("cycle budget must be a non-negative integer"))
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> std::result::Result<CycleRule, E> {
+                Ok(CycleRule::Max(v as u32))
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(default)]
 pub struct CycleRules {
+    /// Each cycle kind is disabled (stripped, never reported) or enabled with a
+    /// max-count budget; a kind over its budget fails `check`.
     #[serde(rename = "test-embed")]
-    pub test_embed: Severity,
-    pub mutual: Severity,
-    pub chain: Severity,
+    pub test_embed: CycleRule,
+    pub mutual: CycleRule,
+    pub chain: CycleRule,
 }
 
 impl Default for CycleRules {
     fn default() -> Self {
         Self {
-            test_embed: Severity::Allow,
-            mutual: Severity::Deny,
-            chain: Severity::Deny,
+            test_embed: CycleRule::Off,
+            mutual: CycleRule::Max(0),
+            chain: CycleRule::Max(0),
         }
     }
 }
 
+impl CycleRules {
+    /// Budget for a cycle kind: `Some(max)` if enabled, `None` if disabled.
+    pub fn budget_for(self, kind: CycleKind) -> Option<u32> {
+        match kind {
+            CycleKind::TestEmbed => self.test_embed,
+            CycleKind::Mutual => self.mutual,
+            CycleKind::Chain => self.chain,
+        }
+        .budget()
+    }
+}
+
+/// Thresholds, one bucket per graph. The scope name *is* the graph: `file` →
+/// files graph, `module` → modules graph, `function` → functions graph.
 #[derive(Debug, Deserialize, Default)]
 #[serde(default)]
 pub struct ThresholdRules {
-    /// Per-node: flag any single node whose metric exceeds the limit.
-    pub node: MetricThresholds,
-    /// Graph-average: flag when the graph-wide average exceeds the limit.
+    /// A single file / the files-graph average (files graph only).
+    pub file: ScopeThresholds,
+    /// A single module / the modules-graph average (modules graph only).
+    pub module: ScopeThresholds,
+    /// A single function / the functions-graph average (functions graph only).
+    pub function: ScopeThresholds,
+}
+
+/// One scope's thresholds: per-unit limits (`single`, written directly under the
+/// scope table) plus graph-average limits (`avg`, a nested `<scope>.avg` table).
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct ScopeThresholds {
+    #[serde(flatten)]
+    pub single: MetricThresholds,
     pub avg: MetricThresholds,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default)]
 pub struct MetricThresholds {
+    #[serde(default, deserialize_with = "de_opt_number")]
     pub hk: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_number")]
     pub cyclomatic: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_number")]
     pub cognitive: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_number")]
     pub fan_in: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_number")]
     pub fan_out: Option<f64>,
+    #[serde(default, deserialize_with = "de_opt_number")]
     pub loc: Option<f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum Severity {
-    Allow,
-    Warn,
-    #[default]
-    Deny,
+/// Parse a threshold value: a plain number, with `_` digit separators, and an
+/// optional `K`/`M`/`G` multiplier suffix (×10³ / ×10⁶ / ×10⁹, case-insensitive).
+/// Examples: `500000`, `5_123_000`, `5K`, `1.5M`, `2G`.
+fn parse_number(s: &str) -> Result<f64> {
+    let t = s.trim().replace('_', "");
+    let (mult, body) = match t.bytes().last() {
+        Some(b'k' | b'K') => (1e3, &t[..t.len() - 1]),
+        Some(b'm' | b'M') => (1e6, &t[..t.len() - 1]),
+        Some(b'g' | b'G') => (1e9, &t[..t.len() - 1]),
+        _ => (1.0, t.as_str()),
+    };
+    let n: f64 = body.parse().with_context(|| {
+        format!("invalid number {s:?} (expected e.g. 500000, 5_000_000, 5K, 1.5M)")
+    })?;
+    Ok(n * mult)
 }
 
-impl std::str::FromStr for Severity {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Self> {
-        match s {
-            "allow" => Ok(Self::Allow),
-            "warn" => Ok(Self::Warn),
-            "deny" => Ok(Self::Deny),
-            other => anyhow::bail!("unknown severity {:?}; expected allow|warn|deny", other),
+/// serde adaptor: deserialize a threshold value from a TOML number (`5_000_000`,
+/// `5000.0`) or a string with a multiplier suffix (`"5K"`, `"1.5M"`).
+fn de_opt_number<'de, D: Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
+    struct V;
+    impl serde::de::Visitor<'_> for V {
+        type Value = f64;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a number, or a string like \"5K\" / \"1.5M\"")
+        }
+        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<f64, E> {
+            Ok(v as f64)
+        }
+        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<f64, E> {
+            Ok(v as f64)
+        }
+        fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<f64, E> {
+            Ok(v)
+        }
+        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<f64, E> {
+            parse_number(v).map_err(E::custom)
         }
     }
+    d.deserialize_any(V).map(Some)
 }
 
 // ── Loading ────────────────────────────────────────────────────────────────────
@@ -112,12 +215,26 @@ pub struct LoadedConfig {
 
 pub fn load(
     workspace: &Path,
-    config_path: Option<&Path>,
+    config_entries: &[String],
     ignore_paths: &[String],
     cycle_rules: &[String],
     thresholds: &[String],
 ) -> Result<LoadedConfig> {
-    let (mut config, source_file) = load_file(workspace, config_path)?;
+    // A `--config` entry is an inline `KEY=VALUE` override if it contains '=',
+    // otherwise it is a path to a config file.
+    let mut inline: Vec<&str> = Vec::new();
+    let mut files: Vec<&str> = Vec::new();
+    for e in config_entries {
+        if e.contains('=') {
+            inline.push(e);
+        } else {
+            files.push(e);
+        }
+    }
+    let explicit = files.first().copied().map(Path::new);
+
+    let (mut config, source_file) = load_file(workspace, explicit)?;
+    apply_inline_overrides(&mut config, &inline)?;
     apply_cli_overrides(&mut config, ignore_paths, cycle_rules, thresholds)?;
     Ok(LoadedConfig {
         config,
@@ -203,54 +320,125 @@ fn apply_cli_overrides(
     cfg.ignore.paths.extend_from_slice(ignore_paths);
 
     for raw in cycle_rules {
-        // Format: "kind=severity", e.g. "test-embed=allow"
-        let (kind_str, sev_str) = split_kv(raw, "cycle-rule")?;
-        let sev: Severity = sev_str.parse()?;
-        match kind_str {
-            "test-embed" => cfg.rules.cycles.test_embed = sev,
-            "mutual" => cfg.rules.cycles.mutual = sev,
-            "chain" => cfg.rules.cycles.chain = sev,
-            other => anyhow::bail!(
-                "unknown cycle kind {:?}; expected test-embed|mutual|chain",
-                other
-            ),
-        }
+        // Format: "kind=on|off|N", e.g. "test-embed=on", "chain=7"
+        let (kind, state) = split_kv(raw, "cycle-rule")?;
+        set_cycle(cfg, kind, parse_cycle_rule(state)?)?;
     }
 
     for raw in thresholds {
-        // Format: "scope.metric=N", e.g. "node.hk=500000" or "avg.cyclomatic=10"
-        let (scope_metric, val_str) = split_kv(raw, "threshold")?;
-        let val: f64 = val_str
-            .parse()
-            .with_context(|| format!("threshold value must be a number: {raw}"))?;
-        let (scope, metric) = scope_metric
-            .split_once('.')
-            .with_context(|| format!("threshold must be scope.metric=N, got: {raw}"))?;
-        let bucket = match scope {
-            "node" => &mut cfg.rules.thresholds.node,
-            "avg" => &mut cfg.rules.thresholds.avg,
-            other => anyhow::bail!("unknown threshold scope {:?}; expected node|avg", other),
-        };
-        match metric {
-            "hk" => bucket.hk = Some(val),
-            "cyclomatic" => bucket.cyclomatic = Some(val),
-            "cognitive" => bucket.cognitive = Some(val),
-            "fan_in" => bucket.fan_in = Some(val),
-            "fan_out" => bucket.fan_out = Some(val),
-            "loc" => bucket.loc = Some(val),
-            other => anyhow::bail!(
-                "unknown metric {:?}; expected hk|cyclomatic|cognitive|fan_in|fan_out|loc",
-                other
-            ),
-        }
+        // Format: "scope.metric=N" (single) or "scope.avg.metric=N" (average),
+        // e.g. "file.loc=800", "function.avg.cyclomatic=10".
+        let (path, val_str) = split_kv(raw, "threshold")?;
+        let val = parse_number(val_str).with_context(|| format!("in --threshold {raw}"))?;
+        let (scope, avg, metric) = parse_threshold_path(path)?;
+        set_threshold(cfg, scope, avg, metric, val)?;
     }
 
+    Ok(())
+}
+
+/// Apply `--config KEY=VALUE` inline overrides, where KEY is a dotted config key
+/// (e.g. `rules.thresholds.function.cognitive=25`, `rules.cycles.mutual=on`, `plugin=rust`).
+fn apply_inline_overrides(cfg: &mut Config, entries: &[&str]) -> Result<()> {
+    for raw in entries {
+        let (key, value) = raw
+            .split_once('=')
+            .with_context(|| format!("--config override must be KEY=VALUE, got: {raw}"))?;
+        match key {
+            "plugin" => cfg.plugin = Some(value.to_string()),
+            "ignore.test_modules" => cfg.ignore.test_modules = parse_on_off(value)?,
+            "ignore.dev_only_crates" => cfg.ignore.dev_only_crates = parse_on_off(value)?,
+            "ignore.paths" => cfg
+                .ignore
+                .paths
+                .extend(value.split(',').map(|s| s.trim().to_string())),
+            _ if key.strip_prefix("rules.cycles.").is_some() => {
+                let kind = key.strip_prefix("rules.cycles.").unwrap();
+                set_cycle(cfg, kind, parse_cycle_rule(value)?)?;
+            }
+            _ if key.strip_prefix("rules.thresholds.").is_some() => {
+                let rest = key.strip_prefix("rules.thresholds.").unwrap();
+                let (scope, avg, metric) = parse_threshold_path(rest)?;
+                let val = parse_number(value).with_context(|| format!("in --config {raw}"))?;
+                set_threshold(cfg, scope, avg, metric, val)?;
+            }
+            other => anyhow::bail!("unknown config key {other:?}"),
+        }
+    }
+    Ok(())
+}
+
+fn set_cycle(cfg: &mut Config, kind: &str, rule: CycleRule) -> Result<()> {
+    match kind {
+        "test-embed" => cfg.rules.cycles.test_embed = rule,
+        "mutual" => cfg.rules.cycles.mutual = rule,
+        "chain" => cfg.rules.cycles.chain = rule,
+        other => anyhow::bail!("unknown cycle kind {other:?}; expected test-embed|mutual|chain"),
+    }
+    Ok(())
+}
+
+/// Parse a cycle-rule value: `on`/`true` = strict (`Max(0)`), `off`/`false` =
+/// disabled, or a non-negative integer = max allowed count.
+fn parse_cycle_rule(s: &str) -> Result<CycleRule> {
+    match s {
+        "on" | "true" => Ok(CycleRule::Max(0)),
+        "off" | "false" => Ok(CycleRule::Off),
+        other => other.parse::<u32>().map(CycleRule::Max).with_context(|| {
+            format!("cycle rule must be on|off or a non-negative integer, got {other:?}")
+        }),
+    }
+}
+
+/// Parse a threshold key path into `(scope, is_avg, metric)`. Accepts
+/// `SCOPE.METRIC` (single-unit) or `SCOPE.avg.METRIC` (graph average).
+fn parse_threshold_path(path: &str) -> Result<(&str, bool, &str)> {
+    let parts: Vec<&str> = path.split('.').collect();
+    match parts.as_slice() {
+        [scope, metric] => Ok((scope, false, metric)),
+        [scope, "avg", metric] => Ok((scope, true, metric)),
+        _ => anyhow::bail!("threshold must be SCOPE.METRIC or SCOPE.avg.METRIC, got: {path}"),
+    }
+}
+
+fn set_threshold(cfg: &mut Config, scope: &str, avg: bool, metric: &str, val: f64) -> Result<()> {
+    let st = match scope {
+        "file" => &mut cfg.rules.thresholds.file,
+        "module" => &mut cfg.rules.thresholds.module,
+        "function" => &mut cfg.rules.thresholds.function,
+        other => {
+            anyhow::bail!("unknown threshold scope {other:?}; expected file|module|function")
+        }
+    };
+    set_metric(if avg { &mut st.avg } else { &mut st.single }, metric, val)
+}
+
+fn set_metric(bucket: &mut MetricThresholds, metric: &str, val: f64) -> Result<()> {
+    match metric {
+        "hk" => bucket.hk = Some(val),
+        "cyclomatic" => bucket.cyclomatic = Some(val),
+        "cognitive" => bucket.cognitive = Some(val),
+        "fan_in" => bucket.fan_in = Some(val),
+        "fan_out" => bucket.fan_out = Some(val),
+        "loc" => bucket.loc = Some(val),
+        other => anyhow::bail!(
+            "unknown metric {other:?}; expected hk|cyclomatic|cognitive|fan_in|fan_out|loc"
+        ),
+    }
     Ok(())
 }
 
 fn split_kv<'a>(s: &'a str, flag: &str) -> Result<(&'a str, &'a str)> {
     s.split_once('=')
         .with_context(|| format!("--{flag} must be key=value, got: {s}"))
+}
+
+fn parse_on_off(s: &str) -> Result<bool> {
+    match s {
+        "on" | "true" => Ok(true),
+        "off" | "false" => Ok(false),
+        other => anyhow::bail!("expected on|off, got {:?}", other),
+    }
 }
 
 // ── Path filtering ─────────────────────────────────────────────────────────────
@@ -445,44 +633,197 @@ pub fn apply_cycle_rules(graphs: &mut PluginGraphs, rules: &CycleRules) {
 }
 
 fn apply_cycle_rules_graph(graph: &mut Graph, rules: &CycleRules) {
-    let allowed: HashSet<CycleKind> = [
-        (&CycleKind::TestEmbed, &rules.test_embed),
-        (&CycleKind::Mutual, &rules.mutual),
-        (&CycleKind::Chain, &rules.chain),
+    let disabled: HashSet<CycleKind> = [
+        (CycleKind::TestEmbed, rules.test_embed),
+        (CycleKind::Mutual, rules.mutual),
+        (CycleKind::Chain, rules.chain),
     ]
-    .iter()
-    .filter(|(_, s)| **s == Severity::Allow)
-    .map(|(k, _)| (*k).clone())
+    .into_iter()
+    .filter(|(_, rule)| rule.is_off())
+    .map(|(k, _)| k)
     .collect();
 
-    if allowed.is_empty() {
+    if disabled.is_empty() {
         return;
     }
     for node in &mut graph.nodes {
         if node
             .cycle_kind
             .as_ref()
-            .map(|k| allowed.contains(k))
+            .map(|k| disabled.contains(k))
             .unwrap_or(false)
         {
             node.cycle_kind = None;
         }
     }
-    graph.cycles.retain(|cg| !allowed.contains(&cg.kind));
+    graph.cycles.retain(|cg| !disabled.contains(&cg.kind));
 }
 
-// ── Threshold violations ───────────────────────────────────────────────────────
+// ── Rule catalog ─────────────────────────────────────────────────────────────
+//
+// Every diagnostic is identified by its dotted rule id (e.g. `threshold.file.loc`)
+// — the same string used as the config key and CLI flag — and tagged with a
+// concern group, mirrored in docs/ERRORS.md:
+//   CYC — dependency cycles
+//   CPX — control-flow complexity (cyclomatic, cognitive)
+//   CPL — coupling (Henry-Kafura, fan-in, fan-out)
+//   SIZ — size (lines of code)
+//
+// Threshold rules are scope-agnostic in the catalog: one entry per metric covers
+// every scope (`node`/`file`/`module`/`function` single-unit, `avg` graph-wide),
+// since the rationale and fix are the same whichever scope set the limit.
 
-#[derive(Debug)]
+/// One catalog entry, keyed either by a cycle id (`cycle.mutual`) or — for
+/// thresholds — by the bare metric name (`cognitive`, `loc`, …). Holds the
+/// concern group and the human-facing rationale shown in `check` output and ERRORS.md.
+pub struct RuleDoc {
+    pub key: &'static str,
+    pub group: &'static str,
+    pub title: &'static str,
+    pub why: &'static str,
+    pub fix: &'static str,
+}
+
+pub const RULES: &[RuleDoc] = &[
+    RuleDoc {
+        key: "cycle.mutual",
+        group: "CYC",
+        title: "Mutual dependency cycle",
+        why: "Two units import each other (A ↔ B), so neither can be built, tested, or \
+              understood in isolation — the tightest possible coupling.",
+        fix: "Move the shared types into a third, lower-level unit both depend on; invert one \
+              direction behind a trait/interface; or merge the two if they are really one concept.",
+    },
+    RuleDoc {
+        key: "cycle.chain",
+        group: "CYC",
+        title: "Chain dependency cycle",
+        why: "Three or more units form a strongly-connected component (A → B → C → A); the whole \
+              component must be loaded and changed together, defeating modular boundaries.",
+        fix: "Find the edge that closes the loop — usually one 'back' dependency pointing upward — \
+              and invert or remove it, or introduce an abstraction layer between the units.",
+    },
+    RuleDoc {
+        key: "cycle.test-embed",
+        group: "CYC",
+        title: "Test-embedded-in-production cycle",
+        why: "Production code reaches a module that exists only for tests, coupling shippable code \
+              to test scaffolding so the two cannot ship or be reasoned about separately.",
+        fix: "Move test-only helpers into a test module/target, gate them behind a test feature, or \
+              invert the dependency so tests depend on production code and never the reverse.",
+    },
+    RuleDoc {
+        key: "cyclomatic",
+        group: "CPX",
+        title: "Cyclomatic complexity",
+        why: "Cyclomatic complexity counts the independent paths through a unit; high values mean \
+              many branches, which demand many tests and are easy to get wrong. A high graph \
+              average means branching is spread across the codebase, not just one hotspot.",
+        fix: "Split the function, replace branching with polymorphism or a lookup table, and pull \
+              guard clauses to the top to flatten nesting. For an average breach, simplify the \
+              worst offenders first (--top).",
+    },
+    RuleDoc {
+        key: "cognitive",
+        group: "CPX",
+        title: "Cognitive complexity",
+        why: "Cognitive complexity weights nested and interrupted control flow by how hard a human \
+              finds it to follow; a high score reads as 'hard to hold in your head'. A high average \
+              means readability is degrading broadly.",
+        fix: "Extract nested blocks into named helpers, use early returns to cut nesting depth, and \
+              avoid mixing several control structures in one function. For an average breach, target \
+              the worst nodes first (--top).",
+    },
+    RuleDoc {
+        key: "hk",
+        group: "CPL",
+        title: "Henry-Kafura coupling",
+        why: "Henry-Kafura — loc × (fan_in × fan_out)² — flags units that are both highly connected \
+              and large: change-amplifiers whose edits ripple widely across the system.",
+        fix: "Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or \
+              route dependencies through a smaller interface. Shrinking its LOC also lowers hk.",
+    },
+    RuleDoc {
+        key: "fan_in",
+        group: "CPL",
+        title: "Fan-in",
+        why: "Many other units depend on this one, making it risky to change and a single point of \
+              failure — though some hubs (shared types) carry high fan-in legitimately.",
+        fix: "If the fan-in is unintended, split the unit so each caller depends only on the slice \
+              it uses; otherwise stabilize the interface so high fan-in is safe.",
+    },
+    RuleDoc {
+        key: "fan_out",
+        group: "CPL",
+        title: "Fan-out",
+        why: "This unit depends on many others, so it breaks when any of them change and is hard to \
+              test in isolation.",
+        fix: "Group related dependencies behind a facade, inject collaborators instead of reaching \
+              for them, or move logic closer to the data it uses to cut outgoing edges.",
+    },
+    RuleDoc {
+        key: "loc",
+        group: "SIZ",
+        title: "Source size",
+        why: "The unit has more source lines than allowed; large files/functions tend to hold several \
+              responsibilities and are harder to review, test, and reuse.",
+        fix: "Split by responsibility into smaller units, extract helpers, and separate data \
+              definitions from behavior. For an average breach, break up the largest units first (--top).",
+    },
+];
+
+/// Look up the catalog entry for a dotted rule id. Cycle ids match by full id;
+/// threshold ids (`threshold.<scope>.<metric>`) resolve by their bare metric, so
+/// every scope shares one catalog entry.
+pub fn rule_doc(id: &str) -> Option<&'static RuleDoc> {
+    if id.starts_with("cycle.") {
+        RULES.iter().find(|r| r.key == id)
+    } else {
+        let metric = id.rsplit('.').next().unwrap_or(id);
+        RULES.iter().find(|r| r.key == metric)
+    }
+}
+
+/// How to tune or silence a rule, derived from its id (shown on the `tune:` line
+/// and in ERRORS.md). Empty for ids with no knob.
+pub fn rule_tuning(id: &str) -> String {
+    if let Some(kind) = id.strip_prefix("cycle.") {
+        format!("disable with --cycle-rule {kind}=off   ·   rules.cycles.{kind} in code-split.toml")
+    } else if let Some(rest) = id.strip_prefix("threshold.") {
+        // rest is "function.cognitive" | "file.avg.loc" | …
+        format!("set with --threshold {rest}=N   ·   rules.thresholds.{rest} in code-split.toml")
+    } else {
+        String::new()
+    }
+}
+
+// ── Violations ───────────────────────────────────────────────────────────────
+
+#[derive(Debug, serde::Serialize)]
 pub struct Violation {
-    pub severity: Severity,
+    /// Stable dotted rule id — identical to the config key and CLI flag that
+    /// controls it, e.g. `cycle.chain`, `threshold.function.cognitive`, `threshold.file.loc`.
+    pub rule: String,
+    /// Concern group: `CYC` / `CPX` / `CPL` / `SIZ`.
+    pub group: &'static str,
     pub graph: &'static str,
+    /// Where the breach is: "id — path:line" for node/threshold rules; empty for
+    /// graph-average rules and cycles (whose members are listed in `message`).
+    pub location: String,
+    /// Measurement / description, e.g. "cognitive 50 exceeds limit 25 (2.0× over budget)".
     pub message: String,
+    /// Ranking weight for `--top` — higher is worse (breach ratio / cycle size).
+    pub weight: f64,
 }
 
 impl Violation {
-    pub fn is_error(&self) -> bool {
-        self.severity == Severity::Deny
+    /// Combined one-liner for json/github/sarif: "<location>: <message>".
+    pub fn summary(&self) -> String {
+        if self.location.is_empty() {
+            self.message.clone()
+        } else {
+            format!("{}: {}", self.location, self.message)
+        }
     }
 }
 
@@ -500,121 +841,876 @@ fn check_graph_violations(
     rules: &RulesConfig,
     vs: &mut Vec<Violation>,
 ) {
-    let nt = &rules.thresholds.node;
+    // Cycles: remaining groups are all of enabled kinds (Off kinds were stripped
+    // by apply_cycle_rules). A kind's cycles are reported only when their count
+    // exceeds the kind's budget; with the strict default (budget 0) every cycle is
+    // a violation. Ranked by SCC size — a larger cycle is grosser.
+    let mut counts: HashMap<CycleKind, usize> = HashMap::new();
+    for cg in &graph.cycles {
+        *counts.entry(cg.kind).or_insert(0) += 1;
+    }
+    for cg in &graph.cycles {
+        let count = counts[&cg.kind];
+        let budget = rules.cycles.budget_for(cg.kind).unwrap_or(0);
+        if count as u32 <= budget {
+            continue; // within the allowed count
+        }
+        let mut message = describe_cycle(&cg.kind, &cg.nodes);
+        if budget > 0 {
+            message = format!("{message}  (over budget: {count} > {budget})");
+        }
+        push(
+            vs,
+            name,
+            cycle_rule_id(&cg.kind),
+            String::new(),
+            message,
+            cg.nodes.len() as f64,
+        );
+    }
 
+    // Thresholds: each graph has exactly one scope bucket — `file` for the files
+    // graph, `module` for modules, `function` for functions — so a single file can
+    // carry a different limit than a single function. The bucket's `single` metrics
+    // are checked per node; its `avg` metrics against the graph-wide stats.
+    let (scope, bucket) = match name {
+        "files" => ("file", &rules.thresholds.file),
+        "modules" => ("module", &rules.thresholds.module),
+        "functions" => ("function", &rules.thresholds.function),
+        _ => return,
+    };
     for node in &graph.nodes {
         let Some(cx) = &node.complexity else { continue };
-
-        if let (Some(limit), Some(c)) = (nt.hk, &cx.coupling)
-            && c.hk > limit
-        {
-            push(
-                vs,
-                name,
-                format!("{}: hk {:.0} > {:.0}", node.id, c.hk, limit),
-            );
-        }
-        if let Some(limit) = nt.cyclomatic
-            && cx.cyclomatic > limit
-        {
-            push(
-                vs,
-                name,
-                format!(
-                    "{}: cyclomatic {:.0} > {:.0}",
-                    node.id, cx.cyclomatic, limit
-                ),
-            );
-        }
-        if let Some(limit) = nt.cognitive
-            && cx.cognitive > limit
-        {
-            push(
-                vs,
-                name,
-                format!("{}: cognitive {:.0} > {:.0}", node.id, cx.cognitive, limit),
-            );
-        }
-        if let (Some(limit), Some(c)) = (nt.fan_in, &cx.coupling)
-            && c.fan_in as f64 > limit
-        {
-            push(
-                vs,
-                name,
-                format!("{}: fan_in {} > {:.0}", node.id, c.fan_in, limit),
-            );
-        }
-        if let (Some(limit), Some(c)) = (nt.fan_out, &cx.coupling)
-            && c.fan_out as f64 > limit
-        {
-            push(
-                vs,
-                name,
-                format!("{}: fan_out {} > {:.0}", node.id, c.fan_out, limit),
-            );
-        }
-        if let (Some(limit), Some(loc)) = (nt.loc, &cx.loc)
-            && loc.source > limit
-        {
-            push(
-                vs,
-                name,
-                format!("{}: loc {:.0} > {:.0}", node.id, loc.source, limit),
-            );
-        }
+        check_node_metrics(vs, name, scope, &bucket.single, &node_location(node), cx);
     }
 
-    let at = &rules.thresholds.avg;
-    let Some(stats) = &graph.stats else { return };
+    if let Some(stats) = &graph.stats {
+        check_avg_metrics(vs, name, scope, &bucket.avg, stats);
+    }
+}
 
-    if let Some(limit) = at.hk {
+/// Check one single-unit threshold bucket against a node, emitting
+/// `threshold.<scope>.<metric>` violations for whichever limits it breaches.
+fn check_node_metrics(
+    vs: &mut Vec<Violation>,
+    graph: &'static str,
+    scope: &str,
+    t: &MetricThresholds,
+    loc: &str,
+    cx: &Complexity,
+) {
+    if let (Some(limit), Some(c)) = (t.hk, &cx.coupling)
+        && c.hk > limit
+    {
+        push_threshold(
+            vs,
+            graph,
+            &format!("threshold.{scope}.hk"),
+            loc.to_string(),
+            "Henry-Kafura hk",
+            c.hk,
+            limit,
+            0,
+        );
+    }
+    if let Some(limit) = t.cyclomatic
+        && cx.cyclomatic > limit
+    {
+        push_threshold(
+            vs,
+            graph,
+            &format!("threshold.{scope}.cyclomatic"),
+            loc.to_string(),
+            "cyclomatic complexity",
+            cx.cyclomatic,
+            limit,
+            0,
+        );
+    }
+    if let Some(limit) = t.cognitive
+        && cx.cognitive > limit
+    {
+        push_threshold(
+            vs,
+            graph,
+            &format!("threshold.{scope}.cognitive"),
+            loc.to_string(),
+            "cognitive complexity",
+            cx.cognitive,
+            limit,
+            0,
+        );
+    }
+    if let (Some(limit), Some(c)) = (t.fan_in, &cx.coupling)
+        && (c.fan_in as f64) > limit
+    {
+        push_threshold(
+            vs,
+            graph,
+            &format!("threshold.{scope}.fan_in"),
+            loc.to_string(),
+            "fan-in",
+            c.fan_in as f64,
+            limit,
+            0,
+        );
+    }
+    if let (Some(limit), Some(c)) = (t.fan_out, &cx.coupling)
+        && (c.fan_out as f64) > limit
+    {
+        push_threshold(
+            vs,
+            graph,
+            &format!("threshold.{scope}.fan_out"),
+            loc.to_string(),
+            "fan-out",
+            c.fan_out as f64,
+            limit,
+            0,
+        );
+    }
+    if let (Some(limit), Some(l)) = (t.loc, &cx.loc)
+        && l.source > limit
+    {
+        push_threshold(
+            vs,
+            graph,
+            &format!("threshold.{scope}.loc"),
+            loc.to_string(),
+            "source loc",
+            l.source,
+            limit,
+            0,
+        );
+    }
+}
+
+/// Check one scope's `.avg` bucket against the graph stats, emitting
+/// `threshold.<scope>.avg.<metric>` violations for whichever averages exceed.
+fn check_avg_metrics(
+    vs: &mut Vec<Violation>,
+    graph: &'static str,
+    scope: &str,
+    t: &MetricThresholds,
+    stats: &GraphStats,
+) {
+    if let Some(limit) = t.hk {
         let avg = stats.coupling.as_ref().map(|c| c.hk).unwrap_or(0.0);
         if avg > limit {
-            push(vs, name, format!("avg hk {:.0} > {:.0}", avg, limit));
+            push_threshold(
+                vs,
+                graph,
+                &format!("threshold.{scope}.avg.hk"),
+                String::new(),
+                "average Henry-Kafura hk",
+                avg,
+                limit,
+                0,
+            );
         }
     }
-    if let Some(limit) = at.cyclomatic
+    if let Some(limit) = t.cyclomatic
         && stats.cyclomatic > limit
     {
-        push(
+        push_threshold(
             vs,
-            name,
-            format!("avg cyclomatic {:.1} > {:.1}", stats.cyclomatic, limit),
+            graph,
+            &format!("threshold.{scope}.avg.cyclomatic"),
+            String::new(),
+            "average cyclomatic complexity",
+            stats.cyclomatic,
+            limit,
+            1,
         );
     }
-    if let Some(limit) = at.cognitive
+    if let Some(limit) = t.cognitive
         && stats.cognitive > limit
     {
-        push(
+        push_threshold(
             vs,
-            name,
-            format!("avg cognitive {:.1} > {:.1}", stats.cognitive, limit),
+            graph,
+            &format!("threshold.{scope}.avg.cognitive"),
+            String::new(),
+            "average cognitive complexity",
+            stats.cognitive,
+            limit,
+            1,
         );
     }
-    if let Some(limit) = at.fan_in {
+    if let Some(limit) = t.fan_in {
         let avg = stats.coupling.as_ref().map(|c| c.fan_in).unwrap_or(0.0);
         if avg > limit {
-            push(vs, name, format!("avg fan_in {:.1} > {:.1}", avg, limit));
+            push_threshold(
+                vs,
+                graph,
+                &format!("threshold.{scope}.avg.fan_in"),
+                String::new(),
+                "average fan-in",
+                avg,
+                limit,
+                1,
+            );
         }
     }
-    if let Some(limit) = at.fan_out {
+    if let Some(limit) = t.fan_out {
         let avg = stats.coupling.as_ref().map(|c| c.fan_out).unwrap_or(0.0);
         if avg > limit {
-            push(vs, name, format!("avg fan_out {:.1} > {:.1}", avg, limit));
+            push_threshold(
+                vs,
+                graph,
+                &format!("threshold.{scope}.avg.fan_out"),
+                String::new(),
+                "average fan-out",
+                avg,
+                limit,
+                1,
+            );
         }
     }
-    if let Some(limit) = at.loc {
+    if let Some(limit) = t.loc {
         let avg = stats.loc.as_ref().map(|l| l.source).unwrap_or(0.0);
         if avg > limit {
-            push(vs, name, format!("avg loc {:.0} > {:.0}", avg, limit));
+            push_threshold(
+                vs,
+                graph,
+                &format!("threshold.{scope}.avg.loc"),
+                String::new(),
+                "average source loc",
+                avg,
+                limit,
+                0,
+            );
         }
     }
 }
 
-fn push(vs: &mut Vec<Violation>, graph: &'static str, message: String) {
+/// A clickable "id — path:line" location for a node, falling back to just the id.
+fn node_location(node: &Node) -> String {
+    match (node.path.as_str(), node.line) {
+        (p, Some(l)) if !p.is_empty() => format!("{} — {}:{}", node.id, p, l),
+        (p, _) if !p.is_empty() => format!("{} — {}", node.id, p),
+        _ => node.id.clone(),
+    }
+}
+
+/// Human-readable description of a cycle, with a short preview of its members.
+fn describe_cycle(kind: &CycleKind, nodes: &[String]) -> String {
+    let preview: Vec<&str> = nodes.iter().take(4).map(String::as_str).collect();
+    let truncated = nodes.len() > preview.len();
+    match kind {
+        CycleKind::Mutual => format!("mutual cycle between {}", preview.join(" ↔ ")),
+        CycleKind::Chain => {
+            let chain = preview.join(" → ");
+            let tail = if truncated {
+                format!(" → … ({} nodes total)", nodes.len())
+            } else {
+                " → (back to start)".to_string()
+            };
+            format!("chain cycle: {chain}{tail}")
+        }
+        CycleKind::TestEmbed => {
+            let extra = if truncated {
+                format!(" (+{} more)", nodes.len() - preview.len())
+            } else {
+                String::new()
+            };
+            format!("test-embed cycle: {}{extra}", preview.join(" ↔ "))
+        }
+    }
+}
+
+fn cycle_rule_id(kind: &CycleKind) -> &'static str {
+    match kind {
+        CycleKind::TestEmbed => "cycle.test-embed",
+        CycleKind::Mutual => "cycle.mutual",
+        CycleKind::Chain => "cycle.chain",
+    }
+}
+
+/// Push a threshold breach, composing a self-contained measurement message and
+/// using the breach ratio (value / limit) as the `--top` ranking weight.
+#[allow(clippy::too_many_arguments)]
+fn push_threshold(
+    vs: &mut Vec<Violation>,
+    graph: &'static str,
+    id: &str,
+    location: String,
+    metric: &str,
+    value: f64,
+    limit: f64,
+    decimals: usize,
+) {
+    let ratio = if limit > 0.0 {
+        value / limit
+    } else {
+        f64::INFINITY
+    };
+    let message = format!(
+        "{metric} {value:.decimals$} exceeds limit {limit:.decimals$} ({ratio:.1}× over budget)"
+    );
+    push(vs, graph, id, location, message, ratio);
+}
+
+fn push(
+    vs: &mut Vec<Violation>,
+    graph: &'static str,
+    id: &str,
+    location: String,
+    message: String,
+    weight: f64,
+) {
+    let group = rule_doc(id).map(|d| d.group).unwrap_or("?");
     vs.push(Violation {
-        severity: Severity::Deny,
+        rule: id.to_string(),
+        group,
         graph,
+        location,
         message,
+        weight,
     });
+}
+
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use code_split_core::graph::{CycleGroup, Loc, NodeKind};
+
+    #[test]
+    fn parse_on_off_accepts_on_off_true_false() {
+        let cases = vec![
+            ("on", Some(true)),
+            ("true", Some(true)),
+            ("off", Some(false)),
+            ("false", Some(false)),
+            ("maybe", None),
+            ("", None),
+        ];
+        for (input, expected) in cases {
+            match expected {
+                Some(b) => assert_eq!(parse_on_off(input).unwrap(), b, "for {input:?}"),
+                None => assert!(parse_on_off(input).is_err(), "should reject {input:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn cycle_rules_default_test_embed_off_others_on() {
+        let d = CycleRules::default();
+        assert_eq!(d.test_embed, CycleRule::Off, "test-embed defaults off");
+        assert_eq!(
+            d.mutual,
+            CycleRule::Max(0),
+            "mutual defaults strict (0 allowed)"
+        );
+        assert_eq!(
+            d.chain,
+            CycleRule::Max(0),
+            "chain defaults strict (0 allowed)"
+        );
+    }
+
+    #[test]
+    fn cli_override_sets_cycle_and_threshold() {
+        let mut cfg = Config::default();
+        apply_cli_overrides(
+            &mut cfg,
+            &[],
+            &["test-embed=on".into(), "mutual=off".into()],
+            &[
+                "function.cognitive=25".into(),
+                "function.avg.hk=1000".into(),
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.rules.cycles.test_embed,
+            CycleRule::Max(0),
+            "test-embed enabled"
+        );
+        assert_eq!(cfg.rules.cycles.mutual, CycleRule::Off, "mutual disabled");
+        assert_eq!(
+            cfg.rules.cycles.chain,
+            CycleRule::Max(0),
+            "chain untouched (default)"
+        );
+        assert_eq!(cfg.rules.thresholds.function.single.cognitive, Some(25.0));
+        assert_eq!(cfg.rules.thresholds.function.avg.hk, Some(1000.0));
+        assert_eq!(
+            cfg.rules.thresholds.function.single.hk, None,
+            "unset metric stays None"
+        );
+        assert_eq!(
+            cfg.rules.thresholds.function.avg.cognitive, None,
+            "single and avg buckets are independent"
+        );
+    }
+
+    #[test]
+    fn cli_override_rejects_invalid_with_context() {
+        // (cycle_rules, thresholds, substring the error message must contain)
+        let cases: Vec<(Vec<String>, Vec<String>, &str)> = vec![
+            (vec!["mutual=loud".into()], vec![], "loud"),
+            (vec!["bogus=on".into()], vec![], "bogus"),
+            (vec![], vec!["file.bogus=1".into()], "bogus"),
+            (vec![], vec!["nope.hk=1".into()], "nope"),
+            (vec![], vec!["file.hk=NaNum".into()], "number"),
+        ];
+        for (cycles, thresholds, needle) in cases {
+            let mut cfg = Config::default();
+            let err = apply_cli_overrides(&mut cfg, &[], &cycles, &thresholds)
+                .expect_err(&format!("should reject {cycles:?} {thresholds:?}"));
+            let msg = format!("{err:#}");
+            assert!(
+                msg.contains(needle),
+                "error {msg:?} should mention {needle:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn check_reports_enabled_cycle_group() {
+        let mut graphs = PluginGraphs::default();
+        graphs.modules.cycles.push(CycleGroup {
+            kind: CycleKind::Chain,
+            nodes: vec!["a".into(), "b".into(), "c".into()],
+        });
+        let vs = check_violations(&graphs, &RulesConfig::default());
+        assert_eq!(vs.len(), 1, "one enabled cycle -> one violation");
+        assert_eq!(vs[0].graph, "modules");
+        assert_eq!(vs[0].rule, "cycle.chain");
+        assert_eq!(vs[0].group, "CYC", "chain cycle group");
+        assert!(
+            vs[0].message.contains("chain cycle"),
+            "got {:?}",
+            vs[0].message
+        );
+    }
+
+    #[test]
+    fn apply_cycle_rules_strips_disabled_kind() {
+        let mut graphs = PluginGraphs::default();
+        graphs.modules.cycles.push(CycleGroup {
+            kind: CycleKind::TestEmbed,
+            nodes: vec!["a".into(), "b".into()],
+        });
+        // default rules: test-embed is off -> stripped.
+        apply_cycle_rules(&mut graphs, &CycleRules::default());
+        assert!(graphs.modules.cycles.is_empty(), "disabled cycle stripped");
+        assert!(
+            check_violations(&graphs, &RulesConfig::default()).is_empty(),
+            "a stripped cycle is not a violation"
+        );
+    }
+
+    #[test]
+    fn cycle_budget_allows_up_to_n_and_fails_on_more() {
+        let mut graphs = PluginGraphs::default();
+        for i in 0..3 {
+            graphs.modules.cycles.push(CycleGroup {
+                kind: CycleKind::Chain,
+                nodes: vec![format!("a{i}"), format!("b{i}"), format!("c{i}")],
+            });
+        }
+        // Budget 3: exactly 3 chain cycles -> within budget, no violation.
+        let mut rules = RulesConfig::default();
+        rules.cycles.chain = CycleRule::Max(3);
+        assert!(
+            check_violations(&graphs, &rules).is_empty(),
+            "3 cycles within budget 3 -> pass"
+        );
+        // Budget 2: 3 > 2 -> every cycle reported, with the over-budget note.
+        rules.cycles.chain = CycleRule::Max(2);
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 3, "over budget -> all cycles reported");
+        assert!(
+            vs[0].message.contains("over budget: 3 > 2"),
+            "got {:?}",
+            vs[0].message
+        );
+    }
+
+    #[test]
+    fn parse_cycle_rule_accepts_on_off_and_int() {
+        assert_eq!(parse_cycle_rule("on").unwrap(), CycleRule::Max(0));
+        assert_eq!(parse_cycle_rule("true").unwrap(), CycleRule::Max(0));
+        assert_eq!(parse_cycle_rule("off").unwrap(), CycleRule::Off);
+        assert_eq!(parse_cycle_rule("false").unwrap(), CycleRule::Off);
+        assert_eq!(parse_cycle_rule("7").unwrap(), CycleRule::Max(7));
+        assert!(parse_cycle_rule("-1").is_err(), "negative rejected");
+        assert!(parse_cycle_rule("nope").is_err(), "garbage rejected");
+    }
+
+    #[test]
+    fn config_toml_parses_cycle_bool_and_int() {
+        let src = "
+[rules.cycles]
+test-embed = false
+mutual = true
+chain = 7
+";
+        let cfg: Config = toml::from_str(src).expect("parse config");
+        assert_eq!(cfg.rules.cycles.test_embed, CycleRule::Off);
+        assert_eq!(
+            cfg.rules.cycles.mutual,
+            CycleRule::Max(0),
+            "true => strict (0)"
+        );
+        assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(7), "int => budget");
+    }
+
+    #[test]
+    fn check_reports_node_threshold_breach_only_for_over_budget() {
+        let mut graphs = PluginGraphs::default();
+        graphs
+            .functions
+            .nodes
+            .push(node_with_cognitive("fn:hot", 50.0));
+        graphs
+            .functions
+            .nodes
+            .push(node_with_cognitive("fn:cold", 5.0));
+        let mut rules = RulesConfig::default();
+        rules.thresholds.function.single.cognitive = Some(25.0);
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 1, "only the over-budget node violates");
+        assert_eq!(vs[0].rule, "threshold.function.cognitive");
+        assert_eq!(vs[0].group, "CPX", "cognitive group");
+        assert!(
+            vs[0].location.contains("fn:hot"),
+            "location {:?}",
+            vs[0].location
+        );
+        assert!(
+            vs[0].message.contains("cognitive") && vs[0].message.contains("over budget"),
+            "got {:?}",
+            vs[0].message
+        );
+    }
+
+    #[test]
+    fn each_scope_targets_only_its_own_graph() {
+        // Same metric (loc) on a file node and a function node. The `file` scope
+        // limit hits only the files-graph node; `function` only the functions-graph
+        // node. Scopes do not leak across graphs.
+        let mut graphs = PluginGraphs::default();
+        graphs.files.nodes.push(node_with_loc("file:big.rs", 900.0));
+        graphs.functions.nodes.push(node_with_loc("fn:big", 900.0));
+
+        let mut file_rules = RulesConfig::default();
+        file_rules.thresholds.file.single.loc = Some(500.0);
+        let fv = check_violations(&graphs, &file_rules);
+        assert_eq!(fv.len(), 1, "file.loc hits only the files-graph node");
+        assert_eq!(fv[0].rule, "threshold.file.loc");
+        assert_eq!(fv[0].graph, "files");
+        assert_eq!(fv[0].group, "SIZ");
+        assert!(
+            fv[0].location.contains("file:big.rs"),
+            "got {:?}",
+            fv[0].location
+        );
+
+        let mut fn_rules = RulesConfig::default();
+        fn_rules.thresholds.function.single.loc = Some(500.0);
+        let nv = check_violations(&graphs, &fn_rules);
+        assert_eq!(
+            nv.len(),
+            1,
+            "function.loc hits only the functions-graph node"
+        );
+        assert_eq!(nv[0].rule, "threshold.function.loc");
+        assert_eq!(nv[0].graph, "functions");
+        assert!(
+            nv[0].location.contains("fn:big"),
+            "got {:?}",
+            nv[0].location
+        );
+    }
+
+    #[test]
+    fn avg_scope_is_per_scope_and_distinct_from_single() {
+        // file.avg.loc fires on the files-graph average and is tagged
+        // threshold.file.avg.loc — independent of the single file.loc limit.
+        let mut graphs = PluginGraphs::default();
+        graphs.files.nodes.push(node_with_loc("file:a.rs", 100.0));
+        graphs.files.nodes.push(node_with_loc("file:b.rs", 300.0));
+        graphs.files.stats = Some(GraphStats {
+            loc: Some(Loc {
+                source: 200.0,
+                logical: 0.0,
+                comments: 0.0,
+                blank: 0.0,
+            }),
+            ..Default::default()
+        });
+
+        let mut rules = RulesConfig::default();
+        rules.thresholds.file.avg.loc = Some(150.0);
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 1, "the files-graph average (200) exceeds 150");
+        assert_eq!(vs[0].rule, "threshold.file.avg.loc");
+        assert_eq!(vs[0].graph, "files");
+        assert!(vs[0].location.is_empty(), "average rules carry no location");
+
+        // The single file.loc limit is a separate bucket: 150 catches each file >150.
+        let mut single = RulesConfig::default();
+        single.thresholds.file.single.loc = Some(150.0);
+        let sv = check_violations(&graphs, &single);
+        assert_eq!(sv.len(), 1, "only b.rs (300) exceeds the per-file 150");
+        assert_eq!(sv[0].rule, "threshold.file.loc");
+    }
+
+    #[test]
+    fn inline_config_overrides_dotted_keys() {
+        let mut cfg = Config::default();
+        apply_inline_overrides(
+            &mut cfg,
+            &[
+                "plugin=python",
+                "rules.cycles.test-embed=on",
+                "rules.cycles.mutual=off",
+                "rules.thresholds.function.cognitive=25",
+                "rules.thresholds.file.avg.hk=1000",
+                "ignore.test_modules=true",
+            ],
+        )
+        .unwrap();
+        assert_eq!(cfg.plugin.as_deref(), Some("python"));
+        assert_eq!(
+            cfg.rules.cycles.test_embed,
+            CycleRule::Max(0),
+            "test-embed enabled inline"
+        );
+        assert_eq!(
+            cfg.rules.cycles.mutual,
+            CycleRule::Off,
+            "mutual disabled inline"
+        );
+        assert_eq!(cfg.rules.thresholds.function.single.cognitive, Some(25.0));
+        assert_eq!(cfg.rules.thresholds.file.avg.hk, Some(1000.0));
+        assert!(cfg.ignore.test_modules, "ignore.test_modules set inline");
+    }
+
+    #[test]
+    fn config_toml_parses_single_and_avg_buckets() {
+        // The single metrics sit directly under the scope table; `avg` is a nested
+        // table. Confirms the `#[serde(flatten)]` split works with the toml parser.
+        let src = "
+[rules.thresholds.file]
+loc = 800
+cognitive = 30
+
+[rules.thresholds.file.avg]
+loc = 200
+";
+        let cfg: Config = toml::from_str(src).expect("parse config");
+        assert_eq!(cfg.rules.thresholds.file.single.loc, Some(800.0));
+        assert_eq!(cfg.rules.thresholds.file.single.cognitive, Some(30.0));
+        assert_eq!(cfg.rules.thresholds.file.avg.loc, Some(200.0));
+        assert_eq!(
+            cfg.rules.thresholds.file.avg.cognitive, None,
+            "avg bucket is independent of single"
+        );
+    }
+
+    #[test]
+    fn inline_config_rejects_unknown_key() {
+        let mut cfg = Config::default();
+        let err = apply_inline_overrides(&mut cfg, &["rules.bogus.x=1"]).unwrap_err();
+        assert!(format!("{err:#}").contains("bogus"), "got {err:#}");
+    }
+
+    #[test]
+    fn parse_number_handles_separators_and_suffixes() {
+        let ok = [
+            ("500000", 500_000.0),
+            ("5_123_000", 5_123_000.0),
+            ("5K", 5_000.0),
+            ("5k", 5_000.0),
+            ("5M", 5_000_000.0),
+            ("1.5M", 1_500_000.0),
+            ("2G", 2_000_000_000.0),
+            ("  42  ", 42.0),
+        ];
+        for (input, want) in ok {
+            assert_eq!(parse_number(input).unwrap(), want, "for {input:?}");
+        }
+        for bad in ["", "K", "5X", "abc", "5MM"] {
+            assert!(parse_number(bad).is_err(), "should reject {bad:?}");
+        }
+    }
+
+    #[test]
+    fn config_toml_accepts_number_suffixes_and_separators() {
+        // String values may carry a K/M/G suffix; bare integers may use `_`
+        // separators (native TOML) and coerce to f64.
+        let src = "
+[rules.thresholds.module]
+hk = \"5M\"
+fan_out = 50
+
+[rules.thresholds.file]
+loc = 5_123
+";
+        let cfg: Config = toml::from_str(src).expect("parse config");
+        assert_eq!(cfg.rules.thresholds.module.single.hk, Some(5_000_000.0));
+        assert_eq!(cfg.rules.thresholds.module.single.fan_out, Some(50.0));
+        assert_eq!(cfg.rules.thresholds.file.single.loc, Some(5_123.0));
+    }
+
+    #[test]
+    fn cli_threshold_accepts_suffix_value() {
+        let mut cfg = Config::default();
+        apply_cli_overrides(
+            &mut cfg,
+            &[],
+            &[],
+            &["module.hk=5M".into(), "file.avg.loc=1_500".into()],
+        )
+        .unwrap();
+        assert_eq!(cfg.rules.thresholds.module.single.hk, Some(5_000_000.0));
+        assert_eq!(cfg.rules.thresholds.file.avg.loc, Some(1_500.0));
+    }
+
+    #[test]
+    fn rule_catalog_keys_unique_and_groups_valid() {
+        let mut keys = HashSet::new();
+        for r in RULES {
+            assert!(keys.insert(r.key), "duplicate key {}", r.key);
+            assert!(
+                matches!(r.group, "CYC" | "CPX" | "CPL" | "SIZ"),
+                "{} has unknown group {}",
+                r.key,
+                r.group
+            );
+            assert!(
+                !r.why.is_empty() && !r.fix.is_empty(),
+                "{} is missing why/fix prose",
+                r.key
+            );
+        }
+        assert_eq!(RULES.len(), 9, "3 cycle rules + 6 threshold metrics");
+    }
+
+    #[test]
+    fn every_emitted_rule_id_resolves_to_a_catalog_entry() {
+        // The full id space check_graph_violations can emit: cycles, plus every
+        // threshold scope × metric. rule_doc must resolve each (a miss would surface
+        // as group "?" at runtime).
+        let cycles = ["cycle.mutual", "cycle.chain", "cycle.test-embed"];
+        for id in cycles {
+            assert!(rule_doc(id).is_some(), "no catalog entry for {id}");
+        }
+        let scopes = ["file", "module", "function"];
+        let metrics = ["hk", "cyclomatic", "cognitive", "fan_in", "fan_out", "loc"];
+        for s in scopes {
+            for m in metrics {
+                // Both the single (`threshold.<scope>.<metric>`) and the average
+                // (`threshold.<scope>.avg.<metric>`) ids resolve to the metric entry.
+                for id in [
+                    format!("threshold.{s}.{m}"),
+                    format!("threshold.{s}.avg.{m}"),
+                ] {
+                    let doc = rule_doc(&id).unwrap_or_else(|| panic!("no catalog entry for {id}"));
+                    assert_eq!(doc.key, m, "{id} resolved to the wrong entry {}", doc.key);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rule_tuning_describes_cycle_and_threshold_knobs() {
+        let cyc = rule_tuning("cycle.mutual");
+        assert!(cyc.contains("--cycle-rule mutual=off"), "got {cyc:?}");
+        assert!(cyc.contains("rules.cycles.mutual"), "got {cyc:?}");
+
+        let thr = rule_tuning("threshold.function.cognitive");
+        assert!(
+            thr.contains("--threshold function.cognitive=N"),
+            "got {thr:?}"
+        );
+        assert!(
+            thr.contains("rules.thresholds.function.cognitive"),
+            "got {thr:?}"
+        );
+    }
+
+    #[test]
+    fn violation_summary_combines_location_and_message() {
+        let with_loc = Violation {
+            rule: "threshold.function.cognitive".into(),
+            group: "CPX",
+            graph: "functions",
+            location: "fn:hot — src/a.rs:10".into(),
+            message: "cognitive 50 exceeds limit 25 (2.0× over budget)".into(),
+            weight: 2.0,
+        };
+        assert!(
+            with_loc
+                .summary()
+                .starts_with("fn:hot — src/a.rs:10: cognitive")
+        );
+
+        let no_loc = Violation {
+            rule: "threshold.avg.hk".into(),
+            group: "CPL",
+            graph: "modules",
+            location: String::new(),
+            message: "average Henry-Kafura hk 9 exceeds limit 5 (1.8× over budget)".into(),
+            weight: 1.8,
+        };
+        assert_eq!(
+            no_loc.summary(),
+            no_loc.message,
+            "no location -> message only"
+        );
+    }
+
+    fn node_with_cognitive(id: &str, cognitive: f64) -> Node {
+        Node {
+            id: id.into(),
+            kind: NodeKind::Fn,
+            name: id.into(),
+            path: "p".into(),
+            parent: None,
+            external: None,
+            visibility: None,
+            loc: None,
+            line: None,
+            item_count: None,
+            method_count: None,
+            complexity: Some(Complexity {
+                cognitive,
+                ..Default::default()
+            }),
+            cycle_kind: None,
+        }
+    }
+
+    fn node_with_loc(id: &str, source: f64) -> Node {
+        Node {
+            id: id.into(),
+            kind: NodeKind::File,
+            name: id.into(),
+            path: "p".into(),
+            parent: None,
+            external: None,
+            visibility: None,
+            loc: None,
+            line: None,
+            item_count: None,
+            method_count: None,
+            complexity: Some(Complexity {
+                loc: Some(Loc {
+                    source,
+                    logical: 0.0,
+                    comments: 0.0,
+                    blank: 0.0,
+                }),
+                ..Default::default()
+            }),
+            cycle_kind: None,
+        }
+    }
 }

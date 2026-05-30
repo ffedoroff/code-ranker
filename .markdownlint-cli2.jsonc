@@ -17,6 +17,7 @@
   },
   "globs": [
     "docs/**/*.md",
+    "contrib/**/*.md",
     "principles/**/*.md",
     "AGENTS.md",
     "CLAUDE.md"
