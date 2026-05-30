@@ -1,12 +1,8 @@
 name: CI
 
 on:
-  # Temporary: run on pushes to every branch while we debug CI.
-  # Revert to `branches: [main]` once it is stable. `'**'` matches branch
-  # names with slashes (e.g. docs/cli-redesign) but not tags, so release
-  # tags still only fire the publish workflows.
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
 
 env:
