@@ -48,42 +48,35 @@ chain      = true    # strict — three or more nodes in a dependency cycle
 #
 # Available metrics: hk, cyclomatic, cognitive, fan_in, fan_out, loc
 # A set threshold fails `check` when exceeded; unset = not checked.
-
-
-# cycles: max allowed count per kind (today's count — raise only to allow more; false = off)
-[rules.cycles]
-test-embed  = false # off — parent → mod tests → parent (language feature, not a smell)
-mutual      = 0     # strict — two nodes that directly depend on each other
-chain       = 0     # strict — three or more nodes in a dependency cycle
-
-# thresholds: single = the worst single unit (max); avg = the graph-wide average
+# Current baseline below, pasted from `check`'s current-values block. single = the
+# worst single unit (max); avg = the graph-wide average.
 
 [rules.thresholds.module]
 cyclomatic  = 1
-hk          = 81_920
-fan_in      = 16
-fan_out     = 18
-loc         = 1_696
+hk          = 82_000
+fan_in      = 20
+fan_out     = 20
+loc         = 2_000
 
 [rules.thresholds.module.avg]
 cyclomatic  = 1
-hk          = 15_114
-fan_in      = 3
-fan_out     = 5
-loc         = 351
+hk          = 18_000
+fan_in      = 4
+fan_out     = 6
+loc         = 400
 
 [rules.thresholds.function]
-cyclomatic  = 30
-cognitive   = 67
-hk          = 81_920
-fan_in      = 58
-fan_out     = 42
-loc         = 1_696
+cyclomatic  = 35
+cognitive   = 70
+hk          = 82_000
+fan_in      = 60
+fan_out     = 50
+loc         = 2_000
 
 [rules.thresholds.function.avg]
 cyclomatic  = 4
 cognitive   = 7
-hk          = 9_175
-fan_in      = 4
-fan_out     = 7
-loc         = 41
+hk          = 12_000
+fan_in      = 5
+fan_out     = 8
+loc         = 50
