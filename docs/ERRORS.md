@@ -98,7 +98,7 @@ threshold.function.cognitive  ·  CPX  ·  functions graph
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
   fix    Extract nested blocks into named helpers, use early returns to cut nesting depth…
   tune   set with --threshold function.cognitive=N   ·   rules.thresholds.function.cognitive in code-split.toml
-  ref    docs/ERRORS.md#group-cpx
+  ref    https://github.com/ffedoroff/code-split/blob/main/docs/ERRORS.md#group-cpx
 ```
 
 - **rule id + group + graph** — the rule, its concern group, and which graph (modules / files / functions) it fired on.

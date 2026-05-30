@@ -1,3 +1,33 @@
+// Online principle docs (principles/<lang>/<slug>.md on GitHub) keyed by preset.
+// Only the 12 named principles map; the meta-presets (fix cycles, …) have none.
+const PRINCIPLE_DOCS = {
+  ADP:   'acyclic-dependencies-principle',
+  SRP:   'solid-single-responsibility',
+  OCP:   'solid-open-closed',
+  LSP:   'solid-liskov-substitution',
+  ISP:   'solid-interface-segregation',
+  DIP:   'solid-dependency-inversion',
+  DRY:   'dry',
+  KISS:  'kiss',
+  LoD:   'law-of-demeter',
+  MISU:  'make-invalid-states-unrepresentable',
+  CoI:   'composition-over-inheritance',
+  YAGNI: 'yagni',
+};
+const PRINCIPLES_URL = 'https://github.com/ffedoroff/code-split/blob/main/principles';
+
+// The principle-corpus language for the analyzed plugin (JS/TS share `typescript`).
+function principleLang() {
+  const plugin = (window.AFTER ?? window.BEFORE)?.plugin || 'rust';
+  return plugin === 'javascript' ? 'typescript' : plugin;
+}
+
+// Online URL of a preset's full principle doc, or null for the meta-presets.
+function principleUrl(key) {
+  const slug = PRINCIPLE_DOCS[key];
+  return slug ? `${PRINCIPLES_URL}/${principleLang()}/${slug}.md` : null;
+}
+
 function openExportPopup(level) {
   const selectedIds = window._ntSelected?.[level];
   const allNodes    = window.DIFF?.[level]?.nodes || [];
@@ -287,7 +317,11 @@ distinct callers today, and propose simplification if not.`,
     const parts = [];
     if (activePresetKey) {
       const promptText = PROMPTS[activePresetKey] || '';
-      if (promptText) parts.push(promptText);
+      if (promptText) {
+        // Append a link to the full principle online so the prompt is self-contained.
+        const url = principleUrl(activePresetKey);
+        parts.push(url ? `${promptText}\n\nFull principle: ${url}` : promptText);
+      }
     }
     if (on('ids')) {
       parts.push('node ids:\n' + activeNodes.map(n => n.id).join('\n'));

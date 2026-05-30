@@ -9,6 +9,11 @@ use code_split_core::Snapshot;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+/// Base URL for the published docs. Diagnostics pointers (`ref` lines, SARIF
+/// `helpUri`) use absolute URLs so they're clickable from a terminal, a CI log,
+/// or a report — not just from a repo checkout.
+const DOCS_URL: &str = "https://github.com/ffedoroff/code-split/blob/main/docs";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
 enum GraphKind {
     Modules,
@@ -473,7 +478,7 @@ fn print_human_diagnostics(
     println!(
         "Each finding below is self-contained — copy a block into an AI assistant to act on it."
     );
-    println!("Full rule reference: docs/ERRORS.md\n");
+    println!("Full rule reference: {DOCS_URL}/ERRORS.md\n");
 
     for v in violations {
         let doc = config::rule_doc(&v.rule);
@@ -490,7 +495,7 @@ fn print_human_diagnostics(
         if !tune.is_empty() {
             println!("  tune   {tune}");
         }
-        println!("  ref    docs/ERRORS.md#group-{}", v.group.to_lowercase());
+        println!("  ref    {DOCS_URL}/ERRORS.md#group-{}", v.group.to_lowercase());
         println!();
     }
 
@@ -659,7 +664,7 @@ fn sarif_document(violations: &[config::Violation]) -> String {
                 "shortDescription": { "text": doc.map(|d| d.title).unwrap_or(v.rule.as_str()) },
                 "fullDescription": { "text": doc.map(|d| d.why).unwrap_or("") },
                 "helpUri": format!(
-                    "https://github.com/ffedoroff/code-split/blob/main/docs/ERRORS.md#group-{}",
+                    "{DOCS_URL}/ERRORS.md#group-{}",
                     v.group.to_lowercase()
                 ),
                 "properties": { "group": v.group },
