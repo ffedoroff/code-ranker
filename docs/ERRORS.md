@@ -130,8 +130,8 @@ Cycles are structural: they come from the import/dependency graph, not from a
 metric threshold. `mutual` and `chain` are on by default; `test-embed` is off.
 Each kind takes `on` (strict — any cycle fails), `off` (ignored), or a count
 budget `N` (allow up to `N`, fail on the next): `--cycle-rule chain=off`,
-`--cycle-rule chain=7`, or `rules.cycles.chain = 7`. `check` prints the current
-count per kind in its current-values block so you can paste it as a baseline.
+`--cycle-rule chain=7`, or `rules.cycles.chain = 7`. `check --suggest-config`
+prints the current count per kind so you can paste it as a baseline.
 
 | Rule id | What it flags | How to fix |
 |---------|---------------|------------|

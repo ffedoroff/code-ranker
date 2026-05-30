@@ -543,12 +543,13 @@ config filters: `config::apply_ignore` (path globs + `test_modules` +
   (`human` / `json` / `github` / `sarif`): `human` (`print_human_diagnostics`)
   renders each finding as a self-contained block (rule id, group, `where` = `id —
   path:line`, `issue`, `why`, `fix`, `tune`, `ref`) so it doubles as an AI prompt;
-  `sarif` describes the fired rules under `tool.driver.rules`. After the findings,
-  `human` output also calls `print_current_values` — the current per-kind cycle
-  counts and per-scope metric maxima (`single`) / averages (`avg`) as paste-ready
-  `code-split.toml` blocks for baselining (machine formats omit it). Honours
-  `--top <N>` (report only the N worst) and exits non-zero on any violation;
-  `--exit-zero` suppresses the non-zero exit. Writes no files.
+  `sarif` describes the fired rules under `tool.driver.rules`. With
+  `--suggest-config`, `human` output then calls `print_current_values` — the
+  current per-kind cycle counts and per-scope metric maxima (`single`) / averages
+  (`avg`) as paste-ready `code-split.toml` blocks for baselining (off by default;
+  machine formats omit it). Honours `--top <N>` (report only the N worst) and exits
+  non-zero on any violation; `--exit-zero` suppresses the non-zero exit. Writes no
+  files.
 - **`report`**: runs the shared analysis core (re-analyzing the workspace),
   then writes artifacts into `--report-path` (default `.code-split`) per
   `--format` (`json`, `html`; default both). The JSON snapshot records

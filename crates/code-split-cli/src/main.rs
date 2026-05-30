@@ -106,6 +106,11 @@ enum Command {
         /// Exit 0 even when violations are found (collect-only mode).
         #[arg(long)]
         exit_zero: bool,
+
+        /// Also print the project's current values as a ready-to-paste
+        /// code-split.toml baseline (cycle counts + per-scope thresholds).
+        #[arg(long)]
+        suggest_config: bool,
     },
 
     /// Analyze a workspace and write artifacts (JSON snapshot and/or HTML viewer).
@@ -179,6 +184,7 @@ fn main() -> Result<()> {
             output_format,
             top,
             exit_zero,
+            suggest_config,
         } => run_check(
             &analyze,
             &cycle_rules,
@@ -186,6 +192,7 @@ fn main() -> Result<()> {
             output_format,
             top,
             exit_zero,
+            suggest_config,
         ),
         Command::Report {
             analyze,
@@ -381,6 +388,7 @@ fn run_check(
     output_format: OutputFormat,
     top: Option<usize>,
     exit_zero: bool,
+    suggest_config: bool,
 ) -> Result<()> {
     let mut a = analyze_workspace(args, cycle_rules, thresholds)?;
     let total = a.violations.len();
@@ -400,9 +408,9 @@ fn run_check(
         .unwrap_or("workspace");
     emit_diagnostics(shown, total, &a.plugin_name, project, output_format);
 
-    // Always surface the current measured values as ready-to-paste config blocks
-    // (human output only — the machine formats stay pure).
-    if matches!(output_format, OutputFormat::Human) {
+    // Surface the current measured values as ready-to-paste config blocks only on
+    // request (`--suggest-config`), human output only — machine formats stay pure.
+    if suggest_config && matches!(output_format, OutputFormat::Human) {
         print_current_values(&a.plugin_graphs, &a.cycles);
     }
 

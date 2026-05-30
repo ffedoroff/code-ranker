@@ -631,6 +631,8 @@ cyclomatic  = 10
   limit, does not change the exit code
 - `--exit-zero` — exit 0 even when violations are found (`check` only,
   collect-only mode)
+- `--suggest-config` — also print the current values as a ready-to-paste
+  `code-split.toml` baseline (`check` only; off by default)
 
 **No severity levels**: there is no warning tier — `check` either passes or fails.
 A threshold is set or unset; a cycle kind is off, strict (`on`/`0`), or carries a
@@ -649,12 +651,13 @@ The rule id and group are carried in every `--output-format` (block header,
 `json` `rule`/`group` fields, `github` annotation title, `sarif` `ruleId` plus a
 fired-rules `tool.driver.rules` catalog).
 
-**Current-values config block**: after the findings, `human` output always prints
-the project's current measured values as ready-to-paste `code-split.toml` blocks —
-the active `[rules.cycles]` counts per kind, and per-scope thresholds (`single` =
-the worst single unit, `.avg` = the graph-wide average). A team copies the block
-to pin today's numbers as a baseline that passes now and fails on regression. The
-machine formats (`json`/`github`/`sarif`) omit it.
+**Current-values config block (`--suggest-config`)**: with `--suggest-config`,
+`human` output prints — after the findings — the project's current measured values
+as ready-to-paste `code-split.toml` blocks: the `[rules.cycles]` counts per kind,
+and per-scope thresholds (`single` = the worst single unit, `.avg` = the graph-wide
+average). A team copies the block to pin today's numbers as a baseline that passes
+now and fails on regression. Off by default; the machine formats
+(`json`/`github`/`sarif`) omit it.
 
 The path of the config file actually used is recorded in the snapshot as `config_file`.
 

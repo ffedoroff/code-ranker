@@ -64,6 +64,7 @@ code-split check [path] [options]
 | `--output-format <fmt>` | Diagnostics format: `human` (default), `json`, `github`, `sarif`. Use `github` for PR annotations, `sarif`/`json` for tooling. |
 | `--top <N>` | Report only the `N` worst violations (ranked worst-first) and suppress the rest. A reporting limit only — it does **not** change the exit code. Default: all. |
 | `--exit-zero` | Return exit code 0 even when violations exist. Useful in non-blocking CI checks. |
+| `--suggest-config` | After the findings, also print the project's current values as a ready-to-paste `code-split.toml` baseline (cycle counts + per-scope thresholds). Off by default; `human` output only. |
 
 Every rule is binary: a cycle check or threshold is either **enabled** (a violation is
 reported and fails the check) or **disabled** (not checked). There is no warning tier —
@@ -117,14 +118,18 @@ The rule id and group are present in every `--output-format`: the block header
 (`human`), `"rule"` + `"group"` fields (`json`), the annotation title (`github`),
 and `ruleId` plus a fired-rules `tool.driver.rules` catalog (`sarif`).
 
-### Current-values config block
+### Current-values config block (`--suggest-config`)
 
-After the findings, the `human` output always prints the project's current
-measured values as ready-to-paste `code-split.toml` blocks — the active
-`[rules.cycles]` policy, plus per-scope thresholds: `single` = the worst single
-unit (max) and `.avg` = the graph-wide average. Numbers use `_` separators. Copy a
-block to pin today's numbers as a baseline that passes now and fails on regression
-(the machine formats `json`/`github`/`sarif` stay pure and omit this).
+With `--suggest-config`, the `human` output prints — after the findings — the
+project's current measured values as ready-to-paste `code-split.toml` blocks: the
+`[rules.cycles]` counts per kind, plus per-scope thresholds (`single` = the worst
+single unit max, `.avg` = the graph-wide average). Numbers use `_` separators. Copy
+a block to pin today's numbers as a baseline that passes now and fails on
+regression. Off by default; the machine formats (`json`/`github`/`sarif`) omit it.
+
+```sh
+code-split check --suggest-config
+```
 
 ## `report`
 
