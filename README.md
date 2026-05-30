@@ -1,5 +1,12 @@
 # code-split
 
+[![CI](https://github.com/ffedoroff/code-split/actions/workflows/ci.yml/badge.svg)](https://github.com/ffedoroff/code-split/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/ffedoroff/code-split/branch/main/graph/badge.svg)](https://codecov.io/gh/ffedoroff/code-split)
+[![Crates.io](https://img.shields.io/crates/v/code-split.svg)](https://crates.io/crates/code-split)
+[![npm](https://img.shields.io/npm/v/code-split.svg)](https://www.npmjs.com/package/code-split)
+[![PyPI](https://img.shields.io/pypi/v/code-split.svg)](https://pypi.org/project/code-split/)
+[![License](https://img.shields.io/crates/l/code-split.svg)](./LICENSE)
+
 Structural-analysis tool for **Rust, Python, JavaScript and TypeScript** codebases. Built **AI-agent-friendly first** — finds where a project has structural problems and hands an actionable shortlist to a human or an AI agent for the actual refactor.
 
 **Status:** pre-alpha. APIs and output shapes may change without notice. Pin a specific version.
@@ -46,6 +53,8 @@ Three commands: `check` (linter — exits non-zero on violations), `report` (sna
 No network, no analytics, no telemetry. Open in any browser, share as a file.
 
 ## Install
+
+**Package pages:** [crates.io](https://crates.io/crates/code-split) · [npm](https://www.npmjs.com/package/code-split) · [PyPI](https://pypi.org/project/code-split/) · [Docker Hub](https://hub.docker.com/r/fedoroff/code-split) · [GHCR](https://github.com/ffedoroff/code-split/pkgs/container/code-split)
 
 Pick a channel:
 

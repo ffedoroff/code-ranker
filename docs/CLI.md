@@ -103,10 +103,10 @@ code-split report [path] [options]
 | Flag | Default | Meaning |
 |---|---|---|
 | `--format <kinds>` | `json,html` | Artifacts to emit: `json`, `html`. Comma-separated or repeatable (`--format json --format html`). |
-| `--before <file>` | — | Baseline snapshot. Makes the HTML a diff view (before = this file, after = this run) and adds a verdict. |
+| `--before <file>` | — | Baseline snapshot (`.json`, or a prior `.html` report). Makes the HTML a diff (before = this file, after = this run) with a verdict, and names it `…-diff.html`. |
 | `--report-path <dir>` | `.code-split` | Output directory for all artifacts. |
 | `--json-name <tpl>` | `{project-dir}-{ts}.json` | Snapshot filename template. Placeholders — see [Name templates](#name-templates). |
-| `--html-name <name>` | `index.html` | HTML viewer filename. |
+| `--html-name <tpl>` | `{project-dir}-{ts}.html` | HTML filename template (data embedded inline). With `--before`, `-diff` is inserted before `.html`. |
 
 ```sh
 # snapshot + viewer, in .code-split/
@@ -120,9 +120,8 @@ code-split report --format json,html --before .code-split/user-provisioning-2026
 code-split report --format json
 ```
 
-The HTML viewer loads its data by relative path, so the after snapshot JSON is written
-whenever the viewer needs it — including `--format html --before X` (the diff needs an
-after to show). See [HTML viewer](#html-viewer).
+The HTML is **self-contained**: the snapshot data is embedded inline, so the single file
+opens straight from disk (no server, no extra files). See [HTML viewer](#html-viewer).
 
 ## `diff`
 
@@ -135,8 +134,8 @@ code-split diff --before <a.json> --after <b.json> [options]
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--before <file>` | required | Baseline snapshot. |
-| `--after <file>` | required | New snapshot. |
+| `--before <file>` | required | Baseline snapshot (`.json`, or a prior `.html` report). |
+| `--after <file>` | required | New snapshot (`.json`, or a prior `.html` report). |
 | `--format <kinds>` | `html` | Artifacts to emit: `html`, `json`. Comma-separated or repeatable. JSON is the machine-readable diff for CI parsing. |
 | `--report-path <dir>` | `.code-split` | Output directory. |
 | `--html-name <name>` | `index.html` | HTML diff filename. |
@@ -172,9 +171,6 @@ With `--plugin auto` (the default), the plugin is resolved in this order:
 4. If **more than one** marker matches, `code-split` errors and asks you to disambiguate
    with an explicit `--plugin`. If **no** marker matches, it errors with the same hint.
 
-> **Status:** auto-detection is the target default. Until it ships, the default plugin is
-> `rust` — pass `--plugin python` / `--plugin javascript` explicitly for other languages.
-
 ## Name templates
 
 `--json-name` accepts placeholders:
@@ -188,28 +184,24 @@ So the default `{project-dir}-{ts}.json` yields `user-provisioning-20260526-1141
 
 ## HTML viewer
 
-The HTML report is a self-contained **viewer shell** (graph layout via Dagre, pan/zoom,
-sortable node tables for modules / files / functions, and the prompt-generator panel
-with ADP / SRP / OCP / LSP / ISP / DIP / DRY / KISS / LoD / MISU / CoI / YAGNI presets
-plus *Reduce Complexity* and *Split Components*). No network, no telemetry.
+The HTML report is **self-contained**: the viewer app (Dagre graph layout, pan/zoom,
+sortable node tables for modules / files / functions, and the prompt-generator panel with
+ADP / SRP / OCP / LSP / ISP / DIP / DRY / KISS / LoD / MISU / CoI / YAGNI presets plus
+*Reduce Complexity* and *Split Components*) **and the snapshot data** are all embedded in
+the one file. No network, no telemetry — `open` it straight from disk.
 
-What varies between runs is only the small **data manifest** baked into it — the
-`before` / `after` snapshot paths, resolved **relative to the HTML file**. The viewer
-loads whatever the command produced:
+The data is embedded as `<script type="application/json">` tags (`cs-before` / `cs-after`),
+which the viewer reads on load and which `--before` / `diff` can extract back out — so an
+`.html` report is interchangeable with a `.json` snapshot as a diff input.
 
-| Invocation | analysis | `before` | `after` |
-|---|:--:|---|---|
-| `report --format html` | no | — | — (empty shell, identical every run) |
-| `report --format json` | yes | — | (snapshot only, no viewer) |
-| `report --format json,html` | yes | — | the run's JSON |
-| `report --format html --before A` | yes | `A` | the run's JSON (auto-written) |
-| `diff --before A --after B` | no | `A` | `B` |
+| Invocation | Output file | Mode | Embedded data |
+|---|---|---|---|
+| `report --format html` | `{project-dir}-{ts}.html` | review (single snapshot) | this run |
+| `report --format html --before A` | `{project-dir}-{ts}-diff.html` | diff + verdict | `A` and this run |
+| `diff --before A --after B` | `index.html` | diff + verdict | `A` and `B` |
 
-Because the paths are relative, all artifacts live together under `--report-path`.
-
-> **Note:** the viewer fetches its JSON by path, so some browsers block `file://`
-> fetches. Serve the report directory if `open index.html` shows no data — e.g.
-> `python -m http.server -d .code-split`.
+In the viewer, the **↑ change** / **↑ compare…** buttons swap in a different snapshot from
+disk — accepting either a `.json` snapshot or a `.html` report.
 
 ## Config
 

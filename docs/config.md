@@ -80,7 +80,6 @@ Select the built-in plugin (`rust`, `python`, or `javascript`).
 Default is `auto`: resolved from `plugin` in the config file, then by project
 markers (`Cargo.toml`→rust, `pyproject.toml`/`setup.py`→python,
 `package.json`/`tsconfig.json`→javascript). Ambiguous or no marker → error.
-(Auto-detection is the target default; until it ships the default is `rust`.)
 
 ```bash
 code-split check .                   # auto-detect (or config.plugin)

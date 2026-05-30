@@ -383,10 +383,6 @@ detection finds more than one marker or none, the analyzing command MUST
 exit non-zero with a human-readable error naming the valid plugins and
 asking for an explicit `--plugin`.
 
-> **Status:** auto-detection is the target default. Until it ships, the
-> default plugin is `rust` — pass `--plugin python` / `--plugin javascript`
-> explicitly for other languages.
-
 **Rationale**: Built-in-only selection keeps the tool a single binary with
 nothing to install: every supported language ships compiled in, and adding
 a language means adding a built-in plugin rather than wiring up an external
@@ -798,12 +794,13 @@ JSON schema:
 }
 ```
 
-With `--format html` (the default), `code-split diff` outputs a single
-self-contained interactive HTML report. The report embeds all JS/CSS
-assets (including Graphviz WASM) and both snapshot JSON objects inline —
-no network required, fully offline-capable from `file://`. This is the
-CI-shareable artifact. The HTML and JSON outputs come from the same
-`code-split diff` invocation (`--format html,json`).
+With `--format html` (the default), `code-split diff` outputs an interactive
+HTML viewer. The report is **fully self-contained**: it embeds all JS/CSS
+assets (including Graphviz WASM) inline **and** embeds both snapshots inline
+as `<script type="application/json">` data, so the single `.html` file opens
+straight from disk with no relative-path reference and no separate `before` /
+`after` JSON files needed. This is the CI-shareable artifact. The HTML and
+JSON outputs come from the same `code-split diff` invocation (`--format html,json`).
 
 **Rationale**: Provides a stable machine-readable interface for CI
 pipelines and scripts; the default HTML output is a shareable diff viewer
@@ -1068,16 +1065,17 @@ the `code-split` binary is installed.
 1. Developer runs `code-split report . --plugin rust` (analyzes the
    workspace and writes both a snapshot and an HTML viewer in one step)
 2. `code-split` writes `.code-split/axum-api-20260522-112233.json` (the
-   snapshot) and `.code-split/index.html` (the viewer)
-3. Developer opens `.code-split/index.html` in a browser, sorts modules by
-   coupling weight
+   snapshot) and `.code-split/axum-api-20260522-112233.html` (the viewer)
+3. Developer opens `.code-split/axum-api-20260522-112233.html` in a browser,
+   sorts modules by coupling weight
 4. Developer identifies the heaviest modules and decides what to refactor
 
 (For a non-blocking lint that gates on cycles/thresholds and writes no
 files, the developer can instead run `code-split check . --plugin rust`.)
 
-**Postconditions**: A standalone HTML viewer exists at
-`.code-split/index.html`; no network access was required at any step.
+**Postconditions**: A self-contained HTML viewer exists at
+`.code-split/axum-api-20260522-112233.html`; no network access was required
+at any step.
 
 **Alternative Flows**:
 

@@ -114,7 +114,7 @@ flowchart TD
 
     artifacts --> report
     artifacts --> diff
-    report -->|"index.html + snapshot.json"| html_report["HTML Report"]
+    report -->|"{project-dir}-{ts}.html + snapshot.json"| html_report["HTML Report"]
     diff -->|"index.html / diff.json"| diff_report["Diff Report"]
 ```
 
@@ -252,9 +252,13 @@ Modules beyond graph types:
   projected graph, classifies each SCC as `TestEmbed` / `Mutual` /
   `Chain`, sets `node.cycle_kind` and writes `graph.cycles: Vec<CycleGroup>`.
 - **`hk.rs`** — `annotate_hk`: computes Henry-Kafura complexity
-  (`HK = LOC × (fan_in × fan_out)²`) for every non-`Contains` edge
+  (`hk = loc × (fan_in × fan_out)²`) for every non-`Contains` edge
   neighborhood and writes the result into `node.complexity.coupling`
-  (`Coupling { fan_in, fan_out, hk }`). **Guard**: if the graph
+  (`Coupling { fan_in, fan_out, hk }`). The `loc` factor is the same one
+  shown in `complexity.loc` (`loc.source`); for crate-aggregate nodes that
+  have no rust-code-analysis LOC, the structural `node.loc` is mirrored
+  into `complexity.loc` so the displayed loc and `hk` always agree. With no
+  loc or no in/out coupling, `hk` is 0. **Guard**: if the graph
   contains no `Calls` edges (sema was skipped via `--local-only`),
   `Fn` and `Method` nodes are NOT annotated — their `coupling` field
   remains absent. This prevents misleading zeros that would be
@@ -528,9 +532,13 @@ config filters: `config::apply_ignore` (path globs + `test_modules` +
   `config_file` when a config was found; default name
   `{project-dir}-{ts}.json` (`--json-name`). The HTML viewer template and all assets
   (CSS, JS) are embedded in the binary via `include_str!` from
-  `crates/code-split-cli/src/assets/`; default name `index.html`
-  (`--html-name`). With `--before <snapshot>` the HTML becomes a diff view
-  (after = this run, before = the file) plus a verdict.
+  `crates/code-split-cli/src/assets/`, and the snapshot data is embedded
+  inline in the same file as `cs-before` / `cs-after` JSON `<script>` tags;
+  default name `{project-dir}-{ts}.html` (`--html-name`). With
+  `--before <snapshot>` the HTML becomes a diff view (after = this run, before
+  = the file) plus a verdict, named `{project-dir}-{ts}-diff.html` (`-diff`
+  inserted before `.html`). `--before` accepts a `.json` snapshot or a prior
+  `.html` report (the embedded snapshot is extracted via `load_snapshot_any`).
 - **`diff`**: reads two **existing** snapshot files (`--before` / `--after`,
   no analysis), computes a structured diff via
   `code_split_core::compare_snapshots()`, and emits per `--format`
@@ -540,11 +548,13 @@ config filters: `config::apply_ignore` (path globs + `test_modules` +
     `{ nodes: { added, removed, affected, unchanged }, edges: { … },
     cycle_nodes_before, cycle_nodes_after, sccs_before, sccs_after }`, plus
     the `improved` / `degraded` / `neutral` verdict.
-  - Self-contained interactive HTML (`--format html`): all JS/CSS assets
-    (`graphviz.umd.js`, `diff.js`, `layout.js`, `render.js`, etc.) are
-    embedded via `include_str!` constants (`ASSET_GV`, `ASSET_DIFF`, …)
-    and both snapshot objects injected inline as `const BEFORE` / `const
-    AFTER`. Zero external resource references; works from `file://`.
+  - Interactive HTML viewer (`--format html`): all JS/CSS assets
+    (`graphviz.umd.js`, `diff.js`, `layout.js`, etc.) are embedded via
+    `include_str!` constants (`ASSET_GV`, `ASSET_DIFF`, …); the snapshots
+    are also embedded **inline** as `<script type="application/json">` tags
+    (`cs-before` / `cs-after`), which the viewer reads on load. The single
+    `.html` file is fully self-contained — no relative-path references, no
+    `fetch`, so it opens straight from `file://`.
 
 **Responsibility boundary**: holds no domain logic; no analysis, no
 rendering, no rules. Its sole job is argument parsing, plugin
@@ -559,7 +569,7 @@ embedded into the `code-split` binary via `include_str!`. Files:
 
 | File | Purpose |
 |------|---------|
-| `index.html` | Shell template with three per-level view sections (Modules / Files / Functions), control panel (hidden in review mode), and diff/review summary table. Header has `.header-brand` ("CODE SPLIT") and `#title` (`<target> — diff/review`). Nav has `[data-review]` buttons (`Nodes: N`, `Edges: N`, `Cycles: N`) — review mode only; `[data-preset]` buttons — diff mode only; `#nav-prompt-btn` ("Prompt Generator AI") — always visible, opens the Prompt Generator popup for the active level. Cycle chips use labels `N removed` / `+N added`. Cycles chip group carries class `chips-cycles`. Header has `↑ change` buttons; after-group holds `#custom-indicator` ("Identical") and `↑ compare…` in review mode. |
+| `index.html` | Shell template with three per-level view sections (Modules / Files / Functions), control panel (hidden in review mode), and diff/review summary table. Header has `.header-brand` ("CODE SPLIT") and `#title` (`<target> — diff/review`). Nav has `[data-review]` buttons (`Nodes: N`, `Edges: N`, `Cycles: N`) — review mode only; `[data-preset]` buttons — diff mode only; `#nav-prompt-btn` ("Prompt Generator AI") — always visible, opens the Prompt Generator popup for the active level. Cycle chips use labels `N removed` / `+N added`. Cycles chip group carries class `chips-cycles`. The header shows before/after metadata, the `↑ change` / `↑ compare…` snapshot-swap buttons (and `#btn-remove-after`), and `#custom-indicator` ("Identical"). |
 | `index.css` | Layout, nav, chips, SVG styling; CSS-class visibility toggles (`hide-nodes-added` etc. on `.svg-frame`) and cycle highlights (`show-cycle-before`/`show-cycle-after` — both render solid red stroke, no dasharray); `body.mode-review` rules: hides `[data-preset]` buttons and `.control-panel`; shows `[data-review]` buttons; hides `#meta-arrow`, after-group metadata, `[data-col="status"]` column; cross-highlight: `.row-hl` (solid blue bg) and `g.node.node-hl` (blue drop-shadow) for hover; `.row-selected` (solid amber bg `rgb(254,245,222)`) and `g.node.node-selected > polygon/ellipse` (yellow fill + amber stroke) for persistent selection — hover rules last so they win; `#node-modal` fills 100% width/height (fullscreen); `body.overflow:hidden` set on open, cleared on close. |
 | `graphviz.umd.js` | Graphviz compiled to WASM via `@hpcc-js/wasm` (~802 KB, self-contained, no network required); renders DOT→SVG in-browser |
 | `diff.js` | Browser-side diff computation: `computeDiff()` (node/edge status), `computeCycles()` via `buildSCCOf()` helper — prefers backend `graph.cycles` array when present (accurate `CycleKind` classification); falls back to Tarjan SCC on edges when absent; marks nodes/edges as `before-only`/`after-only`/`both`/`none`; `computeMeta()` |
@@ -568,7 +578,7 @@ embedded into the `code-split` binary via `include_str!`. Files:
 | `export-popup.js` | `openExportPopup(level)` — "Prompt Generator" popup. Top row: checkbox group (IDs / Paths / connections common / in / out) **OR** radio source selector (`Selected` = nodes checked in the node table; `Recommended` = top-N nodes sorted by HK then LOC, or by cycle membership for ADP preset) with numeric count input. Preset buttons map to named prompt templates (SOLID principles: ADP, SRP, OCP, LSP, ISP, DIP; DRY, KISS, LoD, MISU, CoI, YAGNI; plus Reduce Complexity, Split Components). Each preset auto-selects relevant checkboxes via `PRESET_CHECKS`. Textarea output = selected prompt text + node ids/paths/edge lists per active checkboxes. Fixed-size `Copy ⎘` button overlaid bottom-right of textarea. Popup is created once and re-used across opens. |
 | `panzoom.js` | `setupPanZoom()` — viewBox-based drag-to-pan; +/−/fit/fullscreen buttons bottom-right (visible when mouse in right 15% of frame); size-mode buttons (■/LOC/HK) top-right; no legend button; dblclick on SVG background zooms 2× at cursor; fullscreen overlay (`fs-bar`) slides in when mouse in top 15%, containing live `<nav>` and `.control-panel` DOM nodes |
 | `ui.js` | `CHIP_CLASSES` / `PRESETS` / `TOGGLE_CLASSES` state machine; `setupView()` populates chip counts, wires click handlers; visibility driven by CSS classes on `.svg-frame` |
-| `app.js` | `DOMContentLoaded` handler; initial preset is `before` (review mode) or `diff` (diff mode); `updateHeader()` / `setupReviewControls()` / `updateReviewButtons()` manage mode switching; `buildSummary()` is mode-aware; `renderView()` calls `drawSVG` then re-applies `window._ntSelected[level]` node-selected classes after every render (preserves selection across size-mode redraws); `#nav-prompt-btn` click handler calls `openExportPopup(currentLevel())`; `updateFilesTab()` / `setupFileControls()` / `recomputeAll()` support dynamic snapshot upload |
+| `app.js` | `DOMContentLoaded` handler; initial preset is `before` (review mode) or `diff` (diff mode); `updateHeader()` / `setupReviewControls()` / `updateReviewButtons()` manage mode switching; `buildSummary()` is mode-aware; `renderView()` calls `drawSVG` then re-applies `window._ntSelected[level]` node-selected classes after every render (preserves selection across size-mode redraws); `#nav-prompt-btn` click handler calls `openExportPopup(currentLevel())`; `updateFilesTab()` toggles the Files tab by data presence; the `DOMContentLoaded` handler reads the inline `cs-before` / `cs-after` JSON `<script>` tags embedded in the page via `readEmbeddedSnapshot`; `setupFileControls()` / `recomputeAll()` let the user swap in a `.json` snapshot or a prior `.html` report from disk |
 | `diagram.js` | `buildDiagramSVG(node, level)` — inline SVG popup diagram for a selected node. Edges are read from the raw snapshot (`window.AFTER ?? window.BEFORE`) so that external crate nodes (filtered from `window.DIFF` by `computeDiff`) are still visible. Outgoing and incoming edges are grouped by `kind` (`uses`, `calls`, `reexports`, `contains`) and rendered as proportionally-sized vertical columns left-to-right: column width = `max(1, min(count, floor(count/total × 4)))` card-slots; in-columns are bottom-anchored to the central node, out-columns are top-anchored. One arrow per column; non-`contains` arrows labelled `fan_in: N` / `fan_out: N` to the right. Main node width dynamically expands to cover all arrow X positions. `nodeMap` is augmented with external nodes from the raw snapshot so side-node cards render with correct metadata. `MAX_ITEMS = 24` per column. |
 | `nav.js` | `openModalForNode(nodeId, level)` — looks up node data first in `window.DIFF[level].nodes`, then falls back to the raw snapshot (`window.AFTER ?? window.BEFORE`) to support external crate nodes that are excluded from the diff. |
 
@@ -724,8 +734,8 @@ sequenceDiagram
     Report ->> Report: run analysis pipeline (syn → sema → complexity, see Step 1)
     Report ->> Report: compute node weights (fan-in + fan-out)
     Report ->> FS: write {project-dir}-{ts}.json snapshot (when --format json)
-    Report ->> Report: inject snapshot data into HTML template (replace __META_JSON__)
-    Report ->> FS: write index.html (assets embedded from binary)
+    Report ->> Report: embed snapshot data inline as cs-before / cs-after JSON script tags
+    Report ->> FS: write {project-dir}-{ts}.html (self-contained: assets + data embedded)
     Report -->> User: exit 0
 ```
 
@@ -745,8 +755,8 @@ sequenceDiagram
     Diff ->> Diff: compute GraphDiff per level (added/removed nodes & edges, weight delta)
     Diff ->> Diff: promote unchanged nodes/edges adjacent to changes → affected status
     Diff ->> Diff: determine coupling direction verdict (improved / degraded / neutral)
-    Diff ->> Diff: serialize diff to JSON; inject into HTML template (replace __DIFF_JSON__ + __META_JSON__)
-    Diff ->> FS: write index.html (Dagre.js + all assets embedded from binary) [--format html, default]
+    Diff ->> Diff: embed both snapshots inline as cs-before / cs-after JSON script tags
+    Diff ->> FS: write index.html (self-contained: all assets + data embedded from binary) [--format html, default]
     Diff ->> FS: write diff.json (machine-readable diff + verdict) [--format json]
     Diff -->> User: exit 0
 ```
@@ -781,10 +791,6 @@ The resolved name must be one of the three compiled-in plugins — `rust`,
 `python`, or `javascript` (JS+TS) — which is then invoked in-process.
 Multiple matching markers or none → error asking for an explicit
 `--plugin`.
-
-> **Status:** marker auto-detection is the target behavior for `auto`.
-> Until it ships, the default plugin is `rust` — pass `--plugin python` /
-> `--plugin javascript` explicitly for other languages.
 
 #### Snapshot File Format
 
@@ -1063,7 +1069,7 @@ HTML viewer together.
 ```bash
 # 1. Snapshot + report side by side, in .code-split/ (default format json,html)
 code-split report . --plugin rust
-open .code-split/index.html
+open .code-split/my-crate-20260522-112233.html   # default {project-dir}-{ts}.html
 
 # 2. Report in docs/ for sharing with the team
 code-split report . --plugin rust \
@@ -1110,7 +1116,7 @@ cat /artifacts/code-split/diff.json | jq '.verdict'
 ```bash
 # Steps 1+2: snapshot before the refactor + report (report does both)
 code-split report . --plugin rust --json-name before.json
-open .code-split/index.html   # inspect the heavy nodes
+open .code-split/my-crate-20260522-112233.html   # {project-dir}-{ts}.html, inspect the heavy nodes
 
 # -- Step 3: the user makes changes (by hand or with an AI) --
 
@@ -1126,7 +1132,7 @@ open .code-split/diff.html
 
 # Alternative: report + compare against a baseline in one run (--before)
 code-split report . --plugin rust --before .code-split/before.json
-open .code-split/index.html   # the HTML is already a diff view + verdict
+open .code-split/my-crate-20260522-112233-diff.html   # --before names it -diff.html; already a diff view + verdict
 ```
 
 ## 4. Additional Context
@@ -1143,7 +1149,7 @@ code-split/
     code-split-cli/           # Rust — orchestrator, artifact writer, report/diff renderer
       src/
         assets/            # HTML/CSS/JS assets embedded via include_str!
-          index.html       # Shell template with __DIFF_JSON__ / __META_JSON__ placeholders
+          index.html       # Shell template; its ./data.js script placeholder is replaced at render time with inline cs-before / cs-after JSON script tags
           index.css        # Node/edge/nav styling
           dagre.min.js     # Dagre.js v0.8.5 (bundled offline, 277 KB)
           state.js         # App state and layout cache

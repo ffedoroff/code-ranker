@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use code_split_core::Snapshot;
 use std::collections::HashMap;
-use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
@@ -28,68 +27,113 @@ struct Cli {
     command: Command,
 }
 
+/// Output artifact kind for `report` / `diff`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+enum Format {
+    Json,
+    Html,
+}
+
+/// Diagnostics format for `check`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum, Default)]
+enum OutputFormat {
+    #[default]
+    Human,
+    Json,
+    Github,
+    Sarif,
+}
+
+/// Common analysis options shared by `check` and `report`.
+#[derive(clap::Args, Debug)]
+struct AnalyzeArgs {
+    /// Workspace to analyze. Default: current directory.
+    #[arg(default_value = ".")]
+    workspace: PathBuf,
+
+    /// Plugin: rust | python | javascript | auto. Default: auto (detect by markers).
+    #[arg(long)]
+    plugin: Option<String>,
+
+    /// Analyze only local code — skip network-dependent steps.
+    #[arg(long)]
+    local_only: bool,
+
+    /// Which graphs to build. Repeat or comma-separate: modules,files,functions.
+    #[arg(long = "graph", value_enum, num_args = 1.., value_delimiter = ',',
+          default_values_t = [GraphKind::Modules, GraphKind::Files, GraphKind::Functions])]
+    graphs: Vec<GraphKind>,
+
+    /// Config file path, or inline `KEY=VALUE` override (repeatable; inline wins).
+    #[arg(long, value_name = "PATH | KEY=VALUE")]
+    config: Vec<String>,
+
+    /// Ignore paths matching these globs (repeatable). Merged with config file.
+    #[arg(long = "ignore", value_name = "GLOB")]
+    ignore_paths: Vec<String>,
+
+    /// Extra arguments forwarded to the plugin after `--`.
+    #[arg(last = true)]
+    extra: Vec<String>,
+}
+
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Analyze a workspace and produce a snapshot JSON file.
-    Analyze {
-        /// Path to the workspace (directory containing the project).
-        workspace: PathBuf,
+    /// Lint a workspace: analyze, evaluate rules, exit non-zero on any violation.
+    Check {
+        #[command(flatten)]
+        analyze: AnalyzeArgs,
 
-        /// Plugin to use for analysis (e.g. `rust`, `python`, or a PATH binary).
-        /// Falls back to `plugin` in code-split.toml, then "rust".
-        #[arg(long)]
-        plugin: Option<String>,
-
-        /// Output snapshot file. Defaults to `.code-split/snap-<timestamp>.json`.
-        #[arg(long, short)]
-        output: Option<PathBuf>,
-
-        /// Analyze only local code — skip network-dependent steps.
-        #[arg(long)]
-        local_only: bool,
-
-        /// Which graphs to build. Repeat or comma-separate: modules,files,functions.
-        #[arg(long = "graph", value_enum, num_args = 1.., value_delimiter = ',',
-              default_values_t = [GraphKind::Modules, GraphKind::Files, GraphKind::Functions])]
-        graphs: Vec<GraphKind>,
-
-        /// Path to config file. Auto-discovered if not set (code-split.toml, Cargo.toml metadata).
-        #[arg(long, value_name = "FILE")]
-        config: Option<PathBuf>,
-
-        /// Ignore paths matching these globs (repeatable). Merged with config file.
-        #[arg(long = "ignore", value_name = "GLOB")]
-        ignore_paths: Vec<String>,
-
-        /// Override cycle rule: allow|warn|deny (e.g. `--cycle-rule test-embed=allow`).
-        #[arg(long = "cycle-rule", value_name = "KIND=SEVERITY")]
+        /// Enable/disable a cycle check: KIND=on|off (e.g. test-embed=on).
+        #[arg(long = "cycle-rule", value_name = "KIND=on|off")]
         cycle_rules: Vec<String>,
 
-        /// Per-node metric threshold (e.g. `--threshold node.hk=500000`).
+        /// Metric threshold: SCOPE.METRIC=N (e.g. node.cognitive=25).
         #[arg(long = "threshold", value_name = "SCOPE.METRIC=N")]
         thresholds: Vec<String>,
 
-        /// Exit 0 even when `deny` violations are found (collect-only mode).
+        /// Diagnostics format.
+        #[arg(long = "output-format", value_enum, default_value_t = OutputFormat::Human)]
+        output_format: OutputFormat,
+
+        /// Report only the N worst violations (ranked worst-first). Does not change the exit code.
+        #[arg(long)]
+        top: Option<usize>,
+
+        /// Exit 0 even when violations are found (collect-only mode).
         #[arg(long)]
         exit_zero: bool,
-
-        /// Extra arguments forwarded to the plugin after `--`.
-        #[arg(last = true)]
-        extra: Vec<String>,
     },
 
-    /// Generate an HTML report from a snapshot file.
+    /// Analyze a workspace and write artifacts (JSON snapshot and/or HTML viewer).
     Report {
-        /// Input snapshot JSON file.
-        #[arg(long)]
-        input: PathBuf,
+        #[command(flatten)]
+        analyze: AnalyzeArgs,
 
-        /// Output HTML file. Defaults to stdout.
-        #[arg(long, short, default_value = "-")]
-        output: String,
+        /// Artifacts to emit. Repeat or comma-separate: json,html.
+        #[arg(long = "format", value_enum, num_args = 1.., value_delimiter = ',',
+              default_values_t = [Format::Json, Format::Html])]
+        formats: Vec<Format>,
+
+        /// Baseline snapshot — turns the HTML into a before/after diff in one run.
+        #[arg(long)]
+        before: Option<PathBuf>,
+
+        /// Output directory for artifacts.
+        #[arg(long = "report-path", default_value = ".code-split")]
+        report_path: PathBuf,
+
+        /// Snapshot filename template. Placeholders: {project-dir}, {ts}.
+        #[arg(long = "json-name", default_value = "{project-dir}-{ts}.json")]
+        json_name: String,
+
+        /// HTML filename template (data embedded inline). With --before, `-diff` is
+        /// inserted before `.html`. Placeholders: {project-dir}, {ts}.
+        #[arg(long = "html-name", default_value = "{project-dir}-{ts}.html")]
+        html_name: String,
     },
 
-    /// Generate an HTML diff report between two snapshots.
+    /// Compare two existing snapshots and write a diff report.
     Diff {
         /// Snapshot taken before the change.
         #[arg(long)]
@@ -99,28 +143,22 @@ enum Command {
         #[arg(long)]
         after: PathBuf,
 
-        /// Output HTML file. Defaults to stdout.
-        #[arg(long, short, default_value = "-")]
-        output: String,
-    },
+        /// Artifacts to emit. Repeat or comma-separate: html,json.
+        #[arg(long = "format", value_enum, num_args = 1.., value_delimiter = ',',
+              default_values_t = [Format::Html])]
+        formats: Vec<Format>,
 
-    /// Compare two snapshots and output a diff summary as JSON.
-    Compare {
-        /// Snapshot taken before the change.
-        #[arg(long)]
-        before: PathBuf,
+        /// Output directory for artifacts.
+        #[arg(long = "report-path", default_value = ".code-split")]
+        report_path: PathBuf,
 
-        /// Snapshot taken after the change.
-        #[arg(long)]
-        after: PathBuf,
+        /// HTML diff filename.
+        #[arg(long = "html-name", default_value = "index.html")]
+        html_name: String,
 
-        /// Output file. Use '-' for stdout.
-        #[arg(long, short, default_value = "-")]
-        output: String,
-
-        /// Generate a self-contained interactive HTML report instead of JSON.
-        #[arg(long)]
-        html: bool,
+        /// JSON diff filename.
+        #[arg(long = "json-name", default_value = "diff.json")]
+        json_name: String,
     },
 }
 
@@ -131,43 +169,51 @@ fn main() -> Result<()> {
         std::env::args().skip(1).collect::<Vec<_>>().join(" ")
     ));
     let res = match cli.command {
-        Command::Analyze {
-            workspace,
-            plugin,
-            output,
-            local_only,
-            graphs,
-            config,
-            ignore_paths,
+        Command::Check {
+            analyze,
             cycle_rules,
             thresholds,
+            output_format,
+            top,
             exit_zero,
-            extra,
-        } => run_analyze(
-            &workspace,
-            plugin.as_deref(),
-            output.as_deref(),
-            local_only,
-            &graphs,
-            config.as_deref(),
-            &ignore_paths,
+        } => run_check(
+            &analyze,
             &cycle_rules,
             &thresholds,
+            output_format,
+            top,
             exit_zero,
-            &extra,
         ),
-        Command::Report { input, output } => run_report(&input, &output),
+        Command::Report {
+            analyze,
+            formats,
+            before,
+            report_path,
+            json_name,
+            html_name,
+        } => run_report(
+            &analyze,
+            &formats,
+            before.as_deref(),
+            &report_path,
+            &json_name,
+            &html_name,
+        ),
         Command::Diff {
             before,
             after,
-            output,
-        } => run_diff(&before, &after, &output),
-        Command::Compare {
-            before,
-            after,
-            output,
-            html,
-        } => run_compare(&before, &after, &output, html),
+            formats,
+            report_path,
+            html_name,
+            json_name,
+        } => run_diff(
+            &before,
+            &after,
+            &formats,
+            &report_path,
+            &html_name,
+            &json_name,
+        ),
     };
     match &res {
         Ok(_) => {
@@ -178,67 +224,83 @@ fn main() -> Result<()> {
     res
 }
 
-#[allow(clippy::too_many_arguments)]
-fn run_analyze(
-    target_arg: &Path,
-    plugin_arg: Option<&str>,
-    output: Option<&Path>,
+/// Result of the shared analysis core, consumed by `check` and `report`.
+struct Analyzed {
+    target: PathBuf,
+    cwd: String,
+    plugin_name: String,
+    plugin_graphs: code_split_core::PluginGraphs,
+    timings: Vec<code_split_core::StageTime>,
+    command: String,
+    source_file: Option<String>,
     local_only: bool,
-    requested: &[GraphKind],
-    config_path: Option<&Path>,
-    ignore_paths: &[String],
+    versions: HashMap<String, String>,
+    roots: HashMap<String, String>,
+    git: Option<code_split_core::GitInfo>,
+    violations: Vec<config::Violation>,
+}
+
+/// Load config, run the plugin, annotate the graphs, and collect violations.
+/// Writes nothing — `check` and `report` decide what to do with the result.
+fn analyze_workspace(
+    args: &AnalyzeArgs,
     cycle_rules: &[String],
     thresholds: &[String],
-    exit_zero: bool,
-    extra: &[String],
-) -> Result<()> {
-    let target = target_arg
+) -> Result<Analyzed> {
+    let target = args
+        .workspace
         .canonicalize()
-        .with_context(|| format!("workspace not found: {}", target_arg.display()))?;
+        .with_context(|| format!("workspace not found: {}", args.workspace.display()))?;
     let cwd = std::env::current_dir()?;
 
-    // Load config early so we can resolve the plugin name from it.
-    let loaded = config::load(&target, config_path, ignore_paths, cycle_rules, thresholds)
-        .unwrap_or_else(|e| {
-            logger::info(&format!("config warning: {e}"));
-            config::LoadedConfig {
-                config: Default::default(),
-                source_file: None,
-            }
-        });
+    let loaded = config::load(
+        &target,
+        &args.config,
+        &args.ignore_paths,
+        cycle_rules,
+        thresholds,
+    )
+    .unwrap_or_else(|e| {
+        logger::info(&format!("config warning: {e}"));
+        config::LoadedConfig {
+            config: Default::default(),
+            source_file: None,
+        }
+    });
     let cfg = loaded.config;
     if let Some(f) = &loaded.source_file {
         logger::info(&format!("config: {f}"));
     }
 
-    // Priority: --plugin CLI > config.plugin > auto-detect by project markers.
-    let plugin_owned = resolve_plugin(plugin_arg, cfg.plugin.as_deref(), &target)?;
-    let plugin_name: &str = &plugin_owned;
+    let plugin_name = resolve_plugin(args.plugin.as_deref(), cfg.plugin.as_deref(), &target)?;
 
-    let want_modules = requested.contains(&GraphKind::Modules);
-    let want_files = requested.contains(&GraphKind::Files);
-    let want_functions = requested.contains(&GraphKind::Functions);
+    let want_modules = args.graphs.contains(&GraphKind::Modules);
+    let want_files = args.graphs.contains(&GraphKind::Files);
+    let want_functions = args.graphs.contains(&GraphKind::Functions);
 
     logger::info(&format!("target:    {}", target.display()));
     logger::info(&format!("workspace: {}", cwd.display()));
     logger::info(&format!(
         "plugin: {plugin_name}{}",
-        if local_only { " (local-only)" } else { "" }
+        if args.local_only { " (local-only)" } else { "" }
     ));
     logger::info(&format!(
         "graphs: {}",
-        requested
+        args.graphs
             .iter()
             .map(|g| format!("{g:?}").to_lowercase())
             .collect::<Vec<_>>()
             .join(", ")
     ));
 
-    let command = build_command_string(plugin_name, &target, local_only, requested, extra);
+    let command = format!(
+        "code-split {}",
+        std::env::args().skip(1).collect::<Vec<_>>().join(" ")
+    );
 
-    let (mut plugin_graphs, mut timings) =
-        plugin::run(plugin_name, &target, local_only, want_functions)
-            .with_context(|| format!("plugin '{}' failed", plugin_name))?;
+    let (mut plugin_graphs, timings) =
+        plugin::run(&plugin_name, &target, args.local_only, want_functions)
+            .with_context(|| format!("plugin '{plugin_name}' failed"))?;
 
     if !want_modules {
         plugin_graphs.modules = Default::default();
@@ -268,12 +330,6 @@ fn run_analyze(
     code_split_core::annotate_stats(&mut plugin_graphs.functions);
 
     let violations = config::check_violations(&plugin_graphs, &cfg.rules);
-    for v in &violations {
-        logger::info(&format!("violation [{}]: {}", v.graph, v.message));
-    }
-    if !violations.is_empty() && !exit_zero {
-        anyhow::bail!("{} violation(s) found — see above", violations.len());
-    }
 
     let git = git::collect(&target);
     if let Some(g) = &git {
@@ -298,46 +354,182 @@ fn run_analyze(
         }
     }
 
-    let out_path = match output {
-        Some(p) => p.to_owned(),
-        None => default_snapshot_path(&target)?,
-    };
-
-    let t_write = logger::Timer::start("writing snapshot");
-    let json = serde_json::to_string_pretty(&Snapshot::new(
+    Ok(Analyzed {
+        target,
+        cwd: cwd.display().to_string(),
+        plugin_name,
+        plugin_graphs,
+        timings,
         command,
-        cwd.display().to_string(),
-        target.display().to_string(),
-        plugin_name.to_string(),
-        loaded.source_file,
-        local_only,
+        source_file: loaded.source_file,
+        local_only: args.local_only,
         versions,
         roots,
         git,
-        timings.clone(),
-        plugin_graphs,
-    ))?;
+        violations,
+    })
+}
 
-    if out_path == Path::new("-") {
-        io::stdout().lock().write_all(json.as_bytes())?;
-        writeln!(io::stdout().lock())?;
-        t_write.finish();
-    } else {
-        if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent)
-                .with_context(|| format!("creating directory {}", parent.display()))?;
+/// `check` — the linter. Analyze, report violations, exit non-zero on any.
+fn run_check(
+    args: &AnalyzeArgs,
+    cycle_rules: &[String],
+    thresholds: &[String],
+    output_format: OutputFormat,
+    top: Option<usize>,
+    exit_zero: bool,
+) -> Result<()> {
+    let mut a = analyze_workspace(args, cycle_rules, thresholds)?;
+    let total = a.violations.len();
+
+    // Rank worst-first by breach magnitude; `--top` limits only what is
+    // reported, never the exit code.
+    a.violations.sort_by(|x, y| y.weight.total_cmp(&x.weight));
+    let shown = match top {
+        Some(n) => &a.violations[..n.min(a.violations.len())],
+        None => &a.violations[..],
+    };
+
+    emit_diagnostics(shown, output_format);
+
+    if total > 0 && !exit_zero {
+        anyhow::bail!("{total} violation(s) found");
+    }
+    Ok(())
+}
+
+/// Render check diagnostics to stdout in the requested format.
+fn emit_diagnostics(violations: &[config::Violation], format: OutputFormat) {
+    match format {
+        OutputFormat::Human => {
+            for v in violations {
+                println!("{}: {}", v.graph, v.message);
+            }
         }
-        std::fs::write(&out_path, &json)
-            .with_context(|| format!("writing snapshot to {}", out_path.display()))?;
-        let ms = t_write.finish_with(&format!("{}", out_path.display()));
-        timings.push(code_split_core::StageTime {
-            stage: "write".into(),
-            ms,
-            detail: out_path.display().to_string(),
-        });
+        OutputFormat::Json => {
+            let json = serde_json::to_string_pretty(violations).unwrap_or_else(|_| "[]".into());
+            println!("{json}");
+        }
+        OutputFormat::Github => {
+            for v in violations {
+                // GitHub Actions workflow-command annotation.
+                println!("::error title=code-split ({})::{}", v.graph, v.message);
+            }
+        }
+        OutputFormat::Sarif => println!("{}", sarif_document(violations)),
+    }
+}
+
+/// Minimal SARIF 2.1.0 document for the violations.
+fn sarif_document(violations: &[config::Violation]) -> String {
+    let results: Vec<serde_json::Value> = violations
+        .iter()
+        .map(|v| {
+            serde_json::json!({
+                "ruleId": v.rule,
+                "level": "error",
+                "message": { "text": v.message },
+                "properties": { "graph": v.graph, "weight": v.weight },
+            })
+        })
+        .collect();
+    let doc = serde_json::json!({
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": { "driver": {
+                "name": "code-split",
+                "informationUri": "https://github.com/ffedoroff/code-split",
+                "version": env!("CARGO_PKG_VERSION"),
+            }},
+            "results": results,
+        }],
+    });
+    serde_json::to_string_pretty(&doc).unwrap_or_else(|_| "{}".into())
+}
+
+/// `report` — analyze and write artifacts (JSON snapshot and/or HTML viewer).
+fn run_report(
+    args: &AnalyzeArgs,
+    formats: &[Format],
+    before: Option<&Path>,
+    report_path: &Path,
+    json_name: &str,
+    html_name: &str,
+) -> Result<()> {
+    let a = analyze_workspace(args, &[], &[])?;
+    let target = a.target.clone();
+
+    let snap = Snapshot::new(
+        a.command,
+        a.cwd,
+        a.target.display().to_string(),
+        a.plugin_name,
+        a.source_file,
+        a.local_only,
+        a.versions,
+        a.roots,
+        a.git,
+        a.timings,
+        a.plugin_graphs,
+    );
+
+    std::fs::create_dir_all(report_path)
+        .with_context(|| format!("creating directory {}", report_path.display()))?;
+
+    if formats.contains(&Format::Json) {
+        let path = report_path.join(render_name(json_name, &target));
+        let mut json = serde_json::to_string_pretty(&snap)?;
+        json.push('\n');
+        std::fs::write(&path, json)
+            .with_context(|| format!("writing snapshot to {}", path.display()))?;
+        logger::info(&format!("wrote {}", path.display()));
+    }
+
+    if formats.contains(&Format::Html) {
+        // `<project>-<ts>.html` for a single-snapshot review; `<project>-<ts>-diff.html`
+        // when comparing against a baseline. Data is embedded inline (self-contained).
+        let mut name = render_name(html_name, &target);
+        if before.is_some() {
+            let stem = name
+                .strip_suffix(".html")
+                .unwrap_or(name.as_str())
+                .to_owned();
+            name = format!("{stem}-diff.html");
+        }
+        let path = report_path.join(name);
+        let html = match before {
+            Some(p) => render_html_viewer(Some(&load_snapshot_any(p)?), Some(&snap)),
+            None => render_html_viewer(Some(&snap), None),
+        };
+        std::fs::write(&path, html)
+            .with_context(|| format!("writing report to {}", path.display()))?;
+        logger::info(&format!("wrote {}", path.display()));
     }
 
     Ok(())
+}
+
+/// Expand `{project-dir}` and `{ts}` placeholders in a filename template.
+fn render_name(template: &str, target: &Path) -> String {
+    let project = target
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("snapshot");
+    let slug: String = project
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    template
+        .replace("{project-dir}", &slug)
+        .replace("{ts}", &ts)
 }
 
 /// Resolve the plugin name: explicit `--plugin` > config `plugin` > auto-detect.
@@ -425,389 +617,81 @@ fn detect_roots() -> HashMap<String, String> {
     roots
 }
 
-fn default_snapshot_path(workspace: &Path) -> Result<PathBuf> {
-    let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-    let slug = workspace
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("snapshot");
-    let dir = std::env::current_dir()?.join(".code-split");
-    Ok(dir.join(format!("{slug}-{ts}.json")))
+/// `diff` — compare two existing snapshots and write a diff report.
+fn run_diff(
+    before: &Path,
+    after: &Path,
+    formats: &[Format],
+    report_path: &Path,
+    html_name: &str,
+    json_name: &str,
+) -> Result<()> {
+    // Either side may be a `.json` snapshot or a `.html` report (data extracted).
+    let snap_before = load_snapshot_any(before)?;
+    let snap_after = load_snapshot_any(after)?;
+
+    std::fs::create_dir_all(report_path)
+        .with_context(|| format!("creating directory {}", report_path.display()))?;
+
+    if formats.contains(&Format::Html) {
+        let path = report_path.join(html_name);
+        std::fs::write(
+            &path,
+            render_html_viewer(Some(&snap_before), Some(&snap_after)),
+        )
+        .with_context(|| format!("writing diff to {}", path.display()))?;
+        logger::info(&format!("wrote {}", path.display()));
+    }
+
+    if formats.contains(&Format::Json) {
+        let path = report_path.join(json_name);
+        let summary = code_split_core::compare_snapshots(&snap_before, &snap_after);
+        let mut json = serde_json::to_string_pretty(&summary)?;
+        json.push('\n');
+        std::fs::write(&path, json)
+            .with_context(|| format!("writing diff to {}", path.display()))?;
+        logger::info(&format!("wrote {}", path.display()));
+    }
+
+    Ok(())
 }
 
-fn build_command_string(
-    plugin: &str,
-    workspace: &Path,
-    local_only: bool,
-    graphs: &[GraphKind],
-    extra: &[String],
-) -> String {
-    let mut parts = vec![
-        "code-split".to_string(),
-        "analyze".to_string(),
-        workspace.display().to_string(),
-        "--plugin".to_string(),
-        plugin.to_string(),
-    ];
-    if local_only {
-        parts.push("--local-only".to_string());
+/// Load a snapshot from a `.json` file, or extract the one embedded in a `.html` report.
+/// For an HTML report the `cs-after` snapshot is preferred (the state it represents),
+/// falling back to `cs-before` (single-snapshot review reports).
+fn load_snapshot_any(path: &Path) -> Result<Snapshot> {
+    let is_html = path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("html") || e.eq_ignore_ascii_case("htm"));
+    if !is_html {
+        return load_snapshot(path);
     }
-    let all = [GraphKind::Modules, GraphKind::Files, GraphKind::Functions];
-    if graphs != all {
-        let kinds = graphs
-            .iter()
-            .map(|g| format!("{g:?}").to_lowercase())
-            .collect::<Vec<_>>()
-            .join(",");
-        parts.push(format!("--graph {kinds}"));
-    }
-    if !extra.is_empty() {
-        parts.push("--".to_string());
-        parts.extend_from_slice(extra);
-    }
-    parts.join(" ")
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    extract_embedded_snapshot(&text, "cs-after")
+        .or_else(|| extract_embedded_snapshot(&text, "cs-before"))
+        .with_context(|| format!("no embedded snapshot found in {}", path.display()))?
 }
 
-fn run_report(input: &Path, output: &str) -> Result<()> {
-    let bytes =
-        std::fs::read(input).with_context(|| format!("reading snapshot {}", input.display()))?;
-    let snapshot: Snapshot = serde_json::from_slice(&bytes)
-        .with_context(|| format!("parsing snapshot {}", input.display()))?;
-
-    let html = render_html_report(&snapshot);
-    write_output(output, html.as_bytes())
-}
-
-fn run_diff(before: &Path, after: &Path, output: &str) -> Result<()> {
-    let snap_before = load_snapshot(before)?;
-    let snap_after = load_snapshot(after)?;
-
-    let html = render_html_diff(&snap_before, &snap_after);
-    write_output(output, html.as_bytes())
+/// Pull the JSON out of `<script type="application/json" id="{id}">…</script>` and parse
+/// it into a `Snapshot`. Returns `None` if the tag is absent or holds `null`.
+fn extract_embedded_snapshot(html: &str, id: &str) -> Option<Result<Snapshot>> {
+    let needle = format!("id=\"{id}\">");
+    let start = html.find(&needle)? + needle.len();
+    let end = start + html[start..].find("</script>")?;
+    let body = html[start..end].trim();
+    if body.is_empty() || body == "null" {
+        return None;
+    }
+    // Undo the `</` → `<\/` escaping applied when embedding.
+    let json = body.replace("<\\/", "</");
+    Some(serde_json::from_str(&json).with_context(|| format!("parsing embedded snapshot `{id}`")))
 }
 
 fn load_snapshot(path: &Path) -> Result<Snapshot> {
     let bytes =
         std::fs::read(path).with_context(|| format!("reading snapshot {}", path.display()))?;
     serde_json::from_slice(&bytes).with_context(|| format!("parsing snapshot {}", path.display()))
-}
-
-fn write_output(output: &str, data: &[u8]) -> Result<()> {
-    if output == "-" {
-        io::stdout().lock().write_all(data)?;
-    } else {
-        let mut f = BufWriter::new(
-            std::fs::File::create(output)
-                .with_context(|| format!("creating output file {output}"))?,
-        );
-        f.write_all(data)?;
-    }
-    Ok(())
-}
-
-// ---------------------------------------------------------------------------
-// Minimal built-in HTML renderers (P1: functional, not polished)
-// ---------------------------------------------------------------------------
-
-fn render_html_report(snap: &Snapshot) -> String {
-    let mod_nodes = snap.graphs.modules.nodes.len();
-    let file_nodes = snap.graphs.files.nodes.len();
-    let fn_nodes = snap.graphs.functions.nodes.len();
-    let mod_edges = snap.graphs.modules.edges.len();
-    let file_edges = snap.graphs.files.edges.len();
-    let fn_edges = snap.graphs.functions.edges.len();
-
-    let git_html = match &snap.git {
-        Some(g) => format!(
-            "<p>Git: <code>{}</code> @ <code>{}</code> ({} dirty file(s))</p>",
-            escape_html(&g.branch),
-            escape_html(&g.commit),
-            g.dirty_files,
-        ),
-        None => String::new(),
-    };
-
-    let versions_html: String = snap
-        .versions
-        .iter()
-        .map(|(k, v)| {
-            format!(
-                "<li><code>{}</code>: {}</li>",
-                escape_html(k),
-                escape_html(v)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let fn_rows: String = snap
-        .graphs
-        .functions
-        .nodes
-        .iter()
-        .filter(|n| {
-            matches!(
-                n.kind,
-                code_split_core::NodeKind::Fn | code_split_core::NodeKind::Method
-            )
-        })
-        .map(|n| {
-            let callers = snap
-                .graphs
-                .functions
-                .edges
-                .iter()
-                .filter(|e| e.to == n.id && e.kind == code_split_core::EdgeKind::Calls)
-                .count();
-            let callees = snap
-                .graphs
-                .functions
-                .edges
-                .iter()
-                .filter(|e| e.from == n.id && e.kind == code_split_core::EdgeKind::Calls)
-                .count();
-            format!(
-                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
-                escape_html(&n.path),
-                escape_html(&n.name),
-                callers,
-                callees,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>code-split report — {workspace}</title>
-<style>
-body {{ font-family: system-ui, sans-serif; margin: 2rem; }}
-table {{ border-collapse: collapse; width: 100%; }}
-th, td {{ border: 1px solid #ccc; padding: 0.4rem 0.8rem; text-align: left; }}
-th {{ background: #f0f0f0; cursor: pointer; }}
-tr:hover {{ background: #fafafa; }}
-.summary {{ display: flex; gap: 2rem; margin-bottom: 1rem; }}
-.stat {{ background: #f5f5f5; padding: 0.8rem 1.2rem; border-radius: 6px; }}
-.stat .num {{ font-size: 2rem; font-weight: bold; }}
-</style>
-</head>
-<body>
-<h1>code-split report</h1>
-<p><strong>Workspace:</strong> {workspace}</p>
-<p><strong>Plugin:</strong> {plugin}{local_only}</p>
-<p><strong>Generated:</strong> {generated_at}</p>
-{git_html}
-<h2>Versions</h2>
-<ul>{versions_html}</ul>
-<h2>Summary</h2>
-<div class="summary">
-  <div class="stat"><div class="num">{mod_nodes}</div>modules nodes</div>
-  <div class="stat"><div class="num">{mod_edges}</div>modules edges</div>
-  <div class="stat"><div class="num">{file_nodes}</div>file nodes</div>
-  <div class="stat"><div class="num">{file_edges}</div>file edges</div>
-  <div class="stat"><div class="num">{fn_nodes}</div>function nodes</div>
-  <div class="stat"><div class="num">{fn_edges}</div>function edges</div>
-</div>
-<h2>Functions / Methods</h2>
-<table id="fn-table">
-<thead><tr><th onclick="sort(0)">Path</th><th onclick="sort(1)">Name</th><th onclick="sort(2)">Callers ▼</th><th onclick="sort(3)">Callees</th></tr></thead>
-<tbody>
-{fn_rows}
-</tbody>
-</table>
-<script>
-function sort(col) {{
-  const tb = document.querySelector('#fn-table tbody');
-  const rows = Array.from(tb.rows);
-  const asc = tb.dataset.sortCol == col && tb.dataset.sortDir === 'asc';
-  rows.sort((a, b) => {{
-    const av = a.cells[col].textContent.trim();
-    const bv = b.cells[col].textContent.trim();
-    const an = parseFloat(av), bn = parseFloat(bv);
-    const cmp = isNaN(an) ? av.localeCompare(bv) : an - bn;
-    return asc ? -cmp : cmp;
-  }});
-  rows.forEach(r => tb.appendChild(r));
-  tb.dataset.sortCol = col;
-  tb.dataset.sortDir = asc ? 'desc' : 'asc';
-}}
-</script>
-</body>
-</html>"#,
-        workspace = escape_html(&snap.workspace),
-        plugin = escape_html(&snap.plugin),
-        local_only = if snap.local_only { " (local-only)" } else { "" },
-        generated_at = snap.generated_at,
-        git_html = git_html,
-        versions_html = versions_html,
-        mod_nodes = mod_nodes,
-        mod_edges = mod_edges,
-        file_nodes = file_nodes,
-        file_edges = file_edges,
-        fn_nodes = fn_nodes,
-        fn_edges = fn_edges,
-        fn_rows = fn_rows,
-    )
-}
-
-fn render_html_diff(before: &Snapshot, after: &Snapshot) -> String {
-    let added_mods = count_new_nodes(&before.graphs.modules, &after.graphs.modules);
-    let removed_mods = count_new_nodes(&after.graphs.modules, &before.graphs.modules);
-    let added_fns = count_new_nodes(&before.graphs.functions, &after.graphs.functions);
-    let removed_fns = count_new_nodes(&after.graphs.functions, &before.graphs.functions);
-    let added_calls = count_new_edges(
-        &before.graphs.functions,
-        &after.graphs.functions,
-        code_split_core::EdgeKind::Calls,
-    );
-    let removed_calls = count_new_edges(
-        &after.graphs.functions,
-        &before.graphs.functions,
-        code_split_core::EdgeKind::Calls,
-    );
-
-    let new_fn_rows: String = after
-        .graphs
-        .functions
-        .nodes
-        .iter()
-        .filter(|n| {
-            matches!(
-                n.kind,
-                code_split_core::NodeKind::Fn | code_split_core::NodeKind::Method
-            )
-        })
-        .filter(|n| !before.graphs.functions.nodes.iter().any(|b| b.id == n.id))
-        .map(|n| {
-            format!(
-                "<tr class='added'><td>+</td><td>{}</td><td>{}</td></tr>",
-                escape_html(&n.path),
-                escape_html(&n.name)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    let removed_fn_rows: String = before
-        .graphs
-        .functions
-        .nodes
-        .iter()
-        .filter(|n| {
-            matches!(
-                n.kind,
-                code_split_core::NodeKind::Fn | code_split_core::NodeKind::Method
-            )
-        })
-        .filter(|n| !after.graphs.functions.nodes.iter().any(|a| a.id == n.id))
-        .map(|n| {
-            format!(
-                "<tr class='removed'><td>−</td><td>{}</td><td>{}</td></tr>",
-                escape_html(&n.path),
-                escape_html(&n.name)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>code-split diff</title>
-<style>
-body {{ font-family: system-ui, sans-serif; margin: 2rem; }}
-table {{ border-collapse: collapse; width: 100%; }}
-th, td {{ border: 1px solid #ccc; padding: 0.4rem 0.8rem; }}
-.added {{ background: #e6ffed; }}
-.removed {{ background: #ffeef0; }}
-.summary {{ display: flex; gap: 2rem; margin-bottom: 1rem; flex-wrap: wrap; }}
-.stat {{ padding: 0.8rem 1.2rem; border-radius: 6px; }}
-.stat.pos {{ background: #e6ffed; }}
-.stat.neg {{ background: #ffeef0; }}
-.stat .num {{ font-size: 2rem; font-weight: bold; }}
-</style>
-</head>
-<body>
-<h1>code-split diff</h1>
-<table>
-<tr><th></th><th>Before</th><th>After</th></tr>
-<tr><td>Workspace</td><td>{ws_b}</td><td>{ws_a}</td></tr>
-<tr><td>Commit</td><td>{commit_b}</td><td>{commit_a}</td></tr>
-<tr><td>Branch</td><td>{branch_b}</td><td>{branch_a}</td></tr>
-</table>
-<h2>Summary</h2>
-<div class="summary">
-  <div class="stat pos"><div class="num">+{added_mods}</div>modules added</div>
-  <div class="stat neg"><div class="num">−{removed_mods}</div>modules removed</div>
-  <div class="stat pos"><div class="num">+{added_fns}</div>functions added</div>
-  <div class="stat neg"><div class="num">−{removed_fns}</div>functions removed</div>
-  <div class="stat pos"><div class="num">+{added_calls}</div>calls added</div>
-  <div class="stat neg"><div class="num">−{removed_calls}</div>calls removed</div>
-</div>
-<h2>Function changes</h2>
-<table>
-<thead><tr><th></th><th>Path</th><th>Name</th></tr></thead>
-<tbody>
-{new_fn_rows}
-{removed_fn_rows}
-</tbody>
-</table>
-</body>
-</html>"#,
-        ws_b = escape_html(&before.workspace),
-        ws_a = escape_html(&after.workspace),
-        commit_b = before
-            .git
-            .as_ref()
-            .map(|g| g.commit.as_str())
-            .unwrap_or("—"),
-        commit_a = after.git.as_ref().map(|g| g.commit.as_str()).unwrap_or("—"),
-        branch_b = before
-            .git
-            .as_ref()
-            .map(|g| g.branch.as_str())
-            .unwrap_or("—"),
-        branch_a = after.git.as_ref().map(|g| g.branch.as_str()).unwrap_or("—"),
-        added_mods = added_mods,
-        removed_mods = removed_mods,
-        added_fns = added_fns,
-        removed_fns = removed_fns,
-        added_calls = added_calls,
-        removed_calls = removed_calls,
-        new_fn_rows = new_fn_rows,
-        removed_fn_rows = removed_fn_rows,
-    )
-}
-
-fn count_new_nodes(base: &code_split_core::Graph, other: &code_split_core::Graph) -> usize {
-    other
-        .nodes
-        .iter()
-        .filter(|n| !base.nodes.iter().any(|b| b.id == n.id))
-        .count()
-}
-
-fn count_new_edges(
-    base: &code_split_core::Graph,
-    other: &code_split_core::Graph,
-    kind: code_split_core::EdgeKind,
-) -> usize {
-    other
-        .edges
-        .iter()
-        .filter(|e| {
-            e.kind == kind
-                && !base
-                    .edges
-                    .iter()
-                    .any(|b| b.from == e.from && b.to == e.to && b.kind == e.kind)
-        })
-        .count()
 }
 
 // ── Assets embedded at compile time ──────────────────────────────────────────
@@ -827,29 +711,27 @@ const ASSET_NAV: &str = include_str!("assets/nav.js");
 const ASSET_APP: &str = include_str!("assets/app.js");
 const ASSET_HTML: &str = include_str!("assets/index.html");
 
-fn run_compare(before: &Path, after: &Path, output: &str, html: bool) -> Result<()> {
-    let snap_before = load_snapshot(before)?;
-    let snap_after = load_snapshot(after)?;
-
-    let data = if html {
-        render_compare_html(&snap_before, &snap_after).into_bytes()
-    } else {
-        let summary = code_split_core::compare_snapshots(&snap_before, &snap_after);
-        let mut json = serde_json::to_string_pretty(&summary)?;
-        json.push('\n');
-        json.into_bytes()
+/// Render a self-contained viewer with the snapshot data embedded inline. The snapshots
+/// are stored in `<script type="application/json">` tags (`cs-before` / `cs-after`) so
+/// they can be both read by the viewer and extracted from the HTML later (see
+/// [`load_snapshot_any`]). `before` only → review; both → diff.
+fn render_html_viewer(before: Option<&Snapshot>, after: Option<&Snapshot>) -> String {
+    // Embed as JSON in a typed script tag. Escape `</` so an embedded string can never
+    // close the tag early; `JSON.parse` and serde both read `<\/` back as `</`.
+    let embed = |id: &str, snap: Option<&Snapshot>| {
+        let json = match snap {
+            Some(s) => serde_json::to_string(s).expect("serialize snapshot"),
+            None => "null".to_string(),
+        };
+        format!(
+            "<script type=\"application/json\" id=\"{id}\">{}</script>",
+            json.replace("</", "<\\/")
+        )
     };
-
-    write_output(output, &data)
-}
-
-fn render_compare_html(before: &Snapshot, after: &Snapshot) -> String {
-    let before_json = serde_json::to_string(before).expect("serialize before");
-    let after_json = serde_json::to_string(after).expect("serialize after");
-
     let data_script = format!(
-        "<script>const BEFORE = {};\nconst AFTER = {};\n</script>",
-        before_json, after_json
+        "{}\n{}",
+        embed("cs-before", before),
+        embed("cs-after", after),
     );
 
     ASSET_HTML
@@ -912,9 +794,145 @@ fn render_compare_html(before: &Snapshot, after: &Snapshot) -> String {
         )
 }
 
-fn escape_html(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+// ── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn render_name_expands_placeholders_and_slugifies() {
+        let out = render_name("{project-dir}-{ts}.json", Path::new("/x/My_Project"));
+        assert!(out.starts_with("my-project-"), "slugified prefix: {out}");
+        assert!(out.ends_with(".json"), "extension preserved: {out}");
+        assert!(
+            !out.contains('{') && !out.contains('}'),
+            "no unexpanded placeholders: {out}"
+        );
+        let stamp = out
+            .trim_start_matches("my-project-")
+            .trim_end_matches(".json");
+        assert_eq!(stamp.len(), 15, "ts is YYYYMMDD-HHMMSS: {stamp:?}");
+        assert!(
+            stamp.chars().all(|c| c.is_ascii_digit() || c == '-'),
+            "ts is digits and a dash: {stamp:?}"
+        );
+    }
+
+    #[test]
+    fn detect_plugin_by_single_marker() {
+        let cases = vec![
+            ("Cargo.toml", "rust"),
+            ("pyproject.toml", "python"),
+            ("setup.py", "python"),
+            ("package.json", "javascript"),
+            ("tsconfig.json", "javascript"),
+        ];
+        for (marker, expected) in cases {
+            let d = tempfile::tempdir().unwrap();
+            fs::write(d.path().join(marker), "").unwrap();
+            assert_eq!(
+                detect_plugin(d.path()).unwrap(),
+                expected,
+                "marker {marker}"
+            );
+        }
+    }
+
+    #[test]
+    fn detect_plugin_errors_on_ambiguous_or_empty() {
+        let amb = tempfile::tempdir().unwrap();
+        fs::write(amb.path().join("Cargo.toml"), "").unwrap();
+        fs::write(amb.path().join("package.json"), "").unwrap();
+        let err = format!("{:#}", detect_plugin(amb.path()).unwrap_err());
+        assert!(err.contains("multiple"), "ambiguous error: {err}");
+
+        let empty = tempfile::tempdir().unwrap();
+        let err = format!("{:#}", detect_plugin(empty.path()).unwrap_err());
+        assert!(err.contains("no project marker"), "empty error: {err}");
+    }
+
+    #[test]
+    fn resolve_plugin_precedence_explicit_then_config_then_auto() {
+        let d = tempfile::tempdir().unwrap();
+        fs::write(d.path().join("pyproject.toml"), "").unwrap();
+        assert_eq!(
+            resolve_plugin(Some("rust"), Some("javascript"), d.path()).unwrap(),
+            "rust",
+            "explicit --plugin wins"
+        );
+        assert_eq!(
+            resolve_plugin(None, Some("rust"), d.path()).unwrap(),
+            "rust",
+            "config wins over auto-detect"
+        );
+        assert_eq!(
+            resolve_plugin(Some("auto"), None, d.path()).unwrap(),
+            "python",
+            "explicit auto -> detect"
+        );
+        assert_eq!(
+            resolve_plugin(None, None, d.path()).unwrap(),
+            "python",
+            "no plugin -> detect"
+        );
+    }
+
+    fn mk_snap() -> Snapshot {
+        Snapshot::new(
+            "cmd".into(),
+            "ws".into(),
+            "tgt".into(),
+            "rust".into(),
+            None,
+            false,
+            std::collections::HashMap::new(),
+            std::collections::HashMap::new(),
+            None,
+            Vec::new(),
+            code_split_core::PluginGraphs::default(),
+        )
+    }
+
+    #[test]
+    fn viewer_embeds_snapshot_inline_and_round_trips() {
+        let snap = mk_snap();
+        // review: before = snapshot, after = null
+        let html = render_html_viewer(Some(&snap), None);
+        assert!(
+            html.contains(r#"<script type="application/json" id="cs-before">"#),
+            "embeds before snapshot inline"
+        );
+        assert!(
+            html.contains(r#"id="cs-after">null</script>"#),
+            "after is null in review mode"
+        );
+        let back = extract_embedded_snapshot(&html, "cs-before")
+            .expect("cs-before present")
+            .unwrap();
+        assert_eq!(back.plugin, "rust", "round-trips through embed/extract");
+        assert!(
+            extract_embedded_snapshot(&html, "cs-after").is_none(),
+            "null after extracts to None"
+        );
+    }
+
+    #[test]
+    fn load_snapshot_any_reads_json_and_html() {
+        let snap = mk_snap();
+        let d = tempfile::tempdir().unwrap();
+
+        let jp = d.path().join("s.json");
+        fs::write(&jp, serde_json::to_string(&snap).unwrap()).unwrap();
+        assert_eq!(load_snapshot_any(&jp).unwrap().plugin, "rust", "from .json");
+
+        let hp = d.path().join("r.html");
+        fs::write(&hp, render_html_viewer(None, Some(&snap))).unwrap();
+        assert_eq!(
+            load_snapshot_any(&hp).unwrap().plugin,
+            "rust",
+            "from embedded .html"
+        );
+    }
 }
