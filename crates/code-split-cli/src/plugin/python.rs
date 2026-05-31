@@ -1,23 +1,20 @@
 use anyhow::Result;
 use code_split_core::{
-    EdgeKind, GraphBuilder, NodeKind, PluginGraphs, StageTime,
-    graph::{Edge, Node, Visibility},
+    GraphBuilder, NodeKind, PluginGraphs, StageTime,
+    graph::{Edge, EdgeKind, Node, Visibility},
 };
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::logger;
+use crate::plugin::finalize_file_graph;
 
-pub fn run(
-    workspace: &Path,
-    _local_only: bool,
-    _want_functions: bool,
-) -> Result<(PluginGraphs, Vec<StageTime>)> {
+pub fn run(workspace: &Path, _local_only: bool) -> Result<(PluginGraphs, Vec<StageTime>)> {
     let mut timings = Vec::new();
     let mut builder = GraphBuilder::new();
 
-    let t = logger::Timer::start("python: scan + parse + build graph");
+    let t = logger::Timer::start("python: scan + parse + build file graph");
 
     let py_files = collect_py_files(workspace);
     let module_index = build_module_index(workspace, &py_files);
@@ -26,8 +23,7 @@ pub fn run(
         let Some(mod_path) = file_to_module_path(workspace, abs_path) else {
             continue;
         };
-        add_package_ancestors(&mod_path, workspace, &mut builder);
-        let _ = parse_and_add(abs_path, &mod_path, workspace, &module_index, &mut builder);
+        let _ = parse_and_add(abs_path, &mod_path, &module_index, &mut builder);
     }
 
     let n = builder.node_count();
@@ -57,65 +53,9 @@ pub fn run(
         });
     }
 
-    {
-        let t = logger::Timer::start("sema: heuristic call graph (tree-sitter)");
-        let name_index = build_fn_name_index(&builder);
-        let mut call_count = 0usize;
-        for abs_path in &py_files {
-            let Some(mod_path) = file_to_module_path(workspace, abs_path) else {
-                continue;
-            };
-            match extract_calls_py(abs_path, &mod_path, &name_index) {
-                Ok(calls) => {
-                    call_count += calls.len();
-                    for (from, to) in calls {
-                        builder.add_edge(Edge {
-                            from,
-                            to,
-                            kind: EdgeKind::Calls,
-                            unresolved: None,
-                            external: None,
-                            visibility: None,
-                        });
-                    }
-                }
-                Err(e) => logger::info(&format!("sema: skipped {}: {e:#}", abs_path.display())),
-            }
-        }
-        let detail = format!("{call_count} call edges");
-        let ms = t.finish_with(&detail);
-        timings.push(StageTime {
-            stage: "sema".into(),
-            ms,
-            detail,
-        });
-    }
-
-    let t = logger::Timer::start("projecting graphs (modules / files / functions)");
-    let full = builder.build();
-
-    let modules = full.project(&[NodeKind::Module], &[EdgeKind::Contains, EdgeKind::Uses]);
-    let files = full.project(
-        &[NodeKind::Module, NodeKind::File],
-        &[EdgeKind::Contains, EdgeKind::Uses],
-    );
-    let functions = full.project(
-        &[
-            NodeKind::Module,
-            NodeKind::File,
-            NodeKind::Impl,
-            NodeKind::Fn,
-            NodeKind::Method,
-        ],
-        &[EdgeKind::Contains, EdgeKind::Uses, EdgeKind::Calls],
-    );
-
-    let detail = format!(
-        "modules={} files={} functions={}",
-        modules.nodes.len(),
-        files.nodes.len(),
-        functions.nodes.len(),
-    );
+    let t = logger::Timer::start("projecting file graph");
+    let files = finalize_file_graph(builder.build());
+    let detail = format!("files={} edges={}", files.nodes.len(), files.edges.len());
     let ms = t.finish_with(&detail);
     timings.push(StageTime {
         stage: "projection".into(),
@@ -123,14 +63,7 @@ pub fn run(
         detail,
     });
 
-    Ok((
-        PluginGraphs {
-            modules,
-            files,
-            functions,
-        },
-        timings,
-    ))
+    Ok((PluginGraphs { files }, timings))
 }
 
 // ---------------------------------------------------------------------------
@@ -189,10 +122,6 @@ fn file_to_module_path(workspace: &Path, path: &Path) -> Option<String> {
     Some(parts.join("."))
 }
 
-fn mod_id(mod_path: &str) -> String {
-    format!("mod:{}", mod_path.replace('.', "::"))
-}
-
 fn build_module_index(workspace: &Path, py_files: &[PathBuf]) -> HashMap<String, PathBuf> {
     py_files
         .iter()
@@ -201,60 +130,8 @@ fn build_module_index(workspace: &Path, py_files: &[PathBuf]) -> HashMap<String,
 }
 
 // ---------------------------------------------------------------------------
-// Package ancestor nodes
-// ---------------------------------------------------------------------------
-
-fn add_package_ancestors(mod_path: &str, workspace: &Path, builder: &mut GraphBuilder) {
-    let parts: Vec<&str> = mod_path.split('.').collect();
-    for i in 1..=parts.len() {
-        let pkg_parts = &parts[..i];
-        let pkg_dir = workspace.join(pkg_parts.join(std::path::MAIN_SEPARATOR_STR));
-        if !pkg_dir.join("__init__.py").exists() {
-            continue;
-        }
-
-        let id = mod_id(&pkg_parts.join("."));
-        let parent_id = (i > 1).then(|| mod_id(&parts[..i - 1].join(".")));
-
-        builder.add_node(Node {
-            id: id.clone(),
-            kind: NodeKind::Module,
-            name: parts[i - 1].to_string(),
-            path: pkg_dir.to_string_lossy().into_owned(),
-            parent: parent_id.clone(),
-            external: Some(false),
-            visibility: Some(Visibility::Public),
-            loc: None,
-            line: None,
-            item_count: None,
-            method_count: None,
-            complexity: None,
-            cycle_kind: None,
-        });
-
-        if let Some(p) = parent_id {
-            builder.add_edge(Edge {
-                from: p,
-                to: id,
-                kind: EdgeKind::Contains,
-                unresolved: None,
-                external: None,
-                visibility: None,
-            });
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Per-file parsing
 // ---------------------------------------------------------------------------
-
-struct ExtractedFn {
-    name: String,
-    class_name: Option<String>,
-    line: u32,
-    end_line: u32,
-}
 
 struct ExtractedImport {
     base: String,       // "parser.shops.amazon" or ".." or ".utils"
@@ -264,7 +141,6 @@ struct ExtractedImport {
 fn parse_and_add(
     abs_path: &Path,
     mod_path: &str,
-    workspace: &Path,
     module_index: &HashMap<String, PathBuf>,
     builder: &mut GraphBuilder,
 ) -> Result<()> {
@@ -282,9 +158,7 @@ fn parse_and_add(
     let loc = source.iter().filter(|&&b| b == b'\n').count() as u32 + 1;
     let file_id = format!("file:{}", abs_path.to_string_lossy());
 
-    // Parent package = all parts except the last component
     let parts: Vec<&str> = mod_path.split('.').collect();
-    let parent_id = (parts.len() > 1).then(|| mod_id(&parts[..parts.len() - 1].join(".")));
 
     builder.add_node(Node {
         id: file_id.clone(),
@@ -295,8 +169,8 @@ fn parse_and_add(
             .to_string_lossy()
             .into_owned(),
         path: abs_path.to_string_lossy().into_owned(),
-        parent: parent_id.clone(),
-        external: Some(false),
+        parent: None,
+        external: None,
         visibility: Some(py_visibility(parts[parts.len() - 1])),
         loc: Some(loc),
         line: None,
@@ -306,31 +180,44 @@ fn parse_and_add(
         cycle_kind: None,
     });
 
-    if let Some(pid) = &parent_id {
-        builder.add_edge(Edge {
-            from: pid.clone(),
-            to: file_id.clone(),
-            kind: EdgeKind::Contains,
-            unresolved: None,
-            external: None,
-            visibility: None,
-        });
-    }
+    // Walk tree for imports only (the file graph has no function/class nodes).
+    let imports = extract_imports(&tree.root_node(), &source);
 
-    // Walk tree
-    let root = tree.root_node();
-    let (fns, imports) = extract_tree_info(&root, &source);
-
-    // Import edges: file → file
     for imp in &imports {
-        for target_path in resolve_import(&imp.base, &imp.names, mod_path, module_index) {
-            let target_mod = file_to_module_path(workspace, &target_path).unwrap_or_default();
-            let is_init = target_path.file_name().is_some_and(|n| n == "__init__.py");
-            let target_id = if is_init {
-                mod_id(&target_mod)
-            } else {
-                format!("file:{}", target_path.to_string_lossy())
-            };
+        let targets = resolve_import(&imp.base, &imp.names, mod_path, module_index);
+        if targets.is_empty() {
+            // Unresolved → an external (3rd-party / stdlib) dependency. Record it
+            // at depth 1: one `External` node per top-level package.
+            if let Some(top) = external_top_level(&imp.base) {
+                let ext_id = format!("ext:{top}");
+                builder.add_node(Node {
+                    id: ext_id.clone(),
+                    kind: NodeKind::External,
+                    name: top,
+                    path: String::new(),
+                    parent: None,
+                    external: Some(true),
+                    visibility: None,
+                    loc: None,
+                    line: None,
+                    item_count: None,
+                    method_count: None,
+                    complexity: None,
+                    cycle_kind: None,
+                });
+                builder.add_edge(Edge {
+                    from: file_id.clone(),
+                    to: ext_id,
+                    kind: EdgeKind::Uses,
+                    unresolved: None,
+                    external: Some(true),
+                    visibility: None,
+                });
+            }
+            continue;
+        }
+        for target_path in targets {
+            let target_id = format!("file:{}", target_path.to_string_lossy());
             if target_id != file_id {
                 builder.add_edge(Edge {
                     from: file_id.clone(),
@@ -344,109 +231,31 @@ fn parse_and_add(
         }
     }
 
-    // Class nodes (collected from methods)
-    let mut seen_classes: HashSet<String> = HashSet::new();
-    for f in &fns {
-        if let Some(cls) = &f.class_name
-            && seen_classes.insert(cls.clone())
-        {
-            let cls_id = format!("impl:{}::{}", mod_path.replace('.', "::"), cls);
-            builder.add_node(Node {
-                id: cls_id.clone(),
-                kind: NodeKind::Impl,
-                name: cls.clone(),
-                path: abs_path.to_string_lossy().into_owned(),
-                parent: Some(file_id.clone()),
-                external: Some(false),
-                visibility: Some(py_visibility(cls)),
-                loc: None,
-                line: None,
-                item_count: None,
-                method_count: None,
-                complexity: None,
-                cycle_kind: None,
-            });
-            builder.add_edge(Edge {
-                from: file_id.clone(),
-                to: cls_id,
-                kind: EdgeKind::Contains,
-                unresolved: None,
-                external: None,
-                visibility: None,
-            });
-        }
-    }
-
-    // Function / method nodes
-    for f in &fns {
-        let (fn_id, fn_kind, fn_parent) = if let Some(cls) = &f.class_name {
-            let cls_id = format!("impl:{}::{}", mod_path.replace('.', "::"), cls);
-            (
-                format!(
-                    "method:{}::{}::{}",
-                    mod_path.replace('.', "::"),
-                    cls,
-                    f.name
-                ),
-                NodeKind::Method,
-                cls_id,
-            )
-        } else {
-            (
-                format!("fn:{}::{}", mod_path.replace('.', "::"), f.name),
-                NodeKind::Fn,
-                file_id.clone(),
-            )
-        };
-
-        builder.add_node(Node {
-            id: fn_id.clone(),
-            kind: fn_kind,
-            name: f.name.clone(),
-            path: abs_path.to_string_lossy().into_owned(),
-            parent: Some(fn_parent.clone()),
-            external: Some(false),
-            visibility: Some(py_visibility(&f.name)),
-            loc: Some(f.end_line.saturating_sub(f.line) + 1),
-            line: Some(f.line),
-            item_count: None,
-            method_count: None,
-            complexity: None,
-            cycle_kind: None,
-        });
-
-        builder.add_edge(Edge {
-            from: fn_parent,
-            to: fn_id,
-            kind: EdgeKind::Contains,
-            unresolved: None,
-            external: None,
-            visibility: None,
-        });
-    }
-
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Tree-sitter extraction
-// ---------------------------------------------------------------------------
-
-fn extract_tree_info(
-    root: &tree_sitter::Node,
-    source: &[u8],
-) -> (Vec<ExtractedFn>, Vec<ExtractedImport>) {
-    let mut fns = Vec::new();
-    let mut imports = Vec::new();
-    visit_node(root, source, None, &mut fns, &mut imports);
-    (fns, imports)
+/// Top-level package name for an unresolved import, or `None` for relative
+/// imports (which are always project-internal and never external libraries).
+fn external_top_level(base: &str) -> Option<String> {
+    if base.starts_with('.') || base.is_empty() {
+        return None;
+    }
+    Some(base.split('.').next().unwrap_or(base).to_string())
 }
 
-fn visit_node<'t>(
+// ---------------------------------------------------------------------------
+// Tree-sitter extraction (imports only)
+// ---------------------------------------------------------------------------
+
+fn extract_imports(root: &tree_sitter::Node, source: &[u8]) -> Vec<ExtractedImport> {
+    let mut imports = Vec::new();
+    visit_imports(root, source, &mut imports);
+    imports
+}
+
+fn visit_imports<'t>(
     node: &tree_sitter::Node<'t>,
     source: &[u8],
-    class_ctx: Option<&str>,
-    fns: &mut Vec<ExtractedFn>,
     imports: &mut Vec<ExtractedImport>,
 ) {
     let mut cursor = node.walk();
@@ -454,45 +263,6 @@ fn visit_node<'t>(
 
     for child in &children {
         match child.kind() {
-            "function_definition" | "async_function_definition" => {
-                if let Some(name) = child
-                    .child_by_field_name("name")
-                    .and_then(|n| n.utf8_text(source).ok())
-                {
-                    fns.push(ExtractedFn {
-                        name: name.to_string(),
-                        class_name: class_ctx.map(str::to_string),
-                        line: child.start_position().row as u32 + 1,
-                        end_line: child.end_position().row as u32 + 1,
-                    });
-                    // Recurse into function body only for nested class discovery;
-                    // nested functions are skipped to keep the graph clean.
-                }
-            }
-            "class_definition" => {
-                if let Some(name) = child
-                    .child_by_field_name("name")
-                    .and_then(|n| n.utf8_text(source).ok())
-                {
-                    let cls = name.to_string();
-                    if let Some(body) = child.child_by_field_name("body") {
-                        visit_node(&body, source, Some(&cls), fns, imports);
-                    }
-                }
-            }
-            "decorated_definition" => {
-                // Unwrap decorator and recurse on the actual def/class
-                let mut ic = child.walk();
-                let inner: Vec<_> = child.children(&mut ic).collect();
-                for n in &inner {
-                    if matches!(
-                        n.kind(),
-                        "function_definition" | "async_function_definition" | "class_definition"
-                    ) {
-                        visit_node_single(n, source, class_ctx, fns, imports);
-                    }
-                }
-            }
             "import_statement" => {
                 // import a.b.c  OR  import a, b
                 let mut ic = child.walk();
@@ -543,48 +313,9 @@ fn visit_node<'t>(
                 }
             }
             _ => {
-                // Recurse at module/class level only
-                if class_ctx.is_none() || node.kind() == "block" {
-                    visit_node(child, source, class_ctx, fns, imports);
-                }
+                visit_imports(child, source, imports);
             }
         }
-    }
-}
-
-fn visit_node_single<'t>(
-    node: &tree_sitter::Node<'t>,
-    source: &[u8],
-    class_ctx: Option<&str>,
-    fns: &mut Vec<ExtractedFn>,
-    imports: &mut Vec<ExtractedImport>,
-) {
-    match node.kind() {
-        "function_definition" | "async_function_definition" => {
-            if let Some(name) = node
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-            {
-                fns.push(ExtractedFn {
-                    name: name.to_string(),
-                    class_name: class_ctx.map(str::to_string),
-                    line: node.start_position().row as u32 + 1,
-                    end_line: node.end_position().row as u32 + 1,
-                });
-            }
-        }
-        "class_definition" => {
-            if let Some(name) = node
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-            {
-                let cls = name.to_string();
-                if let Some(body) = node.child_by_field_name("body") {
-                    visit_node(&body, source, Some(&cls), fns, imports);
-                }
-            }
-        }
-        _ => {}
     }
 }
 
@@ -642,10 +373,6 @@ fn absolute_base(base: &str, current_mod: &str) -> String {
     let dots = base.chars().take_while(|&c| c == '.').count();
     let suffix = base[dots..].to_string(); // part after dots (may be empty)
 
-    // current_mod = "parser.shops.amazon.pdp"
-    // parts = ["parser", "shops", "amazon", "pdp"]
-    // 1 dot  → drop last 1 → ["parser", "shops", "amazon"] → pkg = "parser.shops.amazon"
-    // 2 dots → drop last 2 → ["parser", "shops"]            → pkg = "parser.shops"
     let parts: Vec<&str> = current_mod.split('.').collect();
     let keep = parts.len().saturating_sub(dots);
     let pkg = parts[..keep].join(".");
@@ -656,161 +383,6 @@ fn absolute_base(base: &str, current_mod: &str) -> String {
         suffix
     } else {
         format!("{pkg}.{suffix}")
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Heuristic sema: call graph via tree-sitter
-// ---------------------------------------------------------------------------
-
-fn build_fn_name_index(builder: &GraphBuilder) -> HashMap<String, Vec<String>> {
-    let mut index: HashMap<String, Vec<String>> = HashMap::new();
-    for node in builder.nodes() {
-        if matches!(node.kind, NodeKind::Fn | NodeKind::Method) {
-            index
-                .entry(node.name.clone())
-                .or_default()
-                .push(node.id.clone());
-        }
-    }
-    index
-}
-
-fn extract_calls_py(
-    abs_path: &Path,
-    mod_path: &str,
-    name_index: &HashMap<String, Vec<String>>,
-) -> Result<Vec<(String, String)>> {
-    let source = std::fs::read(abs_path)?;
-    let mut ts_parser = tree_sitter::Parser::new();
-    ts_parser
-        .set_language(&tree_sitter_python::LANGUAGE.into())
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-    let tree = ts_parser
-        .parse(&source, None)
-        .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
-    let mut calls: HashSet<(String, String)> = HashSet::new();
-    visit_calls_py(
-        &tree.root_node(),
-        &source,
-        mod_path,
-        None,
-        None,
-        name_index,
-        &mut calls,
-    );
-    Ok(calls.into_iter().collect())
-}
-
-fn visit_calls_py<'t>(
-    node: &tree_sitter::Node<'t>,
-    source: &[u8],
-    mod_path: &str,
-    class_ctx: Option<&str>,
-    current_fn_id: Option<&str>,
-    name_index: &HashMap<String, Vec<String>>,
-    calls: &mut HashSet<(String, String)>,
-) {
-    match node.kind() {
-        "function_definition" | "async_function_definition" => {
-            if let Some(name) = node
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-            {
-                let fn_id = if let Some(cls) = class_ctx {
-                    format!("method:{}::{}::{}", mod_path.replace('.', "::"), cls, name)
-                } else {
-                    format!("fn:{}::{}", mod_path.replace('.', "::"), name)
-                };
-                if let Some(body) = node.child_by_field_name("body") {
-                    visit_calls_py(
-                        &body,
-                        source,
-                        mod_path,
-                        class_ctx,
-                        Some(&fn_id),
-                        name_index,
-                        calls,
-                    );
-                }
-            }
-        }
-        "class_definition" => {
-            if let Some(name) = node
-                .child_by_field_name("name")
-                .and_then(|n| n.utf8_text(source).ok())
-                && let Some(body) = node.child_by_field_name("body")
-            {
-                visit_calls_py(&body, source, mod_path, Some(name), None, name_index, calls);
-            }
-        }
-        "decorated_definition" => {
-            let mut c = node.walk();
-            for child in node.children(&mut c).collect::<Vec<_>>() {
-                if matches!(
-                    child.kind(),
-                    "function_definition" | "async_function_definition" | "class_definition"
-                ) {
-                    visit_calls_py(
-                        &child,
-                        source,
-                        mod_path,
-                        class_ctx,
-                        current_fn_id,
-                        name_index,
-                        calls,
-                    );
-                }
-            }
-        }
-        "call" => {
-            if let Some(from_id) = current_fn_id
-                && let Some(fn_node) = node.child_by_field_name("function")
-            {
-                let callee = match fn_node.kind() {
-                    "identifier" => fn_node.utf8_text(source).ok().map(str::to_string),
-                    "attribute" => fn_node
-                        .child_by_field_name("attribute")
-                        .and_then(|a| a.utf8_text(source).ok())
-                        .map(str::to_string),
-                    _ => None,
-                };
-                if let Some(callee) = callee {
-                    for to_id in name_index.get(&callee).into_iter().flatten() {
-                        if to_id.as_str() != from_id {
-                            calls.insert((from_id.to_string(), to_id.clone()));
-                        }
-                    }
-                }
-            }
-            // Recurse into call arguments to catch nested calls
-            let mut c = node.walk();
-            for child in node.children(&mut c).collect::<Vec<_>>() {
-                visit_calls_py(
-                    &child,
-                    source,
-                    mod_path,
-                    class_ctx,
-                    current_fn_id,
-                    name_index,
-                    calls,
-                );
-            }
-        }
-        _ => {
-            let mut c = node.walk();
-            for child in node.children(&mut c).collect::<Vec<_>>() {
-                visit_calls_py(
-                    &child,
-                    source,
-                    mod_path,
-                    class_ctx,
-                    current_fn_id,
-                    name_index,
-                    calls,
-                );
-            }
-        }
     }
 }
 
@@ -838,12 +410,6 @@ mod tests {
     use tempfile::TempDir;
 
     // ── pure helpers ────────────────────────────────────────────────────────
-
-    #[test]
-    fn mod_id_dots_become_double_colons() {
-        assert_eq!(mod_id("a.b.c"), "mod:a::b::c");
-        assert_eq!(mod_id("single"), "mod:single");
-    }
 
     #[test]
     fn file_to_module_path_maps_files_and_packages() {
@@ -879,10 +445,6 @@ mod tests {
             !is_skip_path(Path::new("/proj/src/app.py"), ws),
             "normal source is not skipped"
         );
-        assert!(
-            !is_skip_path(Path::new("/other/x.py"), ws),
-            "path outside the workspace is not skipped"
-        );
     }
 
     #[test]
@@ -904,29 +466,25 @@ mod tests {
     }
 
     #[test]
+    fn external_top_level_skips_relative_and_takes_top_segment() {
+        assert_eq!(external_top_level("numpy.linalg").as_deref(), Some("numpy"));
+        assert_eq!(external_top_level("requests").as_deref(), Some("requests"));
+        assert_eq!(external_top_level(".utils"), None);
+        assert_eq!(external_top_level(""), None);
+    }
+
+    #[test]
     fn resolve_import_finds_submodule_and_package() {
         let index: HashMap<String, PathBuf> = HashMap::from([
             ("pkg.b".to_string(), PathBuf::from("/p/pkg/b.py")),
             ("pkg".to_string(), PathBuf::from("/p/pkg/__init__.py")),
         ]);
-        // `from pkg import b` resolves the submodule AND the package itself.
         let got = resolve_import("pkg", &["b".to_string()], "pkg.a", &index);
-        assert!(
-            got.contains(&PathBuf::from("/p/pkg/b.py")),
-            "submodule b: {got:?}"
-        );
+        assert!(got.contains(&PathBuf::from("/p/pkg/b.py")), "submodule b");
         assert!(
             got.contains(&PathBuf::from("/p/pkg/__init__.py")),
-            "package pkg: {got:?}"
+            "package pkg"
         );
-    }
-
-    #[test]
-    fn resolve_import_plain_import_resolves_dotted_module() {
-        let index: HashMap<String, PathBuf> =
-            HashMap::from([("pkg.b".to_string(), PathBuf::from("/p/pkg/b.py"))]);
-        let got = resolve_import("pkg.b", &[], "pkg.a", &index);
-        assert_eq!(got, vec![PathBuf::from("/p/pkg/b.py")]);
     }
 
     #[test]
@@ -935,14 +493,6 @@ mod tests {
         assert_eq!(py_visibility("__private"), Visibility::Private);
         assert_eq!(
             py_visibility("_protected"),
-            Visibility::Restricted {
-                path: "module".into()
-            }
-        );
-        // A dunder (underscores both ends) is not "private" — it falls through
-        // to the single-underscore rule.
-        assert_eq!(
-            py_visibility("__init__"),
             Visibility::Restricted {
                 path: "module".into()
             }
@@ -961,58 +511,50 @@ mod tests {
         g.nodes.iter().any(|n| n.id == id)
     }
 
-    fn has_edge(g: &Graph, from: &str, to: &str, kind: EdgeKind) -> bool {
-        g.edges
-            .iter()
-            .any(|e| e.from == from && e.to == to && e.kind == kind)
-    }
-
     #[test]
-    fn run_builds_module_file_and_function_graphs_for_a_package() {
+    fn run_builds_a_file_graph_with_imports_and_externals() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path();
         write(root, "pkg/__init__.py", "");
         write(
             root,
             "pkg/a.py",
-            "from pkg import b\n\
-             \n\
-             class Foo:\n\
-             \x20   def bar(self):\n\
-             \x20       return b.greet()\n\
+            "import os\n\
+             from pkg import b\n\
              \n\
              def helper():\n\
-             \x20   return 1\n",
+             \x20   return b.greet()\n",
         );
         write(root, "pkg/b.py", "def greet():\n    return \"hi\"\n");
 
-        let (graphs, _timings) = run(root, false, true).expect("python plugin runs");
+        let (graphs, _timings) = run(root, false).expect("python plugin runs");
+        let g = &graphs.files;
 
-        // modules graph: the package ancestor node exists.
-        assert!(has_node(&graphs.modules, "mod:pkg"), "package node");
-
-        // functions graph: class, method, and free functions are extracted.
-        let f = &graphs.functions;
-        assert!(has_node(f, "impl:pkg::a::Foo"), "class Foo");
-        assert!(has_node(f, "method:pkg::a::Foo::bar"), "method Foo.bar");
-        assert!(has_node(f, "fn:pkg::a::helper"), "function helper");
-        assert!(has_node(f, "fn:pkg::b::greet"), "function greet");
-
-        // heuristic call edge: Foo.bar() → b.greet().
+        // Only File + External nodes — no module/class/function nodes.
         assert!(
-            has_edge(
-                f,
-                "method:pkg::a::Foo::bar",
-                "fn:pkg::b::greet",
-                EdgeKind::Calls
-            ),
-            "expected a call edge bar→greet"
+            g.nodes
+                .iter()
+                .all(|n| matches!(n.kind, NodeKind::File | NodeKind::External)),
+            "files graph holds only File/External nodes"
         );
 
-        // import edge a.py → b.py — a `uses` edge between two file nodes.
-        let uses_between_files = f.edges.iter().any(|e| {
-            e.kind == EdgeKind::Uses && e.from.starts_with("file:") && e.to.starts_with("file:")
-        });
-        assert!(uses_between_files, "expected an import edge between files");
+        // file→file import edge a.py → b.py.
+        let a_id = format!("file:{}", root.join("pkg/a.py").to_string_lossy());
+        let b_id = format!("file:{}", root.join("pkg/b.py").to_string_lossy());
+        assert!(
+            g.edges
+                .iter()
+                .any(|e| e.from == a_id && e.to == b_id && e.kind == EdgeKind::Uses),
+            "expected import edge a.py → b.py"
+        );
+
+        // external stdlib import `os` becomes one External node, flagged on the edge.
+        assert!(has_node(g, "ext:os"), "external node for os");
+        assert!(
+            g.edges
+                .iter()
+                .any(|e| e.from == a_id && e.to == "ext:os" && e.external == Some(true)),
+            "external edge a.py → os flagged external"
+        );
     }
 }

@@ -44,12 +44,16 @@ pub type NodeId = String;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NodeKind {
+    /// A source file — the only node kind that appears in snapshot output.
+    File,
+    /// An external dependency (library / crate), recorded at depth 1: one node
+    /// per library, never expanded into its internals.
+    External,
+    /// Internal-only kinds used by the Rust syntactic stage (`code-split-syn`)
+    /// while building the module tree. They are collapsed into `File`/`External`
+    /// by the Rust plugin before the snapshot is written and never serialized.
     Crate,
     Module,
-    File,
-    Fn,
-    Method,
-    Impl,
     Trait,
 }
 
@@ -107,10 +111,11 @@ pub struct GraphStats {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EdgeKind {
+    /// Internal-only: structural ownership in the Rust module tree. Used during
+    /// construction/collapse; not present between files in snapshot output.
     Contains,
     Uses,
     Reexports,
-    Calls,
 }
 
 /// Visibility of a node. Serialised as a plain string for simple variants,
@@ -266,18 +271,23 @@ pub struct Maintainability {
     pub mi_sei: f64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Coupling {
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub fan_in: u32,
     #[serde(default, skip_serializing_if = "is_zero_u32")]
     pub fan_out: u32,
+    /// Outgoing edges to external libraries (depth-1 deps). Tracked separately
+    /// so it is visible without inflating HK, which uses internal coupling only.
+    #[serde(default, skip_serializing_if = "is_zero_u32")]
+    pub fan_out_external: u32,
     #[serde(default, serialize_with = "sig3", skip_serializing_if = "is_zero_f64")]
     pub hk: f64,
 }
 
 fn coupling_is_trivial(c: &Option<Coupling>) -> bool {
-    c.as_ref().is_none_or(|c| c.fan_in == 0 && c.fan_out == 0)
+    c.as_ref()
+        .is_none_or(|c| c.fan_in == 0 && c.fan_out == 0 && c.fan_out_external == 0)
 }
 
 fn complexity_is_empty(c: &Option<Complexity>) -> bool {
@@ -539,6 +549,7 @@ mod tests {
                 fan_in: 2,
                 fan_out: 4,
                 hk: 576.0,
+                ..Default::default()
             }),
             ..Default::default()
         };

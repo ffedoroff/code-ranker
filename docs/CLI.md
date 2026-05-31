@@ -43,9 +43,8 @@ Shared by `check` and `report` (the two commands that analyze a workspace).
 |---|---|
 | `[path]` | Workspace to analyze (positional). Default `.` (current directory). |
 | `--plugin <name\|auto>` | Plugin to use: `rust`, `python`, or `javascript` (covers TypeScript). `auto` (default) resolves the language automatically — see [Plugin resolution](#plugin-resolution). |
-| `--graph <kinds>` | Which graphs to build. Repeatable or comma-separated: `modules`, `files`, `functions`. Default: all three. |
 | `--ignore <glob>` | Repeatable. Glob to exclude paths from analysis. Merged with config-file globs. |
-| `--local-only` | Skip any network-dependent step (e.g. `cargo metadata` style). |
+| `--local-only` | Skip any network-dependent step (e.g. `cargo metadata` dependency resolution). |
 | `-- <extra-args>` | Everything after `--` is forwarded verbatim to the plugin. |
 
 ## `check`
@@ -59,7 +58,7 @@ code-split check [path] [options]
 
 | Flag | Meaning |
 |---|---|
-| `--threshold <SCOPE[.avg].METRIC=N>` | Hard limit on a metric — a breach fails the check. SCOPE: `file` / `module` / `function` (a single unit on that graph). Add `.avg` for that scope's graph-wide average (e.g. `function.avg.cognitive`). METRIC: `cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`, `loc`. Repeatable. See [ERRORS.md](ERRORS.md#threshold-scopes). |
+| `--threshold <file.METRIC=N>` | Hard limit on a per-file metric — a breach fails the check. Scope is always `file` (a single file). METRIC: `cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`, `loc`. Repeatable. See [ERRORS.md](ERRORS.md#threshold-scopes). |
 | `--cycle-rule <KIND=on\|off\|N>` | Configure a cycle check. KIND: `test-embed`, `mutual`, `chain`. Value: `on` (any cycle fails), `off` (ignored), or `N` (allow up to N cycles of that kind — e.g. `chain=7` forbids an 8th). Defaults: `test-embed` off, `mutual`/`chain` on. |
 | `--output-format <fmt>` | Diagnostics format: `human` (default), `json`, `github`, `sarif`. Use `github` for PR annotations, `sarif`/`json` for tooling. |
 | `--top <N>` | Report only the `N` worst violations (ranked worst-first) and suppress the rest. A reporting limit only — it does **not** change the exit code. Default: all. |
@@ -80,9 +79,9 @@ single worst thing to fix (handy for handing one focused fix to a human or an AI
 # lint the current project, fail the build on any violation
 code-split check
 
-# Python project: a single function and a single file get different budgets
+# Python project: per-file budgets — cap any single file
 code-split check ./api --plugin python \
-  --threshold function.cognitive=25 --threshold file.loc=800
+  --threshold file.cognitive=25 --threshold file.loc=300
 
 # CI gate with machine-readable annotations; also flag test-embed cycles
 code-split check --cycle-rule test-embed=on --output-format github
@@ -96,21 +95,19 @@ code-split check --top 1
 Every finding is identified by its dotted **rule id** — the same string used as
 the config key and CLI flag — and tagged with a concern **group**: `CYC`
 (dependency cycles), `CPX` (complexity), `CPL` (coupling), `SIZ` (size). Threshold
-rules are `threshold.<scope>[.avg].<metric>` — scope `file` / `module` /
-`function` for a single unit, plus an optional `.avg` for that scope's graph-wide
-average. The full reference — what each rule flags, why it matters, and how to fix
-it — lives in [ERRORS.md](ERRORS.md).
+rules are `threshold.file.<metric>` — per single file. The full reference — what each rule flags,
+why it matters, and how to fix it — lives in [ERRORS.md](ERRORS.md).
 
 In the default `human` format each violation is a self-contained block, detailed
 enough to paste straight into an AI assistant as a complete prompt:
 
 ```text
-threshold.function.cognitive  ·  CPX  ·  functions graph
-  where  fn:app::handlers::process — src/handlers.rs:142
+threshold.file.cognitive  ·  CPX  ·  files graph
+  where  file:{target}/src/handlers.rs
   issue  cognitive complexity 67 exceeds limit 25 (2.7× over budget)
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
   fix    Extract nested blocks into named helpers, use early returns to cut nesting depth…
-  tune   set with --threshold function.cognitive=N   ·   rules.thresholds.function.cognitive in code-split.toml
+  tune   set with --threshold file.cognitive=N   ·   rules.thresholds.file.cognitive in code-split.toml
   ref    https://github.com/ffedoroff/code-split/blob/main/docs/ERRORS.md#group-cpx
 ```
 
@@ -122,9 +119,9 @@ and `ruleId` plus a fired-rules `tool.driver.rules` catalog (`sarif`).
 
 With `--suggest-config`, the `human` output prints — after the findings — the
 project's current measured values as ready-to-paste `code-split.toml` blocks: the
-`[rules.cycles]` counts per kind, plus per-scope thresholds (`single` = the worst
-single unit max, `.avg` = the graph-wide average). Numbers use `_` separators. Copy
-a block to pin today's numbers as a baseline that passes now and fails on
+`[rules.cycles]` counts per kind, plus the per-file thresholds (the worst
+single file max). Numbers use `_` separators.
+Copy a block to pin today's numbers as a baseline that passes now and fails on
 regression. Off by default; the machine formats (`json`/`github`/`sarif`) omit it.
 
 ```sh
@@ -226,10 +223,11 @@ So the default `{project-dir}-{ts}.json` yields `user-provisioning-20260526-1141
 ## HTML viewer
 
 The HTML report is **self-contained**: the viewer app (Dagre graph layout, pan/zoom,
-sortable node tables for modules / files / functions, and the prompt-generator panel with
+a sortable node table for the single Files view, and the prompt-generator panel with
 ADP / SRP / OCP / LSP / ISP / DIP / DRY / KISS / LoD / MISU / CoI / YAGNI presets plus
 *Reduce Complexity* and *Split Components*) **and the snapshot data** are all embedded in
-the one file. No network, no telemetry — `open` it straight from disk.
+the one file. External library nodes render in a distinct amber colour with dashed
+edges. No network, no telemetry — `open` it straight from disk.
 
 The data is embedded as `<script type="application/json">` tags (`cs-before` / `cs-after`),
 which the viewer reads on load and which `--before` / `diff` can extract back out — so an
@@ -259,7 +257,7 @@ The inline form takes a dotted key into the config schema:
 
 ```sh
 # tighten one rule in CI without editing code-split.toml
-code-split check --config rules.thresholds.function.cognitive=25 \
+code-split check --config rules.thresholds.file.cognitive=25 \
                  --config rules.cycles.test-embed=true
 ```
 
@@ -278,38 +276,29 @@ code-split check --config rules.thresholds.function.cognitive=25 \
 
 Built-in (no install needed):
 
-- `rust` — `cargo metadata` + `syn` for module/file graphs, optional `rust-analyzer`
-  (`ra_ap_*`) for the call graph when not in `--local-only` mode and `cargo` is on PATH.
-- `python` — tree-sitter-python for module/file/function graphs, native parser.
+- `rust` — `cargo metadata` + `syn`. Builds the Rust module graph from `use`
+  declarations, then collapses it to a **file graph**: every `.rs` file is one
+  `file` node (inline `mod {}` modules fold into their file), and `use` / `pub use`
+  edges are re-pointed to files. External crates become `external` library nodes
+  (`ext:<name>`) at depth 1. Fast (seconds) — no rust-analyzer dependency.
+- `python` — tree-sitter-python, native parser. Emits `file` nodes, file→file
+  `uses` edges, and one `external` node per top-level package.
 - `javascript` — tree-sitter-javascript / tree-sitter-typescript; one plugin handles
-  `.js`, `.jsx`, `.ts`, `.tsx`.
+  `.js`, `.jsx`, `.ts`, `.tsx`. Same file + external model as Python.
 
-### Rust plugin: analysis depth
+### Rust plugin: offline mode
 
-The built-in `rust` plugin runs at different depths, controlled by the **common**
-`--local-only` and `--graph` flags (there are no Rust-specific flags).
-
-| Mode | Invocation | `cargo metadata` | Function call graph (rust-analyzer) |
-|---|---|---|---|
-| **Deep** (default) | `--plugin rust` | full (resolves dependencies) | built — `Calls` edges, if `cargo` is on PATH and `functions` is in `--graph` |
-| **Shallow / offline** | `--plugin rust --local-only` | `--no-deps` (no resolution, no network) | skipped — functions graph has no call edges |
-| **Structure only** | `--plugin rust --graph modules,files` | full | skipped (functions not requested) |
-
-- `--local-only` makes the run fully offline and much faster: it skips both dependency
-  resolution and the rust-analyzer semantic stage. Module/file graphs and complexity
-  metrics are still produced — only the function **call graph** is omitted.
-- If `cargo` is not on PATH, the call-graph stage is skipped automatically, so a deep run
-  degrades gracefully to shallow.
+The built-in `rust` plugin honours the **common** `--local-only` flag (there are no
+Rust-specific flags). `--local-only` passes `--no-deps` to `cargo metadata`, so the
+run is fully offline — external dependencies are not enumerated. The file graph and
+per-file complexity metrics are still produced.
 
 ```sh
-# deep: module graph + function call graph (rust-analyzer)
+# default: full file graph with external library nodes
 code-split check . --plugin rust
 
-# shallow & offline: skip dependency resolution and the call graph
+# offline: skip dependency resolution
 code-split report . --plugin rust --local-only
-
-# structure only: skip the (slow) call-graph stage
-code-split report . --plugin rust --graph modules,files
 ```
 
 All plugins are built into the `code-split` binary — there is nothing to install and no

@@ -24,8 +24,8 @@ code-split has **no severity levels**. A rule is either *active* or not:
   that kind fails — same as `0`), `off`/`false` (ignored), or an integer `N` (up
   to `N` cycles of that kind allowed; the `N+1`-th fails). Use `N` to pin today's
   count and forbid adding more (e.g. `chain=7`).
-- **Threshold rules** are inactive until you set a number. Once set, any unit (or
-  graph average) over the limit is a violation.
+- **Threshold rules** are inactive until you set a number. Once set, any file
+  over the limit is a violation.
 
 Any violation of any active rule fails `check` with a non-zero exit code. There
 is no warning tier — if something should not fail the build, turn the rule off or
@@ -41,68 +41,56 @@ severity); it never changes the exit code.
 
 ## Threshold scopes
 
-A threshold rule id is `threshold.<scope>[.avg].<metric>`. The **scope** is the
-kind of unit — and *is* the graph it lives on:
+A threshold rule id is `threshold.file.<metric>`. There is a single graph
+level — files — so the scope is always `file`:
 
 | Scope | Applies to |
 |-------|-----------|
-| `file` | a single file (files graph) |
-| `module` | a single module/crate (modules graph) |
-| `function` | a single function/method (functions graph) |
+| `file` | a single source file (files graph) |
 
-This lets each kind of unit carry its own budget — a 400-line *file* is fine, an
-80-line *function* may not be.
-
-**Single vs. average — every scope has both.** Without `.avg` the limit is checked
-**per unit** (any single unit over the limit is a violation); with `.avg` it is
-checked against that scope's **graph-wide average**:
+The limit is checked **per file** — any single file over the limit is a violation:
 
 | Form | Meaning | Example |
 |------|---------|---------|
-| `threshold.<scope>.<metric>` | a single unit exceeds | `--threshold function.cognitive=25` |
-| `threshold.<scope>.avg.<metric>` | the graph average exceeds | `--threshold function.avg.cognitive=8` |
+| `threshold.file.<metric>` | a single file exceeds | `--threshold file.cognitive=25` |
 
-So `function.loc` caps any one function while `function.avg.loc` caps the average
-function size. The single and average buckets are independent — set either or both.
+So `file.loc` caps any one file.
 
 ```bash
-code-split check --threshold file.loc=400 --threshold function.loc=80 \
-  --threshold function.avg.cognitive=8
+code-split check --threshold file.loc=400 --threshold file.cognitive=25
 ```
 
 The **metric** is one of `cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`,
-`loc` (see the group tables below). Every scope and form of one metric shares the
-same rationale and fix.
+`loc` (see the group tables below). Every form of one metric shares the same
+rationale and fix.
 
 **Value syntax.** A threshold value accepts `_` digit separators and a `K` / `M` /
 `G` multiplier suffix (×10³ / ×10⁶ / ×10⁹, case-insensitive): `5K` = 5 000,
-`1.5M` = 1 500 000. On the CLI use it bare (`--threshold module.hk=5M`). In TOML a
+`1.5M` = 1 500 000. On the CLI use it bare (`--threshold file.hk=5M`). In TOML a
 suffix must be quoted (`hk = "5M"`) since bare `5M` is not valid TOML; underscored
 integers are native (`hk = 5_000_000`).
 
-> **Scope availability depends on the plugin's graphs.** A scope only fires if the
-> plugin builds its graph. The **Python** and **JavaScript/TypeScript** plugins
-> build files, modules, and functions — so `file`, `module`, and `function` all
-> apply. The **Rust** plugin builds modules and functions but no files graph (a
-> Rust file ≈ a module), so use `module` for a single Rust unit; `file` is inert
-> there.
+> **All built-in plugins (Rust, Python, JavaScript/TypeScript) build a single file
+> graph,** so the `file` scope applies to every language. `fan_in` / `fan_out` /
+> `hk` are computed from internal file→file edges only; edges to external library
+> nodes are excluded.
 
 ## Anatomy of a finding
 
 In the default `human` output each violation is one block:
 
 ```text
-threshold.function.cognitive  ·  CPX  ·  functions graph
-  where  fn:app::handlers::process — src/handlers.rs:142
+threshold.file.cognitive  ·  CPX  ·  files graph
+  where  file:{target}/src/handlers.rs
   issue  cognitive complexity 67 exceeds limit 25 (2.7× over budget)
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
   fix    Extract nested blocks into named helpers, use early returns to cut nesting depth…
-  tune   set with --threshold function.cognitive=N   ·   rules.thresholds.function.cognitive in code-split.toml
+  tune   set with --threshold file.cognitive=N   ·   rules.thresholds.file.cognitive in code-split.toml
   ref    https://github.com/ffedoroff/code-split/blob/main/docs/ERRORS.md#group-cpx
 ```
 
-- **rule id + group + graph** — the rule, its concern group, and which graph (modules / files / functions) it fired on.
-- **where** — `id — path:line`, a clickable location. Omitted for graph-average and cycle rules.
+- **rule id + group + graph** — the rule, its concern group, and the graph (files) it fired on.
+- **where** — `id — path`, a clickable location. Omitted for cycle rules.
 - **issue** — the measurement: value, limit, and how far over budget.
 - **why / fix** — the rationale and the concrete remedy.
 - **tune** — the CLI flag and the `code-split.toml` key that adjust or disable the rule (identical to the rule id).
@@ -143,14 +131,12 @@ prints the current count per kind so you can paste it as a baseline.
 
 ### CPX — control-flow complexity
 
-Threshold rules: `threshold.<scope>.<metric>` for the metrics below. Use any
-scope from [Threshold scopes](#threshold-scopes) — `node` / `file` / `module` /
-`function` for a single unit, `avg` for the graph average. Inactive until a limit
-is set.
+Threshold rules: `threshold.file.<metric>` for the metrics below — per single
+file (see [Threshold scopes](#threshold-scopes)). Inactive until a limit is set.
 
 | Metric | What it flags | How to fix |
 |--------|---------------|------------|
-| `cyclomatic` | Cyclomatic complexity counts the independent paths through a unit; high values mean many branches, which demand many tests and are easy to get wrong. A high average means branching is spread across the codebase. | Split the function, replace branching with polymorphism or a lookup table, and pull guard clauses to the top to flatten nesting. For an average breach, simplify the worst offenders first (`--top`). |
+| `cyclomatic` | Cyclomatic complexity counts the independent paths through a unit; high values mean many branches, which demand many tests and are easy to get wrong. | Split the function, replace branching with polymorphism or a lookup table, and pull guard clauses to the top to flatten nesting. |
 | `cognitive` | Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow; a high score reads as "hard to hold in your head". | Extract nested blocks into named helpers, use early returns to cut nesting depth, and avoid mixing several control structures in one function. |
 
 <a id="group-cpl"></a>
@@ -174,7 +160,7 @@ Threshold rule over source lines of code. Inactive until a limit is set.
 
 | Metric | What it flags | How to fix |
 |--------|---------------|------------|
-| `loc` | The unit has more source lines than allowed; large files/functions tend to hold several responsibilities and are harder to review, test, and reuse. | Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (`--top`). |
+| `loc` | The unit has more source lines than allowed; large files/functions tend to hold several responsibilities and are harder to review, test, and reuse. | Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. |
 
 ## Tuning recap
 
@@ -183,19 +169,16 @@ Threshold rule over source lines of code. Inactive until a limit is set.
 code-split check --cycle-rule chain=off
 code-split check --cycle-rule chain=7
 
-# Single-unit limits, per kind of unit
-code-split check --threshold file.loc=400 --threshold function.cognitive=25 \
-  --threshold module.hk=500000
-
-# Per-scope graph-average limits
-code-split check --threshold function.avg.cyclomatic=8 --threshold file.avg.loc=200
+# Single-file limits
+code-split check --threshold file.loc=400 --threshold file.cognitive=25 \
+  --threshold file.hk=500000
 
 # Collect findings without failing the build
-code-split check --threshold function.loc=120 --exit-zero
+code-split check --threshold file.loc=120 --exit-zero
 ```
 
-Equivalent `code-split.toml` (single metrics sit directly under the scope; the
-`avg` sub-table holds that scope's graph-average limits):
+Equivalent `code-split.toml` (per-file metrics sit directly under
+`[rules.thresholds.file]`):
 
 ```toml
 [rules.cycles]
@@ -203,21 +186,10 @@ mutual = true        # strict — any mutual cycle fails (same as 0)
 chain = 7            # allow up to 7 chain cycles; the 8th fails
 test-embed = false   # ignored
 
-[rules.thresholds.module]
-hk = 500000
-
 [rules.thresholds.file]
 loc = 400
-
-[rules.thresholds.file.avg]
-loc = 200
-
-[rules.thresholds.function]
 cognitive = 25
-loc = 120
-
-[rules.thresholds.function.avg]
-cyclomatic = 8
+hk = 500000
 ```
 
 See [CLI.md](CLI.md) for the full `check` flag set and [config.md](config.md) for

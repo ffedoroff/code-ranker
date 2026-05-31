@@ -157,7 +157,7 @@ mod tests {
     fn node(id: &str, complexity: Option<Complexity>) -> Node {
         Node {
             id: id.into(),
-            kind: NodeKind::Fn,
+            kind: NodeKind::File,
             name: id.into(),
             path: String::new(),
             parent: None,
@@ -251,6 +251,7 @@ mod tests {
                         fan_in: 2,
                         fan_out: 4,
                         hk: 10.0,
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }),
@@ -262,6 +263,7 @@ mod tests {
                         fan_in: 4,
                         fan_out: 8,
                         hk: 30.0,
+                        ..Default::default()
                     }),
                     ..Default::default()
                 }),

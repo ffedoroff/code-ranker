@@ -3,7 +3,6 @@ pub mod cycles;
 pub mod diff;
 pub mod graph;
 pub mod hk;
-pub mod semantic;
 pub mod snapshot;
 pub mod stats;
 
@@ -15,6 +14,5 @@ pub use graph::{
     Halstead, Loc, Maintainability, Node, NodeId, NodeKind, Visibility,
 };
 pub use hk::annotate_hk;
-pub use semantic::SemanticIndex;
 pub use snapshot::{GitInfo, PluginGraphs, Snapshot, StageTime, relativize_graphs, rewrite_ids};
 pub use stats::annotate_stats;

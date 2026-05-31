@@ -1,8 +1,9 @@
 # Node JSON Schema
 
 Reference for the node objects emitted in code-split snapshot files
-(`.code-split/<project>-<timestamp>.json`), under `graphs.modules.nodes`,
-`graphs.files.nodes`, and `graphs.functions.nodes`.
+(`.code-split/<project>-<timestamp>.json`), under `graphs.files.nodes`.
+There is a single graph level — `files` — so every node is either a
+source `file` or an `external` library.
 
 ## Full example
 
@@ -12,11 +13,7 @@ Reference for the node objects emitted in code-split snapshot files
   "kind": "file",
   "name": "setup.ts",
   "path": "{target}/src/test/setup.ts",
-  "parent": "mod:src::test",
   "visibility": "public",
-  "line": null,
-  "item_count": null,
-  "method_count": null,
   "cycle_kind": null,
   "complexity": {
     "cyclomatic": 1,
@@ -24,6 +21,7 @@ Reference for the node objects emitted in code-split snapshot files
     "coupling": {
       "fan_in": 2,
       "fan_out": 3,
+      "fan_out_external": 1,
       "hk": 144
     },
     "maintainability": {
@@ -63,15 +61,11 @@ Stable unique key for this node. The scheme depends on the node kind:
 
 | kind | scheme | example |
 |------|--------|---------|
-| `crate` | `crate:{name}` | `crate:tokio` |
-| `module` | `mod:{crate}::{dotted.path}` | `mod:myapp::db::schema` |
 | `file` | `file:{path}` | `file:{target}/src/api/auth.ts` |
-| `fn` | `fn:{crate}::{mod}::{name}` | `fn:myapp::db::schema::find_user` |
-| `method` | `method:{crate}::{mod}::{type}::{name}` | `method:myapp::db::User::save` |
-| `trait` | `trait:{crate}::{mod}::{name}` | `trait:myapp::storage::Repository` |
+| `external` | `ext:{name}` | `ext:tokio`, `ext:numpy`, `ext:@scope/pkg` |
 
 IDs contain no line numbers or byte offsets and remain stable across
-code moves within the same module.
+code moves.
 
 ### `kind` — string, required
 
@@ -79,23 +73,20 @@ The structural category of this node. One of:
 
 | value | description | plugins |
 |-------|-------------|---------|
-| `crate` | A Cargo crate (root of a Rust package) | rust |
-| `module` | A logical namespace / directory — in Rust a `.rs` file IS its module | rust, python, js |
-| `file` | A source file — used when files and modules are distinct entities | python, js |
-| `fn` | A standalone function or free function | rust, python, js |
-| `method` | A function that belongs to a type or class | rust, python |
-| `trait` | A Rust trait definition | rust |
-| `impl` | A Python class body (groups methods) | python |
+| `file` | A source file in the analyzed project — carries all per-file metrics | rust, python, js |
+| `external` | A third-party library the project depends on, recorded at depth 1 (one node per library, never expanded into its internals; carries no metrics) | rust, python, js |
 
 ### `name` — string, required
 
-Short human-readable name without path or module prefix.
-Examples: `"setup.ts"`, `"find_user"`, `"UserService"`.
+Short human-readable name. For `file` nodes, the file basename
+(`"setup.ts"`). For `external` nodes, the library name (`"tokio"`,
+`"numpy"`, `"@scope/pkg"`).
 
-### `path` — string, required
+### `path` — string, optional
 
-Physical location of the source file that defines this node.
-Uses named-root prefixes so paths are portable across machines:
+Physical location of the source file. Present on `file` nodes; omitted on
+`external` nodes (a library is not a single file). Uses named-root
+prefixes so paths are portable across machines:
 
 | prefix | resolves to |
 |--------|-------------|
@@ -104,12 +95,7 @@ Uses named-root prefixes so paths are portable across machines:
 | `{registry}` | Cargo registry cache |
 | `{rustup}` | rustup toolchain root |
 
-Examples: `{target}/src/api/auth.ts`, `{registry}/tokio-1.38.0/src/lib.rs`.
-
-### `parent` — string, optional
-
-`id` of the containing node. `null` for root nodes (top-level crates,
-top-level modules without a parent directory).
+Examples: `{target}/src/api/auth.ts`, `{target}/src/lib.rs`.
 
 ### `visibility` — string or object, optional
 
@@ -130,25 +116,7 @@ When visibility is path-restricted, an object is used instead:
 "visibility": { "restricted": "crate::services::platform_client" }
 ```
 
-`null` for nodes that have no inherent visibility (e.g. `crate` nodes).
-
-### `line` — integer, optional
-
-1-based line number of the node's declaration within its file.
-Present for `fn`, `method`, and inline `module` nodes.
-`null` for file-backed modules, files, crates, and traits.
-
-### `item_count` — integer, optional
-
-Number of direct child items declared in this node.
-Present only for file-backed `module` nodes in the Rust plugin.
-`null` for all other kinds and plugins.
-
-### `method_count` — integer, optional
-
-Number of methods declared in this trait.
-Present only for `trait` nodes in the Rust plugin.
-`null` for all other kinds and plugins.
+`null` for nodes that have no inherent visibility (e.g. `external` nodes).
 
 ### `cycle_kind` — string, optional
 
@@ -164,8 +132,9 @@ Set when this node participates in a dependency cycle. `null` otherwise.
 
 ## `complexity` — object, optional
 
-All code and structural metrics for this node. Omitted entirely when no
-metrics are available (external crates, empty files, pure-namespace modules).
+All code and structural metrics for this node. Present on `file` nodes;
+omitted entirely for `external` library nodes (their internals are never
+read) and for files with no measurable metrics.
 
 ### `complexity.cyclomatic` — number
 
@@ -191,19 +160,29 @@ more than three flat `if` statements.
 ### `complexity.coupling` — object, optional
 
 Structural coupling metrics derived from the dependency graph (edges),
-not from source code. Present for nodes that participate in dependency
-analysis (`module`, `file`, `crate`). Omitted for `fn`/`method` in
-plugins that do not track function-level imports.
+not from source code. Present on `file` nodes. `fan_in` / `fan_out` /
+`hk` count **internal** file→file edges only; edges to `external`
+library nodes are excluded from these and counted separately in
+`fan_out_external`.
 
 #### `coupling.fan_in` — number
 
-Number of other nodes that **depend on** this node (incoming `Uses` edges).
-A high fan_in means many callers — changing this node is risky.
+Number of other project files that **depend on** this file (incoming
+`uses` edges). A high fan_in means many dependents — changing this file
+is risky.
 
 #### `coupling.fan_out` — number
 
-Number of nodes that **this node depends on** (outgoing `Uses` edges).
-A high fan_out means broad responsibilities — the node knows too much.
+Number of project files that **this file depends on** (outgoing `uses`
+edges, internal only). A high fan_out means broad responsibilities — the
+file knows too much.
+
+#### `coupling.fan_out_external` — number
+
+Number of **distinct external libraries** this file depends on (outgoing
+`uses` edges with `"external": true`, one per top-level library). Tracked
+separately from `fan_out` so third-party usage is visible without
+inflating the internal-coupling metrics or HK.
 
 #### `coupling.hk` — number
 
@@ -213,9 +192,12 @@ A high fan_out means broad responsibilities — the node knows too much.
 hk = loc × (fan_in × fan_out)²
 ```
 
-Combines size with coupling. A small isolated module has `hk = 0`.
-A large hub module can reach values in the millions. Use as a relative
-ranking within a project rather than an absolute threshold.
+Combines size with coupling. `fan_in` and `fan_out` here are the
+**internal** file→file counts — external library edges are excluded, so
+HK measures internal architectural coupling rather than 3rd-party
+library usage. A small isolated file has `hk = 0`; a large hub file can
+reach values in the millions. Use as a relative ranking within a project
+rather than an absolute threshold.
 
 ### `complexity.maintainability` — object, optional
 
@@ -253,7 +235,7 @@ answers a different question.
 
 #### `loc.total` — number
 
-Total lines in the file or function body, including everything.
+Total lines in the file, including everything.
 Same as `ploc` in legacy notation.
 
 #### `loc.source` — number

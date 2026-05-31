@@ -7,7 +7,7 @@ Settings are merged from multiple sources. **Higher priority wins** for the same
 | Priority | Source | Example |
 |---|---|---|
 | 1 | CLI flags | `--ignore '**/tests/**'` |
-| 2 | `--config KEY=VALUE` inline override | `--config rules.thresholds.module.hk=200000` |
+| 2 | `--config KEY=VALUE` inline override | `--config rules.thresholds.file.hk=200000` |
 | 3 | `--config <file>` | `--config ci/code-split.toml` |
 | 4 | `code-split.toml` in cwd | `./code-split.toml` |
 | 5 | `code-split.toml` in workspace root | `<workspace>/code-split.toml` |
@@ -27,10 +27,10 @@ plugin = "rust"
 
 [ignore]
 paths = [
-  "**/tests/**",
   "**/generated/**",
   "crates/*/benches/**",
 ]
+tests = true             # strip test files from the graph (legacy alias: test_modules)
 
 [rules.cycles]
 # each kind: false = off, true = strict (any cycle fails, same as 0),
@@ -39,32 +39,19 @@ test-embed = false   # default — off (Rust #[cfg(test)] back-edge, not a smell
 mutual     = true    # default — strict
 chain      = 7       # allow up to 7 chain cycles; pin today's count as a baseline
 
-[rules.thresholds.file]      # a single file (files graph only)
+[rules.thresholds.file]      # a single file (files graph)
 loc        = 800
-
-[rules.thresholds.file.avg]  # the files-graph average
-loc        = 300
-
-[rules.thresholds.module]    # a single module/crate (modules graph only)
-hk         = 500_000         # `_` separators; or a quoted suffix: hk = "5M"
-fan_out     = 50
-
-[rules.thresholds.function]  # a single function (functions graph only)
 cognitive  = 25
-loc        = 120
-
-[rules.thresholds.function.avg]  # the functions-graph average
-cyclomatic  = 8
+hk         = 500_000         # `_` separators; or a quoted suffix: hk = "5M"
+fan_out    = 50
 ```
 
-Threshold **scopes** — `file` / `module` / `function` — each apply to a single
-unit on that one graph (the scope *is* the graph), so a file and a function can
-carry different budgets. **Every scope also has an `.avg` sub-table** for that
-scope's graph-wide average. The single and `avg` buckets are independent.
+The threshold scope is always `file` — a single source file on the one graph
+code-split builds.
 
 **Values** accept `_` digit separators and `K`/`M`/`G` suffixes (×10³/10⁶/10⁹):
 `5_123_000`, or a quoted `"5M"` in TOML (bare `5M` is invalid TOML), or bare on the
-CLI (`--threshold module.hk=5M`). See [ERRORS.md](ERRORS.md#threshold-scopes).
+CLI (`--threshold file.hk=5M`). See [ERRORS.md](ERRORS.md#threshold-scopes).
 
 ---
 
@@ -82,7 +69,7 @@ paths = ["**/tests/**"]
 test-embed = false
 mutual     = true
 
-[workspace.metadata.code-split.rules.thresholds.module]
+[workspace.metadata.code-split.rules.thresholds.file]
 hk = 500_000
 ```
 
@@ -132,17 +119,16 @@ and `chain` on (= strict). Repeatable.
 code-split check . --cycle-rule test-embed=on --cycle-rule chain=7
 ```
 
-### `--threshold <SCOPE[.avg].METRIC=N>`
+### `--threshold <file.METRIC=N>`
 
-Set a threshold — a breach fails the check. `SCOPE`: `file` | `module` |
-`function` (a single unit on that graph). Add `.avg` for that scope's graph-wide
-average. `METRIC`: `hk` | `cyclomatic` | `cognitive` | `fan_in` | `fan_out` |
-`loc`. `N` accepts `_` separators and `K`/`M`/`G` suffixes (e.g. `5M`, `1_500`).
-Repeatable.
+Set a per-file threshold — a breach fails the check. The scope is always `file`
+(a single source file). `METRIC`: `hk`
+| `cyclomatic` | `cognitive` | `fan_in` | `fan_out` | `loc`. `N` accepts `_`
+separators and `K`/`M`/`G` suffixes (e.g. `5M`, `1_500`). Repeatable.
 
 ```bash
-code-split check . --threshold file.loc=800 --threshold function.cognitive=25 \
-  --threshold function.avg.cyclomatic=10
+code-split check . --threshold file.loc=800 --threshold file.cognitive=25 \
+  --threshold file.cyclomatic=10
 ```
 
 ### `--exit-zero`
@@ -183,5 +169,5 @@ There are no severity levels. Every rule is binary:
 Or with inline overrides to tighten rules in CI without changing `code-split.toml`:
 
 ```bash
-code-split check . --cycle-rule test-embed=on --threshold module.hk=200000
+code-split check . --cycle-rule test-embed=on --threshold file.hk=200000
 ```

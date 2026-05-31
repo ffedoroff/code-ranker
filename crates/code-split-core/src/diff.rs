@@ -40,33 +40,25 @@ pub struct CompareSummary {
     pub before: SnapMeta,
     pub after: SnapMeta,
     pub identical: bool,
-    pub modules: LevelDiff,
     pub files: LevelDiff,
-    pub functions: LevelDiff,
 }
 
 pub fn compare_snapshots(before: &Snapshot, after: &Snapshot) -> CompareSummary {
-    let modules = diff_graph(&before.graphs.modules, &after.graphs.modules);
     let files = diff_graph(&before.graphs.files, &after.graphs.files);
-    let functions = diff_graph(&before.graphs.functions, &after.graphs.functions);
 
-    let identical = [&modules, &files, &functions].iter().all(|d| {
-        d.nodes.added == 0
-            && d.nodes.removed == 0
-            && d.nodes.affected == 0
-            && d.edges.added == 0
-            && d.edges.removed == 0
-            && d.edges.affected == 0
-    });
+    let identical = files.nodes.added == 0
+        && files.nodes.removed == 0
+        && files.nodes.affected == 0
+        && files.edges.added == 0
+        && files.edges.removed == 0
+        && files.edges.affected == 0;
 
     CompareSummary {
         schema_version: "1".to_string(),
         before: snap_meta(before),
         after: snap_meta(after),
         identical,
-        modules,
         files,
-        functions,
     }
 }
 
@@ -331,12 +323,8 @@ mod tests {
 
     // ── compare_snapshots + snap_meta ───────────────────────────────────────
 
-    fn snap(modules: Graph, git: Option<GitInfo>, target: &str) -> Snapshot {
-        let graphs = PluginGraphs {
-            modules,
-            files: Graph::new(),
-            functions: Graph::new(),
-        };
+    fn snap(files: Graph, git: Option<GitInfo>, target: &str) -> Snapshot {
+        let graphs = PluginGraphs { files };
         Snapshot::new(
             "report".into(),
             "/w".into(),
@@ -366,7 +354,7 @@ mod tests {
         let after = snap(graph(vec![node("a"), node("b")], vec![]), None, "/x/proj");
         let s = compare_snapshots(&before, &after);
         assert!(!s.identical);
-        assert_eq!(s.modules.nodes.added, 1);
+        assert_eq!(s.files.nodes.added, 1);
     }
 
     #[test]

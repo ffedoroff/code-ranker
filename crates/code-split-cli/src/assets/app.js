@@ -7,14 +7,11 @@ function activeGraph(level) {
   return activeSnap()?.graphs?.[level] || { nodes: [], edges: [] };
 }
 
-// Same, but with external (3rd-party) nodes and their edges dropped — externals
-// belong only in the per-node neighbourhood modal, not the main map.
+// The graph drawn on the main map. External (3rd-party library) nodes are kept
+// and rendered in a distinct colour (depth-1 dependencies); they are excluded
+// only from the node table and the averages, not the diagram.
 function activeLocalGraph(level) {
-  const g = activeGraph(level);
-  const nodes = g.nodes.filter(n => !n.external);
-  const ids = new Set(nodes.map(n => n.id));
-  const edges = g.edges.filter(e => ids.has(e.from) && ids.has(e.to));
-  return { nodes, edges };
+  return activeGraph(level);
 }
 
 // Toggle Before/After: re-render the active view from the chosen snapshot,
@@ -56,18 +53,9 @@ function updateHeader() {
   });
 }
 
-function updateFilesTab() {
-  const hasFileNodes = snap =>
-    ((snap?.graphs || {}).files?.nodes || []).some(n => n.kind === 'file');
-  const show = hasFileNodes(window.BEFORE) || hasFileNodes(window.AFTER);
-
-  const wrap = document.getElementById('nav-files-item');
-  if (wrap) wrap.style.display = show ? '' : 'none';
-
-  if (!show && document.querySelector('.view.active')?.dataset.view === 'files') {
-    document.querySelector('.report-switch a[data-view="modules"]')?.click();
-  }
-}
+// Files is the only graph level — nothing to toggle. Kept as a no-op so callers
+// (app bootstrap, snapshot swap) need no changes.
+function updateFilesTab() {}
 
 // Recompute everything after the user swaps a snapshot via the upload controls.
 function recomputeAll() {

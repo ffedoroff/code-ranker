@@ -41,11 +41,11 @@
 ### 1.1 Purpose
 
 Code Split is a polyglot structural-analysis platform that (1) extracts
-dependency graphs from local codebases at module, file, and function
-granularity via a pluggable analyzer system, (2) visualizes the
-resulting graphs as interactive offline HTML reports with coupling
-metrics, and (3) tracks and reports architectural drift between two
-captured snapshots.
+a file-level dependency graph from local codebases — with third-party
+libraries recorded as depth-1 external nodes — via a pluggable analyzer
+system, (2) visualizes the resulting graph as an interactive offline
+HTML report with per-file complexity and coupling metrics, and (3)
+tracks and reports architectural drift between two captured snapshots.
 
 ### 1.2 Background / Problem Statement
 
@@ -64,8 +64,8 @@ language-specific, non-exportable, or single-level.
 
 **Key Problems Solved**:
 
-- No unified multi-level dependency graph across languages in a
-  portable artifact format
+- No unified file dependency graph across languages in a portable
+  artifact format
 - No before/after coupling comparison that quantifies whether a
   refactoring improved the architecture
 - Refactoring decisions rely on intuition rather than measurable data
@@ -74,8 +74,8 @@ language-specific, non-exportable, or single-level.
 
 **Success Criteria**:
 
-- Extract module/file/function graphs for a 50k-LOC Rust workspace
-  in under 30 seconds
+- Extract the file graph for a 50k-LOC Rust workspace in under 30
+  seconds (typically a few seconds — no rust-analyzer)
 - Generate an HTML visualization report from JSON artifacts in under
   5 seconds
 - Generate a diff report between two snapshots in under 5 seconds
@@ -84,19 +84,20 @@ language-specific, non-exportable, or single-level.
 **Capabilities**:
 
 - Built-in analyzer system: each language provides a plugin compiled
-  into the binary that emits standard JSON artifacts
-- Multi-level graph visualization with coupling metrics and node sorting
+  into the binary that emits a standard JSON artifact
+- File-graph visualization with per-file complexity + coupling metrics,
+  external dependency nodes, and node sorting
 - Snapshot diff for before/after refactoring quantification
 
 ### 1.4 Glossary
 
 | Term | Definition |
 |------|------------|
-| Plugin | A built-in language analyzer (`rust`, `python`, or `javascript`) compiled into the `code-split` binary that analyzes a workspace and produces three graphs (module, file, function level) in-process |
-| Snapshot | A single self-contained JSON file combining metadata and all three graphs produced by a single analysis run |
-| Graph | A directed graph whose nodes are code entities and whose edges are structural relationships (`Contains`, `Uses`, `Calls`) |
-| Level | One of `module`, `file`, `fn` — the granularity of a graph |
-| Node weight | The coupling metric for a node: sum of its incoming and outgoing edge counts |
+| Plugin | A built-in language analyzer (`rust`, `python`, or `javascript`) compiled into the `code-split` binary that analyzes a workspace and produces a single file graph in-process |
+| Snapshot | A single self-contained JSON file combining metadata and the one `files` graph produced by a single analysis run |
+| Graph | A directed graph whose nodes are source files (`file`) and third-party libraries (`external`), and whose edges are file dependencies (`uses`, `reexports`) |
+| External node | A third-party library recorded at depth 1 — one node per library (`ext:<name>`), never expanded into its internals |
+| Node weight | The coupling metric for a file: sum of its incoming and outgoing internal edge counts |
 | Diff | A structured comparison of two snapshots: nodes and edges added, removed, or with changed weight |
 | Coupling direction | The overall verdict of a diff: `improved`, `degraded`, or `neutral` |
 
@@ -162,12 +163,11 @@ outputs JSON            outputs HTML              (we wait)             outputs 
 
 **Step 1 — Graph Extraction (Plugin)**: A language-specific built-in
 plugin analyzes the workspace in-process when `code-split report` runs,
-which writes a single JSON snapshot combining all three graphs (modules,
-files, functions). No
-network access or LLM is required. The snapshot may be stored as a CI
-artifact for Step 4. (For a pure CI gate that only lints and writes no
-files, `code-split check` runs the same analysis without producing a
-snapshot.)
+which writes a single JSON snapshot containing the file dependency graph
+(with third-party libraries as depth-1 external nodes). No network access
+or LLM is required. The snapshot may be stored as a CI artifact for Step
+4. (For a pure CI gate that only lints and writes no files,
+`code-split check` runs the same analysis without producing a snapshot.)
 
 **Step 2 — Visualization (Report Generator)**: The same `code-split report`
 run that analyzes the workspace also produces a self-contained offline
@@ -192,8 +192,8 @@ machine-readable JSON diff. No network access or LLM is required.
 
 | Step | Scope |
 |------|-------|
-| Step 1 | Rust plugin only; module-, file-, and function-level JSON graphs; no AI prompts; no CI integration |
-| Step 2 | Offline HTML report with graph visualization and node sorting by weight |
+| Step 1 | Rust plugin only; single file-level JSON graph with external dependency nodes; no AI prompts; no CI integration |
+| Step 2 | Offline HTML report with file-graph visualization and node sorting by weight |
 | Step 4 | Offline HTML diff report and machine-readable JSON diff comparing two snapshots |
 
 #### P2 — Follow-On
@@ -209,18 +209,18 @@ machine-readable JSON diff. No network access or LLM is required.
 
 | Step | Scope |
 |------|-------|
-| Step 1 | Additional language plugins: Python, JavaScript, Go, C#, PHP; framework-specific plugins (Django, WordPress, etc.) with domain-specific node kinds |
+| Step 1 | Additional language plugins: Python, JavaScript, Go, C#, PHP; framework-specific plugins (Django, WordPress, etc.) with domain-specific metadata |
 | Step 2 | AI prompt generation for principles review using the `principles/` corpus (per-language: `principles/rust/`, `principles/python/`, `principles/typescript/`) |
 
 ### 4.2 Out of Scope (All Versions)
 
-- External dependency analysis (registry/git/npm/pypi packages are
-  opaque leaf nodes; their internals are never expanded)
-- Dynamic dispatch resolution beyond what the language-specific
-  resolver reports
+- Expanding external dependencies (registry/git/npm/pypi packages
+  appear as opaque depth-1 nodes; their internals are never read)
+- Function-level or call-graph analysis (no `Calls` edges, no semantic
+  call resolution)
 - Automated code modification or refactoring suggestions
 - IDE/LSP integration and interactive visualization
-- Cross-language call graph (FFI/RPC boundaries are leaves)
+- Cross-language linkage (FFI/RPC boundaries are leaves)
 - Database or service deployment; no server component
 
 ## 5. Functional Requirements
@@ -260,7 +260,7 @@ code-split diff   --before <snap-a.json> --after <snap-b.json> [--format html,js
 for named states (e.g., `pr.json`). No additional registry is created.
 
 Each snapshot is a **single self-contained `.json` file** combining
-metadata (command, versions, git state) and all three graphs. See
+metadata (command, versions, git state) and the one `files` graph. See
 `cpt-code-split-fr-snapshot-meta` for the full schema.
 
 `diff` consumes snapshot files produced by `report` and is
@@ -279,7 +279,7 @@ never have to think about naming for routine snapshots; explicit
 - [x] `p1` - **ID**: `cpt-code-split-fr-snapshot-meta`
 
 Each `code-split report` run produces a single `.json` file. The file
-combines metadata and all three graphs in one document:
+combines metadata and the one `files` graph in one document:
 
 ```json
 {
@@ -308,16 +308,13 @@ combines metadata and all three graphs in one document:
     "dirty_files": 4
   },
   "timings": [
-    { "stage": "syn",        "ms": 600,  "detail": "547 nodes" },
-    { "stage": "sema",       "ms": 10500,"detail": "389 call edges" },
-    { "stage": "complexity", "ms": 700,  "detail": "147 nodes annotated" },
-    { "stage": "projection", "ms": 0,    "detail": "modules=508 files=547 functions=810" },
-    { "stage": "write",      "ms": 20,   "detail": "/path/to/snap.json" }
+    { "stage": "syn",        "ms": 600, "detail": "547 module nodes" },
+    { "stage": "complexity", "ms": 700, "detail": "147 files annotated" },
+    { "stage": "collapse",   "ms": 5,   "detail": "files=512 external=38" },
+    { "stage": "write",      "ms": 20,  "detail": "/path/to/snap.json" }
   ],
   "graphs": {
-    "modules":   { "nodes": [...], "edges": [...], "stats": { ... } },
-    "files":     { "nodes": [...], "edges": [...], "stats": { ... } },
-    "functions": { "nodes": [...], "edges": [...], "stats": { ... } }
+    "files": { "nodes": [...], "edges": [...], "stats": { ... } }
   }
 }
 ```
@@ -345,8 +342,8 @@ Top-level fields:
 - `timings` — per-stage wall-clock timings in milliseconds, in execution
   order; each entry has `stage` (name), `ms` (elapsed), `detail` (human
   summary); omitted when empty
-- `graphs` — object with three keys: `modules`, `files`, `functions`;
-  each value is a graph object with `nodes` and `edges` arrays
+- `graphs` — object with a single key: `files`; its value is a graph
+  object with `nodes` and `edges` arrays
 
 `code-split report` (with `--before`) and `code-split diff` read snapshot
 files and embed the top-level metadata in the generated HTML as a
@@ -397,85 +394,57 @@ process.
 The platform MUST ship a built-in Rust plugin (`--plugin rust`) for Cargo
 workspaces. The plugin MUST:
 
-- Derive the module graph from `cargo metadata` and `mod` declarations
-  via syntactic analysis (`syn` crate); in Rust a `.rs` file IS its
-  module, so no separate `File` nodes are emitted — `loc` and
-  `item_count` live on the `Module` node
-- Emit an empty `files` graph (no `NodeKind::File` nodes are produced
-  for Rust — a `.rs` file IS its module; file-level graphs are the
-  responsibility of Python/JS/TS plugins); when empty, `files` is
-  omitted from the serialized snapshot
-- Derive the function graph using rust-analyzer (`ra_ap_*` crates) for
-  resolved `Calls` edges; unresolved call sites MUST be omitted or
-  marked `unresolved = true`; no syntactically guessed `Calls` edges
-- Classify each crate as local vs. external; external crates appear as
-  opaque leaf nodes with `external = true` and are never expanded
-- Compute code complexity metrics (cyclomatic, cognitive, Halstead,
-  maintainability index, LOC variants, NOM, nexits, nargs) for each
-  file-backed `Module`, `Fn`, and `Method` node via `code-split-complexity`;
+- Derive the Rust module graph from `cargo metadata` and `mod`
+  declarations / `use` statements via syntactic analysis (`syn` crate),
+  then **collapse it to a file graph**: every `.rs` file becomes one
+  `File` node, inline `mod {}` modules fold into their file, and
+  `use` / `pub use` edges are re-pointed to the owning files — so
+  file→file dependencies are fully preserved
+- Classify each crate as local vs. external; external crates collapse to
+  `External` library nodes (`ext:<name>`) recorded at depth 1, never
+  expanded; edges into them are flagged `external: true`
+- NOT emit a function-level call graph (no `Calls` edges, no
+  rust-analyzer / `ra_ap_*` dependency); analysis runs in seconds
+- Compute per-file code complexity metrics (cyclomatic, cognitive,
+  Halstead, maintainability index, LOC variants, functions, closures,
+  nexits, nargs) for each `File` node via `code-split-complexity`;
   metrics are stored in the `complexity` field of the node and
   serialized into the snapshot
-- Detect dependency cycles (Kosaraju SCC) across all three graph
-  levels; annotate each node in a cycle with `cycle_kind`
-  (`TestEmbed` | `Mutual` | `Chain`) and store `CycleGroup` entries
-  in `Graph.cycles`
+- Detect dependency cycles (Kosaraju SCC) in the file graph; annotate
+  each node in a cycle with `cycle_kind` (`TestEmbed` | `Mutual` |
+  `Chain`) and store `CycleGroup` entries in `Graph.cycles`
 - Compute Henry-Kafura complexity (`HK = LOC × (fan_in × fan_out)²`)
-  for every node; store in `complexity.coupling` (`fan_in`, `fan_out`,
-  `hk`); excludes `Contains` edges from the counts
+  for every file node from **internal** file→file edges; store in
+  `complexity.coupling` (`fan_in`, `fan_out`, `fan_out_external`, `hk`).
+  Edges to `External` nodes are excluded from `fan_in`/`fan_out`/`hk`
+  and counted in `fan_out_external` instead
 
 **Rationale**: Rust is the primary use-case for the initial release.
-The existing `code-split-syn` and `code-split-sema` analysis components
-become the implementation of this plugin.
+The `code-split-syn` analysis crate plus the module→file collapse pass
+in `code-split-cli` implement this plugin. Removing rust-analyzer makes
+the Rust path fast and the binary light.
 
 **Actors**: `cpt-code-split-actor-developer`
-
-#### Module-Level Graph
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-module-graph`
-
-The Rust plugin MUST emit a directed graph of modules for each local
-crate. Nodes are module units (including folder-backed `mod.rs` /
-`lib.rs` hierarchy). Edges are `Contains` (parent → child module) and
-`Uses` (module → imported module, derived from `use` statements).
-
-**Rationale**: Module structure is the level where most refactoring
-decisions are made; it maps directly to package-layout discussions.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`
 
 #### File-Level Graph
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-file-graph`
 
-The Rust plugin produces no `NodeKind::File` nodes — in Rust a `.rs`
-file IS its module, so `loc` and `item_count` live on the `Module`
-node. The `files` projection therefore yields an empty graph, which is
-omitted from the snapshot JSON (`skip_serializing_if = "Graph::is_empty"`).
+Every plugin MUST emit a single directed **file graph**. Nodes are
+`File` (project source files, carrying all per-file metrics) and
+`External` (third-party libraries at depth 1, one node per library,
+never expanded). Edges are `uses` and `reexports` between files, plus
+`uses` edges flagged `external: true` from a file to a library node.
+There is no module or function graph in the snapshot.
 
-File-level graphs (`NodeKind::File` nodes, `Contains`/`Uses` edges per
-file) are the responsibility of Python, JavaScript, and TypeScript
-plugins where source files and logical modules are distinct entities.
+For Rust, the file graph is derived by collapsing the module graph (see
+`cpt-code-split-fr-rust-plugin`); for Python/JS/TS it is built directly
+from import resolution.
 
-**Rationale**: An empty files graph for Rust adds no information and
-wastes snapshot space. Python/JS/TS plugins emit real file nodes with
-meaningful dependency edges, so the `files` key is preserved in the
-schema for those plugins.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`
-
-#### Function-Level Graph
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-fn-graph`
-
-The Rust plugin MUST emit a directed graph of functions and methods.
-Nodes are `Fn` and `Method` items. Edges are `Calls` relationships
-resolved by rust-analyzer (`ra_ap_*`). The plugin MUST NOT emit `Calls`
-edges based on syntactic pattern matching; every `Calls` edge MUST be
-semantically resolved.
-
-**Rationale**: An honest call graph is the differentiator over
-syntactic tools. False-positive edges produce misleading coupling
-metrics.
+**Rationale**: The file is the universal unit across languages and the
+level at which most refactoring and ownership decisions are made. A
+single graph keeps the artifact small and the model consistent across
+plugins.
 
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`
 
@@ -485,15 +454,14 @@ metrics.
 
 The Rust plugin MUST support a `--local-only` flag. When set, it MUST
 pass `--no-deps` to `cargo metadata` (external crates are not
-enumerated) and skip the rust-analyzer stage entirely (producing only
-module and file graphs; the `functions.json` artifact is written as an
-empty graph). This mode works even when external dependencies are
-unreachable or uncached.
+enumerated). The file graph and per-file complexity metrics are still
+produced; there are simply fewer (or no) `External` library nodes. This
+mode works even when external dependencies are unreachable or uncached.
 
 **Rationale**: Workspaces with private or unreachable git dependencies
-cannot be analyzed in full mode because `cargo metadata` fails. Local-
-only still produces the full module/file graph, which is sufficient for
-most structural coupling analysis.
+cannot have their dependencies resolved by `cargo metadata`. Local-only
+still produces the full internal file graph, which is sufficient for most
+structural coupling analysis.
 
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`
 
@@ -527,40 +495,33 @@ structural analysis today.
 - [x] `p3` (Python shipped) - **ID**: `cpt-code-split-fr-lang-plugins`
 
 The platform SHOULD support additional built-in language plugins for
-Python, Go, JavaScript, C#, and PHP, each emitting conformant JSON
-artifacts. A built-in plugin MAY extend the node and edge kind vocabulary
-with framework-specific types (e.g. Django, WordPress concepts); such
-extensions MUST be backward-compatible with the base schema.
+Python, Go, JavaScript, C#, and PHP, each emitting a conformant file
+graph. A built-in plugin MAY attach framework-specific information via
+the `metadata` object on nodes/edges (e.g. Django, WordPress concepts);
+such extensions MUST be backward-compatible with the base schema and keep
+`kind` as `file` / `external`.
 
 **Python plugin** (`--plugin python`) is shipped as a built-in in
-`code-split-cli`. It uses `tree-sitter-python` to extract module/package
-structure, classes, functions, methods, and import-based `Uses` edges.
-Emits `Module`, `File`, `Impl`, `Fn`, `Method` nodes. Complexity metrics
-(cyclomatic, cognitive, Halstead, MI, LOC, NOM, nexits, nargs) are
-annotated on `Fn`, `Method`, and `File` nodes via `code-split-complexity`
-using `rust-code-analysis`'s `PythonParser`. Function matching uses
-line-based fallback (by `start_line`) because `rust-code-analysis` reports
-Python functions as `<anonymous>` in `FuncSpace.name`. A heuristic call
-graph is built via a second tree-sitter AST pass: after all files are
-parsed, callee names extracted from `call` nodes (plain `identifier` or
-`attribute` access) are matched against the global `Fn`/`Method` name
-index; matching pairs emit `Calls` edges.
+`code-split-cli`. It uses `tree-sitter-python` to emit one `File` node
+per `.py` file and resolve imports: imports of project files become
+file→file `uses` edges (including `__init__.py` package imports pointing
+at the package file), and imports that do not resolve to a project file
+become `External` library nodes (`ext:<top-level-package>`, e.g.
+`numpy`) reached by a `uses` edge flagged `external: true`. Per-file
+complexity metrics (cyclomatic, cognitive, Halstead, MI, LOC, functions,
+nexits, nargs) are annotated on each `File` node via
+`code-split-complexity` using `rust-code-analysis`'s `PythonParser`.
 
 **JavaScript / TypeScript plugin** (`--plugin javascript`) is shipped as a
 built-in in `code-split-cli`; one plugin handles `.js`, `.jsx`, `.ts`, and
-`.tsx`. It uses `tree-sitter-javascript` and
-`tree-sitter-typescript` to extract module/package structure, classes,
-functions, methods, and import-based `Uses` edges. Supports both ES
-modules (`import`) and CommonJS (`require()`). Emits `Module`, `File`,
-`Impl`, `Fn`, `Method` nodes. Complexity metrics are annotated for regular
-`function` declarations; arrow functions and class method shorthand are not
-matched by `rust-code-analysis` (best-effort annotation). A heuristic
-call graph is built via a second tree-sitter AST pass: callee names from
-`call_expression` nodes (plain `identifier` or `member_expression`
-property) are matched against the global `Fn`/`Method` name index;
-matching pairs emit `Calls` edges. Named arrow functions assigned to
-`const`/`let` declarators are resolved to their declared name and treated
-as first-class function nodes for both traversal and callee lookup.
+`.tsx`. It uses `tree-sitter-javascript` and `tree-sitter-typescript` to
+emit one `File` node per source file and resolve ES `import` statements
+and CommonJS `require()` calls: imports of project files become file→file
+`uses` edges, and bare-package imports become `External` library nodes
+(`ext:<package>`, one per top-level package — `react`, `@scope/pkg`)
+reached by a `uses` edge flagged `external: true`. Per-file complexity
+metrics are annotated on each `File` node (whole-file aggregate covering
+all functions, arrow functions, and methods).
 
 Go, C#, PHP plugins remain future work (P3 deferred).
 
@@ -594,7 +555,7 @@ plugin = "auto"          # default plugin; "auto" detects by project markers, ov
 
 [ignore]
 paths        = ["**/generated/**"]  # glob patterns matched against node path
-test_modules = true      # strip all mod::tests submodules (IDs ending in ::tests)
+tests        = true      # strip test files from the graph (legacy alias: test_modules)
 dev_only_crates = true   # strip crates reachable only via [dev-dependencies]
                          # (uses `cargo metadata` for transitive accuracy)
 
@@ -603,14 +564,10 @@ test-embed = false       # default: off  (Rust #[cfg(test)] back-edge)
 mutual     = true        # default: on
 chain      = true        # default: on
 
-[rules.thresholds.module]  # a single module/crate (modules graph only)
-hk         = 500_000
-
-[rules.thresholds.file]  # a single file (files graph only)
+[rules.thresholds.file]      # a single file (files graph)
 loc        = 800
-
-[rules.thresholds.function.avg]  # the functions-graph average
-cyclomatic  = 10
+hk         = 500_000
+cyclomatic = 10
 ```
 
 **CLI flags**:
@@ -622,11 +579,10 @@ cyclomatic  = 10
 - `--cycle-rule <KIND=on|off|N>` — configure a cycle check: `on` (any cycle of
   that kind fails), `off` (ignored), or an integer `N` (allow up to `N`, fail on
   the `N+1`-th — e.g. `chain=7` to pin today's count and forbid new ones)
-- `--threshold <SCOPE[.avg].METRIC=N>` — set a threshold (e.g. `file.loc=800`,
-  `function.avg.cyclomatic=10`); a breach fails the check (`check` only). SCOPE is
-  `file` / `module` / `function` (a single unit on that graph); add `.avg` for
-  that scope's graph-wide average. `N` accepts `_` separators and `K`/`M`/`G`
-  suffixes (e.g. `module.hk=5M`)
+- `--threshold <file.METRIC=N>` — set a per-file threshold (e.g.
+  `file.loc=800`, `file.cyclomatic=10`); a breach fails the check (`check`
+  only). The scope is always `file` (a single source file). `N` accepts `_`
+  separators and `K`/`M`/`G` suffixes (e.g. `file.hk=5M`)
 - `--top <N>` — report only the `N` worst violations (`check` only); reporting
   limit, does not change the exit code
 - `--exit-zero` — exit 0 even when violations are found (`check` only,
@@ -654,8 +610,7 @@ fired-rules `tool.driver.rules` catalog).
 **Current-values config block (`--suggest-config`)**: with `--suggest-config`,
 `human` output prints — after the findings — the project's current measured values
 as ready-to-paste `code-split.toml` blocks: the `[rules.cycles]` counts per kind,
-and per-scope thresholds (`single` = the worst single unit, `.avg` = the graph-wide
-average). A team copies the block to pin today's numbers as a baseline that passes
+and the per-file thresholds (the worst single unit). A team copies the block to pin today's numbers as a baseline that passes
 now and fails on regression. Off by default; the machine formats
 (`json`/`github`/`sarif`) omit it.
 
@@ -684,10 +639,10 @@ The `code-split report` subcommand MUST analyze the workspace and, when
 self-contained offline HTML file alongside the snapshot `.json`. The HTML
 MUST include:
 
-- Interactive graph visualization for each level (module, file,
-  function)
+- Interactive file-graph visualization, with `external` library nodes
+  shown in a distinct amber colour (dashed edges)
 - A coupling metrics table showing node weight (fan-in + fan-out) for
-  each node at each level
+  each file
 - All JavaScript and CSS inlined (no CDN or external resources)
 
 **Rationale**: A self-contained HTML file requires no server, no
@@ -700,10 +655,10 @@ accessibility for developers and reviewers on any machine.
 
 - [x] `p1` - **ID**: `cpt-code-split-fr-node-sorting`
 
-The HTML report MUST allow the user to sort nodes by coupling weight
+The HTML report MUST allow the user to sort files by coupling weight
 (fan-in + fan-out edge count). The report MUST display the top-N
-heaviest nodes prominently at each level. Sorting MUST be performed
-client-side within the HTML (no server required).
+heaviest files prominently. Sorting MUST be performed client-side within
+the HTML (no server required).
 
 **Rationale**: The heaviest nodes are the most likely candidates for
 refactoring. Surfacing them first reduces the time to actionable insight.
@@ -748,19 +703,17 @@ or with changed weight. The diff MUST include an overall coupling
 direction verdict: `improved` (total weight fell), `degraded` (total
 weight rose), or `neutral` (no significant change). The interactive
 diff HTML uses Graphviz WASM (bundled in the binary) for client-side
-DOT→SVG layout with cluster grouping; Modules/Files/Functions view
-switcher and Before/After/Diff/Cycles presets are independent controls
-in diff mode; when only one snapshot is loaded (review mode) the viewer
-switches to an All/Cycles preset pair, hides diff-specific filter chips,
-shows a single-column summary table, and relabels the header accordingly.
-Cycle detection (Tarjan SCC) runs in-browser and annotates nodes/edges
-for red-stroke highlighting (solid red, no dasharray, same style for
-before/after). All nodes render with a uniform blue fill; all edges
-render as uniform blue solid lines — no per-kind or per-status color
-differentiation. No legend overlay. The node table column order is:
-checkbox, Name, Kind, Cycle (modules only), Status, LOC, HK, Fan-in,
-Fan-out, H.vol, H.bugs, H.effort, H.time, H.len, H.vocab, Cyclomatic,
-Cognitive, MI, MI SEI, Logical, Comments, Blank. A checkbox column
+DOT→SVG layout with directory cluster grouping; there is a single Files
+view (no level switcher). The `[data-side]` Before/After buttons render
+each snapshot as its own clean diagram in diff mode; when only one
+snapshot is loaded (review mode) the Before/After buttons are hidden and
+the header is relabelled. Cycle detection (Tarjan SCC) runs in-browser
+and annotates nodes/edges for red-stroke highlighting (solid red, no
+dasharray, same style for before/after). Internal `file` nodes render
+blue; `external` library nodes render amber with dashed edges. The node
+table column order is: checkbox, Name, Kind, Cycle, Status, LOC, HK,
+Fan-in, Fan-out, H.vol, H.bugs, H.effort, H.time, H.len, H.vocab,
+Cyclomatic, Cognitive, MI, MI SEI, Logical, Comments, Blank. A checkbox column
 (leftmost) enables persistent multi-node selection: clicking a checkbox
 highlights the row (yellow) and the corresponding SVG node (yellow fill
 - amber stroke); shift-click selects a range; the header checkbox
@@ -786,15 +739,15 @@ static visualizations manually.
 The diff tool MUST generate a single self-contained offline HTML report
 displaying:
 
-- Added / removed / changed nodes and edges per level, color-coded by
+- Added / removed / changed files and edges, color-coded by
   direction (green = added, amber = removed, grey = affected)
-- Cycle detection per level: nodes/edges in dependency cycles annotated
-  with `before-only` / `after-only` / `both` / `none` status; red-stroke
-  highlighting toggled via Cycles chip row
-- Legend explaining edge kind (contains/uses/reexports/calls), diff
-  colors, and cycle stroke styles
+- Cycle detection: files/edges in dependency cycles annotated with
+  `before-only` / `after-only` / `both` / `none` status and red-stroke
+  highlighting
+- `external` library nodes shown in a distinct amber colour with dashed
+  edges to distinguish them from internal file edges
 - Diff summary table: node/edge counts and cycle counts (SCCs, nodes in
-  cycles) for each level, before vs after with Δ
+  cycles), before vs after with Δ
 - All JavaScript and CSS bundled locally (no CDN or external resources)
 
 **Rationale**: Self-contained HTML is viewable without tooling and
@@ -821,11 +774,9 @@ JSON schema:
   "before": { "target": "…", "branch": "…", "commit": "…" },
   "after":  { "target": "…", "branch": "…", "commit": "…" },
   "identical": false,
-  "modules":   { "nodes": { "added": 0, "removed": 0, "affected": 0, "unchanged": 26 },
+  "files":     { "nodes": { "added": 0, "removed": 0, "affected": 0, "unchanged": 26 },
                  "edges": { … }, "cycle_nodes_before": 10, "cycle_nodes_after": 10,
-                 "sccs_before": 4, "sccs_after": 4 },
-  "files":     { … },
-  "functions": { … }
+                 "sccs_before": 4, "sccs_after": 4 }
 }
 ```
 
@@ -973,10 +924,10 @@ report`). The only plugins are `rust`, `python`, and `javascript`
 `cpt-code-split-fr-plugin-discovery`). There is no subprocess invocation,
 no external plugin binary, and no external/dynamic plugin loading.
 
-Internally each plugin produces the `graphs` object (`modules`, `files`,
-`functions`); `code-split` merges it with the top-level metadata and
-writes the final snapshot `.json`. Adding a language means adding a
-built-in plugin to the binary.
+Internally each plugin produces the `graphs` object (a single `files`
+graph); `code-split` merges it with the top-level metadata and writes the
+final snapshot `.json`. Adding a language means adding a built-in plugin
+to the binary.
 
 ### 7.3 Graph JSON Schema
 
@@ -999,17 +950,14 @@ built-in plugin to the binary.
   "versions":       { "code-split": "0.3.1", "plugin_rust": "0.3.1", "rustc": "1.78.0" },
   "git":            { "branch": "main", "commit": "a3f9c21", "dirty_files": 0 },
   "graphs": {
-    "modules":   { "nodes": [...], "edges": [...], "stats": { ... } },
-    "files":     { "nodes": [...], "edges": [...], "stats": { ... } },
-    "functions": { "nodes": [...], "edges": [...], "stats": { ... } }
+    "files": { "nodes": [...], "edges": [...], "stats": { ... } }
   }
 }
 ```
 
-`files` is omitted entirely when the plugin produces no `NodeKind::File`
-nodes (e.g. the Rust plugin). `stats` is omitted when a graph is empty.
+`stats` is omitted when the graph is empty.
 
-**Graph stats shape** (`stats` field on each non-empty graph):
+**Graph stats shape** (`stats` field on the `files` graph):
 
 ```json
 {
@@ -1029,24 +977,19 @@ absent sub-objects are omitted. Percentiles are not stored in JSON — the
 HTML viewer computes `p1`/`p10`/`p50`/`p90`/`p99` client-side from raw
 node data. All numeric values use 3-significant-digit truncation.
 
-**Node shape** (same across all three graphs):
+**Node shape**:
 
 ```json
 {
-  "id":          "<stable-string-key>",
-  "kind":        "crate | module | file | fn | method",
-  "name":        "<short-name>",
+  "id":          "file:{target}/src/foo.rs",
+  "kind":        "file | external",
+  "name":        "foo.rs",
   "path":        "{target}/src/foo.rs",
-  "parent":      "<parent-node-id>",
-  "loc":         42,
-  "line":        15,
   "external":    false,
   "visibility":  "public",
-  "item_count":  7,
-  "method_count": 3,
   "complexity": {
     "cyclomatic": 3, "cognitive": 2, "exits": 2, "args": 3,
-    "coupling": { "fan_in": 4, "fan_out": 2, "hk": 1344 },
+    "coupling": { "fan_in": 4, "fan_out": 2, "fan_out_external": 1, "hk": 1344 },
     "maintainability": { "mi": 78.4, "mi_sei": 52.1 },
     "loc": { "source": 42, "logical": 12, "comments": 4, "blank": 6 },
     "halstead": {
@@ -1057,27 +1000,32 @@ node data. All numeric values use 3-significant-digit truncation.
 }
 ```
 
-All optional fields (`parent`, `loc`, `line`, `external`, `visibility`,
-`item_count`, `method_count`, `complexity`) are omitted when null or empty.
-`visibility` is a plain string (`"public"`, `"private"`, `"crate"`, `"super"`)
-or an object `{"restricted": "<path>"}` for path-restricted visibility.
-`path` values use named-root prefixes resolved via `roots` (e.g.
-`{target}/src/main.rs`, `{registry}/anyhow-1.0.102/src/lib.rs`). For
-`fn`/`method` nodes `loc` is the function body length in lines and `line`
-is the 1-based declaration line; for `file` nodes `loc` is total file line
-count. In the Rust plugin, file-backed `Module` nodes (those with `line = null`)
-also carry `complexity` with file-level metrics (whole-file cyclomatic,
-Halstead, MI, LOC). The `complexity` object is omitted entirely when all
-sub-fields are zero/absent; within it, zero-valued scalar fields and absent
-sub-objects are omitted. The `coupling` sub-object is omitted when both
-`fan_in` and `fan_out` are 0. All numeric fields use 3-significant-digit
-truncation; whole numbers are serialized without a decimal point.
+All optional fields (`path`, `external`, `visibility`, `complexity`) are
+omitted when null or empty. `kind` is `file` (a project source file,
+id `file:<path>`) or `external` (a 3rd-party library, id `ext:<name>`,
+no `path` and no `complexity`). `visibility` is a plain string
+(`"public"`, `"private"`, `"crate"`, `"super"`) or an object
+`{"restricted": "<path>"}` for path-restricted visibility. `path` values
+use named-root prefixes resolved via `roots` (e.g. `{target}/src/main.rs`).
+For `file` nodes `loc.source` is the source-line count and `complexity`
+carries the whole-file metrics (cyclomatic, Halstead, MI, LOC). The
+`complexity` object is omitted entirely when all sub-fields are
+zero/absent; within it, zero-valued scalar fields and absent sub-objects
+are omitted. The `coupling` sub-object is omitted when `fan_in`,
+`fan_out`, and `fan_out_external` are all 0. `coupling.fan_in` /
+`fan_out` / `hk` count internal file→file edges only; edges to `external`
+nodes are counted in `fan_out_external` instead. All numeric fields use
+3-significant-digit truncation; whole numbers are serialized without a
+decimal point.
 
 **Edge shape**:
 
 ```json
-{ "from": "<node-id>", "to": "<node-id>", "kind": "contains | uses | calls", "unresolved": false }
+{ "from": "<node-id>", "to": "<node-id>", "kind": "uses | reexports", "external": false }
 ```
+
+`external: true` marks a `uses` edge from a file to an `external` library
+node; omitted (false) for internal file→file edges.
 
 ```
 
@@ -1102,8 +1050,8 @@ the `code-split` binary is installed.
 2. `code-split` writes `.code-split/axum-api-20260522-112233.json` (the
    snapshot) and `.code-split/axum-api-20260522-112233.html` (the viewer)
 3. Developer opens `.code-split/axum-api-20260522-112233.html` in a browser,
-   sorts modules by coupling weight
-4. Developer identifies the heaviest modules and decides what to refactor
+   sorts files by coupling weight
+4. Developer identifies the heaviest files and decides what to refactor
 
 (For a non-blocking lint that gates on cycles/thresholds and writes no
 files, the developer can instead run `code-split check . --plugin rust`.)
@@ -1175,8 +1123,8 @@ as a self-contained HTML report.
 
 ## 9. Acceptance Criteria
 
-- [x] Rust plugin produces three valid JSON files for a reference
-  workspace in ≤ 30 s on a modern laptop
+- [x] Rust plugin produces a valid JSON snapshot (one `files` graph) for
+  a reference workspace in ≤ 30 s on a modern laptop (typically seconds)
 - [x] HTML report opens in Chrome/Firefox/Safari with interactive graph
   visualization and client-side node sorting by coupling weight
 - [x] Diff tool produces color-coded HTML report from two snapshots;
@@ -1192,18 +1140,16 @@ as a self-contained HTML report.
 
 | Dependency | Description | Priority |
 |------------|-------------|----------|
-| `ra_ap_*` crates | rust-analyzer libraries for function-level call resolution in the Rust plugin | p1 |
-| `cargo_metadata` crate | Cargo workspace enumeration | p1 |
-| `syn` crate | Rust source parsing for module/file structure | p1 |
+| `cargo_metadata` crate | Cargo workspace enumeration (local vs. external crates) | p1 |
+| `syn` crate | Rust source parsing for the module tree and `use` statements | p1 |
 | `petgraph` crate | In-memory graph representation in the Rust plugin | p1 |
 | `rust-code-analysis` crate | Tree-sitter-based multi-language metrics library (cyclomatic, cognitive, Halstead, MI, LOC, NOM, nexits, nargs); used via fork `ffedoroff/rust-code-analysis` | p1 |
 | Python 3.9+ | Runtime for the built-in Python language plugin | p3 |
 
 ## 11. Assumptions
 
-- Target Rust workspaces are buildable with the host Rust toolchain
-- `ra_ap_*` crates pinned to a known revision provide stable APIs for
-  the v1.0 timeframe
+- Target Rust workspaces have resolvable dependencies (`cargo metadata`
+  succeeds) for full mode; `--local-only` covers the rest
 - Browsers rendering the HTML reports support modern JavaScript (ES2020+)
 - The base-branch snapshot used for diffs was produced by the same
   major version of the Rust plugin (schema compatibility guaranteed
@@ -1213,8 +1159,7 @@ as a self-contained HTML report.
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| `ra_ap_*` API churn breaks the Rust plugin | High — blocks releases | Pin versions; isolate behind a stable internal trait in `code-split-core` |
-| Function graph too large to visualize in-browser | Medium — unusable HTML report | Implement pagination and level filtering in the report; warn user when node count exceeds threshold |
+| File graph too large to visualize in-browser | Medium — unusable HTML report | Cluster by directory; warn the user when node count exceeds a threshold |
 | Snapshot schema divergence between plugin versions | Medium — silent diff failures | Enforce schema version check at diff time; abort with structured error on mismatch |
 | Performance regressions on large workspaces | Medium — usability loss | Benchmark suite in CI on a curated 5k and 50k LOC corpus |
 | P3 schema vocabulary extensions break base snapshot consumers | Low — only affects P3 adopters | Extensions use optional fields only; base consumers skip unknown fields |

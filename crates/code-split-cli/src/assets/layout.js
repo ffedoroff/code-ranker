@@ -1,6 +1,9 @@
 const N_FILL  = '#dbe9f4';
 const N_COLOR = '#4d6f9c';
 const E_COLOR = '#4d6f9c';
+// External (3rd-party library) nodes/edges are drawn in a distinct amber.
+const EXT_FILL  = '#f6e2c0';
+const EXT_COLOR = '#b3801f';
 
 function dotId(id) {
   return '"' + id.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
@@ -34,21 +37,27 @@ function buildDOT(nodes, edges, level) {
     return 0.3;
   };
 
+  const isExt = n => n.kind === 'external' || n.external === true;
   const nAttr = n => {
-    const cs  = cycles?.nodeCycleStatus?.get(n.id) || 'none';
-    const cls = `class="node-${n.kind || 'unknown'} status-${n.status} cycle-status-${cs}"`;
+    const cs   = cycles?.nodeCycleStatus?.get(n.id) || 'none';
+    const ext  = isExt(n);
+    const fill = ext ? EXT_FILL : N_FILL;
+    const col  = ext ? EXT_COLOR : N_COLOR;
+    const cls  = `class="node-${n.kind || 'unknown'} status-${n.status} cycle-status-${cs}"`;
     if (mode === 'default') {
-      return `label=${dotId(n.name)} fillcolor="${N_FILL}" color="${N_COLOR}" ${cls}`;
+      return `label=${dotId(n.name)} fillcolor="${fill}" color="${col}" ${cls}`;
     }
     const d   = nodeDiam(n);
     const v   = nodeVal(n);
     const lbl = v > 0 ? fmtShort(v) : '';
     const fs  = Math.max(6, Math.round(d * 26));
-    return `label=${dotId(lbl)} fontsize=${fs} fontcolor="#333" fillcolor="${N_FILL}" color="${N_COLOR}" width=${d} ${cls}`;
+    return `label=${dotId(lbl)} fontsize=${fs} fontcolor="#333" fillcolor="${fill}" color="${col}" width=${d} ${cls}`;
   };
   const eAttr = e => {
-    const cs = cycles?.edgeCycleStatus?.(e.from, e.to) || 'none';
-    return `color="${E_COLOR}" style="solid" class="edge-${e.kind || 'unknown'} status-${e.status} cycle-status-${cs}"`;
+    const cs  = cycles?.edgeCycleStatus?.(e.from, e.to) || 'none';
+    const col = e.external === true ? EXT_COLOR : E_COLOR;
+    const style = e.external === true ? 'dashed' : 'solid';
+    return `color="${col}" style="${style}" class="edge-${e.kind || 'unknown'} status-${e.status} cycle-status-${cs}"`;
   };
 
   let dot = 'digraph {\n';
@@ -60,52 +69,23 @@ function buildDOT(nodes, edges, level) {
     dot += '  node  [shape=circle style=filled fixedsize=true width=0.3]\n\n';
   }
 
-  if (level === 'modules') {
-    const crateOf = id => { const m = id.match(/^(?:crate|mod):([^:]+)/); return m ? m[1] : '_'; };
-    const crates = new Map();
-    nodes.forEach(n => { const c = crateOf(n.id); (crates.get(c) || crates.set(c, []).get(c)).push(n); });
-    let i = 0;
-    for (const [crate, ns] of crates) {
-      dot += `  subgraph cluster_${i++} {\n`;
-      dot += `    label=${dotId(crate)} color="#cccccc" fontcolor="#666666"\n`;
-      for (const n of ns) dot += `    ${dotId(n.id)} [${nAttr(n)}]\n`;
-      dot += '  }\n';
-    }
-  } else if (level === 'files') {
-    const hasFileNodes = nodes.some(n => n.kind === 'file');
-    if (hasFileNodes) {
-      // Python/JS plugins emit separate File nodes — cluster by directory
-      const dirOf = n => {
-        const p = (n.path || n.id).replace(/^\{[^}]+\}\//, '').replace(/^file:/, '');
-        const i = p.lastIndexOf('/');
-        return i > 0 ? p.slice(0, i) : '_root';
-      };
-      const dirs = new Map();
-      nodes.forEach(n => { const d = dirOf(n); (dirs.get(d) || dirs.set(d, []).get(d)).push(n); });
-      let i = 0;
-      for (const [dir, ns] of dirs) {
-        const label = dir.split('/').slice(-2).join('/');
-        dot += `  subgraph cluster_${i++} {\n`;
-        dot += `    label=${dotId(label)} color="#cccccc" fontcolor="#666666"\n`;
-        for (const n of ns) dot += `    ${dotId(n.id)} [${nAttr(n)}]\n`;
-        dot += '  }\n';
-      }
-    } else {
-      // Rust plugin: file IS its module — files graph = modules graph, cluster by crate
-      const crateOf = id => { const m = id.match(/^(?:crate|mod):([^:]+)/); return m ? m[1] : '_'; };
-      const crates = new Map();
-      nodes.forEach(n => { const c = crateOf(n.id); (crates.get(c) || crates.set(c, []).get(c)).push(n); });
-      let i = 0;
-      for (const [crate, ns] of crates) {
-        dot += `  subgraph cluster_${i++} {\n`;
-        dot += `    label=${dotId(crate)} color="#cccccc" fontcolor="#666666"\n`;
-        for (const n of ns) dot += `    ${dotId(n.id)} [${nAttr(n)}]\n`;
-        dot += '  }\n';
-      }
-    }
-  } else {
-    for (const n of nodes)
-      dot += `  ${dotId(n.id)} [${nAttr(n)}]\n`;
+  // Single file graph: cluster file nodes by directory; external library nodes
+  // (no path) go into a dedicated "libraries" cluster.
+  const dirOf = n => {
+    if (isExt(n)) return 'libraries';
+    const p = (n.path || n.id).replace(/^\{[^}]+\}\//, '').replace(/^file:/, '');
+    const i = p.lastIndexOf('/');
+    return i > 0 ? p.slice(0, i) : '_root';
+  };
+  const dirs = new Map();
+  nodes.forEach(n => { const d = dirOf(n); (dirs.get(d) || dirs.set(d, []).get(d)).push(n); });
+  let i = 0;
+  for (const [dir, ns] of dirs) {
+    const label = dir === 'libraries' ? 'libraries' : dir.split('/').slice(-2).join('/');
+    dot += `  subgraph cluster_${i++} {\n`;
+    dot += `    label=${dotId(label)} color="#cccccc" fontcolor="#666666"\n`;
+    for (const n of ns) dot += `    ${dotId(n.id)} [${nAttr(n)}]\n`;
+    dot += '  }\n';
   }
 
   for (const e of edges)

@@ -7,7 +7,7 @@ const PRESETS = {
 };
 
 const state = {
-  graph: 'modules',
+  graph: 'files',
   show:  { ...PRESETS.diff },
 };
 

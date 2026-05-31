@@ -33,9 +33,8 @@
 
 <nav>
   <div class="report-switch">
-    <span class="report-switch-label">View:</span>
-    <a data-view="modules" href="#" class="selected">Modules</a> |
-    <span id="nav-files-item"><a data-view="files" href="#">Files</a> | </span><a data-view="functions" href="#">Functions</a>
+    <span class="report-switch-label">Files</span>
+    <a data-view="files" href="#" class="selected" style="display:none">Files</a>
   </div>
   <div class="nav-separator"></div>
   <button data-side="before">Before</button>
@@ -45,49 +44,11 @@
 
 <main>
 
-<!-- ── Modules view ──────────────────────────────────────────────────────── -->
-<section class="view active" data-view="modules">
-  <div class="frame-wrap">
-    <div class="svg-frame" id="frame-modules"></div>
-    <div class="loading-indicator" id="loading-modules">Loading…</div>
-    <div class="size-controls">
-      <button class="size-mode-btn active" data-size="default" title="Default node size">■</button>
-      <button class="size-mode-btn"        data-size="loc"     title="Size ∝ lines of code">LOC</button>
-      <button class="size-mode-btn"        data-size="hk"      title="Size ∝ Henry–Kafura">HK</button>
-    </div>
-    <div class="zoom-controls">
-      <button class="zoom-btn" data-zoom="fullscreen" title="Fullscreen">⛶</button>
-      <button class="zoom-btn" data-zoom="in">+</button>
-      <button class="zoom-btn" data-zoom="fit">fit</button>
-      <button class="zoom-btn" data-zoom="out">−</button>
-    </div>
-  </div>
-</section>
-
-<!-- ── Files view ────────────────────────────────────────────────────────── -->
-<section class="view" data-view="files">
+<!-- ── Files view (the single graph level) ───────────────────────────────── -->
+<section class="view active" data-view="files">
   <div class="frame-wrap">
     <div class="svg-frame" id="frame-files"></div>
     <div class="loading-indicator" id="loading-files">Loading…</div>
-    <div class="size-controls">
-      <button class="size-mode-btn active" data-size="default" title="Default node size">■</button>
-      <button class="size-mode-btn"        data-size="loc"     title="Size ∝ lines of code">LOC</button>
-      <button class="size-mode-btn"        data-size="hk"      title="Size ∝ Henry–Kafura">HK</button>
-    </div>
-    <div class="zoom-controls">
-      <button class="zoom-btn" data-zoom="fullscreen" title="Fullscreen">⛶</button>
-      <button class="zoom-btn" data-zoom="in">+</button>
-      <button class="zoom-btn" data-zoom="fit">fit</button>
-      <button class="zoom-btn" data-zoom="out">−</button>
-    </div>
-  </div>
-</section>
-
-<!-- ── Functions view ────────────────────────────────────────────────────── -->
-<section class="view" data-view="functions">
-  <div class="frame-wrap">
-    <div class="svg-frame" id="frame-functions"></div>
-    <div class="loading-indicator" id="loading-functions">Loading…</div>
     <div class="size-controls">
       <button class="size-mode-btn active" data-size="default" title="Default node size">■</button>
       <button class="size-mode-btn"        data-size="loc"     title="Size ∝ lines of code">LOC</button>

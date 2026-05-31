@@ -1,14 +1,12 @@
 use anyhow::Result;
-use code_split_core::{EdgeKind, GraphBuilder, NodeKind, PluginGraphs, SemanticIndex, StageTime};
+use code_split_core::{Edge, EdgeKind, Graph, GraphBuilder, Node, NodeKind, PluginGraphs, StageTime};
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use crate::logger;
 
-pub fn run(
-    workspace: &Path,
-    local_only: bool,
-    want_functions: bool,
-) -> Result<(PluginGraphs, Vec<StageTime>)> {
+pub fn run(workspace: &Path, local_only: bool) -> Result<(PluginGraphs, Vec<StageTime>)> {
     let mut timings: Vec<StageTime> = Vec::new();
     let mut builder = GraphBuilder::new();
 
@@ -26,40 +24,6 @@ pub fn run(
             stage: "syn".into(),
             ms,
             detail,
-        });
-    }
-
-    let has_cargo = which::which("cargo").is_ok();
-    if want_functions && !local_only && has_cargo {
-        let t = logger::Timer::start("sema: building call graph via rust-analyzer");
-        let res = code_split_sema::RustAnalyzerSemantic.analyze(workspace, &mut builder);
-        let calls = builder.edge_count_of_kind(code_split_core::EdgeKind::Calls);
-        let detail = format!("{calls} call edges");
-        let ms = match res {
-            Ok(_) => t.finish_with(&detail),
-            Err(e) => {
-                logger::info(&format!("sema skipped: {e:#}"));
-                0
-            }
-        };
-        timings.push(StageTime {
-            stage: "sema".into(),
-            ms,
-            detail,
-        });
-    } else {
-        let reason = if !want_functions {
-            "functions graph not requested"
-        } else if local_only {
-            "--local-only"
-        } else {
-            "cargo not found"
-        };
-        logger::info(&format!("sema: skipped ({reason})"));
-        timings.push(StageTime {
-            stage: "sema".into(),
-            ms: 0,
-            detail: format!("skipped ({reason})"),
         });
     }
 
@@ -81,37 +45,9 @@ pub fn run(
         });
     }
 
-    let t = logger::Timer::start("projecting graphs (modules / files / functions)");
-    let full = builder.build();
-
-    let modules = full.project(
-        &[NodeKind::Crate, NodeKind::Module, NodeKind::Trait],
-        &[EdgeKind::Contains, EdgeKind::Uses, EdgeKind::Reexports],
-    );
-    // Rust analysis produces no NodeKind::File nodes — files graph is empty.
-    // File-level tracking is implemented in the Python/JS/TS plugins.
-    let files = full.project(&[NodeKind::File], &[EdgeKind::Contains, EdgeKind::Uses]);
-    let functions = full.project(
-        &[
-            NodeKind::Crate,
-            NodeKind::Module,
-            NodeKind::Fn,
-            NodeKind::Method,
-            NodeKind::Trait,
-        ],
-        &[
-            EdgeKind::Contains,
-            EdgeKind::Uses,
-            EdgeKind::Reexports,
-            EdgeKind::Calls,
-        ],
-    );
-    let detail = format!(
-        "modules={} files={} functions={}",
-        modules.nodes.len(),
-        files.nodes.len(),
-        functions.nodes.len(),
-    );
+    let t = logger::Timer::start("projecting file graph");
+    let files = collapse_to_files(builder.build());
+    let detail = format!("files={} edges={}", files.nodes.len(), files.edges.len());
     let ms = t.finish_with(&detail);
     timings.push(StageTime {
         stage: "projection".into(),
@@ -119,14 +55,151 @@ pub fn run(
         detail,
     });
 
-    Ok((
-        PluginGraphs {
-            modules,
-            files,
-            functions,
-        },
-        timings,
-    ))
+    Ok((PluginGraphs { files }, timings))
+}
+
+/// Collapse the Rust module graph (`Crate` / `Module` / `Trait` nodes plus
+/// `Contains` / `Uses` / `Reexports` edges) into a single file-level graph.
+///
+/// - Every `Module` node maps to a `File` node keyed by its source path; the
+///   file-backed module (`line == None`) carries the file's metrics, inline
+///   modules collapse into it. This preserves all file→file connections even
+///   though Rust expresses dependencies via module paths, not file paths.
+/// - External crate nodes become one `External` library node each (depth 1).
+/// - `use`/`pub use` edges are re-pointed to files; self-edges (a `use` within
+///   the same file) are dropped, and edges into libraries are flagged external.
+fn collapse_to_files(full: Graph) -> Graph {
+    // 1. Map each source node id → its file/external id, building the target nodes.
+    let mut id_map: HashMap<String, String> = HashMap::new();
+    let mut file_nodes: HashMap<String, Node> = HashMap::new();
+    let mut ext_nodes: HashMap<String, Node> = HashMap::new();
+
+    for node in &full.nodes {
+        match node.kind {
+            NodeKind::Module => {
+                let fid = format!("file:{}", node.path);
+                id_map.insert(node.id.clone(), fid.clone());
+                let name = Path::new(&node.path)
+                    .file_name()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| node.name.clone());
+                match file_nodes.entry(fid.clone()) {
+                    Entry::Vacant(v) => {
+                        v.insert(Node {
+                            id: fid,
+                            kind: NodeKind::File,
+                            name,
+                            path: node.path.clone(),
+                            parent: None,
+                            external: None,
+                            visibility: node.visibility.clone(),
+                            loc: node.loc,
+                            line: None,
+                            item_count: node.item_count,
+                            method_count: None,
+                            complexity: node.complexity.clone(),
+                            cycle_kind: None,
+                        });
+                    }
+                    Entry::Occupied(mut o) => {
+                        // The file-backed module (`line == None`) is the source of
+                        // truth for the file's metrics; inline modules add nothing.
+                        if node.line.is_none() {
+                            let n = o.get_mut();
+                            if node.complexity.is_some() {
+                                n.complexity = node.complexity.clone();
+                            }
+                            if node.loc.is_some() {
+                                n.loc = node.loc;
+                            }
+                            if node.item_count.is_some() {
+                                n.item_count = node.item_count;
+                            }
+                        }
+                    }
+                }
+            }
+            NodeKind::Crate if node.external.unwrap_or(false) => {
+                let eid = format!("ext:{}", node.name);
+                id_map.insert(node.id.clone(), eid.clone());
+                ext_nodes.entry(eid.clone()).or_insert_with(|| Node {
+                    id: eid,
+                    kind: NodeKind::External,
+                    name: node.name.clone(),
+                    path: String::new(),
+                    parent: None,
+                    external: Some(true),
+                    visibility: None,
+                    loc: None,
+                    line: None,
+                    item_count: None,
+                    method_count: None,
+                    complexity: None,
+                    cycle_kind: None,
+                });
+            }
+            // Local `Crate`, `Trait` (and anything else) are dropped: they have
+            // no mapping, so edges touching them fall away below.
+            _ => {}
+        }
+    }
+
+    // 2. Re-point edges to file/external granularity.
+    let mut seen: HashSet<(String, String, EdgeKind)> = HashSet::new();
+    let mut edges: Vec<Edge> = Vec::new();
+    for e in &full.edges {
+        if e.kind == EdgeKind::Contains {
+            continue;
+        }
+        let (Some(from), Some(to)) = (id_map.get(&e.from), id_map.get(&e.to)) else {
+            continue;
+        };
+        if from == to {
+            continue; // a `use` resolved within the same file is not a connection
+        }
+        let to_external = ext_nodes.contains_key(to);
+        if !seen.insert((from.clone(), to.clone(), e.kind)) {
+            continue;
+        }
+        edges.push(Edge {
+            from: from.clone(),
+            to: to.clone(),
+            kind: e.kind,
+            unresolved: None,
+            external: to_external.then_some(true),
+            visibility: e.visibility.clone(),
+        });
+    }
+
+    // 3. Assemble nodes: all files + only the libraries actually referenced.
+    let referenced_ext: HashSet<&str> = edges
+        .iter()
+        .filter(|e| e.external.unwrap_or(false))
+        .map(|e| e.to.as_str())
+        .collect();
+    let mut nodes: Vec<Node> = file_nodes.into_values().collect();
+    nodes.extend(
+        ext_nodes
+            .into_iter()
+            .filter(|(id, _)| referenced_ext.contains(id.as_str()))
+            .map(|(_, n)| n),
+    );
+
+    // Deterministic output ordering.
+    nodes.sort_by(|a, b| a.id.cmp(&b.id));
+    edges.sort_by(|a, b| {
+        a.from
+            .cmp(&b.from)
+            .then(a.to.cmp(&b.to))
+            .then_with(|| format!("{:?}", a.kind).cmp(&format!("{:?}", b.kind)))
+    });
+
+    Graph {
+        nodes,
+        edges,
+        cycles: Vec::new(),
+        stats: None,
+    }
 }
 
 pub fn version_string() -> Option<String> {

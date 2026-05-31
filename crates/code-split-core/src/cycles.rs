@@ -2,12 +2,10 @@ use crate::graph::{CycleGroup, CycleKind, Graph};
 use crate::snapshot::PluginGraphs;
 use std::collections::HashMap;
 
-/// Detect SCCs in every projected graph and annotate nodes + the graph's
-/// `cycles` field in-place.
+/// Detect SCCs in the file graph and annotate nodes + the graph's `cycles`
+/// field in-place.
 pub fn annotate_all_cycles(graphs: &mut PluginGraphs) {
-    annotate_graph_cycles(&mut graphs.modules);
     annotate_graph_cycles(&mut graphs.files);
-    annotate_graph_cycles(&mut graphs.functions);
 }
 
 fn annotate_graph_cycles(graph: &mut Graph) {
@@ -77,17 +75,32 @@ fn classify_scc(scc: &[usize], graph: &Graph) -> CycleKind {
 
 fn is_test_node(graph: &Graph, idx: usize) -> bool {
     let node = &graph.nodes[idx];
-    let name = node.name.to_ascii_lowercase();
-    // Common Rust test module names
+    let mut name = node.name.to_ascii_lowercase();
+    // Strip a source-file extension so `foo_test.rs` / `test_x.py` match too.
+    for ext in [".rs", ".py", ".ts", ".tsx", ".js", ".jsx"] {
+        if let Some(stem) = name.strip_suffix(ext) {
+            name = stem.to_string();
+            break;
+        }
+    }
+    // Common test file / module names
     if matches!(name.as_str(), "tests" | "test" | "benches" | "bench") {
         return true;
     }
-    if name.ends_with("_tests") || name.ends_with("_test") || name.ends_with("_bench") {
+    if name.ends_with("_tests")
+        || name.ends_with("_test")
+        || name.ends_with("_bench")
+        || name.starts_with("test_")
+    {
         return true;
     }
-    // ID path segments — catches `::tests`, `::test::`, etc.
+    // ID path segments — catches `::tests`, `::test::`, `/tests/`, etc.
     let id = &node.id;
-    id.contains("::tests") || id.contains("::test::") || id.ends_with("::test")
+    id.contains("::tests")
+        || id.contains("::test::")
+        || id.ends_with("::test")
+        || id.contains("/tests/")
+        || id.contains("/__tests__/")
 }
 
 // ---------------------------------------------------------------------------
@@ -314,7 +327,7 @@ mod tests {
     #[test]
     fn self_loop_is_not_a_cycle() {
         // a → a is dropped (fi == ti), so the SCC stays size 1.
-        let mut g = graph_of(vec![mod_node("a")], vec![edge("a", "a", EdgeKind::Calls)]);
+        let mut g = graph_of(vec![mod_node("a")], vec![edge("a", "a", EdgeKind::Uses)]);
         annotate_graph_cycles(&mut g);
         assert!(g.cycles.is_empty(), "a self-loop is not a structural cycle");
         assert_eq!(kind_of(&g, "a"), None);
@@ -378,36 +391,19 @@ mod tests {
     }
 
     #[test]
-    fn annotate_all_cycles_covers_every_projected_graph() {
-        // A cycle in `modules` and a separate cycle in `functions`; `files`
-        // stays empty. All three projections are dispatched.
+    fn annotate_all_cycles_annotates_the_file_graph() {
+        // A mutual cycle in the single file graph is detected and dispatched.
         let mut graphs = PluginGraphs {
-            modules: graph_of(
+            files: graph_of(
                 vec![mod_node("a"), mod_node("b")],
                 vec![
                     edge("a", "b", EdgeKind::Uses),
                     edge("b", "a", EdgeKind::Uses),
                 ],
             ),
-            files: Graph::new(),
-            functions: graph_of(
-                vec![
-                    node("f", "f", NodeKind::Fn),
-                    node("g", "g", NodeKind::Fn),
-                    node("h", "h", NodeKind::Fn),
-                ],
-                vec![
-                    edge("f", "g", EdgeKind::Calls),
-                    edge("g", "h", EdgeKind::Calls),
-                    edge("h", "f", EdgeKind::Calls),
-                ],
-            ),
         };
         annotate_all_cycles(&mut graphs);
-        assert_eq!(graphs.modules.cycles.len(), 1);
-        assert_eq!(graphs.modules.cycles[0].kind, CycleKind::Mutual);
-        assert!(graphs.files.cycles.is_empty(), "empty graph left untouched");
-        assert_eq!(graphs.functions.cycles.len(), 1);
-        assert_eq!(graphs.functions.cycles[0].kind, CycleKind::Chain);
+        assert_eq!(graphs.files.cycles.len(), 1);
+        assert_eq!(graphs.files.cycles[0].kind, CycleKind::Mutual);
     }
 }

@@ -14,10 +14,11 @@ Most of these tools answer one of two questions:
   (cargo-modules, knip).
 
 `code-split` is the only one that does **both at once, across Rust / Python / JS / TS,
-and then tracks the delta over time**: it builds a multi-level dependency graph
-(modules → files → functions), attaches per-node complexity *and* coupling metrics to
-that graph, detects cycles, and diffs two snapshots into an `improved` / `degraded` /
-`neutral` verdict — all offline, behind a single plugin protocol.
+and then tracks the delta over time**: it builds a file-level dependency graph (with
+third-party libraries shown as depth-1 external nodes), attaches per-file complexity
+*and* coupling metrics to every file node, detects cycles, and diffs two snapshots
+into an `improved` / `degraded` / `neutral` verdict — all offline, behind a single
+plugin protocol.
 
 > **Note on rust-code-analysis:** `code-split` is not a rival to it — it is *built on
 > it*. The `code-split-complexity` crate uses the `rust-code-analysis` fork
@@ -32,14 +33,11 @@ Legend: ✓ first-class · ~ partial / indirect / via companion · ✗ none
 | Capability | code-split | rust-code-analysis | Lizard | Radon | escomplex | cargo-modules | knip |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | Languages | Rust, Py, JS, TS | many (tree-sitter) | many | Python only | JS (+TS fork) | Rust only | JS / TS |
-| Module dependency graph | ✓ | ✗ | ✗ | ✗ | ~ | ✓ | ~ |
-| File dependency graph | ✓ | ✗ | ✗ | ✗ | ~ | ✗ | ~ |
-| Function / method call graph | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| File dependency graph | ✓ | ✗ | ✗ | ✗ | ~ | ~ | ~ |
+| External (3rd-party) deps as graph nodes | ✓ | ✗ | ✗ | ✗ | ~ | ✗ | ~ |
 | Coupling: fan-in / fan-out | ✓ | ✗ | ✗ | ✗ | ~ | ✗ | ✗ |
 | Henry–Kafura (`hk`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Cycle detection — modules | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
-| Cycle detection — files | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Cycle detection — functions | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Cycle detection — files | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ |
 | Before/after diff + verdict | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Interactive offline HTML report | ✓ | ✗ | ~ | ✗ | ~ (Plato) | ~ (DOT) | ✗ |
 | Machine-readable JSON artifact | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -108,8 +106,9 @@ Plato renders historical HTML dashboards from it.
 
 - **Overlap:** per-unit JS/TS metrics, some module coupling aggregates, and (via Plato)
   an HTML view.
-- **Gap:** JS/TS only; no multi-level graph you can navigate; no cognitive complexity;
-  no structured snapshot diff/verdict. The core libraries are largely unmaintained.
+- **Gap:** JS/TS only; no navigable file dependency graph with per-file coupling; no
+  cognitive complexity; no structured snapshot diff/verdict. The core libraries are
+  largely unmaintained.
 - **Reach for it instead when:** you specifically want the classic Plato dashboard for a
   JS codebase.
 
@@ -119,9 +118,10 @@ A **Rust-only structure tool**: renders the module tree and `uses`/`owns` graph 
 terminal tree or Graphviz DOT, flags orphan modules, and can fail on cycles
 (`--acyclic`).
 
-- **Overlap:** Rust module-level dependency graph + cycle checking.
-- **Gap:** Rust only; no file/function granularity; no complexity or coupling metrics;
-  no file/function diff; rendering needs an external Graphviz step.
+- **Overlap:** Rust dependency graph + cycle checking.
+- **Gap:** Rust only; module-tree view rather than a metric-annotated file graph; no
+  complexity or coupling metrics; no before/after diff; rendering needs an external
+  Graphviz step.
 - **Reach for it instead when:** you only need to see/print a single Rust crate's module
   tree and don't care about metrics or history.
 
@@ -138,10 +138,11 @@ files, exports, types, and dependencies, and exits non-zero on findings.
 
 ## Where `code-split` is unique
 
-- **One artifact, three levels, both axes.** A single snapshot carries module, file,
-  and function graphs with *both* complexity (cyclomatic, cognitive, Halstead, MI, LOC)
-  and structural coupling (fan-in, fan-out, Henry–Kafura) attached to every node. No
-  other tool here unifies complexity *and* coupling on a navigable multi-level graph.
+- **One artifact, both axes.** A single snapshot carries a file dependency graph with
+  *both* complexity (cyclomatic, cognitive, Halstead, MI, LOC) and structural coupling
+  (fan-in, fan-out, Henry–Kafura) attached to every file node, plus third-party
+  libraries as depth-1 external nodes. No other tool here unifies complexity *and*
+  coupling on a navigable cross-language file graph.
 - **Architectural drift over time.** The before/after diff with an `improved` /
   `degraded` / `neutral` verdict turns "did this refactor help?" from intuition into a
   measurement. None of the others ship this.

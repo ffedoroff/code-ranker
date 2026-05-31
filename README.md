@@ -18,23 +18,23 @@ code-split always runs **entirely on your machine**. It makes **no network calls
 
 ## What it finds
 
-- **Components that grew too complex and should be split.** Per-function and per-module cyclomatic / cognitive / Halstead / MI metrics; flags entities above your threshold.
-- **Strong coupling between components.** Computes fan-in / fan-out / HK on the call and module graphs; surfaces the modules that everything depends on (or that depend on everything).
-- **Cyclic dependencies.** Detects SCCs at module, file and function level — including the silent ones the compiler does not catch.
-- **Files that are just too big.** Raw LOC, public surface size, item / method counts per file.
+- **Files that grew too complex and should be split.** Per-file cyclomatic / cognitive / Halstead / MI metrics; flags files above your threshold.
+- **Strong coupling between files.** Computes fan-in / fan-out / HK on the file dependency graph; surfaces the files that everything depends on (or that depend on everything). Third-party libraries are tracked separately as depth-1 external nodes (`fan_out_external`), so they never inflate your internal-coupling numbers.
+- **Cyclic dependencies.** Detects SCCs in the file graph — including the silent ones the compiler does not catch.
+- **Files that are just too big.** Raw LOC, public surface size per file.
 
 The tool **does not refactor for you**. It produces a structured, machine-readable list of problem spots and an offline HTML report a human or an LLM can act on.
 
 ## CI integration
 
-Runs as a linter. Configure thresholds in `code-split.toml`; the CLI exits non-zero when the codebase breaches them — so a PR that introduces a new cycle, a function above your cognitive budget, or a file above your LOC limit fails the build.
+Runs as a linter. Configure thresholds in `code-split.toml`; the CLI exits non-zero when the codebase breaches them — so a PR that introduces a new cycle, a file above your cognitive budget, or a file above your LOC limit fails the build.
 
 ```sh
 code-split check . \
-  --threshold function.cognitive=25 --threshold file.loc=800
+  --threshold file.cognitive=25 --threshold file.loc=800
 ```
 
-The linter is the `check` command — exits non-zero on any cycle or threshold violation (`mutual` and `chain` cycle checks are on by default). See [docs/CLI.md](docs/CLI.md) for all flags.
+The linter is the `check` command — exits non-zero on any cycle or threshold violation, e.g. a PR that introduces a new file-level cycle or a file above your LOC limit (`mutual` and `chain` cycle checks are on by default). See [docs/CLI.md](docs/CLI.md) for all flags.
 
 ## Full CLI
 
@@ -46,9 +46,9 @@ Three commands: `check` (linter — exits non-zero on violations), `report` (sna
 
 `code-split report` writes a single self-contained HTML file with:
 
-- Three interactive levels: modules, files, functions.
+- An interactive file dependency graph; third-party libraries appear as depth-1 external nodes in a distinct amber colour with dashed edges.
 - Dagre-laid-out graph with pan/zoom and live filtering.
-- Sortable tables per metric; click a node to open its neighbourhood.
+- Sortable table per metric; click a node to open its neighbourhood.
 - "Prompt generator" panel that copies a ready-to-paste prompt (one for each principle: ADP, SRP, OCP, LSP, ISP, DIP, DRY, KISS, LoD, MISU, CoI, YAGNI; plus *Reduce Complexity*, *Split Components*) — feed the prompt + the selected nodes to your AI agent.
 
 No network, no analytics, no telemetry. Open in any browser, share as a file.
@@ -98,12 +98,12 @@ code-split report
 code-split diff --before .code-split/before.json --after .code-split/after.json
 ```
 
-Built-in plugins: `rust` (cargo + syn + rust-analyzer), `python`, `javascript` (also handles TypeScript) — all compiled into the single binary, nothing to install.
+Built-in plugins: `rust` (cargo + syn), `python`, `javascript` (also handles TypeScript) — all compiled into the single binary, nothing to install.
 
 ## Documentation
 
 - [CLI](docs/CLI.md) — commands, flags, and examples
-- [Rule reference](docs/ERRORS.md) — rule ids grouped by concern (`CYC`/`CPX`/`CPL`/`SIZ`), threshold scopes (`file`/`module`/`function`, each single + `.avg`), what each flags, and how to fix it
+- [Rule reference](docs/ERRORS.md) — rule ids grouped by concern (`CYC`/`CPX`/`CPL`/`SIZ`), per-file thresholds (`file`), what each flags, and how to fix it
 - [Config](docs/config.md) — `code-split.toml` schema
 - [PRD](docs/PRD.md) — product requirements
 - [DESIGN](docs/DESIGN.md) — technical design

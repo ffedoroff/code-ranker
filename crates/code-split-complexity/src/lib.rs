@@ -4,14 +4,15 @@ use std::path::Path;
 use anyhow::Result;
 use code_split_core::{Complexity, GraphBuilder, Halstead, Loc, Maintainability, NodeKind};
 use rust_code_analysis::{
-    FuncSpace, JavascriptParser, ParserTrait, PythonParser, RustParser, SpaceKind, TsxParser,
+    FuncSpace, JavascriptParser, ParserTrait, PythonParser, RustParser, TsxParser,
     TypescriptParser, metrics,
 };
 use walkdir::WalkDir;
 
 /// Walk all source files under `root` whose extension is in `extensions`,
-/// compute complexity metrics via rust-code-analysis, and annotate
-/// `Fn`, `Method`, and `File` nodes in the graph.
+/// compute complexity metrics via rust-code-analysis, and annotate the
+/// file-level nodes in the graph (`File` nodes, and — before the Rust
+/// module→file collapse — file-backed `Module` nodes with `line == None`).
 /// Returns the number of nodes annotated.
 pub fn analyze(root: &Path, builder: &mut GraphBuilder) -> Result<usize> {
     analyze_extensions(root, builder, &["rs"])
@@ -33,26 +34,18 @@ fn analyze_extensions(
     extensions: &[&str],
 ) -> Result<usize> {
     let mut file_index: HashMap<String, usize> = HashMap::new();
-    let mut fn_index: HashMap<(String, String), usize> = HashMap::new();
-    // Fallback: match by (file_path, start_line) for languages where names are "<anonymous>"
-    let mut fn_line_index: HashMap<(String, usize), usize> = HashMap::new();
 
     for (i, node) in builder.nodes().iter().enumerate() {
         match node.kind {
-            // Module nodes that represent a file (line == None) share the same
-            // canonical path as the file itself; inline modules (line.is_some()) share
-            // the enclosing file's path and must not receive file-level metrics.
+            // `File` nodes (Python/JS) and file-backed `Module` nodes (Rust,
+            // `line == None`) both represent a whole source file. Inline modules
+            // (`line.is_some()`) share the enclosing file's path and must not
+            // receive file-level metrics.
             NodeKind::File => {
                 file_index.insert(node.path.clone(), i);
             }
             NodeKind::Module if node.line.is_none() => {
                 file_index.entry(node.path.clone()).or_insert(i);
-            }
-            NodeKind::Fn | NodeKind::Method => {
-                fn_index.insert((node.path.clone(), node.name.clone()), i);
-                if let Some(line) = node.line {
-                    fn_line_index.insert((node.path.clone(), line as usize), i);
-                }
             }
             _ => {}
         }
@@ -85,7 +78,6 @@ fn analyze_extensions(
             builder.nodes_mut()[idx].complexity = Some(complexity_from(&space));
             annotated += 1;
         }
-        annotated += collect_fns(&space, &canonical, builder, &fn_index, &fn_line_index);
     }
 
     Ok(annotated)
@@ -100,34 +92,6 @@ fn parse_metrics(path: &Path, src: Vec<u8>) -> Option<FuncSpace> {
         Some("tsx") => metrics(&TsxParser::new(src, path, None), path),
         _ => None,
     }
-}
-
-fn collect_fns(
-    space: &FuncSpace,
-    file: &str,
-    builder: &mut GraphBuilder,
-    fn_index: &HashMap<(String, String), usize>,
-    fn_line_index: &HashMap<(String, usize), usize>,
-) -> usize {
-    let mut count = 0;
-    if matches!(space.kind, SpaceKind::Function) {
-        let name = space.name.as_deref().unwrap_or("?");
-        let bare = name.split("::").last().unwrap_or(name);
-
-        let idx = fn_line_index
-            .get(&(file.to_owned(), space.start_line))
-            .copied()
-            .or_else(|| fn_index.get(&(file.to_owned(), bare.to_owned())).copied());
-
-        if let Some(idx) = idx {
-            builder.nodes_mut()[idx].complexity = Some(complexity_from(space));
-            count += 1;
-        }
-    }
-    for child in &space.spaces {
-        count += collect_fns(child, file, builder, fn_index, fn_line_index);
-    }
-    count
 }
 
 fn complexity_from(s: &FuncSpace) -> Complexity {

@@ -14,13 +14,6 @@ use std::path::{Path, PathBuf};
 /// or a report — not just from a repo checkout.
 const DOCS_URL: &str = "https://github.com/ffedoroff/code-split/blob/main/docs";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
-enum GraphKind {
-    Modules,
-    Files,
-    Functions,
-}
-
 #[derive(Parser, Debug)]
 #[command(
     name = "code-split",
@@ -64,11 +57,6 @@ struct AnalyzeArgs {
     #[arg(long)]
     local_only: bool,
 
-    /// Which graphs to build. Repeat or comma-separate: modules,files,functions.
-    #[arg(long = "graph", value_enum, num_args = 1.., value_delimiter = ',',
-          default_values_t = [GraphKind::Modules, GraphKind::Files, GraphKind::Functions])]
-    graphs: Vec<GraphKind>,
-
     /// Config file path, or inline `KEY=VALUE` override (repeatable; inline wins).
     #[arg(long, value_name = "PATH | KEY=VALUE")]
     config: Vec<String>,
@@ -94,10 +82,9 @@ enum Command {
         #[arg(long = "cycle-rule", value_name = "KIND=on|off|N")]
         cycle_rules: Vec<String>,
 
-        /// Metric threshold: SCOPE[.avg].METRIC=N. SCOPE is file|module|function;
-        /// N accepts `_` separators and K/M/G suffixes (e.g. function.cognitive=25,
-        /// module.hk=5M, file.avg.loc=1_500).
-        #[arg(long = "threshold", value_name = "SCOPE[.avg].METRIC=N")]
+        /// Metric threshold: file.METRIC=N. N accepts `_` separators and
+        /// K/M/G suffixes (e.g. file.cognitive=25, file.hk=5M, file.loc=1_500).
+        #[arg(long = "threshold", value_name = "file.METRIC=N")]
         thresholds: Vec<String>,
 
         /// Diagnostics format.
@@ -288,23 +275,11 @@ fn analyze_workspace(
 
     let plugin_name = resolve_plugin(args.plugin.as_deref(), cfg.plugin.as_deref(), &target)?;
 
-    let want_modules = args.graphs.contains(&GraphKind::Modules);
-    let want_files = args.graphs.contains(&GraphKind::Files);
-    let want_functions = args.graphs.contains(&GraphKind::Functions);
-
     logger::info(&format!("target:    {}", target.display()));
     logger::info(&format!("workspace: {}", cwd.display()));
     logger::info(&format!(
         "plugin: {plugin_name}{}",
         if args.local_only { " (local-only)" } else { "" }
-    ));
-    logger::info(&format!(
-        "graphs: {}",
-        args.graphs
-            .iter()
-            .map(|g| format!("{g:?}").to_lowercase())
-            .collect::<Vec<_>>()
-            .join(", ")
     ));
 
     let command = format!(
@@ -312,19 +287,8 @@ fn analyze_workspace(
         std::env::args().skip(1).collect::<Vec<_>>().join(" ")
     );
 
-    let (mut plugin_graphs, timings) =
-        plugin::run(&plugin_name, &target, args.local_only, want_functions)
-            .with_context(|| format!("plugin '{plugin_name}' failed"))?;
-
-    if !want_modules {
-        plugin_graphs.modules = Default::default();
-    }
-    if !want_files {
-        plugin_graphs.files = Default::default();
-    }
-    if !want_functions {
-        plugin_graphs.functions = Default::default();
-    }
+    let (mut plugin_graphs, timings) = plugin::run(&plugin_name, &target, args.local_only)
+        .with_context(|| format!("plugin '{plugin_name}' failed"))?;
 
     let mut roots = detect_roots();
     roots.insert("target".to_string(), target.display().to_string());
@@ -339,9 +303,7 @@ fn analyze_workspace(
     code_split_core::annotate_all_cycles(&mut plugin_graphs);
     config::apply_cycle_rules(&mut plugin_graphs, &cfg.rules.cycles);
     code_split_core::annotate_hk(&mut plugin_graphs);
-    code_split_core::annotate_stats(&mut plugin_graphs.modules);
     code_split_core::annotate_stats(&mut plugin_graphs.files);
-    code_split_core::annotate_stats(&mut plugin_graphs.functions);
 
     let violations = config::check_violations(&plugin_graphs, &cfg.rules);
 
@@ -549,28 +511,25 @@ fn print_current_values(graphs: &code_split_core::PluginGraphs, cycles: &config:
         if rule.is_off() {
             println!("{key:<12}= false");
         } else {
-            // Today's count = max across graphs, so the pinned budget passes everywhere.
-            let n = [&graphs.modules, &graphs.files, &graphs.functions]
+            let n = graphs
+                .files
+                .cycles
                 .iter()
-                .map(|g| g.cycles.iter().filter(|c| c.kind == kind).count())
-                .max()
-                .unwrap_or(0);
+                .filter(|c| c.kind == kind)
+                .count();
             println!("{key:<12}= {n}");
         }
     }
 
-    // Thresholds: measured numbers to pin as a baseline. Scope == graph.
+    // Thresholds: measured per-file maxima to pin as a baseline.
     println!();
-    println!("# thresholds: single = the worst single unit (max); avg = the graph-wide average");
+    println!("# thresholds: the worst single file (max) per metric");
     print_scope_values("file", &graphs.files);
-    print_scope_values("module", &graphs.modules);
-    print_scope_values("function", &graphs.functions);
 }
 
-/// Emit `[rules.thresholds.<scope>]` (per-unit maxima) and
-/// `[rules.thresholds.<scope>.avg]` (graph averages) for one graph.
+/// Emit a `[rules.thresholds.<scope>]` block with the per-file metric maxima.
 fn print_scope_values(scope: &str, graph: &code_split_core::graph::Graph) {
-    // Per-unit maxima across the graph's nodes.
+    // Per-file maxima across the graph's nodes.
     let mut max = [0f64; 6];
     let mut any = false;
     for n in &graph.nodes {
@@ -588,23 +547,10 @@ fn print_scope_values(scope: &str, graph: &code_split_core::graph::Graph) {
         }
     }
     if !any {
-        return; // graph not built / no metrics (e.g. Rust has no files graph)
+        return; // no metrics
     }
-    // Per-unit limits use the exact max (a strict `>` check then passes today).
+    // Per-file limits use the exact max (a strict `>` check then passes today).
     print_toml_block(&format!("[rules.thresholds.{scope}]"), &max, false);
-
-    // Graph averages from the precomputed stats; round up so the baseline passes.
-    if let Some(s) = &graph.stats {
-        let avg = [
-            s.cyclomatic,
-            s.cognitive,
-            s.coupling.as_ref().map(|c| c.hk).unwrap_or(0.0),
-            s.coupling.as_ref().map(|c| c.fan_in).unwrap_or(0.0),
-            s.coupling.as_ref().map(|c| c.fan_out).unwrap_or(0.0),
-            s.loc.as_ref().map(|l| l.source).unwrap_or(0.0),
-        ];
-        print_toml_block(&format!("[rules.thresholds.{scope}.avg]"), &avg, true);
-    }
 }
 
 /// Print one TOML table, one `metric = value` line per non-zero metric. With

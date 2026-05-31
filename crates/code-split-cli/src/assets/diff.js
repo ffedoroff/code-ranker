@@ -30,7 +30,7 @@ function findSCCs(ids, adjList) {
 // ── Diff ──────────────────────────────────────────────────────────────────────
 function computeDiff(before, after) {
   const result = {};
-  for (const level of ['modules', 'files', 'functions']) {
+  for (const level of ['files']) {
     const bg = (before.graphs || {})[level] || { nodes: [], edges: [] };
     const ag = (after.graphs  || {})[level] || { nodes: [], edges: [] };
 
@@ -105,7 +105,7 @@ function buildSCCOf(graph) {
 
 function computeCycles(before, after) {
   const result = {};
-  for (const level of ['modules', 'files', 'functions']) {
+  for (const level of ['files']) {
     const bg = (before.graphs || {})[level] || { nodes: [], edges: [], cycles: [] };
     const ag = (after.graphs  || {})[level] || { nodes: [], edges: [], cycles: [] };
 

@@ -49,11 +49,10 @@ pub struct GitInfo {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct PluginGraphs {
-    pub modules: Graph,
-    /// Omitted when the plugin produces no file-kind nodes (e.g. Rust).
-    #[serde(default, skip_serializing_if = "Graph::is_empty")]
+    /// The single file-level graph: `File` nodes + `External` library nodes,
+    /// connected by file→file `Uses`/`Reexports` edges and file→library
+    /// `Uses {external}` edges.
     pub files: Graph,
-    pub functions: Graph,
 }
 
 impl Snapshot {
@@ -102,14 +101,8 @@ pub fn relativize_graphs(
     target: &Path,
     roots: &HashMap<String, String>,
 ) {
-    for graph in [
-        &mut graphs.modules,
-        &mut graphs.files,
-        &mut graphs.functions,
-    ] {
-        for node in &mut graph.nodes {
-            node.path = relativize_path(&node.path, target, roots);
-        }
+    for node in &mut graphs.files.nodes {
+        node.path = relativize_path(&node.path, target, roots);
     }
 }
 
@@ -152,13 +145,7 @@ pub(crate) fn relativize_path(
 pub fn rewrite_ids(graphs: &mut PluginGraphs, target: &Path, roots: &HashMap<String, String>) {
     // Step 1: collect (pkg_repr → (name, version)) from crate nodes.
     let mut pkg_info: HashMap<String, (String, String)> = HashMap::new();
-    for node in graphs
-        .modules
-        .nodes
-        .iter()
-        .chain(graphs.files.nodes.iter())
-        .chain(graphs.functions.nodes.iter())
-    {
+    for node in graphs.files.nodes.iter() {
         if node.kind == NodeKind::Crate
             && let Some(pkg_repr) = node.id.strip_prefix("crate:")
         {
@@ -193,13 +180,7 @@ pub fn rewrite_ids(graphs: &mut PluginGraphs, target: &Path, roots: &HashMap<Str
 
     // Step 4: build old_id → new_id for every node across all graphs.
     let mut id_map: HashMap<String, String> = HashMap::new();
-    for node in graphs
-        .modules
-        .nodes
-        .iter()
-        .chain(graphs.files.nodes.iter())
-        .chain(graphs.functions.nodes.iter())
-    {
+    for node in graphs.files.nodes.iter() {
         let new_id = rewrite_node_id(&node.id, &crate_map, target, roots);
         if new_id != node.id {
             id_map.insert(node.id.clone(), new_id);
@@ -207,35 +188,30 @@ pub fn rewrite_ids(graphs: &mut PluginGraphs, target: &Path, roots: &HashMap<Str
     }
 
     // Step 5: apply mapping to nodes and edges.
-    for graph in [
-        &mut graphs.modules,
-        &mut graphs.files,
-        &mut graphs.functions,
-    ] {
-        for node in &mut graph.nodes {
-            if let Some(new_id) = id_map.get(&node.id) {
-                node.id = new_id.clone();
-            }
-            if let Some(parent) = node.parent.as_mut() {
-                if let Some(new_parent) = id_map.get(parent.as_str()) {
-                    *parent = new_parent.clone();
-                } else {
-                    // parent references a node not in any graph (e.g. stdlib file node);
-                    // rewrite it directly instead of relying on id_map lookup.
-                    let rewritten = rewrite_node_id(parent, &crate_map, target, roots);
-                    if rewritten != *parent {
-                        *parent = rewritten;
-                    }
+    let graph = &mut graphs.files;
+    for node in &mut graph.nodes {
+        if let Some(new_id) = id_map.get(&node.id) {
+            node.id = new_id.clone();
+        }
+        if let Some(parent) = node.parent.as_mut() {
+            if let Some(new_parent) = id_map.get(parent.as_str()) {
+                *parent = new_parent.clone();
+            } else {
+                // parent references a node not in any graph (e.g. stdlib file node);
+                // rewrite it directly instead of relying on id_map lookup.
+                let rewritten = rewrite_node_id(parent, &crate_map, target, roots);
+                if rewritten != *parent {
+                    *parent = rewritten;
                 }
             }
         }
-        for edge in &mut graph.edges {
-            if let Some(v) = id_map.get(&edge.from) {
-                edge.from = v.clone();
-            }
-            if let Some(v) = id_map.get(&edge.to) {
-                edge.to = v.clone();
-            }
+    }
+    for edge in &mut graph.edges {
+        if let Some(v) = id_map.get(&edge.from) {
+            edge.from = v.clone();
+        }
+        if let Some(v) = id_map.get(&edge.to) {
+            edge.to = v.clone();
         }
     }
 }
@@ -348,7 +324,7 @@ mod tests {
     fn sample_snapshot() -> Snapshot {
         let mut graphs = PluginGraphs::default();
         graphs
-            .modules
+            .files
             .nodes
             .push(node("crate:foo", NodeKind::Crate));
         Snapshot::new(
@@ -375,8 +351,8 @@ mod tests {
         assert_eq!(back.command, "report");
         assert_eq!(back.plugin, "rust");
         assert_eq!(back.target, "/work/foo");
-        assert_eq!(back.graphs.modules.nodes.len(), 1);
-        assert_eq!(back.graphs.modules.nodes[0].id, "crate:foo");
+        assert_eq!(back.graphs.files.nodes.len(), 1);
+        assert_eq!(back.graphs.files.nodes[0].id, "crate:foo");
         // generated_at survives the RFC3339 round-trip to the same instant.
         assert_eq!(back.generated_at, snap.generated_at);
     }
@@ -509,11 +485,11 @@ mod tests {
     fn rewrite_ids_shortens_single_crate_to_name() {
         let mut graphs = PluginGraphs::default();
         graphs
-            .modules
+            .files
             .nodes
             .push(node("crate:path+file:///x/anyhow#1.0.102", NodeKind::Crate));
         rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
-        assert_eq!(graphs.modules.nodes[0].id, "crate:anyhow");
+        assert_eq!(graphs.files.nodes[0].id, "crate:anyhow");
     }
 
     #[test]
@@ -521,15 +497,15 @@ mod tests {
         // Same crate name at two versions → both keep `@version` suffixes.
         let mut graphs = PluginGraphs::default();
         graphs
-            .modules
+            .files
             .nodes
             .push(node("crate:path+file:///a/foo#1.0.0", NodeKind::Crate));
         graphs
-            .modules
+            .files
             .nodes
             .push(node("crate:path+file:///b/foo#2.0.0", NodeKind::Crate));
         rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
-        let ids: Vec<&str> = graphs.modules.nodes.iter().map(|n| n.id.as_str()).collect();
+        let ids: Vec<&str> = graphs.files.nodes.iter().map(|n| n.id.as_str()).collect();
         assert!(ids.contains(&"crate:foo@1.0.0"), "got {ids:?}");
         assert!(ids.contains(&"crate:foo@2.0.0"), "got {ids:?}");
     }
@@ -538,14 +514,14 @@ mod tests {
     fn rewrite_ids_rewrites_edge_endpoints_and_file_ids() {
         let mut graphs = PluginGraphs::default();
         graphs
-            .modules
+            .files
             .nodes
             .push(node("crate:path+file:///x/anyhow#1.0.102", NodeKind::Crate));
         graphs
-            .modules
+            .files
             .nodes
             .push(node("file:/x/src/lib.rs", NodeKind::File));
-        graphs.modules.edges.push(Edge {
+        graphs.files.edges.push(Edge {
             from: "crate:path+file:///x/anyhow#1.0.102".into(),
             to: "file:/x/src/lib.rs".into(),
             kind: EdgeKind::Contains,
@@ -555,9 +531,9 @@ mod tests {
         });
         rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
         // file id is relativized against the target.
-        assert_eq!(graphs.modules.nodes[1].id, "file:{target}/src/lib.rs");
+        assert_eq!(graphs.files.nodes[1].id, "file:{target}/src/lib.rs");
         // edge endpoints follow the node-id rewrite.
-        assert_eq!(graphs.modules.edges[0].from, "crate:anyhow");
-        assert_eq!(graphs.modules.edges[0].to, "file:{target}/src/lib.rs");
+        assert_eq!(graphs.files.edges[0].from, "crate:anyhow");
+        assert_eq!(graphs.files.edges[0].to, "file:{target}/src/lib.rs");
     }
 }

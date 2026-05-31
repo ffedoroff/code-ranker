@@ -60,11 +60,8 @@ function buildSummary() {
   const before   = window.BEFORE;
   const after    = window.AFTER ?? window.BEFORE;
 
-  const hasFileKind = snap =>
-    ((snap?.graphs || {}).files?.nodes || []).some(n => n.kind === 'file');
-  const hasFiles = hasFileKind(before) || hasFileKind(after);
-  const levels   = ['modules', hasFiles ? 'files' : null, 'functions'].filter(Boolean);
-  const LLABELS  = { modules: 'Modules', files: 'Files', functions: 'Functions' };
+  const levels   = ['files'];
+  const LLABELS  = { files: 'Files' };
 
   const titleEl = document.getElementById('summary-title');
   if (titleEl) titleEl.textContent = isReview ? 'Summary' : 'Diff summary';

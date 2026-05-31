@@ -13,8 +13,9 @@ plugin = "rust"   # default plugin; overridden by --plugin
 # Nodes whose path matches any glob are removed before analysis.
 # Patterns are relative to the workspace root. Supports ** globs.
 [ignore]
-# Strip all inline `mod tests { … }` submodules (IDs ending with `::tests`).
-test_modules = true
+# Strip test files from the graph (Rust `tests/`, Python `test_*.py` / `tests/`,
+# JS/TS `*.test.*` / `__tests__/`, …). Accepts the legacy name `test_modules` too.
+tests = true
 
 paths = [
   # "**/tests/**",
@@ -22,10 +23,7 @@ paths = [
   # "crates/*/benches/**",
 
   # External test-only crates (dev-dependencies from registry).
-  # "axum-test-*/**",
-  # "proptest-*/**",
   # "rstest-*/**",
-  # "rstest_macros-*/**",
   # "wiremock-*/**",
 ]
 
@@ -34,49 +32,22 @@ paths = [
 # or an integer N = allow up to N cycles of that kind (the N+1-th fails — pin
 # today's count to forbid adding new ones). `check` prints the current counts.
 [rules.cycles]
-test-embed = false   # off — parent → mod tests → parent (language feature, not a smell)
-mutual     = true    # strict — two nodes that directly depend on each other
-chain      = true    # strict — three or more nodes in a dependency cycle
+test-embed = false   # off — language feature, not a smell
+mutual     = true    # strict — two files that directly depend on each other
+chain      = true    # strict — three or more files in a dependency cycle
 
 # ── Threshold rules ────────────────────────────────────────────────────────────
-# One scope per graph (the scope IS the graph), each limiting a SINGLE unit:
-#   [rules.thresholds.file]      — a single file     (files graph only)
-#   [rules.thresholds.module]    — a single module   (modules graph only)
-#   [rules.thresholds.function]  — a single function (functions graph only)
-# Each scope also has an `.avg` sub-table for that scope's graph-wide average,
-# e.g. [rules.thresholds.function.avg].
+# There is a single graph level — files — so the only scope is `file`:
+#   [rules.thresholds.file]  — limits applied to each individual file
 #
 # Available metrics: hk, cyclomatic, cognitive, fan_in, fan_out, loc
-# A set threshold fails `check` when exceeded; unset = not checked.
-# Current baseline below, pasted from `check`'s current-values block. single = the
-# worst single unit (max); avg = the graph-wide average.
+# A set threshold fails `check` when exceeded; unset = not checked. HK and
+# fan_in/fan_out count internal file→file coupling only (external library edges
+# are excluded). Current baseline below, pasted from `check --suggest-config`.
 
-[rules.thresholds.module]
+[rules.thresholds.file]
 cyclomatic  = 1
-hk          = 82_000
-fan_in      = 20
-fan_out     = 20
-loc         = 2_000
-
-[rules.thresholds.module.avg]
-cyclomatic  = 1
-hk          = 18_000
-fan_in      = 4
-fan_out     = 6
-loc         = 400
-
-[rules.thresholds.function]
-cyclomatic  = 35
-cognitive   = 70
-hk          = 82_000
-fan_in      = 60
-fan_out     = 50
-loc         = 2_000
-
-[rules.thresholds.function.avg]
-cyclomatic  = 4
-cognitive   = 7
-hk          = 12_000
-fan_in      = 5
-fan_out     = 8
-loc         = 50
+hk          = 8_624
+fan_in      = 7
+fan_out     = 7
+loc         = 1_691
