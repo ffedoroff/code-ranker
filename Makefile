@@ -1,4 +1,4 @@
-.PHONY: all build test clippy lint-md lint check fmt clean bump tag release
+.PHONY: all build test e2e clippy lint-md lint check fmt clean bump tag release
 
 all: build test lint
 
@@ -7,6 +7,12 @@ build:
 
 test:
 	cargo test --workspace
+
+# End-to-end fixture tests: run the built binary on each samples/<lang> project
+# and compare its JSON report against the committed golden. Refresh goldens with
+# `bash samples/regen.sh` after an intentional change.
+e2e:
+	cargo test -p code-split --test e2e
 
 clippy:
 	cargo clippy --workspace -- -D warnings

@@ -199,7 +199,7 @@ fn ms(d: Duration) -> f64 {
 
 fn main() {
     let root = std::env::args().nth(1).unwrap_or_else(|| {
-        "/Users/roman/work/platform/aps/account-engine/user-provisioning".into()
+        "/path/to/project".into()
     });
 
     let files: Vec<_> = WalkDir::new(&root)

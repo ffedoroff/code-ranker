@@ -18,7 +18,7 @@ fn dump(space: &rust_code_analysis::FuncSpace, depth: usize) {
 
 fn main() {
     let path_str = std::env::args().nth(1).unwrap_or_else(|| {
-        "/Users/roman/work/code-split/crates/code-split-complexity/src/lib.rs".to_string()
+        "crates/code-split-complexity/src/lib.rs".to_string()
     });
     let path = Path::new(&path_str);
     let src = std::fs::read_to_string(path).expect("read file");
