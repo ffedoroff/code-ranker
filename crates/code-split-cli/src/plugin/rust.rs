@@ -74,6 +74,42 @@ fn collapse_to_files(full: Graph) -> Graph {
     let mut file_nodes: HashMap<String, Node> = HashMap::new();
     let mut ext_nodes: HashMap<String, Node> = HashMap::new();
 
+    // Pre-pass: map each LOCAL crate to its crate-root source file (lib.rs /
+    // main.rs), via the crate→root-module `Contains` edge. This lets a
+    // cross-crate `use other_crate::…` (or a captured bare-path reference)
+    // become a file→file edge to that crate's root, instead of pointing at a
+    // crate node that has no file and would be dropped. `lib` wins over `bin`.
+    let node_by_id: HashMap<&str, &Node> = full.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
+    let crate_ids: HashSet<&str> = full
+        .nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Crate)
+        .map(|n| n.id.as_str())
+        .collect();
+    let mut crate_root_file: HashMap<String, String> = HashMap::new();
+    for e in &full.edges {
+        if e.kind != EdgeKind::Contains {
+            continue;
+        }
+        let (Some(from), Some(to)) =
+            (node_by_id.get(e.from.as_str()), node_by_id.get(e.to.as_str()))
+        else {
+            continue;
+        };
+        if from.kind == NodeKind::Crate && to.kind == NodeKind::Module && !to.path.is_empty() {
+            let file = format!("file:{}", to.path);
+            match crate_root_file.entry(e.from.clone()) {
+                Entry::Vacant(v) => {
+                    v.insert(file);
+                }
+                Entry::Occupied(mut o) if to.path.ends_with("lib.rs") => {
+                    *o.get_mut() = file;
+                }
+                Entry::Occupied(_) => {}
+            }
+        }
+    }
+
     for node in &full.nodes {
         match node.kind {
             NodeKind::Module => {
@@ -138,8 +174,15 @@ fn collapse_to_files(full: Graph) -> Graph {
                     cycle_kind: None,
                 });
             }
-            // Local `Crate`, `Trait` (and anything else) are dropped: they have
-            // no mapping, so edges touching them fall away below.
+            // A local workspace crate maps to its root file, so cross-crate
+            // dependencies on it become file→file edges to that root.
+            NodeKind::Crate => {
+                if let Some(file) = crate_root_file.get(&node.id) {
+                    id_map.insert(node.id.clone(), file.clone());
+                }
+            }
+            // `Trait` (and anything else) are dropped: no mapping, so edges
+            // touching them fall away below.
             _ => {}
         }
     }
@@ -148,23 +191,37 @@ fn collapse_to_files(full: Graph) -> Graph {
     let mut seen: HashSet<(String, String, EdgeKind)> = HashSet::new();
     let mut edges: Vec<Edge> = Vec::new();
     for e in &full.edges {
-        if e.kind == EdgeKind::Contains {
+        // Drop crate→crate dependency edges (crate-level meta from `cargo
+        // metadata`); the precise file→file edges come from module-level `use`
+        // statements and captured bare-path references.
+        if crate_ids.contains(e.from.as_str()) && crate_ids.contains(e.to.as_str()) {
             continue;
         }
         let (Some(from), Some(to)) = (id_map.get(&e.from), id_map.get(&e.to)) else {
             continue;
         };
         if from == to {
-            continue; // a `use` resolved within the same file is not a connection
+            continue; // within the same file (inline module / self-use) — not a connection
         }
+        // A `mod foo;` declaration of a *separate* file is a real file→file
+        // dependency: the parent file reaches into the child (typically via
+        // bare-path calls like `foo::bar()` that aren't captured as `use`
+        // edges). Surface such cross-file `Contains` edges as `Uses` so the
+        // child file gets fan-in and HK is computed. Same-file `Contains`
+        // (inline modules) collapses to a self-edge above and is dropped.
+        let kind = if e.kind == EdgeKind::Contains {
+            EdgeKind::Uses
+        } else {
+            e.kind
+        };
         let to_external = ext_nodes.contains_key(to);
-        if !seen.insert((from.clone(), to.clone(), e.kind)) {
+        if !seen.insert((from.clone(), to.clone(), kind)) {
             continue;
         }
         edges.push(Edge {
             from: from.clone(),
             to: to.clone(),
-            kind: e.kind,
+            kind,
             unresolved: None,
             external: to_external.then_some(true),
             visibility: e.visibility.clone(),

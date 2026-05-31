@@ -212,7 +212,7 @@ in `crates/code-split-core/schemas/graph.schema.json`.
 | Node | `id`, `kind`, `name`, `path?`, `external?`, `visibility?`, `complexity?`, `cycle_kind?` | `crates/code-split-core/src/graph.rs` |
 | Edge | `from`, `to`, `kind`, `external?`, `visibility?` | `crates/code-split-core/src/graph.rs` |
 | NodeKind | Enum. Output kinds: `File` (a project source file), `External` (a 3rd-party library at depth 1). The variants `Crate`, `Module`, `Trait` are internal-only — used by `code-split-syn` while building the Rust module tree and collapsed into `File`/`External` by the Rust plugin before serialization; they never appear in a snapshot. | `crates/code-split-core/src/graph.rs` |
-| EdgeKind | Enum. Output kinds: `Uses`, `Reexports` (both between files; `Uses` to an `External` node when the edge is flagged `external`). `Contains` is internal-only (Rust module-tree ownership during construction/collapse) and never appears between files in output. | `crates/code-split-core/src/graph.rs` |
+| EdgeKind | Enum. Output kinds: `Uses`, `Reexports` (both between files; `Uses` to an `External` node when the edge is flagged `external`). `Contains` is internal-only (Rust module-tree ownership during construction); the collapse drops same-file `Contains` (inline modules) but **re-emits cross-file `Contains` as `Uses`** — a `mod foo;` declaration of a separate file is a real `lib.rs → foo.rs` dependency. So `Contains` never appears between files in output. | `crates/code-split-core/src/graph.rs` |
 | CycleKind | Enum: `TestEmbed` (Rust `#[cfg(test)]` back-edge), `Mutual` (SCC size 2), `Chain` (SCC size ≥ 3). Set on each node in a cycle via `cycle_kind`. | `crates/code-split-core/src/graph.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: CycleKind`, `nodes: Vec<NodeId>`. Stored in `Graph.cycles`. | `crates/code-split-core/src/graph.rs` |
 | NodeId | Stable string key with no line numbers or byte offsets. Schemes: `file:{path}` for a source file, `ext:{name}` for an external library. | `crates/code-split-core/src/graph.rs`, `crates/code-split-core/src/snapshot.rs` |
@@ -271,9 +271,12 @@ Produces the Rust module graph via syntactic analysis. Calls
 `cargo metadata`; classifies crates as local vs. external; walks local
 source trees with `syn` to extract the module hierarchy and `use` /
 `pub use` statements, emitting `Crate` / `Module` / `Trait` nodes and
-`Contains` / `Uses` / `Reexports` edges. External crates are added as
-`Crate` nodes with `external = true`; their source is never read. Does
-NOT resolve names beyond `use` paths. A `visited_files`
+`Contains` / `Uses` / `Reexports` edges. It also runs a `syn::visit`
+path collector over each file to capture **crate-qualified bare paths**
+in expressions/types (`other_crate::item`, no `use`), resolved against
+the extern-crate map only (cross-crate; `crate`/`self`/`super`/`std`
+are ignored). External crates are added as `Crate` nodes with
+`external = true`; their source is never read. A `visited_files`
 `HashSet<PathBuf>` guard in `process_package` prevents double-walking
 source files when a workspace has both `lib` and `bin` targets declaring
 the same modules.
@@ -282,12 +285,19 @@ These module-level nodes are **internal**: the Rust plugin's collapse
 pass (see §3.7) folds them down to `File` / `External` nodes before the
 snapshot is written.
 
-**Known limitation — bare path references**: `uses` edges are generated
-only from `use` statements (`use crate::foo;`). Direct bare-path calls
-such as `submod::some_fn()` without a corresponding `use` declaration
-are NOT captured as `uses` edges. Consequence: a file that another file
-reaches exclusively via bare paths may show a lower `fan_in` than the
-real dependency, and a correspondingly lower HK.
+**Edge sources & remaining blind spots**: file→file / file→library edges
+come from three sources — (1) `use` / `pub use` statements; (2) `mod foo;`
+declarations of a separate file (the collapse re-emits cross-file
+`Contains` as `Uses`); (3) crate-qualified bare paths in expressions/types
+(`other_crate::item`), captured by the path visitor and resolved against
+extern crates. So a sibling-crate or 3rd-party dependency reached only via
+a fully-qualified path, and a child file reached via `mod foo;` + bare-path
+call, both still get edges. What remains uncaptured: an **intra-crate**
+bare path to a sibling module the caller neither `use`s nor declares
+(`crate::other::fn()` with no `use`/`mod` in that file), and any `use`
+hidden inside a macro body (macros are never expanded). Such a target may
+show a lower `fan_in` than the real dependency, and a correspondingly
+lower HK.
 
 #### code-split-complexity
 
@@ -863,8 +873,17 @@ code-split report /path/to/my-crate --plugin rust
       `mod {}` modules fold into their containing file.
    b. `Uses` / `Reexports` edges are re-pointed from module ids to the
       file ids that own them, so file→file connections are preserved.
+      Cross-file `Contains` edges (a `mod foo;` declaration of a separate
+      file) are re-emitted as `Uses` (`lib.rs → foo.rs`) so module-declared
+      files get `fan_in`; same-file `Contains` (inline modules) collapses
+      to a self-edge and is dropped.
    c. External crates collapse to `External` library nodes (`ext:<name>`)
       at depth 1; edges into them are flagged `external: true`.
+   d. A **local** workspace crate maps to its crate-root file (`lib.rs` /
+      `main.rs`), so a cross-crate `use other_crate::…` (or captured
+      bare-path reference) becomes a file→file edge to that crate's root.
+      Crate→crate dependency edges (from `cargo metadata`) are dropped as
+      crate-level meta.
 6. Runs `annotate_all_cycles` (SCC → `CycleKind`) and `annotate_hk`
    (internal `fan_in`/`fan_out`/`hk`; `fan_out_external` separately) on
    the file graph, then `annotate_stats`.
@@ -1059,7 +1078,7 @@ code-split/
     code-split-complexity/    # Rust — per-file complexity metrics (rust-code-analysis)
     code-split-cli/           # Rust — orchestrator, module→file collapse, artifact writer, report/diff renderer
       src/
-        plugin/            # Built-in plugins: rust.rs (incl. module→file collapse), python.rs, javascript.rs, mod.rs
+        plugin/            # Built-in plugins: rust.rs (incl. module→file collapse), python.rs, javascript.rs, finalize.rs (file-graph normalizer for Python/JS), mod.rs
         assets/            # HTML/CSS/JS assets embedded via include_str!
           index.html       # Shell template (single Files view); cs-before / cs-after JSON script tags embedded inline at render time
           index.css        # Node/edge/nav styling (external nodes amber)

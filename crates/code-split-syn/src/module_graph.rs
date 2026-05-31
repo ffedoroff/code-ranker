@@ -145,6 +145,29 @@ struct PendingUse {
     current_path: Vec<String>,
     use_path: Vec<String>,
     visibility: Visibility,
+    /// `true` for a crate-qualified path captured from an expression/type
+    /// (`other_crate::item`) rather than a `use` statement — resolved against
+    /// `extern_crates` only (cross-crate), never the local module index.
+    bare: bool,
+}
+
+/// Collects the leading segment of every qualified path (`first::rest`) in a
+/// parsed file. Used to surface crate-qualified bare-path references
+/// (`code_split_core::…`, `once_cell::…`) that never appear in a `use`.
+#[derive(Default)]
+struct CratePathCollector {
+    names: std::collections::BTreeSet<String>,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for CratePathCollector {
+    fn visit_path(&mut self, path: &'ast syn::Path) {
+        if path.segments.len() >= 2
+            && let Some(first) = path.segments.first()
+        {
+            self.names.insert(first.ident.to_string());
+        }
+        syn::visit::visit_path(self, path);
+    }
 }
 
 fn convert_visibility(v: &SynVis) -> Visibility {
@@ -207,6 +230,21 @@ fn walk_file(
         node.path = file_path.display().to_string();
     }
 
+    // Capture crate-qualified bare-path references (`other_crate::item` used in
+    // expressions/types without a `use`) so cross-crate dependencies are not
+    // lost. Resolution (against extern crates only) happens in `emit_uses`.
+    let mut collector = CratePathCollector::default();
+    syn::visit::Visit::visit_file(&mut collector, &parsed);
+    for name in collector.names {
+        pending_uses.push(PendingUse {
+            from_mod_id: parent_mod_id.clone(),
+            current_path: parent_mod_path.to_vec(),
+            use_path: vec![name],
+            visibility: Visibility::Private,
+            bare: true,
+        });
+    }
+
     walk_items(
         &parsed.items,
         parent_mod_id,
@@ -260,6 +298,7 @@ fn walk_items(
                         current_path: current_mod_path.to_vec(),
                         use_path,
                         visibility: vis.clone(),
+                        bare: false,
                     });
                 }
             }
@@ -388,9 +427,13 @@ fn emit_uses(
     // Dedup on (from, to, kind) — same target via `use` and `pub use` should produce both edges.
     let mut seen: HashSet<(NodeId, NodeId, EdgeKind)> = HashSet::new();
     for pu in pending {
-        let Some(target_id) =
+        let resolved = if pu.bare {
+            // Bare crate-qualified reference: resolve against extern crates only.
+            resolve_bare_crate(&pu.use_path, extern_crates)
+        } else {
             resolve_use_path(&pu.use_path, &pu.current_path, module_index, extern_crates)
-        else {
+        };
+        let Some(target_id) = resolved else {
             continue;
         };
         if target_id == pu.from_mod_id {
@@ -417,6 +460,24 @@ fn emit_uses(
             },
         });
     }
+}
+
+/// Resolve a bare crate-qualified path (`other_crate::item`) to the external
+/// crate node, ignoring language keywords and the standard library. Intra-crate
+/// paths (`crate`/`self`/`super`) are intentionally not resolved here — those
+/// connections come from `use` statements and `mod` declarations.
+fn resolve_bare_crate(
+    use_path: &[String],
+    extern_crates: &HashMap<String, NodeId>,
+) -> Option<NodeId> {
+    let first = use_path.first()?;
+    if matches!(
+        first.as_str(),
+        "crate" | "self" | "super" | "Self" | "std" | "core" | "alloc" | "proc_macro" | "test"
+    ) {
+        return None;
+    }
+    extern_crates.get(first).cloned()
 }
 
 fn resolve_use_path(
@@ -644,5 +705,41 @@ mod tests {
             &HashMap::new(),
         );
         assert_eq!(r, None);
+    }
+
+    #[test]
+    fn resolve_bare_crate_resolves_extern_and_skips_keywords() {
+        let mut externs: HashMap<String, NodeId> = HashMap::new();
+        externs.insert("once_cell".into(), "crate:once_cell".into());
+        // A crate-qualified bare path resolves to the extern crate node.
+        assert_eq!(
+            resolve_bare_crate(&["once_cell".into(), "sync".into()], &externs).as_deref(),
+            Some("crate:once_cell")
+        );
+        // Keywords / std are never treated as external crates.
+        for kw in ["crate", "self", "super", "std", "core"] {
+            assert_eq!(resolve_bare_crate(&[kw.into(), "x".into()], &externs), None);
+        }
+        // An unknown leading segment (a local type, e.g. `NodeKind::File`) is not
+        // an extern crate → no edge.
+        assert_eq!(
+            resolve_bare_crate(&["NodeKind".into(), "File".into()], &externs),
+            None
+        );
+    }
+
+    #[test]
+    fn collector_captures_crate_qualified_paths() {
+        // Bare crate-qualified references in expressions/types are collected;
+        // single-segment names and locals are not.
+        let f = syn::parse_file(
+            "fn run() { let _ = once_cell::sync::Lazy::new(|| 1); other_crate::go(); plain(); }",
+        )
+        .unwrap();
+        let mut c = CratePathCollector::default();
+        syn::visit::Visit::visit_file(&mut c, &f);
+        assert!(c.names.contains("once_cell"), "got {:?}", c.names);
+        assert!(c.names.contains("other_crate"), "got {:?}", c.names);
+        assert!(!c.names.contains("plain"), "single-segment call ignored");
     }
 }

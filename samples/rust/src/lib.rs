@@ -6,15 +6,25 @@
 //! expanded.
 
 // `mod foo;` (file-backed module) — DETECTED. Each becomes a File node, and the
-// `Contains` relation is collapsed away in the file graph.
+// declaration is surfaced as a file→file `uses` edge (lib.rs → foo.rs): a module
+// declaration is a real cross-file dependency (the parent reaches into the child,
+// often via bare-path calls that aren't captured as `use` edges).
 #[macro_use]
 mod macros;
 pub mod a;
 pub mod b;
 pub mod c;
+mod foo;
 
 // `pub use` re-export — DETECTED as a `Reexports` edge (lib.rs → a.rs).
 pub use crate::a::Alpha;
+
+// The canonical `mod foo;` case: lib.rs calls `foo::run()` by a BARE PATH (no
+// `use crate::foo`). The bare-path call is not captured, so the `lib.rs → foo.rs`
+// edge comes solely from the `mod foo;` declaration above.
+pub fn run_foo() -> i32 {
+    foo::run()
+}
 
 // `extern crate` (old 2015-style) — NOT detected. syn parses it as
 // `Item::ExternCrate`, which the analyzer ignores, so no edge to `serde` comes

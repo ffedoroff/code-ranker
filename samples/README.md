@@ -38,16 +38,19 @@ dependency, and a test file.
 ### Rust (`rust/`)
 
 Detected: `use crate::`, groups `{}`, glob `*`, `as` rename, `super::`, inline
-modules, `pub use` → `Reexports` edge, external crate via `use serde::` →
-`External` node. A `std::`/`core::` import is recognized but is NOT emitted as an
-External node.
+modules, `mod foo;` declaration → a file→file `uses` edge (`lib.rs → foo.rs`),
+`pub use` → `Reexports` edge, external crate via `use serde::` → `External` node,
+and **crate-qualified bare paths** in expressions/types (`once_cell::sync::Lazy`
+with no `use`) → the crate's `External` node (and, across workspace members, a
+file→file edge to that crate's root). A `std::`/`core::` path is recognized but
+is NOT emitted as an External node.
 
-Not detected: a crate path used only in fully-qualified form without a `use`
-(`once_cell::…` → the crate is absent from the graph); `extern crate serde;` (old
-syntax, no edge); a `use` **inside a macro body** (`macros.rs` ends up an orphan
-file); macro invocations (`make_answer!`, `pull_in_c!`) — no nodes or edges; and
-integration tests under `tests/` — a separate target kind that is not analyzed at
-all.
+Not detected: `extern crate serde;` (old syntax, no edge); a `use` **inside a
+macro body** (`macros.rs` has incoming fan-in from `mod macros;`, but the
+`use crate::c::gamma` hidden in the `pull_in_c!` body is invisible, so it gets no
+outgoing edge to `c.rs`); macro invocations (`make_answer!`, `pull_in_c!`) — no
+nodes or edges; and integration tests under `tests/` — a separate target kind
+that is not analyzed at all.
 
 ### Python (`python/`)
 

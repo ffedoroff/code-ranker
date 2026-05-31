@@ -1,48 +1,55 @@
 {
   "schema_version": "1",
-  "generated_at": "2026-05-31T18:36:42.537278Z",
+  "generated_at": "2026-05-31T20:15:53.650Z",
   "command": "code-split report samples/rust --config samples/rust/code-split.toml --format json --report-path samples/rust --json-name code-split-report.json",
   "workspace": "/home/user/code-split",
   "target": "/home/user/code-split/samples/rust",
   "plugin": "rust",
   "config_file": "samples/rust/code-split.toml",
   "versions": {
-    "code_split_plugin_rust": "0.1.1",
     "rustc": "1.95.0",
-    "code-split": "0.1.1"
+    "code-split": "0.1.1",
+    "code_split_plugin_rust": "0.1.1"
   },
   "roots": {
-    "rust-src": "/home/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library",
     "rustup": "/home/user/.rustup",
     "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
-    "cargo": "/home/user/.cargo",
-    "target": "/home/user/code-split/samples/rust"
+    "rust-src": "/home/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library",
+    "target": "/home/user/code-split/samples/rust",
+    "cargo": "/home/user/.cargo"
   },
   "git": {
     "branch": "explore/files-only",
-    "commit": "23fb42c",
-    "dirty_files": 41
+    "commit": "344d898",
+    "dirty_files": 15
   },
   "timings": [
     {
       "stage": "syn",
-      "ms": 76,
-      "detail": "16 nodes"
+      "ms": 72,
+      "detail": "17 nodes"
     },
     {
       "stage": "complexity",
       "ms": 8,
-      "detail": "5 nodes annotated"
+      "detail": "6 nodes annotated"
     },
     {
       "stage": "projection",
       "ms": 0,
-      "detail": "files=6 edges=7"
+      "detail": "files=8 edges=12"
     }
   ],
   "graphs": {
     "files": {
       "nodes": [
+        {
+          "id": "ext:once_cell",
+          "kind": "external",
+          "name": "once_cell",
+          "path": "",
+          "external": true
+        },
         {
           "id": "ext:serde",
           "kind": "external",
@@ -98,9 +105,10 @@
           "complexity": {
             "cyclomatic": 1,
             "coupling": {
-              "fan_in": 2,
+              "fan_in": 3,
               "fan_out": 1,
-              "hk": 100
+              "fan_out_external": 1,
+              "hk": 225
             },
             "maintainability": {
               "mi": 90.031,
@@ -134,7 +142,7 @@
           "complexity": {
             "cyclomatic": 1,
             "coupling": {
-              "fan_in": 1
+              "fan_in": 2
             },
             "maintainability": {
               "mi": 106.896,
@@ -156,35 +164,69 @@
           }
         },
         {
+          "id": "file:{target}/src/foo.rs",
+          "kind": "file",
+          "name": "foo.rs",
+          "path": "{target}/src/foo.rs",
+          "visibility": "private",
+          "loc": 18,
+          "item_count": 1,
+          "complexity": {
+            "cyclomatic": 1,
+            "coupling": {
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 18
+            },
+            "maintainability": {
+              "mi": 103.924,
+              "mi_sei": 122.113
+            },
+            "loc": {
+              "source": 18,
+              "comments": 12,
+              "blank": 2
+            },
+            "halstead": {
+              "length": 13,
+              "vocabulary": 11,
+              "volume": 44.972,
+              "effort": 196.755,
+              "time": 10.93,
+              "bugs": 0.0112
+            }
+          }
+        },
+        {
           "id": "file:{target}/src/lib.rs",
           "kind": "file",
           "name": "lib.rs",
           "path": "{target}/src/lib.rs",
           "visibility": "public",
-          "loc": 38,
-          "item_count": 6,
+          "loc": 48,
+          "item_count": 8,
           "complexity": {
             "cyclomatic": 1,
             "coupling": {
-              "fan_out": 2
+              "fan_out": 5
             },
             "maintainability": {
-              "mi": 83.562,
-              "mi_sei": 86.395
+              "mi": 78.174,
+              "mi_sei": 79.459
             },
             "loc": {
-              "source": 38,
+              "source": 48,
               "logical": 2,
-              "comments": 15,
-              "blank": 6
+              "comments": 20,
+              "blank": 7
             },
             "halstead": {
-              "length": 48,
-              "vocabulary": 24,
-              "volume": 220.078,
-              "effort": 1210.43,
-              "time": 67.246,
-              "bugs": 0.0378
+              "length": 59,
+              "vocabulary": 29,
+              "volume": 286.62,
+              "effort": 1961.09,
+              "time": 108.949,
+              "bugs": 0.0522
             }
           }
         },
@@ -198,6 +240,9 @@
           "item_count": 2,
           "complexity": {
             "cyclomatic": 1,
+            "coupling": {
+              "fan_in": 1
+            },
             "maintainability": {
               "mi": 97.153,
               "mi_sei": 102.903
@@ -237,7 +282,18 @@
         },
         {
           "from": "file:{target}/src/b.rs",
+          "to": "ext:once_cell",
+          "kind": "uses",
+          "external": true
+        },
+        {
+          "from": "file:{target}/src/b.rs",
           "to": "file:{target}/src/a.rs",
+          "kind": "uses"
+        },
+        {
+          "from": "file:{target}/src/foo.rs",
+          "to": "file:{target}/src/b.rs",
           "kind": "uses"
         },
         {
@@ -255,6 +311,21 @@
           "from": "file:{target}/src/lib.rs",
           "to": "file:{target}/src/b.rs",
           "kind": "uses"
+        },
+        {
+          "from": "file:{target}/src/lib.rs",
+          "to": "file:{target}/src/c.rs",
+          "kind": "uses"
+        },
+        {
+          "from": "file:{target}/src/lib.rs",
+          "to": "file:{target}/src/foo.rs",
+          "kind": "uses"
+        },
+        {
+          "from": "file:{target}/src/lib.rs",
+          "to": "file:{target}/src/macros.rs",
+          "kind": "uses"
         }
       ],
       "cycles": [
@@ -269,26 +340,26 @@
       "stats": {
         "cyclomatic": 1,
         "coupling": {
-          "fan_in": 1.666,
-          "fan_out": 1.666,
-          "hk": 290
+          "fan_in": 1.8,
+          "fan_out": 2.25,
+          "hk": 241
         },
         "maintainability": {
-          "mi": 92.539,
-          "mi_sei": 98.204
+          "mi": 93.539,
+          "mi_sei": 101.033
         },
         "loc": {
-          "source": 25.8,
-          "comments": 9.8,
-          "blank": 3.8
+          "source": 26.166,
+          "comments": 11,
+          "blank": 3.666
         },
         "halstead": {
-          "length": 40.6,
-          "vocabulary": 21.2,
-          "volume": 184.941,
-          "effort": 1618.735,
-          "time": 89.929,
-          "bugs": 0.0411
+          "length": 37.833,
+          "vocabulary": 20.333,
+          "volume": 172.704,
+          "effort": 1506.849,
+          "time": 83.713,
+          "bugs": 0.0385
         }
       }
     }

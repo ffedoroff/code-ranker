@@ -15,5 +15,6 @@ path = "src/lib.rs"
 # `serde` is referenced through a real `use` (and a derive) → DETECTED as External.
 serde = { version = "1", features = ["derive"] }
 # `once_cell` is referenced ONLY via a fully-qualified path, with no `use`
-# statement → NOT detected (blind spot). It must not show up as an External node.
+# statement → DETECTED: crate-qualified bare paths are captured, so it shows up
+# as an External node.
 once_cell = "1"

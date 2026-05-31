@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::logger;
-use crate::plugin::finalize_file_graph;
+use crate::plugin::finalize::finalize_file_graph;
 
 pub fn run(workspace: &Path, _local_only: bool) -> Result<(PluginGraphs, Vec<StageTime>)> {
     let mut timings = Vec::new();
