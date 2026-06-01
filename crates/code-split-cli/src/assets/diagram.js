@@ -179,20 +179,12 @@ function buildDiagramSVG(node, level) {
     return col.x + (col.px_w - span) / 2 + pos * CELL;
   };
 
-  // Cycle highlight state
-  const _section       = document.querySelector('.view.active');
-  const _chipOn        = id => _section?.querySelector(`[data-chip="${id}"]`)?.classList.contains('active') ?? false;
-  const cycleBeforeOn  = _chipOn('cycle-before');
-  const cycleAfterOn   = _chipOn('cycle-after');
-  const showCycles     = cycleBeforeOn || cycleAfterOn;
-  const cycleNodes     = window.CYCLES?.[level]?.nodeCycleStatus;
+  // Cycle highlight state — a node in a dependency cycle is always marked red
+  // (no toggle), matching the main map.
+  const cycleNodes = window.CYCLES?.[level]?.nodeCycleStatus;
   const isCycleNode = id => {
-    if (!showCycles || !cycleNodes) return false;
-    const cs = cycleNodes.get(id);
-    if (!cs) return false;
-    if (cs === 'before-only') return cycleBeforeOn;
-    if (cs === 'after-only')  return cycleAfterOn;
-    return true;
+    const cs = cycleNodes?.get(id);
+    return cs != null && cs !== 'none';
   };
 
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet">`;

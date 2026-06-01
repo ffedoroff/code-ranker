@@ -398,11 +398,9 @@ workspaces. The plugin MUST:
   declarations / `use` statements via syntactic analysis (`syn` crate),
   then **collapse it to a file graph**: every `.rs` file becomes one
   `File` node, inline `mod {}` modules fold into their file, and
-  `use` / `pub use` edges are re-pointed to the owning files. A cross-file
-  `mod foo;` declaration is itself surfaced as a `lib.rs → foo.rs` `uses`
-  edge (a module declaration is a real dependency, often invoked via
-  bare-path calls that aren't captured as `use` edges) — so file→file
-  dependencies are fully preserved
+  `use` / `pub use` edges are re-pointed to the owning files. `mod foo;`
+  declarations are **not** edges — they are structural ownership (conveyed
+  by directory grouping), not information flow
 - Classify each crate as local vs. external; external crates collapse to
   `External` library nodes (`ext:<name>`) recorded at depth 1, never
   expanded; edges into them are flagged `external: true`. A dependency on

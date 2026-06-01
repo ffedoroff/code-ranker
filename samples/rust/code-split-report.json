@@ -1,32 +1,32 @@
 {
   "schema_version": "1",
-  "generated_at": "2026-05-31T20:15:53.650Z",
+  "generated_at": "2026-05-31T22:43:01.675566Z",
   "command": "code-split report samples/rust --config samples/rust/code-split.toml --format json --report-path samples/rust --json-name code-split-report.json",
   "workspace": "/home/user/code-split",
   "target": "/home/user/code-split/samples/rust",
   "plugin": "rust",
   "config_file": "samples/rust/code-split.toml",
   "versions": {
+    "code_split_plugin_rust": "0.1.1",
     "rustc": "1.95.0",
-    "code-split": "0.1.1",
-    "code_split_plugin_rust": "0.1.1"
+    "code-split": "0.1.1"
   },
   "roots": {
+    "rust-src": "/home/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library",
+    "cargo": "/home/user/.cargo",
     "rustup": "/home/user/.rustup",
     "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
-    "rust-src": "/home/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library",
-    "target": "/home/user/code-split/samples/rust",
-    "cargo": "/home/user/.cargo"
+    "target": "/home/user/code-split/samples/rust"
   },
   "git": {
     "branch": "explore/files-only",
-    "commit": "344d898",
-    "dirty_files": 15
+    "commit": "416406c",
+    "dirty_files": 13
   },
   "timings": [
     {
       "stage": "syn",
-      "ms": 72,
+      "ms": 70,
       "detail": "17 nodes"
     },
     {
@@ -37,7 +37,7 @@
     {
       "stage": "projection",
       "ms": 0,
-      "detail": "files=8 edges=12"
+      "detail": "files=8 edges=9"
     }
   ],
   "graphs": {
@@ -142,7 +142,7 @@
           "complexity": {
             "cyclomatic": 1,
             "coupling": {
-              "fan_in": 2
+              "fan_in": 1
             },
             "maintainability": {
               "mi": 106.896,
@@ -169,22 +169,20 @@
           "name": "foo.rs",
           "path": "{target}/src/foo.rs",
           "visibility": "private",
-          "loc": 18,
+          "loc": 15,
           "item_count": 1,
           "complexity": {
             "cyclomatic": 1,
             "coupling": {
-              "fan_in": 1,
-              "fan_out": 1,
-              "hk": 18
+              "fan_out": 1
             },
             "maintainability": {
-              "mi": 103.924,
-              "mi_sei": 122.113
+              "mi": 106.878,
+              "mi_sei": 125.297
             },
             "loc": {
-              "source": 18,
-              "comments": 12,
+              "source": 15,
+              "comments": 9,
               "blank": 2
             },
             "halstead": {
@@ -208,7 +206,7 @@
           "complexity": {
             "cyclomatic": 1,
             "coupling": {
-              "fan_out": 5
+              "fan_out": 2
             },
             "maintainability": {
               "mi": 78.174,
@@ -240,9 +238,6 @@
           "item_count": 2,
           "complexity": {
             "cyclomatic": 1,
-            "coupling": {
-              "fan_in": 1
-            },
             "maintainability": {
               "mi": 97.153,
               "mi_sei": 102.903
@@ -311,21 +306,6 @@
           "from": "file:{target}/src/lib.rs",
           "to": "file:{target}/src/b.rs",
           "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/lib.rs",
-          "to": "file:{target}/src/c.rs",
-          "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/lib.rs",
-          "to": "file:{target}/src/foo.rs",
-          "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/lib.rs",
-          "to": "file:{target}/src/macros.rs",
-          "kind": "uses"
         }
       ],
       "cycles": [
@@ -340,17 +320,17 @@
       "stats": {
         "cyclomatic": 1,
         "coupling": {
-          "fan_in": 1.8,
-          "fan_out": 2.25,
-          "hk": 241
+          "fan_in": 2,
+          "fan_out": 1.5,
+          "hk": 352.5
         },
         "maintainability": {
-          "mi": 93.539,
-          "mi_sei": 101.033
+          "mi": 94.031,
+          "mi_sei": 101.563
         },
         "loc": {
-          "source": 26.166,
-          "comments": 11,
+          "source": 25.666,
+          "comments": 10.5,
           "blank": 3.666
         },
         "halstead": {

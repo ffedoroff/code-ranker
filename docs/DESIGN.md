@@ -212,7 +212,7 @@ in `crates/code-split-core/schemas/graph.schema.json`.
 | Node | `id`, `kind`, `name`, `path?`, `external?`, `visibility?`, `complexity?`, `cycle_kind?` | `crates/code-split-core/src/graph.rs` |
 | Edge | `from`, `to`, `kind`, `external?`, `visibility?` | `crates/code-split-core/src/graph.rs` |
 | NodeKind | Enum. Output kinds: `File` (a project source file), `External` (a 3rd-party library at depth 1). The variants `Crate`, `Module`, `Trait` are internal-only — used by `code-split-syn` while building the Rust module tree and collapsed into `File`/`External` by the Rust plugin before serialization; they never appear in a snapshot. | `crates/code-split-core/src/graph.rs` |
-| EdgeKind | Enum. Output kinds: `Uses`, `Reexports` (both between files; `Uses` to an `External` node when the edge is flagged `external`). `Contains` is internal-only (Rust module-tree ownership during construction); the collapse drops same-file `Contains` (inline modules) but **re-emits cross-file `Contains` as `Uses`** — a `mod foo;` declaration of a separate file is a real `lib.rs → foo.rs` dependency. So `Contains` never appears between files in output. | `crates/code-split-core/src/graph.rs` |
+| EdgeKind | Enum. Output kinds: `Uses`, `Reexports` (both between files; `Uses` to an `External` node when the edge is flagged `external`). `Contains` is internal-only (Rust module-tree ownership during construction); the Rust collapse **drops all `Contains` edges** — a `mod foo;` declaration is structural ownership, not an information-flow dependency — so `Contains` never appears between files in output. | `crates/code-split-core/src/graph.rs` |
 | CycleKind | Enum: `TestEmbed` (Rust `#[cfg(test)]` back-edge), `Mutual` (SCC size 2), `Chain` (SCC size ≥ 3). Set on each node in a cycle via `cycle_kind`. | `crates/code-split-core/src/graph.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: CycleKind`, `nodes: Vec<NodeId>`. Stored in `Graph.cycles`. | `crates/code-split-core/src/graph.rs` |
 | NodeId | Stable string key with no line numbers or byte offsets. Schemes: `file:{path}` for a source file, `ext:{name}` for an external library. | `crates/code-split-core/src/graph.rs`, `crates/code-split-core/src/snapshot.rs` |
@@ -245,7 +245,10 @@ Depends on `petgraph` and `serde` only; no `cargo_metadata` or `syn`.
 Modules beyond graph types:
 
 - **`cycles.rs`** — `annotate_all_cycles`: Kosaraju SCC on the file
-  graph, classifies each SCC as `TestEmbed` / `Mutual` / `Chain`, sets
+  graph over `Uses`/`Reexports` edges only (`Contains` is excluded — a
+  `mod foo;` declaration plus the child importing the parent's types is a
+  Rust idiom, not an architectural cycle). Classifies each SCC as
+  `TestEmbed` (a test-named file in the SCC) / `Mutual` / `Chain`, sets
   `node.cycle_kind` and writes `graph.cycles: Vec<CycleGroup>`.
 - **`hk.rs`** — `annotate_hk`: computes Henry-Kafura complexity
   (`hk = loc × (fan_in × fan_out)²`) for every file node and writes the
@@ -286,18 +289,17 @@ pass (see §3.7) folds them down to `File` / `External` nodes before the
 snapshot is written.
 
 **Edge sources & remaining blind spots**: file→file / file→library edges
-come from three sources — (1) `use` / `pub use` statements; (2) `mod foo;`
-declarations of a separate file (the collapse re-emits cross-file
-`Contains` as `Uses`); (3) crate-qualified bare paths in expressions/types
-(`other_crate::item`), captured by the path visitor and resolved against
-extern crates. So a sibling-crate or 3rd-party dependency reached only via
-a fully-qualified path, and a child file reached via `mod foo;` + bare-path
-call, both still get edges. What remains uncaptured: an **intra-crate**
-bare path to a sibling module the caller neither `use`s nor declares
-(`crate::other::fn()` with no `use`/`mod` in that file), and any `use`
-hidden inside a macro body (macros are never expanded). Such a target may
-show a lower `fan_in` than the real dependency, and a correspondingly
-lower HK.
+come from two sources — (1) `use` / `pub use` statements; (2) crate-qualified
+bare paths in expressions/types (`other_crate::item`), captured by the path
+visitor and resolved against extern crates. A `mod foo;` declaration is
+**not** an edge — it is structural ownership (shown via directory
+clustering), not information flow. What remains uncaptured: an
+**intra-crate** bare path to a sibling/child module the caller does not
+`use` (`crate::other::fn()` or `foo::bar()` where `foo` is only declared
+with `mod foo;`), and any `use` hidden inside a macro body (macros are
+never expanded). Such a target may show a lower `fan_in` than the real
+dependency, and a correspondingly lower HK — a file reached only this way
+can appear isolated.
 
 #### code-split-complexity
 
@@ -533,9 +535,10 @@ nodes or edges are promoted to `affected` status. Computed in `diff.js`
 before and after adjacency lists of the file graph. Edges to external library
 nodes are excluded from SCC construction (a leaf library cannot close a cycle).
 Nodes/edges receive `cycle-status-{before-only|after-only|both|none}` class in
-the DOT output, and the summary table reports cycle counts. (The chip-driven cycle
-highlighting was removed with the control panel in the UI simplification; the
-per-snapshot Before/After diagrams render each snapshot's own cycles inherently.)
+the DOT output, and the summary table reports cycle counts. Cycle members are
+**always drawn with a red stroke** — `index.css` colours any non-`none`
+`cycle-status-*` node/edge red unconditionally (no toggle); the per-node popup
+(`diagram.js`) marks cycle nodes red the same way via `isCycleNode`.
 
 **Offline guarantee**: no CDN references in any asset; `graphviz.umd.js`
 embeds the WASM binary as a base91-encoded string and instantiates it from
@@ -873,10 +876,8 @@ code-split report /path/to/my-crate --plugin rust
       `mod {}` modules fold into their containing file.
    b. `Uses` / `Reexports` edges are re-pointed from module ids to the
       file ids that own them, so file→file connections are preserved.
-      Cross-file `Contains` edges (a `mod foo;` declaration of a separate
-      file) are re-emitted as `Uses` (`lib.rs → foo.rs`) so module-declared
-      files get `fan_in`; same-file `Contains` (inline modules) collapses
-      to a self-edge and is dropped.
+      `Contains` edges (`mod foo;` declarations) are dropped — structural
+      ownership, not information flow.
    c. External crates collapse to `External` library nodes (`ext:<name>`)
       at depth 1; edges into them are flagged `external: true`.
    d. A **local** workspace crate maps to its crate-root file (`lib.rs` /

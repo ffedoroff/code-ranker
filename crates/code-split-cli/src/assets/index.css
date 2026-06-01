@@ -235,7 +235,11 @@ main { padding: 16px 24px 40px; }
 [data-tt] { cursor: help; border-bottom: 1px dashed rgba(100,120,140,.35); }
 [data-tip] { cursor: help; }
 .tt-desc { color: #c8d8e8; font-size: 12px; line-height: 1.55; margin-top: 2px; }
-#tt { max-width: 280px; }
+/* Metric formula on its own bold line, never wrapped mid-expression. */
+.tt-formula { font-weight: 700; color: #e8eef5; white-space: nowrap;
+              margin: 4px 0 6px; font-size: 11px;
+              font-family: ui-monospace, 'SF Mono', monospace; }
+#tt { max-width: 330px; }
 
 /* ── Node table ─────────────────────────────────────────────────────────────── */
 .node-table-wrap { margin: 10px 0 20px; }
@@ -428,25 +432,17 @@ g.node polygon, g.node ellipse { stroke-width: 1; }
 :is(.hide-edges-added,.hide-edges-removed,.hide-edges-affected,.hide-edges-unchanged).show-cycle-after
   g.edge:is(.status-added,.status-removed,.status-affected,.status-unchanged):is(.cycle-status-after-only,.cycle-status-both)  { display: block; }
 
-/* ── Cycle highlights: solid red stroke, both before and after ───────────────── */
-.show-cycle-before g.node.cycle-status-before-only > polygon,
-.show-cycle-before g.node.cycle-status-before-only > ellipse,
-.show-cycle-before g.node.cycle-status-both > polygon,
-.show-cycle-before g.node.cycle-status-both > ellipse,
-.show-cycle-after g.node.cycle-status-after-only > polygon,
-.show-cycle-after g.node.cycle-status-after-only > ellipse,
-.show-cycle-after g.node.cycle-status-both > polygon,
-.show-cycle-after g.node.cycle-status-both > ellipse {
+/* ── Cycle highlights: members of a dependency cycle are always red ──────────── */
+g.node:is(.cycle-status-before-only,.cycle-status-after-only,.cycle-status-both) > polygon,
+g.node:is(.cycle-status-before-only,.cycle-status-after-only,.cycle-status-both) > ellipse {
   stroke: #c00 !important; stroke-width: 3 !important;
 }
-.show-cycle-before g.edge.cycle-status-before-only > path,
-.show-cycle-before g.edge.cycle-status-both > path,
-.show-cycle-after g.edge.cycle-status-after-only > path,
-.show-cycle-after g.edge.cycle-status-both > path { stroke: #c00 !important; stroke-width: 2.5 !important; }
-.show-cycle-before g.edge.cycle-status-before-only > polygon,
-.show-cycle-before g.edge.cycle-status-both > polygon,
-.show-cycle-after g.edge.cycle-status-after-only > polygon,
-.show-cycle-after g.edge.cycle-status-both > polygon { stroke: #c00 !important; fill: #c00 !important; }
+g.edge:is(.cycle-status-before-only,.cycle-status-after-only,.cycle-status-both) > path {
+  stroke: #c00 !important; stroke-width: 2.5 !important;
+}
+g.edge:is(.cycle-status-before-only,.cycle-status-after-only,.cycle-status-both) > polygon {
+  stroke: #c00 !important; fill: #c00 !important;
+}
 
 /* ── Selection: persistent yellow highlight ─────────────────────────────────── */
 .node-table tr.row-selected td { background: rgb(254,245,222); }

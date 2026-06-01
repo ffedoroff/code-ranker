@@ -1,7 +1,7 @@
 // Import from the defining modules (not the crate-root re-exports) so this module
 // depends "down" on `graph`/`snapshot` rather than "up" on the crate root — which
 // would close a `root → hk → root` cycle.
-use crate::graph::{Complexity, Coupling, EdgeKind, Graph, Loc, NodeId, NodeKind};
+use crate::graph::{Complexity, Coupling, Graph, Loc, NodeId, NodeKind};
 use crate::snapshot::PluginGraphs;
 use std::collections::{HashMap, HashSet};
 
@@ -30,9 +30,10 @@ fn annotate_graph_hk(graph: &mut Graph) {
     let mut fan_out_ext: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
 
     for edge in &graph.edges {
-        if edge.kind == EdgeKind::Contains {
-            continue;
-        }
+        // Project (non-external) `uses`/`reexports` edges count toward coupling;
+        // external-library edges are split out into `fan_out_external` (below).
+        // (Plugins emit no `Contains` edges between files — module declarations
+        // are dropped — so coupling reflects information flow, not structure.)
         let to_external = external_ids.contains(edge.to.as_str());
         let from_external = external_ids.contains(edge.from.as_str());
         if to_external {
@@ -95,7 +96,7 @@ fn annotate_graph_hk(graph: &mut Graph) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, Loc, Node};
+    use crate::graph::{Edge, EdgeKind, Loc, Node};
 
     fn module(id: &str, complexity_loc: Option<f64>, struct_loc: Option<u32>) -> Node {
         Node {

@@ -1,4 +1,4 @@
-use crate::graph::{CycleGroup, CycleKind, Graph};
+use crate::graph::{CycleGroup, CycleKind, EdgeKind, Graph};
 use crate::snapshot::PluginGraphs;
 use std::collections::HashMap;
 
@@ -22,12 +22,16 @@ fn annotate_graph_cycles(graph: &mut Graph) {
         .map(|(i, node)| (node.id.as_str(), i))
         .collect();
 
-    // Adjacency list over ALL edge kinds (contains, uses, reexports, calls).
-    // We deliberately include `contains` edges so that the Rust-specific
-    // test-embed pattern (parent --contains--> tests --uses--> parent) is
-    // visible as a cycle and can be classified correctly.
+    // Adjacency over information-flow edges (`uses` / `reexports`). `Contains`
+    // edges (a Rust `mod foo;` declaration, parent → child) are EXCLUDED: a
+    // parent module declaring a child while the child imports the parent's
+    // types is a language idiom, not an architectural cycle. Including them
+    // would flag every such parent/child pair as a false mutual cycle.
     let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
     for edge in &graph.edges {
+        if edge.kind == EdgeKind::Contains {
+            continue;
+        }
         if let (Some(&fi), Some(&ti)) = (
             id_to_idx.get(edge.from.as_str()),
             id_to_idx.get(edge.to.as_str()),
@@ -282,25 +286,25 @@ mod tests {
     }
 
     #[test]
-    fn test_module_back_edge_is_test_embed() {
-        // parent --contains--> parent::tests --uses--> parent. A test node in
-        // the SCC wins over the size-based (Mutual) classification.
+    fn contains_edge_does_not_form_a_cycle() {
+        // parent --contains--> child  +  child --uses--> parent: a `mod foo;`
+        // declaration combined with the child importing the parent's types is a
+        // Rust idiom, NOT an architectural cycle. `Contains` is excluded from
+        // cycle detection, so no cycle is reported.
         let mut g = graph_of(
             vec![
                 node("m", "m", NodeKind::Module),
-                node("m::tests", "tests", NodeKind::Module),
+                node("m::child", "child", NodeKind::Module),
             ],
             vec![
-                edge("m", "m::tests", EdgeKind::Contains),
-                edge("m::tests", "m", EdgeKind::Uses),
+                edge("m", "m::child", EdgeKind::Contains),
+                edge("m::child", "m", EdgeKind::Uses),
             ],
         );
         annotate_graph_cycles(&mut g);
-        assert_eq!(g.cycles.len(), 1);
-        assert_eq!(
-            g.cycles[0].kind,
-            CycleKind::TestEmbed,
-            "a 2-node SCC containing a test module is TestEmbed, not Mutual"
+        assert!(
+            g.cycles.is_empty(),
+            "a contains+use parent/child pair is not a cycle"
         );
     }
 

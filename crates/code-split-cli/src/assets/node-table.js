@@ -45,7 +45,7 @@ function setupNodeTable(section, level) {
   const CYCLE_COL = {id:'cycle',label:'Cycle'};
   const COLS = {
     modules:   [BASE[0], BASE[1], CYCLE_COL, ...BASE.slice(2)],
-    files:     BASE.filter(c => c.id !== 'kind'),
+    files:     [BASE[0], CYCLE_COL, ...BASE.slice(2)],
     functions: BASE,
   };
   const cols   = COLS[level] || COLS.modules;
@@ -56,7 +56,7 @@ function setupNodeTable(section, level) {
   function nodeVal(n, id) {
     const cx = n.complexity;
     switch (id) {
-      case 'name':        return n.id;
+      case 'name':        return (n.path || '').replace(/^\{[^}]+\}\//, '') || n.id;
       case 'kind':        return n.kind || '';
       case 'status':      return n.status || '';
       case 'loc':         return cx?.loc?.source ?? n.loc ?? null;
@@ -185,6 +185,7 @@ function setupNodeTable(section, level) {
       th.textContent = label;
       th.dataset.col = id;
       if (COL_TIPS[id]) th.dataset.tip = COL_TIPS[id];
+      if (COL_FORMULAS[id]) th.dataset.tipFormula = COL_FORMULAS[id];
       if (numSet.has(id)) th.classList.add('num');
       if (id === sortId) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
       th.addEventListener('click', e => {
@@ -209,7 +210,7 @@ function setupNodeTable(section, level) {
   function renderRows() {
     const visible = getVisible();
     const filtered = searchQuery
-      ? visible.filter(n => n.id.toLowerCase().includes(searchQuery))
+      ? visible.filter(n => nodeVal(n, 'name').toLowerCase().includes(searchQuery))
       : visible;
     hdrBadge.textContent = `${filtered.length}`;
 
@@ -328,8 +329,9 @@ function renderTooltip(label, data) {
 </tbody></table>`;
 }
 
-function renderDescTooltip(label, desc) {
-  return `<div class="tt-title">${escHtml(label)}</div><div class="tt-desc">${escHtml(desc)}</div>`;
+function renderDescTooltip(label, desc, formula) {
+  const f = formula ? `<div class="tt-formula">${escHtml(formula)}</div>` : '';
+  return `<div class="tt-title">${escHtml(label)}</div>${f}<div class="tt-desc">${escHtml(desc)}</div>`;
 }
 
 function setupTooltip() {
@@ -346,7 +348,7 @@ function setupTooltip() {
       tt.removeAttribute('hidden');
       current = cellTt;
     } else if (cellTip && cellTip.dataset.tip) {
-      tt.innerHTML = renderDescTooltip(cellTip.textContent.trim(), cellTip.dataset.tip);
+      tt.innerHTML = renderDescTooltip(cellTip.textContent.trim(), cellTip.dataset.tip, cellTip.dataset.tipFormula);
       tt.removeAttribute('hidden');
       current = cellTip;
     }

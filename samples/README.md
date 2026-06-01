@@ -38,19 +38,21 @@ dependency, and a test file.
 ### Rust (`rust/`)
 
 Detected: `use crate::`, groups `{}`, glob `*`, `as` rename, `super::`, inline
-modules, `mod foo;` declaration → a file→file `uses` edge (`lib.rs → foo.rs`),
-`pub use` → `Reexports` edge, external crate via `use serde::` → `External` node,
-and **crate-qualified bare paths** in expressions/types (`once_cell::sync::Lazy`
-with no `use`) → the crate's `External` node (and, across workspace members, a
-file→file edge to that crate's root). A `std::`/`core::` path is recognized but
-is NOT emitted as an External node.
+modules, `pub use` → `Reexports` edge, external crate via `use serde::` →
+`External` node, and **crate-qualified bare paths** in expressions/types
+(`once_cell::sync::Lazy` with no `use`) → the crate's `External` node (and,
+across workspace members, a file→file edge to that crate's root). A
+`std::`/`core::` path is recognized but is NOT emitted as an External node.
 
-Not detected: `extern crate serde;` (old syntax, no edge); a `use` **inside a
-macro body** (`macros.rs` has incoming fan-in from `mod macros;`, but the
-`use crate::c::gamma` hidden in the `pull_in_c!` body is invisible, so it gets no
-outgoing edge to `c.rs`); macro invocations (`make_answer!`, `pull_in_c!`) — no
-nodes or edges; and integration tests under `tests/` — a separate target kind
-that is not analyzed at all.
+Each `mod foo;` becomes a `File` node, but the declaration is **not** a
+dependency edge — it is structural ownership (shown by directory grouping).
+
+Not detected: `extern crate serde;` (old syntax, no edge); a child reached only
+via `mod foo;` + a bare-path call (`foo.rs`/`macros.rs` get no inbound edge); a
+`use` **inside a macro body** (the `use crate::c::gamma` hidden in the
+`pull_in_c!` body is invisible, so `b.rs` gets no edge to `c.rs`); macro
+invocations (`make_answer!`, `pull_in_c!`) — no nodes or edges; and integration
+tests under `tests/` — a separate target kind that is not analyzed at all.
 
 ### Python (`python/`)
 

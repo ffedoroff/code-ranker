@@ -1,14 +1,11 @@
-//! Module `foo` — the canonical `mod foo;` case.
+//! Module `foo` — a "no inbound edge" blind-spot case.
 //!
-//! `foo` is reached ONLY through its `mod foo;` declaration in lib.rs: lib.rs
-//! calls `foo::run()` by a bare path, with NO `use crate::foo`. The `syn`-based
-//! analyzer never captures that bare-path call, so the single thing that
-//! surfaces the `lib.rs → foo.rs` dependency in the file graph is the module
-//! declaration itself (collapsed from a `Contains` relation into a `uses` edge).
+//! `foo` is reached ONLY through its `mod foo;` declaration in lib.rs plus a
+//! bare-path call `foo::run()` (NO `use crate::foo`). A `mod` declaration is
+//! structural (not an edge) and the bare-path call is not captured, so nothing
+//! points at `foo.rs` — it has **no inbound edge** (fan_in 0).
 //!
-//! `foo` in turn `use`s `b`, so it also has a normal outgoing edge
-//! (`foo.rs → b.rs`); together that gives it both fan-in and fan-out, so HK is
-//! non-zero.
+//! `foo` itself `use`s `b`, so it still has an outgoing edge (`foo.rs → b.rs`).
 
 use crate::b::beta;
 

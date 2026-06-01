@@ -5,10 +5,10 @@
 //! `syn`-based and walks only `Item::Use` and `Item::Mod`; macros are never
 //! expanded.
 
-// `mod foo;` (file-backed module) — DETECTED. Each becomes a File node, and the
-// declaration is surfaced as a file→file `uses` edge (lib.rs → foo.rs): a module
-// declaration is a real cross-file dependency (the parent reaches into the child,
-// often via bare-path calls that aren't captured as `use` edges).
+// `mod foo;` (file-backed module) — each becomes a File node, but the
+// declaration is NOT a dependency edge: it is structural ownership, not an
+// import. (A child reached ONLY via `mod foo;` + a bare-path call therefore has
+// no inbound edge — see foo.rs / macros.rs.)
 #[macro_use]
 mod macros;
 pub mod a;

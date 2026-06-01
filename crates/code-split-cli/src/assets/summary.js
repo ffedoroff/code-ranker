@@ -14,18 +14,18 @@ function nodePercentiles(snap, level, getVal) {
 const METRIC_DESCS = {
   'Cyclomatic complexity': 'Number of linearly independent paths through the code. Higher values indicate complex branching logic.',
   'Cognitive complexity':  'Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow.',
-  'Lines of code':         'Lines of source code, excluding blank lines and comments.',
-  'Maintainability index': 'Maintainability Index (0–100). Higher is more maintainable. Derived from Halstead volume, cyclomatic complexity, and LOC.',
-  'Maintainability (SEI)': 'SEI variant of the Maintainability Index, without the comment ratio factor.',
-  'Halstead volume':       'Halstead Volume: N × log₂(η). Measures algorithm size in terms of distinct operators and operands.',
-  'Halstead bugs':         'Estimated delivered bugs: Volume ÷ 3000. A rough predictor of defect density.',
-  'Halstead effort':       'Mental effort to implement the algorithm: Volume × Difficulty.',
-  'Halstead time, s':      'Estimated implementation time in seconds: Effort ÷ 18.',
-  'Halstead length':       'Halstead program length N = N1 + N2 (total token occurrences).',
-  'Halstead vocabulary':   'Halstead vocabulary n = n1 + n2 (distinct operators + operands).',
-  'Fan-in':                'Number of modules or functions that call (depend on) this one. High fan-in means broadly reused.',
-  'Fan-out':               'Number of modules or functions this one calls. High fan-out means many dependencies.',
-  'Henry–Kafura (HK)':     'Henry–Kafura complexity: (Fan-in × Fan-out)². Captures the combined impact of incoming and outgoing coupling.',
+  'Lines of code':         'Source lines (sloc) — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted; a code line with a trailing comment still counts.',
+  'Maintainability index': 'Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and LOC.',
+  'Maintainability (SEI)': 'SEI variant of the Maintainability Index — adds a bonus for comment density.',
+  'Halstead volume':       'Algorithm size in bits, from distinct operators and operands.',
+  'Halstead bugs':         'Estimated delivered bugs — a rough predictor of defect density.',
+  'Halstead effort':       'Mental effort to implement the algorithm.',
+  'Halstead time, s':      'Estimated implementation time, in seconds.',
+  'Halstead length':       'Program length — total operator + operand occurrences.',
+  'Halstead vocabulary':   'Vocabulary — distinct operators + operands.',
+  'Fan-in':                'Number of files that import (depend on) this one. High fan-in means broadly reused.',
+  'Fan-out':               'Number of files this one imports. High fan-out means many dependencies. External-library edges are counted separately.',
+  'Henry–Kafura (HK)':     'Henry–Kafura complexity — combines file size with incoming/outgoing coupling (internal file→file edges only).',
   'Logical LOC':           'Logical lines — counts statements, not physical lines.',
   'Comment lines':         'Comment-only lines (inline comments on code lines are not counted).',
   'Blank lines':           'Empty or whitespace-only lines.',
@@ -49,6 +49,34 @@ const COL_TIPS = {
   loc_logical:  METRIC_DESCS['Logical LOC'],
   loc_comments: METRIC_DESCS['Comment lines'],
   loc_blank:    METRIC_DESCS['Blank lines'],
+};
+
+// Formula shown on its own bold line in a metric's description tooltip
+// (used by both the summary table and the node-table column headers).
+const METRIC_FORMULAS = {
+  'Henry–Kafura (HK)':     'LOC × (Fan-in × Fan-out)²',
+  'Cyclomatic complexity': 'branches + 1',
+  'Maintainability index': '171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(loc)',
+  'Maintainability (SEI)': 'MI + 50·sin(√(2.4 × comment-ratio))',
+  'Halstead length':       'N₁ + N₂',
+  'Halstead vocabulary':   'η₁ + η₂',
+  'Halstead volume':       'length × log₂(vocabulary)',
+  'Halstead effort':       'volume × difficulty',
+  'Halstead bugs':         'volume ÷ 3000',
+  'Halstead time, s':      'effort ÷ 18',
+};
+// Same formulas keyed by node-table column id.
+const COL_FORMULAS = {
+  hk:         METRIC_FORMULAS['Henry–Kafura (HK)'],
+  cyclomatic: METRIC_FORMULAS['Cyclomatic complexity'],
+  mi:         METRIC_FORMULAS['Maintainability index'],
+  mi_sei:     METRIC_FORMULAS['Maintainability (SEI)'],
+  h_len:      METRIC_FORMULAS['Halstead length'],
+  h_vocab:    METRIC_FORMULAS['Halstead vocabulary'],
+  h_vol:      METRIC_FORMULAS['Halstead volume'],
+  h_effort:   METRIC_FORMULAS['Halstead effort'],
+  h_bugs:     METRIC_FORMULAS['Halstead bugs'],
+  h_time:     METRIC_FORMULAS['Halstead time, s'],
 };
 
 function buildSummary() {
@@ -138,7 +166,9 @@ function buildSummary() {
 
   const row = (label, cells, tip) => {
     const tipAttr = tip ? ` data-tip="${escAttr(tip)}"` : '';
-    return `<tr><td class="metric-cell"${tipAttr}>${label}</td>${cells}</tr>`;
+    const f = METRIC_FORMULAS[label];
+    const fAttr = f ? ` data-tip-formula="${escAttr(f)}"` : '';
+    return `<tr><td class="metric-cell"${tipAttr}${fAttr}>${label}</td>${cells}</tr>`;
   };
 
   const rows = [];

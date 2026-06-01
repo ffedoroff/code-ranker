@@ -200,20 +200,18 @@ fn collapse_to_files(full: Graph) -> Graph {
         let (Some(from), Some(to)) = (id_map.get(&e.from), id_map.get(&e.to)) else {
             continue;
         };
+        // `Contains` edges (a `mod foo;` declaration, parent → child) are
+        // dropped: a module declaration is structural ownership, not an
+        // information-flow dependency. It is not drawn, not counted in
+        // fan_in/HK, and never a cycle. (Directory clustering already conveys
+        // the parent/child structure in the report.)
+        if e.kind == EdgeKind::Contains {
+            continue;
+        }
         if from == to {
             continue; // within the same file (inline module / self-use) — not a connection
         }
-        // A `mod foo;` declaration of a *separate* file is a real file→file
-        // dependency: the parent file reaches into the child (typically via
-        // bare-path calls like `foo::bar()` that aren't captured as `use`
-        // edges). Surface such cross-file `Contains` edges as `Uses` so the
-        // child file gets fan-in and HK is computed. Same-file `Contains`
-        // (inline modules) collapses to a self-edge above and is dropped.
-        let kind = if e.kind == EdgeKind::Contains {
-            EdgeKind::Uses
-        } else {
-            e.kind
-        };
+        let kind = e.kind;
         let to_external = ext_nodes.contains_key(to);
         if !seen.insert((from.clone(), to.clone(), kind)) {
             continue;
