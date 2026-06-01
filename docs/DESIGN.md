@@ -212,7 +212,7 @@ in `crates/code-split-core/schemas/graph.schema.json`.
 | Node | `id`, `kind`, `name`, `path?`, `external?`, `visibility?`, `complexity?`, `cycle_kind?` | `crates/code-split-core/src/graph.rs` |
 | Edge | `from`, `to`, `kind`, `external?`, `visibility?` | `crates/code-split-core/src/graph.rs` |
 | NodeKind | Enum. Output kinds: `File` (a project source file), `External` (a 3rd-party library at depth 1). The variants `Crate`, `Module`, `Trait` are internal-only — used by `code-split-syn` while building the Rust module tree and collapsed into `File`/`External` by the Rust plugin before serialization; they never appear in a snapshot. | `crates/code-split-core/src/graph.rs` |
-| EdgeKind | Enum. Output kinds: `Uses`, `Reexports` (both between files; `Uses` to an `External` node when the edge is flagged `external`). `Contains` is internal-only (Rust module-tree ownership during construction); the Rust collapse **drops all `Contains` edges** — a `mod foo;` declaration is structural ownership, not an information-flow dependency — so `Contains` never appears between files in output. | `crates/code-split-core/src/graph.rs` |
+| EdgeKind | Enum. Output kinds: `Uses`, `Reexports` (both between files; `Uses` to an `External` node when the edge is flagged `external`), and `Contains`. A `Contains` edge records a Rust `mod foo;` declaration (parent file → child file): it is **kept in the JSON snapshot as structural ownership metadata**, but consumers treat it as ownership rather than information flow — it is not drawn on the main map and is excluded from fan_in / HK / cycle detection. Self-edges and cross-crate `Contains` are dropped during the collapse; only cross-file parent→child `Contains` survive. | `crates/code-split-core/src/graph.rs` |
 | CycleKind | Enum: `TestEmbed` (Rust `#[cfg(test)]` back-edge), `Mutual` (SCC size 2), `Chain` (SCC size ≥ 3). Set on each node in a cycle via `cycle_kind`. | `crates/code-split-core/src/graph.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: CycleKind`, `nodes: Vec<NodeId>`. Stored in `Graph.cycles`. | `crates/code-split-core/src/graph.rs` |
 | NodeId | Stable string key with no line numbers or byte offsets. Schemes: `file:{path}` for a source file, `ext:{name}` for an external library. | `crates/code-split-core/src/graph.rs`, `crates/code-split-core/src/snapshot.rs` |
@@ -220,7 +220,7 @@ in `crates/code-split-core/schemas/graph.schema.json`.
 | Coupling | `fan_in`, `fan_out` (internal file→file counts), `fan_out_external` (distinct external libraries depended on), `hk` (Henry-Kafura from internal counts only). | `crates/code-split-core/src/graph.rs` |
 | AvgCoupling | Average coupling stored inside `GraphStats`: `fan_in`, `fan_out`, `hk` (all f64, zero-valued fields omitted). | `crates/code-split-core/src/graph.rs` |
 | GraphStats | Optional summary attached to the `files` graph after all annotations. Mirrors the `Complexity` node structure with averages: top-level `cyclomatic`, `cognitive`; sub-objects `coupling?` (`AvgCoupling`), `maintainability?`, `loc?`, `halstead?`. Zero-valued scalar fields and absent sub-objects are omitted. Percentiles are not stored — the viewer computes them client-side from raw node data. Populated by `annotate_stats()` in `code-split-core`. | `crates/code-split-core/src/graph.rs`, `crates/code-split-core/src/stats.rs` |
-| Snapshot | A single `.json` file combining `workspace` (cwd), `target` (analyzed project), `plugin`, `config_file?` (path of loaded config file, omitted when none), `roots` (named path prefixes), `versions`, `git`, `timings`, and a `graphs` object with a single key: `files` | `crates/code-split-core/src/snapshot.rs` |
+| Snapshot | A single `.json` file combining `workspace` (cwd), `target` (analyzed project), `plugin`, `config_file?` (path of loaded config file, omitted when none), `roots` (named path prefixes; pruned to only those actually used to shorten a node path, so e.g. a JS/TS/Python snapshot carries no Rust toolchain roots), `versions`, `git`, `timings`, and a `graphs` object with a single key: `files`. Serialized via `to_canonical_string_pretty` — **canonical JSON**: every object key alphabetical, `nodes`/`edges` arrays sorted by stable key — so unchanged code re-serializes byte-for-byte (no `HashMap`-order churn). | `crates/code-split-core/src/snapshot.rs` |
 | StageTime | Per-stage timing entry: `stage` (name), `ms` (elapsed milliseconds), `detail` (human summary). Stored in `Snapshot.timings` in execution order. | `crates/code-split-core/src/snapshot.rs` |
 | GraphDiff | Computed from two `Snapshot`s: per-level sets of added/removed nodes and edges, weight-delta per node, coupling direction verdict | `crates/code-split-cli/src/main.rs` |
 
@@ -265,6 +265,13 @@ Modules beyond graph types:
   unchanged counts for nodes and edges in the file graph, then propagates
   `affected` to unchanged nodes adjacent to changed edges. Used by
   `code-split diff --format json`.
+- **`snapshot.rs`** — snapshot types plus path relativization
+  (`relativize_graphs` / `rewrite_ids`, mapping absolute paths to
+  `{target}` / `{cargo}` / … tokens) and **canonical serialization**
+  (`to_canonical_string` / `to_canonical_string_pretty`): round-trips
+  through `serde_json::Value` (a `BTreeMap`, so keys come out alphabetical)
+  and sorts the `nodes`/`edges` arrays by a stable key. This guarantees a
+  deterministic, byte-stable snapshot for unchanged input.
 
 #### code-split-syn
 
@@ -275,10 +282,13 @@ Produces the Rust module graph via syntactic analysis. Calls
 source trees with `syn` to extract the module hierarchy and `use` /
 `pub use` statements, emitting `Crate` / `Module` / `Trait` nodes and
 `Contains` / `Uses` / `Reexports` edges. It also runs a `syn::visit`
-path collector over each file to capture **crate-qualified bare paths**
-in expressions/types (`other_crate::item`, no `use`), resolved against
-the extern-crate map only (cross-crate; `crate`/`self`/`super`/`std`
-are ignored). External crates are added as `Crate` nodes with
+path collector over each file to capture **bare qualified paths** in
+expressions/types (≥ 2 segments, no `use`), resolved through the same
+full resolver as `use` statements: this captures both cross-crate
+(`other_crate::item` → the extern crate) and intra-crate paths
+(`commands::run()` → the local `commands` module, `crate::a::Alpha` →
+its module), while `std`/`core`/keyword-only paths are ignored. External
+crates are added as `Crate` nodes with
 `external = true`; their source is never read. A `visited_files`
 `HashSet<PathBuf>` guard in `process_package` prevents double-walking
 source files when a workspace has both `lib` and `bin` targets declaring
@@ -289,17 +299,18 @@ pass (see §3.7) folds them down to `File` / `External` nodes before the
 snapshot is written.
 
 **Edge sources & remaining blind spots**: file→file / file→library edges
-come from two sources — (1) `use` / `pub use` statements; (2) crate-qualified
-bare paths in expressions/types (`other_crate::item`), captured by the path
-visitor and resolved against extern crates. A `mod foo;` declaration is
-**not** an edge — it is structural ownership (shown via directory
-clustering), not information flow. What remains uncaptured: an
-**intra-crate** bare path to a sibling/child module the caller does not
-`use` (`crate::other::fn()` or `foo::bar()` where `foo` is only declared
-with `mod foo;`), and any `use` hidden inside a macro body (macros are
-never expanded). Such a target may show a lower `fan_in` than the real
-dependency, and a correspondingly lower HK — a file reached only this way
-can appear isolated.
+come from two sources — (1) `use` / `pub use` statements; (2) bare
+qualified paths in expressions/types (`commands::run()`, `other_crate::item`,
+`crate::a::Alpha`), captured by the path visitor and resolved the same way
+as `use`. A `mod foo;` declaration emits a `Contains` edge that is kept in
+the JSON but treated as structural ownership only — not drawn, not counted
+in fan_in / HK / cycles. What remains uncaptured: a bare reference whose
+target is a re-export reached through the crate root resolves to the
+**crate-root file** (e.g. `crate::Edge` → `lib.rs`) rather than the module
+that defines it, and any `use` hidden inside a macro body (macros are never
+expanded). A file reached only via `Contains` (e.g. a module declared with
+`mod foo;` but never referenced by path or `use`) has `fan_in` 0 and can
+appear isolated on the map.
 
 #### code-split-complexity
 
@@ -518,13 +529,13 @@ embedded into the `code-split` binary via `include_str!`. Files:
 | `index.css` | Layout, nav, SVG styling; cross-highlight: `.row-hl` (solid blue bg) and `g.node.node-hl` (blue drop-shadow) for hover; `.row-selected` (solid amber bg `rgb(254,245,222)`) and `g.node.node-selected > polygon/ellipse` (yellow fill + amber stroke) for persistent selection — hover rules last so they win; `body.mode-review` hides `#meta-arrow` and after-group metadata; `#node-modal` fills 100% width/height (fullscreen); `body.overflow:hidden` set on open, cleared on close. The popup main card uses `.mn-card` (`copy` cursor); on `.copied` the card body (`.mn-card-body`) is hidden and a centred `.mn-copied-msg` ("copied") is shown for ~1s. (Legacy chip / `hide-*` / `show-cycle-*` visibility rules remain in the file but are unused after the UI simplification.) |
 | `graphviz.umd.js` | Graphviz compiled to WASM via `@hpcc-js/wasm` (~802 KB, self-contained, no network required); renders DOT→SVG in-browser |
 | `diff.js` | Browser-side diff computation: `computeDiff()` (node/edge status), `computeCycles()` via `buildSCCOf()` helper — prefers backend `graph.cycles` array when present (accurate `CycleKind` classification); falls back to Tarjan SCC on edges when absent; marks nodes/edges as `before-only`/`after-only`/`both`/`none`; `computeMeta()` |
-| `layout.js` | `buildDOT()` — for the single file graph: internal `file` nodes are blue (`fillcolor="#dbe9f4" color="#4d6f9c"`) and clustered by directory; `external` library nodes (when present) are amber with dashed amber edges. **At most one edge is emitted per `(from, to)` pair** — a file that both `use`s and `pub use`-reexports the same target draws a single arrow. Cycle-status class still added for CSS red-stroke overlay; `class="node-<kind> status-<status> cycle-status-<cs>"` on every node/edge |
+| `layout.js` | `buildDOT()` — for the single file graph: internal `file` nodes are blue (`fillcolor="#dbe9f4" color="#4d6f9c"`) and clustered by directory; `external` library nodes (when present) are amber with dashed amber edges. `contains` edges are **skipped** (kept in the JSON as structural ownership, but never drawn on the main map). **At most one edge is emitted per `(from, to)` pair** — a file that both `use`s and `pub use`-reexports the same target draws a single arrow. Cycle-status class still added for CSS red-stroke overlay; `class="node-<kind> status-<status> cycle-status-<cs>"` on every node/edge |
 | `modal.js` | `getModal()` returns (or lazily creates) the `#node-modal` overlay; `closeModal()` / `closeModalSilent()` hide it and restore `body.overflow`; fixed-position tooltip on `.nm-has-hint`; delegated click handlers for `.nm-copy-btn` (textContent ✓ feedback) and `.mn-card` (copies `data-copy`, adds a CSS `copied` class for ~1s — no textContent swap, since it is an SVG group) |
 | `export-popup.js` | `openExportPopup()` — "Prompt Generator" popup. Top row: checkbox group (IDs / Paths / connections common / in / out) **OR** radio source selector (`Selected` = nodes checked in the node table; `Recommended` = top-N nodes sorted by HK then LOC, or by cycle membership for ADP preset) with numeric count input. Preset buttons map to named prompt templates (SOLID principles: ADP, SRP, OCP, LSP, ISP, DIP; DRY, KISS, LoD, MISU, CoI, YAGNI; plus Reduce Complexity, Split Components). Each preset auto-selects relevant checkboxes via `PRESET_CHECKS`. Named-principle prompts also append `Full principle: <url>` linking the full principle online (`principles/<lang>/<slug>.md` on GitHub via `PRINCIPLE_DOCS`/`principleUrl`; `lang` from the snapshot's `plugin`, JS→`typescript`). Textarea output = selected prompt text + node ids/paths/edge lists per active checkboxes. Fixed-size `Copy ⎘` button overlaid bottom-right of textarea. Popup is created once and re-used across opens. |
 | `panzoom.js` | `setupPanZoom()` — viewBox-based drag-to-pan; +/−/fit/fullscreen buttons bottom-right (visible when mouse in right 15% of frame); size-mode buttons (■/LOC/HK) top-right re-render the active view; dblclick on SVG background zooms 2× at cursor; stores the fit-all viewBox on `frame.dataset.naturalVB` so `renderView` can preserve pan/zoom across re-renders; fullscreen overlay (`fs-bar`) hosts the live `<nav>` (the control panel was removed) |
 | `ui.js` | Intentionally empty — before/after is now two separate clean diagrams (one graphviz layout per snapshot), so there is no chip-based filtering of a merged layout. Kept as a file because the report inlines its assets by name. |
 | `app.js` | `DOMContentLoaded` handler. `window.viewSide` (`'before'`/`'after'`) selects which snapshot the diagram / node table / modal show; `activeLocalGraph()` returns that snapshot's file graph with external (3rd-party) nodes and their edges dropped from the main diagram entirely (externals appear only in the per-node modal, drawn in amber). `setViewSide()` (the Before/After buttons) re-renders the active view; `renderView()` runs `drawSVG`, re-applies the node-table selection, and — across Before/After **and** size-mode re-renders — preserves pan/zoom by carrying the *relative* zoom + fractional centre vs `frame.dataset.naturalVB` (so differing layout extents don't drift the framing). `updateHeader()` switches review/diff mode and shows/hides the Before/After buttons; `buildSummary()` is mode-aware. Reads inline `cs-before` / `cs-after` JSON via `readEmbeddedSnapshot`; `setupFileControls()` / `recomputeAll()` swap a `.json` snapshot or prior `.html` report from disk; `#nav-prompt-btn` → `openExportPopup()`. |
-| `diagram.js` | `buildDiagramSVG(node)` — inline SVG popup diagram for a selected node. Edges are read from the raw snapshot (`window.AFTER ?? window.BEFORE`) so external library nodes (filtered from `window.DIFF`) are still visible. Outgoing/incoming edges are grouped by `kind` (`uses`, `reexports`) into proportionally-sized vertical columns; one arrow per column, labelled `fan_in: N` / `fan_out: N` (per-column count, only when > 0). The main node card shows `path` / `hk` / `loc` (no `id`); the **whole card is click-to-copy** (`.mn-card` + `data-copy`, pointer cursor) — clicking copies the path (the id for a library) and, for ~1s, hides the card body and shows a centred `copied` message. `External` library nodes (side cards and, when opened, the main card) are amber, show their full `ext:<name>` id, and carry no `loc`/`hk`. A `private` node gets a `[pr]` suffix (space-separated) after its name. Each side card has a `<title>` tooltip with the node's full path. The metric table spells out abbreviated keys via `NM_LABELS` (`hk` → "Henry-Kafura", `mi` → "Maintainability Index", `mi_sei` → "Maintainability Index (SEI)", `fan_in`/`fan_out` → "Fan-in"/"Fan-out") while tooltips still key off the short name. `MAX_ITEMS = 24` per column. |
+| `diagram.js` | `buildDiagramSVG(node)` — inline SVG popup diagram for a selected node. Edges are read from the raw snapshot (`window.AFTER ?? window.BEFORE`) so external library nodes (filtered from `window.DIFF`) are still visible. Outgoing/incoming edges are grouped by `kind` (`uses`, `reexports`) into proportionally-sized vertical columns; one arrow per column, labelled `fan_in: N` / `fan_out: N` (per-column count, only when > 0). Edges to/from **external** 3rd-party libraries are pulled into a separate amber `external` column (so libraries do not mix with internal files), kept on the **same tier** as the internal columns — side by side, not pushed farther from the node. The external column's arrow is drawn amber (matching the library styling) and carries **no** `fan_in`/`fan_out` label, since external edges are tracked as `fan_out_external` and are not counted in `fan_in` / `fan_out`. The main node card shows `path` / `hk` / `loc` (no `id`); the **whole card is click-to-copy** (`.mn-card` + `data-copy`, pointer cursor) — clicking copies the path (the id for a library) and, for ~1s, hides the card body and shows a centred `copied` message. `External` library nodes (side cards and, when opened, the main card) are amber, show their full `ext:<name>` id, and carry no `loc`/`hk`. A `private` node gets a `[pr]` suffix (space-separated) after its name. Each side card has a `<title>` tooltip with the node's full path. The metric table spells out abbreviated keys via `NM_LABELS` (`hk` → "Henry-Kafura", `mi` → "Maintainability Index", `mi_sei` → "Maintainability Index (SEI)", `fan_in`/`fan_out` → "Fan-in"/"Fan-out") while tooltips still key off the short name. `MAX_ITEMS = 24` per column. |
 | `nav.js` | `openModalForNode(nodeId)` — looks up node data first in `window.DIFF.files.nodes`, then falls back to the raw snapshot (`window.AFTER ?? window.BEFORE`) to support external library nodes that are excluded from the diff. |
 
 **Affected status**: unchanged nodes/edges adjacent to changed (added/removed)
@@ -874,10 +885,12 @@ code-split report /path/to/my-crate --plugin rust
 5. Collapses the module graph to a **file graph** (in `plugin/rust.rs`):
    a. Every `.rs` file becomes one `File` node (`file:<path>`); inline
       `mod {}` modules fold into their containing file.
-   b. `Uses` / `Reexports` edges are re-pointed from module ids to the
-      file ids that own them, so file→file connections are preserved.
-      `Contains` edges (`mod foo;` declarations) are dropped — structural
-      ownership, not information flow.
+   b. `Uses` / `Reexports` / `Contains` edges are re-pointed from module
+      ids to the file ids that own them, so file→file connections are
+      preserved. Cross-file `Contains` edges (`mod foo;` declarations) are
+      **kept** in the snapshot as structural ownership metadata, but are
+      not drawn / not counted in fan_in / HK / cycles; self-edges and
+      crate→crate `Contains` are dropped.
    c. External crates collapse to `External` library nodes (`ext:<name>`)
       at depth 1; edges into them are flagged `external: true`.
    d. A **local** workspace crate maps to its crate-root file (`lib.rs` /
@@ -887,8 +900,11 @@ code-split report /path/to/my-crate --plugin rust
       crate-level meta.
 6. Runs `annotate_all_cycles` (SCC → `CycleKind`) and `annotate_hk`
    (internal `fan_in`/`fan_out`/`hk`; `fan_out_external` separately) on
-   the file graph, then `annotate_stats`.
-7. Writes the final snapshot `.json` (metadata + `timings` + `files` graph).
+   the file graph, then `annotate_stats`. Named roots that did not shorten
+   any node path are pruned (`prune_unused_roots`), so the header lists only
+   relevant roots.
+7. Writes the final snapshot `.json` (metadata + `timings` + `files` graph)
+   via `to_canonical_string_pretty` — canonical, byte-stable JSON.
 
 ##### Local-Only Mode — Step-by-Step
 

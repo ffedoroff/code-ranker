@@ -6,7 +6,7 @@ mod plugin;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use code_split_core::Snapshot;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Base URL for the published docs. Diagnostics pointers (`ref` lines, SARIF
@@ -294,6 +294,10 @@ fn analyze_workspace(
     roots.insert("target".to_string(), target.display().to_string());
     code_split_core::relativize_graphs(&mut plugin_graphs, &target, &roots);
     code_split_core::rewrite_ids(&mut plugin_graphs, &target, &roots);
+    // Drop roots that did not shorten any path — e.g. the Rust `cargo`/`rustup`/
+    // `registry` roots are irrelevant to a JS/TS/Python project and would
+    // otherwise leak machine-specific paths into the snapshot header.
+    prune_unused_roots(&plugin_graphs, &mut roots);
 
     let ignored = config::apply_ignore(&mut plugin_graphs, &cfg.ignore, &target)?;
     if ignored > 0 {
@@ -675,7 +679,7 @@ fn run_report(
 
     if formats.contains(&Format::Json) {
         let path = report_path.join(render_name(json_name, &target));
-        let mut json = serde_json::to_string_pretty(&snap)?;
+        let mut json = code_split_core::to_canonical_string_pretty(&snap)?;
         json.push('\n');
         std::fs::write(&path, json)
             .with_context(|| format!("writing snapshot to {}", path.display()))?;
@@ -813,6 +817,25 @@ fn detect_roots() -> HashMap<String, String> {
     roots
 }
 
+/// Remove named roots whose `{name}` token does not appear in any node id or
+/// path after relativization. `target` is always kept (it names the analyzed
+/// project even when every node sits directly under it). This keeps the
+/// snapshot header free of roots that are irrelevant to the analyzed language
+/// (e.g. the Rust toolchain roots in a JS/TS/Python snapshot).
+fn prune_unused_roots(graphs: &code_split_core::PluginGraphs, roots: &mut HashMap<String, String>) {
+    let mut used: HashSet<String> = HashSet::new();
+    used.insert("target".to_string());
+    for node in &graphs.files.nodes {
+        for name in roots.keys() {
+            let token = format!("{{{name}}}");
+            if node.id.contains(&token) || node.path.contains(&token) {
+                used.insert(name.clone());
+            }
+        }
+    }
+    roots.retain(|name, _| used.contains(name));
+}
+
 /// `diff` — compare two existing snapshots and write a diff report.
 fn run_diff(
     before: &Path,
@@ -842,7 +865,7 @@ fn run_diff(
     if formats.contains(&Format::Json) {
         let path = report_path.join(json_name);
         let summary = code_split_core::compare_snapshots(&snap_before, &snap_after);
-        let mut json = serde_json::to_string_pretty(&summary)?;
+        let mut json = code_split_core::to_canonical_string_pretty(&summary)?;
         json.push('\n');
         std::fs::write(&path, json)
             .with_context(|| format!("writing diff to {}", path.display()))?;
@@ -916,7 +939,7 @@ fn render_html_viewer(before: Option<&Snapshot>, after: Option<&Snapshot>) -> St
     // close the tag early; `JSON.parse` and serde both read `<\/` back as `</`.
     let embed = |id: &str, snap: Option<&Snapshot>| {
         let json = match snap {
-            Some(s) => serde_json::to_string(s).expect("serialize snapshot"),
+            Some(s) => code_split_core::to_canonical_string(s).expect("serialize snapshot"),
             None => "null".to_string(),
         };
         format!(

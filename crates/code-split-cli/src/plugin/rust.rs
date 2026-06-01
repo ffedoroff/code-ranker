@@ -200,17 +200,13 @@ fn collapse_to_files(full: Graph) -> Graph {
         let (Some(from), Some(to)) = (id_map.get(&e.from), id_map.get(&e.to)) else {
             continue;
         };
-        // `Contains` edges (a `mod foo;` declaration, parent → child) are
-        // dropped: a module declaration is structural ownership, not an
-        // information-flow dependency. It is not drawn, not counted in
-        // fan_in/HK, and never a cycle. (Directory clustering already conveys
-        // the parent/child structure in the report.)
-        if e.kind == EdgeKind::Contains {
-            continue;
-        }
         if from == to {
             continue; // within the same file (inline module / self-use) — not a connection
         }
+        // Cross-file `Contains` edges (a `mod foo;` declaration, parent → child)
+        // are KEPT in the snapshot as structural metadata, but consumers treat
+        // them as ownership, not information flow: they are not drawn on the main
+        // map, not counted in fan_in/HK, and excluded from cycle detection.
         let kind = e.kind;
         let to_external = ext_nodes.contains_key(to);
         if !seen.insert((from.clone(), to.clone(), kind)) {

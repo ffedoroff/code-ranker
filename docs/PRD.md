@@ -263,6 +263,13 @@ Each snapshot is a **single self-contained `.json` file** combining
 metadata (command, versions, git state) and the one `files` graph. See
 `cpt-code-split-fr-snapshot-meta` for the full schema.
 
+The snapshot is written as **canonical JSON**: every object key is emitted
+in alphabetical order and the `nodes` / `edges` arrays are sorted by a
+stable key (node `id`; edge `from`/`to`/`kind`). Re-analyzing unchanged
+code therefore yields byte-identical graph data — no churn from map
+iteration order — which keeps committed snapshots (e.g. the `samples/`
+goldens) diff-clean and makes `diff` output reflect only real changes.
+
 `diff` consumes snapshot files produced by `report` and is
 plugin-agnostic. Splitting into separate binaries is forbidden at
 P1; the separation of concerns lives inside the binary.
@@ -336,7 +343,9 @@ Top-level fields:
   (e.g. `{cargo}`, `{registry}`, `{rustup}`, `{rust-src}`); resolve formula:
   `roots[name] + "/" + rest` gives the absolute path. The Rust plugin
   auto-detects `rust-src` from `rustc --print sysroot` to shorten stdlib
-  paths (e.g. `{rust-src}/alloc/src/vec/mod.rs`)
+  paths (e.g. `{rust-src}/alloc/src/vec/mod.rs`). Roots that did not
+  shorten any node path are pruned, so a JS/TS/Python snapshot carries no
+  Rust toolchain roots (only `{target}`)
 - `git` — `branch`, `commit` (short SHA), `dirty_files` (count from
   `git status --porcelain`); omitted entirely if not a git repository
 - `timings` — per-stage wall-clock timings in milliseconds, in execution
@@ -399,16 +408,18 @@ workspaces. The plugin MUST:
   then **collapse it to a file graph**: every `.rs` file becomes one
   `File` node, inline `mod {}` modules fold into their file, and
   `use` / `pub use` edges are re-pointed to the owning files. `mod foo;`
-  declarations are **not** edges — they are structural ownership (conveyed
-  by directory grouping), not information flow
+  declarations are emitted as `Contains` edges that are **kept** in the
+  JSON as structural ownership metadata but not drawn and not counted in
+  fan_in / HK / cycles (information flow)
 - Classify each crate as local vs. external; external crates collapse to
   `External` library nodes (`ext:<name>`) recorded at depth 1, never
   expanded; edges into them are flagged `external: true`. A dependency on
   another **local workspace crate** becomes a file→file edge to that
   crate's root file (`lib.rs` / `main.rs`)
-- Capture crate-qualified **bare paths** in expressions/types
-  (`other_crate::item` with no `use`) so cross-crate and 3rd-party
-  dependencies referenced only by fully-qualified path are not lost
+- Capture **bare qualified paths** in expressions/types (`commands::run()`,
+  `other_crate::item`, `crate::a::Alpha` with no `use`), resolved the same
+  way as `use`, so both intra-crate and cross-crate dependencies referenced
+  only by qualified path are not lost
 - NOT emit a function-level call graph (no `Calls` edges, no
   rust-analyzer / `ra_ap_*` dependency); analysis runs in seconds
 - Compute per-file code complexity metrics (cyclomatic, cognitive,
@@ -1027,11 +1038,13 @@ decimal point.
 **Edge shape**:
 
 ```json
-{ "from": "<node-id>", "to": "<node-id>", "kind": "uses | reexports", "external": false }
+{ "from": "<node-id>", "to": "<node-id>", "kind": "uses | reexports | contains", "external": false }
 ```
 
 `external: true` marks a `uses` edge from a file to an `external` library
-node; omitted (false) for internal file→file edges.
+node; omitted (false) for internal file→file edges. A `contains` edge
+(Rust `mod foo;`, parent→child) is kept as structural ownership metadata
+and is excluded from fan_in / HK / cycle computation and from the main map.
 
 ```
 

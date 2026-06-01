@@ -1,11 +1,11 @@
-//! Module `foo` — a "no inbound edge" blind-spot case.
+//! Module `foo` — the intra-crate bare-path case.
 //!
-//! `foo` is reached ONLY through its `mod foo;` declaration in lib.rs plus a
-//! bare-path call `foo::run()` (NO `use crate::foo`). A `mod` declaration is
-//! structural (not an edge) and the bare-path call is not captured, so nothing
-//! points at `foo.rs` — it has **no inbound edge** (fan_in 0).
+//! `foo` is reached through its `mod foo;` declaration in lib.rs (a structural
+//! `Contains` edge) AND a bare-path call `foo::run()` with NO `use crate::foo`.
+//! That bare-path call IS captured as a `Uses` edge (lib.rs → foo.rs), so foo.rs
+//! has a real inbound edge (fan_in 1) — the `Contains` is excluded from fan_in.
 //!
-//! `foo` itself `use`s `b`, so it still has an outgoing edge (`foo.rs → b.rs`).
+//! `foo` itself `use`s `b`, so it also has an outgoing edge (`foo.rs → b.rs`).
 
 use crate::b::beta;
 

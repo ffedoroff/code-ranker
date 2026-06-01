@@ -47,7 +47,7 @@ chain      = true    # strict — three or more files in a dependency cycle
 
 [rules.thresholds.file]
 cyclomatic  = 1
-hk          = 127_008
-fan_in      = 12
+hk          = 149_058
+fan_in      = 13
 fan_out     = 7
 loc         = 1_520

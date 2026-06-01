@@ -56,7 +56,8 @@ function buildDiagramSVG(node, level) {
   const KIND_ORDER = ['uses', 'calls', 'reexports', 'contains'];
   const COL_STROKE = '#8ba6c0';
   const COL_DASH   = '6,4';
-  const kindColor  = _k => COL_STROKE;
+  // External (3rd-party) columns are amber, matching the library node styling.
+  const kindColor  = k => k === 'external' ? '#b3801f' : COL_STROKE;
   const kindDash   = _k => COL_DASH;
 
   // Dedup edges by node id within a single kind
@@ -73,20 +74,36 @@ function buildDiagramSVG(node, level) {
     return result;
   };
 
+  // Is the far endpoint of this edge (the side that is NOT the selected node) an
+  // external 3rd-party library? Such edges are pulled into a separate column
+  // drawn farther from the main node than the internal dependency columns.
+  const isExtEndpoint = (e, idKey) => {
+    if (e.external === true) return true;
+    const far = nodeMap.get(e[idKey]);
+    return far ? (far.external === true || far.kind === 'external') : false;
+  };
+
+  // Group internal edges by kind; collect external-library edges separately so
+  // they can be rendered as a farther tier.
   const groupByKind = (edgeArr, idKey) => {
     const groups = {};
+    const extEdges = [];
     for (const e of edgeArr) {
+      if (isExtEndpoint(e, idKey)) { extEdges.push(e); continue; }
       const k = e.kind || 'unknown';
       (groups[k] = groups[k] || []).push(e);
     }
     const result = {};
     for (const [k, edges] of Object.entries(groups))
       result[k] = uniqEdges(edges, idKey);
-    return result;
+    return { groups: result, ext: uniqEdges(extEdges, idKey) };
   };
 
-  const inGroups  = groupByKind(allEdges.filter(e => e.to   === node.id), 'from');
-  const outGroups = groupByKind(allEdges.filter(e => e.from === node.id), 'to');
+  // `Contains` (mod-declaration) edges are structural — kept in the snapshot
+  // but not shown as dependency columns here.
+  const flow      = e => e.kind !== 'contains';
+  const inSplit   = groupByKind(allEdges.filter(e => e.to   === node.id && flow(e)), 'from');
+  const outSplit  = groupByKind(allEdges.filter(e => e.from === node.id && flow(e)), 'to');
 
   // Layout constants
   const SNW         = 148, SNH = 58;
@@ -104,17 +121,20 @@ function buildDiagramSVG(node, level) {
   const MARG        = 20;
   const MNW_MIN     = 3 * CELL - 12 + 2 * COL_PAD_X;  // ≈ 492 minimum main-node width
 
-  // Build column descriptors for one direction (returns array of col objects)
-  const buildCols = groups => {
+  // Build column descriptors for one direction (returns array of col objects).
+  // The external-library edges become one trailing `external` column tagged
+  // `ext: true` so the Y layout can push it to a farther tier.
+  const buildCols = ({ groups, ext }) => {
     const keys = [
       ...KIND_ORDER.filter(k => groups[k]),
       ...Object.keys(groups).filter(k => !KIND_ORDER.includes(k)),
     ];
-    const raw = keys.map(kind => {
-      const all   = groups[kind];
+    const specs = keys.map(kind => ({ kind, all: groups[kind], ext: false }));
+    if (ext && ext.length) specs.push({ kind: 'external', all: ext, ext: true });
+    const raw = specs.map(({ kind, all, ext }) => {
       const items = all.slice(0, MAX_ITEMS);
       const extra = all.length - items.length;
-      return { kind, all, items, extra, count: items.length };
+      return { kind, all, items, extra, count: items.length, ext };
     }).filter(c => c.count > 0);
 
     if (raw.length === 0) return raw;
@@ -132,8 +152,8 @@ function buildDiagramSVG(node, level) {
     return raw;
   };
 
-  const inCols  = buildCols(inGroups);
-  const outCols = buildCols(outGroups);
+  const inCols  = buildCols(inSplit);
+  const outCols = buildCols(outSplit);
 
   // Total pixel width of a column set
   const colsW = cols => cols.length === 0 ? 0
@@ -145,7 +165,9 @@ function buildDiagramSVG(node, level) {
   const maxInH  = inCols.length  > 0 ? Math.max(...inCols.map(c => c.h))  : 0;
   const maxOutH = outCols.length > 0 ? Math.max(...outCols.map(c => c.h)) : 0;
 
-  // Y layout: in-cols are bottom-anchored, out-cols are top-anchored
+  // Y layout: in-cols are bottom-anchored, out-cols are top-anchored. The
+  // external-library column is a separate column but stays on the same tier as
+  // the internal columns (same anchor) — not pushed farther from the node.
   const inAreaBottom = inCols.length  > 0 ? MARG + maxInH : 0;
   const MNY          = inCols.length  > 0 ? inAreaBottom + ARR_GAP : MARG;
   const outAreaTop   = outCols.length > 0 ? MNY + MNH2 + ARR_GAP : 0;
@@ -169,7 +191,8 @@ function buildDiagramSVG(node, level) {
   const MNX  = (VW - MNW) / 2;
   const MNCX = MNX + MNW / 2;
 
-  // Assign Y: in-cols bottom-anchored, out-cols top-anchored
+  // Assign Y: in-cols bottom-anchored, out-cols top-anchored (external column
+  // included on the same tier).
   for (const c of inCols)  c.y = inAreaBottom - c.h;
   for (const c of outCols) c.y = outAreaTop;
 
@@ -190,6 +213,7 @@ function buildDiagramSVG(node, level) {
   let s = `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMid meet">`;
   s += `<defs>` +
     `<marker id="ah" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#4d6f9c"/></marker>` +
+    `<marker id="ah-ext" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3z" fill="#b3801f"/></marker>` +
     `<clipPath id="mn-clip"><rect x="${MNX+10}" y="${MNY}" width="${MNW-20}" height="${MNH2}"/></clipPath>` +
     `</defs>`;
 
@@ -246,8 +270,13 @@ function buildDiagramSVG(node, level) {
       s += renderCol(c);
       const cx  = Math.round(c.x + c.px_w / 2);
       const my  = Math.round((c.y + c.h + MNY) / 2);
-      s += `<line x1="${cx}" y1="${c.y + c.h}" x2="${cx}" y2="${MNY}" stroke="#4d6f9c" stroke-width="1.5" marker-end="url(#ah)"/>`;
-      if (c.kind !== 'contains' && c.all.length > 0)
+      // External edges use an amber arrow (matching the library styling) and
+      // carry no fan_in/fan_out label — they are tracked as `fan_out_external`,
+      // not part of fan_in/fan_out.
+      const stroke = c.ext ? '#b3801f' : '#4d6f9c';
+      const marker = c.ext ? 'ah-ext' : 'ah';
+      s += `<line x1="${cx}" y1="${c.y + c.h}" x2="${cx}" y2="${MNY}" stroke="${stroke}" stroke-width="1.5" marker-end="url(#${marker})"/>`;
+      if (!c.ext && c.kind !== 'contains' && c.all.length > 0)
         s += `<text x="${cx+5}" y="${my+4}" font-family="system-ui,sans-serif" font-size="10" fill="#5c7a96">fan_in: ${c.all.length}</text>`;
     });
   }
@@ -290,8 +319,12 @@ function buildDiagramSVG(node, level) {
     outCols.forEach(c => {
       const cx  = Math.round(c.x + c.px_w / 2);
       const my  = Math.round((MNY + MNH2 + c.y) / 2);
-      s += `<line x1="${cx}" y1="${MNY+MNH2}" x2="${cx}" y2="${c.y}" stroke="#4d6f9c" stroke-width="1.5" marker-end="url(#ah)"/>`;
-      if (c.kind !== 'contains' && c.all.length > 0)
+      // External edges use an amber arrow and carry no fan_out label
+      // (tracked as `fan_out_external`, separate from `fan_out`).
+      const stroke = c.ext ? '#b3801f' : '#4d6f9c';
+      const marker = c.ext ? 'ah-ext' : 'ah';
+      s += `<line x1="${cx}" y1="${MNY+MNH2}" x2="${cx}" y2="${c.y}" stroke="${stroke}" stroke-width="1.5" marker-end="url(#${marker})"/>`;
+      if (!c.ext && c.kind !== 'contains' && c.all.length > 0)
         s += `<text x="${cx+5}" y="${my+4}" font-family="system-ui,sans-serif" font-size="10" fill="#5c7a96">fan_out: ${c.all.length}</text>`;
       s += renderCol(c);
     });

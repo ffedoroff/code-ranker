@@ -14,5 +14,8 @@ pub use graph::{
     Halstead, Loc, Maintainability, Node, NodeId, NodeKind, Visibility,
 };
 pub use hk::annotate_hk;
-pub use snapshot::{GitInfo, PluginGraphs, Snapshot, StageTime, relativize_graphs, rewrite_ids};
+pub use snapshot::{
+    GitInfo, PluginGraphs, Snapshot, StageTime, relativize_graphs, rewrite_ids,
+    to_canonical_string, to_canonical_string_pretty,
+};
 pub use stats::annotate_stats;

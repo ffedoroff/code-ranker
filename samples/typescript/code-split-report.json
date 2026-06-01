@@ -1,313 +1,14 @@
 {
-  "schema_version": "1",
-  "generated_at": "2026-05-31T18:36:42.869241Z",
   "command": "code-split report samples/typescript --config samples/typescript/code-split.toml --format json --report-path samples/typescript --json-name code-split-report.json",
-  "workspace": "/home/user/code-split",
-  "target": "/home/user/code-split/samples/typescript",
-  "plugin": "javascript",
   "config_file": "samples/typescript/code-split.toml",
-  "versions": {
-    "code-split": "0.1.1"
-  },
-  "roots": {
-    "rust-src": "/home/user/.rustup/toolchains/stable-aarch64-apple-darwin/lib/rustlib/src/rust/library",
-    "rustup": "/home/user/.rustup",
-    "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
-    "cargo": "/home/user/.cargo",
-    "target": "/home/user/code-split/samples/typescript"
-  },
+  "generated_at": "1970-01-01T00:00:00Z",
   "git": {
-    "branch": "explore/files-only",
-    "commit": "23fb42c",
-    "dirty_files": 41
+    "branch": "main",
+    "commit": "0000000",
+    "dirty_files": 0
   },
-  "timings": [
-    {
-      "stage": "js-ts",
-      "ms": 4,
-      "detail": "9 nodes from 6 files"
-    },
-    {
-      "stage": "complexity",
-      "ms": 4,
-      "detail": "6 nodes annotated"
-    },
-    {
-      "stage": "projection",
-      "ms": 0,
-      "detail": "files=9 edges=9"
-    }
-  ],
   "graphs": {
     "files": {
-      "nodes": [
-        {
-          "id": "ext:@scope/util",
-          "kind": "external",
-          "name": "@scope/util",
-          "path": "",
-          "external": true
-        },
-        {
-          "id": "ext:axios",
-          "kind": "external",
-          "name": "axios",
-          "path": "",
-          "external": true
-        },
-        {
-          "id": "ext:~utils",
-          "kind": "external",
-          "name": "~utils",
-          "path": "",
-          "external": true
-        },
-        {
-          "id": "file:{target}/src/a.test.ts",
-          "kind": "file",
-          "name": "a.test.ts",
-          "path": "{target}/src/a.test.ts",
-          "visibility": "public",
-          "loc": 8,
-          "complexity": {
-            "cyclomatic": 1,
-            "coupling": {
-              "fan_out": 1
-            },
-            "maintainability": {
-              "mi": 115.625,
-              "mi_sei": 128.146
-            },
-            "loc": {
-              "source": 7,
-              "logical": 4,
-              "comments": 2,
-              "blank": 1
-            },
-            "halstead": {
-              "length": 23,
-              "vocabulary": 15,
-              "volume": 89.858,
-              "effort": 353.817,
-              "time": 19.656,
-              "bugs": 0.0166
-            }
-          }
-        },
-        {
-          "id": "file:{target}/src/a.ts",
-          "kind": "file",
-          "name": "a.ts",
-          "path": "{target}/src/a.ts",
-          "visibility": "public",
-          "loc": 32,
-          "complexity": {
-            "cyclomatic": 1,
-            "coupling": {
-              "fan_in": 2,
-              "fan_out": 3,
-              "fan_out_external": 3,
-              "hk": 1116
-            },
-            "maintainability": {
-              "mi": 81.476,
-              "mi_sei": 84.513
-            },
-            "loc": {
-              "source": 31,
-              "logical": 13,
-              "comments": 13,
-              "blank": 3
-            },
-            "halstead": {
-              "length": 102,
-              "vocabulary": 40,
-              "volume": 542.836,
-              "effort": 7858.206,
-              "time": 436.567,
-              "bugs": 0.131
-            }
-          },
-          "cycle_kind": "mutual"
-        },
-        {
-          "id": "file:{target}/src/b.ts",
-          "kind": "file",
-          "name": "b.ts",
-          "path": "{target}/src/b.ts",
-          "visibility": "public",
-          "loc": 15,
-          "complexity": {
-            "cyclomatic": 1,
-            "coupling": {
-              "fan_in": 1,
-              "fan_out": 2,
-              "hk": 56
-            },
-            "maintainability": {
-              "mi": 102.662,
-              "mi_sei": 105.576
-            },
-            "loc": {
-              "source": 14,
-              "logical": 8,
-              "comments": 3,
-              "blank": 3
-            },
-            "halstead": {
-              "length": 30,
-              "vocabulary": 16,
-              "volume": 120,
-              "effort": 700,
-              "time": 38.888,
-              "bugs": 0.0262
-            }
-          },
-          "cycle_kind": "mutual"
-        },
-        {
-          "id": "file:{target}/src/lazy.ts",
-          "kind": "file",
-          "name": "lazy.ts",
-          "path": "{target}/src/lazy.ts",
-          "visibility": "public",
-          "loc": 5,
-          "complexity": {
-            "cyclomatic": 1,
-            "maintainability": {
-              "mi": 134.056,
-              "mi_sei": 166.496
-            },
-            "loc": {
-              "source": 4,
-              "logical": 1,
-              "comments": 3
-            },
-            "halstead": {
-              "length": 6,
-              "vocabulary": 6,
-              "volume": 15.509,
-              "effort": 31.019,
-              "time": 1.723,
-              "bugs": 0.00329
-            }
-          }
-        },
-        {
-          "id": "file:{target}/src/types.ts",
-          "kind": "file",
-          "name": "types.ts",
-          "path": "{target}/src/types.ts",
-          "visibility": "public",
-          "loc": 7,
-          "complexity": {
-            "cyclomatic": 1,
-            "coupling": {
-              "fan_in": 2
-            },
-            "maintainability": {
-              "mi": 122.349,
-              "mi_sei": 130.571
-            },
-            "loc": {
-              "source": 6,
-              "logical": 4,
-              "comments": 1,
-              "blank": 1
-            },
-            "halstead": {
-              "length": 12,
-              "vocabulary": 10,
-              "volume": 39.863,
-              "effort": 159.452,
-              "time": 8.858,
-              "bugs": 0.0098
-            }
-          }
-        },
-        {
-          "id": "file:{target}/src/util.ts",
-          "kind": "file",
-          "name": "util.ts",
-          "path": "{target}/src/util.ts",
-          "visibility": "public",
-          "loc": 9,
-          "complexity": {
-            "cyclomatic": 1,
-            "coupling": {
-              "fan_in": 1
-            },
-            "maintainability": {
-              "mi": 115.139,
-              "mi_sei": 116.752
-            },
-            "loc": {
-              "source": 8,
-              "logical": 6,
-              "comments": 1,
-              "blank": 1
-            },
-            "halstead": {
-              "length": 18,
-              "vocabulary": 11,
-              "volume": 62.269,
-              "effort": 217.944,
-              "time": 12.108,
-              "bugs": 0.012
-            }
-          }
-        }
-      ],
-      "edges": [
-        {
-          "from": "file:{target}/src/a.test.ts",
-          "to": "file:{target}/src/a.ts",
-          "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/a.ts",
-          "to": "ext:@scope/util",
-          "kind": "uses",
-          "external": true
-        },
-        {
-          "from": "file:{target}/src/a.ts",
-          "to": "ext:axios",
-          "kind": "uses",
-          "external": true
-        },
-        {
-          "from": "file:{target}/src/a.ts",
-          "to": "ext:~utils",
-          "kind": "uses",
-          "external": true
-        },
-        {
-          "from": "file:{target}/src/a.ts",
-          "to": "file:{target}/src/b.ts",
-          "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/a.ts",
-          "to": "file:{target}/src/types.ts",
-          "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/a.ts",
-          "to": "file:{target}/src/util.ts",
-          "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/b.ts",
-          "to": "file:{target}/src/a.ts",
-          "kind": "uses"
-        },
-        {
-          "from": "file:{target}/src/b.ts",
-          "to": "file:{target}/src/types.ts",
-          "kind": "uses"
-        }
-      ],
       "cycles": [
         {
           "kind": "mutual",
@@ -317,31 +18,326 @@
           ]
         }
       ],
+      "edges": [
+        {
+          "from": "file:{target}/src/a.test.ts",
+          "kind": "uses",
+          "to": "file:{target}/src/a.ts"
+        },
+        {
+          "external": true,
+          "from": "file:{target}/src/a.ts",
+          "kind": "uses",
+          "to": "ext:@scope/util"
+        },
+        {
+          "external": true,
+          "from": "file:{target}/src/a.ts",
+          "kind": "uses",
+          "to": "ext:axios"
+        },
+        {
+          "external": true,
+          "from": "file:{target}/src/a.ts",
+          "kind": "uses",
+          "to": "ext:~utils"
+        },
+        {
+          "from": "file:{target}/src/a.ts",
+          "kind": "uses",
+          "to": "file:{target}/src/b.ts"
+        },
+        {
+          "from": "file:{target}/src/a.ts",
+          "kind": "uses",
+          "to": "file:{target}/src/types.ts"
+        },
+        {
+          "from": "file:{target}/src/a.ts",
+          "kind": "uses",
+          "to": "file:{target}/src/util.ts"
+        },
+        {
+          "from": "file:{target}/src/b.ts",
+          "kind": "uses",
+          "to": "file:{target}/src/a.ts"
+        },
+        {
+          "from": "file:{target}/src/b.ts",
+          "kind": "uses",
+          "to": "file:{target}/src/types.ts"
+        }
+      ],
+      "nodes": [
+        {
+          "external": true,
+          "id": "ext:@scope/util",
+          "kind": "external",
+          "name": "@scope/util",
+          "path": ""
+        },
+        {
+          "external": true,
+          "id": "ext:axios",
+          "kind": "external",
+          "name": "axios",
+          "path": ""
+        },
+        {
+          "external": true,
+          "id": "ext:~utils",
+          "kind": "external",
+          "name": "~utils",
+          "path": ""
+        },
+        {
+          "complexity": {
+            "coupling": {
+              "fan_out": 1
+            },
+            "cyclomatic": 1,
+            "halstead": {
+              "bugs": 0.0166,
+              "effort": 353.817,
+              "length": 23,
+              "time": 19.656,
+              "vocabulary": 15,
+              "volume": 89.858
+            },
+            "loc": {
+              "blank": 1,
+              "comments": 2,
+              "logical": 4,
+              "source": 7
+            },
+            "maintainability": {
+              "mi": 115.625,
+              "mi_sei": 128.146
+            }
+          },
+          "id": "file:{target}/src/a.test.ts",
+          "kind": "file",
+          "loc": 8,
+          "name": "a.test.ts",
+          "path": "{target}/src/a.test.ts",
+          "visibility": "public"
+        },
+        {
+          "complexity": {
+            "coupling": {
+              "fan_in": 2,
+              "fan_out": 3,
+              "fan_out_external": 3,
+              "hk": 1116
+            },
+            "cyclomatic": 1,
+            "halstead": {
+              "bugs": 0.131,
+              "effort": 7858.206,
+              "length": 102,
+              "time": 436.567,
+              "vocabulary": 40,
+              "volume": 542.836
+            },
+            "loc": {
+              "blank": 3,
+              "comments": 13,
+              "logical": 13,
+              "source": 31
+            },
+            "maintainability": {
+              "mi": 81.476,
+              "mi_sei": 84.513
+            }
+          },
+          "cycle_kind": "mutual",
+          "id": "file:{target}/src/a.ts",
+          "kind": "file",
+          "loc": 32,
+          "name": "a.ts",
+          "path": "{target}/src/a.ts",
+          "visibility": "public"
+        },
+        {
+          "complexity": {
+            "coupling": {
+              "fan_in": 1,
+              "fan_out": 2,
+              "hk": 56
+            },
+            "cyclomatic": 1,
+            "halstead": {
+              "bugs": 0.0262,
+              "effort": 700,
+              "length": 30,
+              "time": 38.888,
+              "vocabulary": 16,
+              "volume": 120
+            },
+            "loc": {
+              "blank": 3,
+              "comments": 3,
+              "logical": 8,
+              "source": 14
+            },
+            "maintainability": {
+              "mi": 102.662,
+              "mi_sei": 105.576
+            }
+          },
+          "cycle_kind": "mutual",
+          "id": "file:{target}/src/b.ts",
+          "kind": "file",
+          "loc": 15,
+          "name": "b.ts",
+          "path": "{target}/src/b.ts",
+          "visibility": "public"
+        },
+        {
+          "complexity": {
+            "cyclomatic": 1,
+            "halstead": {
+              "bugs": 0.00329,
+              "effort": 31.019,
+              "length": 6,
+              "time": 1.723,
+              "vocabulary": 6,
+              "volume": 15.509
+            },
+            "loc": {
+              "comments": 3,
+              "logical": 1,
+              "source": 4
+            },
+            "maintainability": {
+              "mi": 134.056,
+              "mi_sei": 166.496
+            }
+          },
+          "id": "file:{target}/src/lazy.ts",
+          "kind": "file",
+          "loc": 5,
+          "name": "lazy.ts",
+          "path": "{target}/src/lazy.ts",
+          "visibility": "public"
+        },
+        {
+          "complexity": {
+            "coupling": {
+              "fan_in": 2
+            },
+            "cyclomatic": 1,
+            "halstead": {
+              "bugs": 0.0098,
+              "effort": 159.452,
+              "length": 12,
+              "time": 8.858,
+              "vocabulary": 10,
+              "volume": 39.863
+            },
+            "loc": {
+              "blank": 1,
+              "comments": 1,
+              "logical": 4,
+              "source": 6
+            },
+            "maintainability": {
+              "mi": 122.349,
+              "mi_sei": 130.571
+            }
+          },
+          "id": "file:{target}/src/types.ts",
+          "kind": "file",
+          "loc": 7,
+          "name": "types.ts",
+          "path": "{target}/src/types.ts",
+          "visibility": "public"
+        },
+        {
+          "complexity": {
+            "coupling": {
+              "fan_in": 1
+            },
+            "cyclomatic": 1,
+            "halstead": {
+              "bugs": 0.012,
+              "effort": 217.944,
+              "length": 18,
+              "time": 12.108,
+              "vocabulary": 11,
+              "volume": 62.269
+            },
+            "loc": {
+              "blank": 1,
+              "comments": 1,
+              "logical": 6,
+              "source": 8
+            },
+            "maintainability": {
+              "mi": 115.139,
+              "mi_sei": 116.752
+            }
+          },
+          "id": "file:{target}/src/util.ts",
+          "kind": "file",
+          "loc": 9,
+          "name": "util.ts",
+          "path": "{target}/src/util.ts",
+          "visibility": "public"
+        }
+      ],
       "stats": {
-        "cyclomatic": 1,
         "coupling": {
           "fan_in": 1.5,
           "fan_out": 2,
           "hk": 586
         },
+        "cyclomatic": 1,
+        "halstead": {
+          "bugs": 0.0333,
+          "effort": 1553.406,
+          "length": 31.833,
+          "time": 86.3,
+          "vocabulary": 16.333,
+          "volume": 145.056
+        },
+        "loc": {
+          "blank": 1.8,
+          "comments": 3.833,
+          "source": 11.666
+        },
         "maintainability": {
           "mi": 111.884,
           "mi_sei": 122.009
-        },
-        "loc": {
-          "source": 11.666,
-          "comments": 3.833,
-          "blank": 1.8
-        },
-        "halstead": {
-          "length": 31.833,
-          "vocabulary": 16.333,
-          "volume": 145.056,
-          "effort": 1553.406,
-          "time": 86.3,
-          "bugs": 0.0333
         }
       }
     }
-  }
+  },
+  "plugin": "javascript",
+  "roots": {
+    "target": "/home/user/code-split/samples/typescript"
+  },
+  "schema_version": "1",
+  "target": "/home/user/code-split/samples/typescript",
+  "timings": [
+    {
+      "detail": "9 nodes from 6 files",
+      "ms": 0,
+      "stage": "js-ts"
+    },
+    {
+      "detail": "6 nodes annotated",
+      "ms": 0,
+      "stage": "complexity"
+    },
+    {
+      "detail": "files=9 edges=9",
+      "ms": 0,
+      "stage": "projection"
+    }
+  ],
+  "versions": {
+    "code-split": "0.1.1"
+  },
+  "workspace": "/home/user/code-split"
 }

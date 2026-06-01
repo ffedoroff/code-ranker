@@ -39,20 +39,24 @@ dependency, and a test file.
 
 Detected: `use crate::`, groups `{}`, glob `*`, `as` rename, `super::`, inline
 modules, `pub use` → `Reexports` edge, external crate via `use serde::` →
-`External` node, and **crate-qualified bare paths** in expressions/types
-(`once_cell::sync::Lazy` with no `use`) → the crate's `External` node (and,
-across workspace members, a file→file edge to that crate's root). A
-`std::`/`core::` path is recognized but is NOT emitted as an External node.
+`External` node, and **bare qualified paths** in expressions/types with no
+`use` — both cross-crate (`once_cell::sync::Lazy` → the crate's `External` node,
+and across workspace members a file→file edge to that crate's root) and
+intra-crate (`foo::run()` → a `Uses` edge `lib.rs → foo.rs`). A `std::`/`core::`
+path is recognized but is NOT emitted as an External node.
 
-Each `mod foo;` becomes a `File` node, but the declaration is **not** a
-dependency edge — it is structural ownership (shown by directory grouping).
+Each `mod foo;` becomes a `File` node and emits a `Contains` edge
+(parent → child). `Contains` is kept in the JSON snapshot as structural
+ownership, but is **not** drawn on the main map and **not** counted in
+fan_in / HK / cycles (directory grouping shows ownership instead).
 
-Not detected: `extern crate serde;` (old syntax, no edge); a child reached only
-via `mod foo;` + a bare-path call (`foo.rs`/`macros.rs` get no inbound edge); a
-`use` **inside a macro body** (the `use crate::c::gamma` hidden in the
-`pull_in_c!` body is invisible, so `b.rs` gets no edge to `c.rs`); macro
-invocations (`make_answer!`, `pull_in_c!`) — no nodes or edges; and integration
-tests under `tests/` — a separate target kind that is not analyzed at all.
+Not detected: `extern crate serde;` (old syntax, no edge); a `use` **inside a
+macro body** (the `use crate::c::gamma` hidden in the `pull_in_c!` body is
+invisible, so `b.rs` gets no edge to `c.rs`); macro invocations (`make_answer!`,
+`pull_in_c!`) — no nodes or edges. `macros.rs` is the remaining blind spot: it
+is reached only via `mod macros;` (a `Contains`, excluded from fan_in), so it
+has no information-flow inbound edge. Integration tests under `tests/` are a
+separate target kind that is not analyzed at all.
 
 ### Python (`python/`)
 

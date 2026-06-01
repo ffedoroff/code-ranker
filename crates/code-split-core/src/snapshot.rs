@@ -89,6 +89,67 @@ impl Snapshot {
 }
 
 // ---------------------------------------------------------------------------
+// Canonical (deterministic) JSON serialization
+// ---------------------------------------------------------------------------
+
+/// Serialize to canonical pretty JSON: every object key is emitted in
+/// alphabetical order and the graph `nodes` / `edges` arrays are sorted by a
+/// stable key (`id` for nodes; `from`, `to`, `kind` for edges). This makes the
+/// output byte-stable for unchanged input — re-running the analysis never
+/// reorders keys (e.g. from `HashMap` iteration order) or array entries.
+///
+/// `serde_json::Value` is backed by a `BTreeMap`, so round-tripping through it
+/// yields alphabetical keys for free; we only sort the data arrays explicitly.
+pub fn to_canonical_string_pretty<T: Serialize>(value: &T) -> serde_json::Result<String> {
+    let mut v = serde_json::to_value(value)?;
+    canonicalize_value(&mut v);
+    serde_json::to_string_pretty(&v)
+}
+
+/// Compact counterpart of [`to_canonical_string_pretty`] (no indentation).
+pub fn to_canonical_string<T: Serialize>(value: &T) -> serde_json::Result<String> {
+    let mut v = serde_json::to_value(value)?;
+    canonicalize_value(&mut v);
+    serde_json::to_string(&v)
+}
+
+fn canonicalize_value(v: &mut serde_json::Value) {
+    match v {
+        serde_json::Value::Array(arr) => {
+            for item in arr.iter_mut() {
+                canonicalize_value(item);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for val in map.values_mut() {
+                canonicalize_value(val);
+            }
+            // Data arrays get a stable order so two snapshots of unchanged code
+            // are byte-identical regardless of plugin emission order.
+            if let Some(serde_json::Value::Array(nodes)) = map.get_mut("nodes") {
+                nodes.sort_by_key(|a| json_str(a, "id"));
+            }
+            if let Some(serde_json::Value::Array(edges)) = map.get_mut("edges") {
+                edges.sort_by(|a, b| {
+                    json_str(a, "from")
+                        .cmp(&json_str(b, "from"))
+                        .then_with(|| json_str(a, "to").cmp(&json_str(b, "to")))
+                        .then_with(|| json_str(a, "kind").cmp(&json_str(b, "kind")))
+                });
+            }
+        }
+        _ => {}
+    }
+}
+
+fn json_str(v: &serde_json::Value, key: &str) -> String {
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+// ---------------------------------------------------------------------------
 // Path relativization
 // ---------------------------------------------------------------------------
 

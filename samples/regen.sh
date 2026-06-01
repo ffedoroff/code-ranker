@@ -25,16 +25,28 @@ for sample in rust python javascript typescript; do
     --report-path "$dir" \
     --json-name code-split-report.json
 
-  # Anonymize machine-specific absolute paths in the report header so the
-  # committed golden never leaks a real home directory. The graph is already
-  # relativized to {target}; here we only touch the raw header strings. The
-  # e2e test normalizes these fields anyway, so the exact placeholder is cosmetic.
+  # Normalize the committed golden so regeneration is idempotent: (1) anonymize
+  # machine-specific absolute paths (never leak a real home dir); (2) freeze the
+  # time-/environment-dependent header fields (timestamp, git, per-stage `ms`) to
+  # fixed sentinels so re-running on unchanged code produces a byte-identical file
+  # — no spurious git churn. The e2e test normalizes all of these away anyway, so
+  # freezing them in the golden is purely for a clean diff. The graph itself is
+  # already deterministic: the tool emits canonical JSON (alphabetical keys,
+  # nodes/edges sorted by id).
   python3 - "$dir/code-split-report.json" "$repo_root" "$HOME" <<'PY'
-import sys
+import sys, json
 path, repo_root, home = sys.argv[1], sys.argv[2], sys.argv[3]
 text = open(path).read()
 text = text.replace(repo_root, "/home/user/code-split").replace(home, "/home/user")
-open(path, "w").write(text)
+d = json.loads(text)
+# Freeze volatile header fields (kept raw in the golden, normalized by the e2e test).
+d["generated_at"] = "1970-01-01T00:00:00Z"
+if "git" in d:
+    d["git"] = {"branch": "main", "commit": "0000000", "dirty_files": 0}
+for t in d.get("timings", []):
+    t["ms"] = 0
+# Re-emit with the same canonical shape the tool uses: sorted keys, trailing newline.
+open(path, "w").write(json.dumps(d, indent=2, sort_keys=True) + "\n")
 PY
   echo "regenerated $dir/code-split-report.json"
 done
