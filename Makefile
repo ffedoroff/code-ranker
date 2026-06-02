@@ -1,4 +1,4 @@
-.PHONY: all build test e2e clippy lint-md lint check fmt clean bump tag release
+.PHONY: all build test e2e clippy lint-md lint check fmt clean bump tag release publish
 
 all: build test lint
 
@@ -46,9 +46,12 @@ clean:
 #
 # It does NOT commit — review the diff, edit if needed, then `git commit`.
 #
-# release reads the current version from Cargo.toml, pushes the current branch
-# and creates+pushes annotated tag `v$VERSION`. The tag push triggers all 4
-# release workflows (Release / crates.io / PyPI / Docker).
+# Two-phase release:
+#   make release  (phase 1) pushes branch + tag v$VERSION -> triggers Verify ONLY
+#                 (full checks + packaging dry-runs + token preflight, NO publish).
+#   make publish  (phase 2) is the single Release button: after Verify is green it
+#                 dispatches publish.yml to release everywhere
+#                 (crates.io / PyPI / Docker / GitHub Release + npm).
 
 bump:
 	@if [ -z "$(VERSION)" ]; then echo "usage: make bump VERSION=0.1.0-alpha.12"; exit 1; fi
@@ -73,10 +76,17 @@ release:
 	fi
 	@VERSION=$$(grep -E '^version = "' Cargo.toml | head -1 | sed -E 's/version = "(.*)"/\1/'); \
 	  BRANCH=$$(git symbolic-ref --short HEAD); \
-	  echo "releasing v$$VERSION from branch $$BRANCH"; \
+	  echo "tagging v$$VERSION from branch $$BRANCH (triggers Verify, NO publish)"; \
 	  git push origin $$BRANCH; \
 	  git tag -a v$$VERSION -m "v$$VERSION"; \
 	  git push origin v$$VERSION; \
 	  echo; \
-	  echo "  ✓ tag v$$VERSION pushed — 4 release workflows starting on GitHub"; \
-	  echo "  → watch: gh run list --repo ffedoroff/code-split --limit 5"
+	  echo "  ✓ tag v$$VERSION pushed — Verify is running (nothing published yet)"; \
+	  echo "  → watch:   gh run list --repo ffedoroff/code-split --limit 6"; \
+	  echo "  → release: make publish   (only after Verify is green)"
+
+publish:
+	@VERSION=$$(grep -E '^version = "' Cargo.toml | head -1 | sed -E 's/version = "(.*)"/\1/'); \
+	  echo "dispatching Release for v$$VERSION across all registries"; \
+	  gh workflow run publish.yml --repo ffedoroff/code-split -f version="$$VERSION"; \
+	  echo "  ✓ Release dispatched — watch: gh run list --repo ffedoroff/code-split --limit 6"

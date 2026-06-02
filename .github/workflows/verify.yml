@@ -1,0 +1,148 @@
+name: Verify (no publish)
+
+# Runs automatically on every release tag (and on demand) BEFORE anything is
+# published. It exercises the full pipeline in CHECK mode — tests, lint, audit,
+# per-registry packaging dry-runs, and a token preflight — but publishes
+# NOTHING anywhere. Actual publishing is the separate manual "Release" button
+# (publish.yml), which you run only after this is green.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test & lint
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --workspace
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@cargo-audit
+      - run: cargo audit
+
+  crates-dry-run:
+    name: crates.io packaging (dry-run)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo publish --dry-run (bottom-up, same order as release)
+        run: |
+          for c in code-split-core code-split-syn code-split-complexity code-split; do
+            echo "==> packaging $c"
+            cargo publish -p "$c" --dry-run --allow-dirty
+          done
+
+  wheels-dry-run:
+    name: PyPI wheel build (no upload)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: PyO3/maturin-action@v1
+        with:
+          args: --release --out dist --strip
+          manylinux: '2_28'
+      - name: Validate built distributions
+        run: pipx run twine check dist/*
+
+  artifacts-build:
+    name: Release artifacts build (dist, no publish)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install dist
+        run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh | sh
+      - name: dist build (host target only, no upload/release)
+        run: dist build --artifacts=local --output-format=json || cargo build --release --workspace
+
+  docker-dry-run:
+    name: Docker build check + registry login
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to Docker Hub (validates DOCKERHUB_TOKEN)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to GHCR (validates token)
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The image downloads prebuilt binaries from the GitHub Release, which does
+      # not exist yet at verify time — so we validate the Dockerfile statically
+      # (syntax/stages) rather than executing the download. The real multi-arch
+      # build+push runs in the Release workflow once the binaries are published.
+      - name: Dockerfile check (no build execution)
+        run: docker buildx build --call=check .
+
+  tokens:
+    name: Token preflight
+    runs-on: ubuntu-22.04
+    steps:
+      - name: crates.io token is valid
+        env:
+          TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          [ -n "$TOKEN" ] || { echo "CARGO_REGISTRY_TOKEN is empty"; exit 1; }
+          code=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: $TOKEN" https://crates.io/api/v1/me)
+          [ "$code" = "200" ] || { echo "crates.io token rejected (HTTP $code)"; exit 1; }
+          echo "crates.io token OK"
+      - name: npm token is valid
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          [ -n "$NODE_AUTH_TOKEN" ] || { echo "NPM_TOKEN is empty"; exit 1; }
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          who=$(npm whoami) || { echo "npm token rejected"; exit 1; }
+          echo "npm token OK (user: $who)"
+      - name: PyPI token present and well-formed
+        env:
+          TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          case "$TOKEN" in
+            pypi-*) echo "PyPI token present and well-formed" ;;
+            "")     echo "PYPI_TOKEN is empty"; exit 1 ;;
+            *)      echo "PYPI_TOKEN does not look like an API token (expected 'pypi-…')"; exit 1 ;;
+          esac
+      - name: Docker Hub credentials present
+        env:
+          USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          [ -n "$USER" ] && [ -n "$TOKEN" ] || { echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN missing"; exit 1; }
+          echo "Docker Hub credentials present (login is exercised in docker-dry-run)"

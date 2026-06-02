@@ -1,0 +1,53 @@
+name: Release (publish everywhere)
+
+# The single manual "Release" button. Run it AFTER the Verify workflow is green
+# for the tag. It dispatches every publish workflow for the given version:
+#   - release.yml   → GitHub Release + prebuilt binaries + npm (cargo-dist)
+#   - crates-io.yml → crates.io
+#   - pypi.yml      → PyPI
+#   - docker.yml    → Docker Hub + GHCR (waits for the release binaries first)
+#
+# Flow: bump version → commit → push main → push tag v<version> (this runs
+# Verify) → once Verify is green, run THIS workflow with the same version.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the v prefix (e.g. 1.0.0-alpha.3). Tag v<version> must already exist and Verify must be green.'
+        required: true
+        type: string
+
+permissions:
+  actions: write     # required to dispatch the other workflows
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-22.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      V: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Ensure the tag exists
+        run: |
+          git fetch --tags --quiet
+          if ! git rev-parse "v$V" >/dev/null 2>&1; then
+            echo "tag v$V does not exist — push it first (that runs Verify), then release"; exit 1
+          fi
+          echo "tag v$V exists"
+      - name: Dispatch all publish workflows
+        run: |
+          set -e
+          echo "==> GitHub Release + binaries + npm (cargo-dist)"
+          gh workflow run release.yml   --ref main -f tag="v$V"
+          echo "==> crates.io"
+          gh workflow run crates-io.yml --ref main -f version="$V"
+          echo "==> PyPI"
+          gh workflow run pypi.yml      --ref main -f version="$V"
+          echo "==> Docker (waits for the GitHub Release binaries)"
+          gh workflow run docker.yml    --ref main -f version="$V"
+          echo "All publish workflows dispatched. Watch: gh run list --limit 6"

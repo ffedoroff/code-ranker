@@ -1,12 +1,11 @@
 name: Publish Docker image
+# Manual release step — run via the single "Release (publish everywhere)" button
+# (publish.yml) after Verify is green, or on its own. Never auto-publishes on tag.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (without v prefix), e.g. 0.1.0-alpha.8'
+        description: 'Release version (without v prefix), e.g. 1.0.0-alpha.3'
         required: true
         type: string
 

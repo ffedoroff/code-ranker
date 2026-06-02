@@ -1,8 +1,13 @@
 name: Publish to crates.io
+# Manual release step — run via the single "Release (publish everywhere)" button
+# (publish.yml) after Verify is green, or on its own. Never auto-publishes on tag.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version being released (informational; cargo reads Cargo.toml)'
+        required: false
+        type: string
 
 jobs:
   publish:
