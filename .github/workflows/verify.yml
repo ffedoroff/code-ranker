@@ -62,12 +62,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: cargo publish --dry-run (bottom-up, same order as release)
-        run: |
-          for c in code-split-core code-split-syn code-split-complexity code-split; do
-            echo "==> packaging $c"
-            cargo publish -p "$c" --dry-run --allow-dirty
-          done
+      # Only the leaf crate can be dry-run before release: the others depend on
+      # code-split-core at the new (unpublished) version, which cargo can't
+      # resolve until it's actually on crates.io (the real publish does it
+      # bottom-up). The whole workspace is still compiled by the test job.
+      - name: cargo publish --dry-run (leaf crate)
+        run: cargo publish -p code-split-core --dry-run --allow-dirty
 
   wheels-dry-run:
     name: PyPI wheel build (no upload)
