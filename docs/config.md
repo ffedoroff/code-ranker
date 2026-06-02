@@ -44,10 +44,28 @@ loc        = 800
 cognitive  = 25
 hk         = 500_000         # `_` separators; or a quoted suffix: hk = "5M"
 fan_out    = 50
+
+[output]                     # default artifact names for `report`
+json-name = "{project-dir}-{ts}.json"   # default if unset: {ts}-{git-hash-3}.json
+html-name = "{project-dir}-{ts}.html"   # default if unset: {ts}-{git-hash-3}.html
 ```
 
 The threshold scope is always `file` — a single source file on the one graph
 code-split builds.
+
+### `[output]` — report artifact names
+
+`[output] json-name` / `html-name` set the default filename templates for
+`code-split report`. A `--json-name` / `--html-name` flag still overrides them;
+when neither is set the built-in default `{ts}-{git-hash-3}` is used. Both keys
+accept `_`/kebab spelling (`json-name` or `json_name`) and these placeholders:
+
+| Placeholder | Expands to |
+|---|---|
+| `{project-dir}` | slugified workspace directory name |
+| `{ts}` | local `YYYYMMDD-HHMMSS` timestamp |
+| `{git-hash}` | 12-char short commit hash (zeros outside a git repo) |
+| `{git-hash-N}` | first `N` chars of the commit hash |
 
 **Values** accept `_` digit separators and `K`/`M`/`G` suffixes (×10³/10⁶/10⁹):
 `5_123_000`, or a quoted `"5M"` in TOML (bare `5M` is invalid TOML), or bare on the

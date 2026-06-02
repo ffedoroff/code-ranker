@@ -254,10 +254,15 @@ code-split diff   --before <snap-a.json> --after <snap-b.json> [--format html,js
   HTML report and/or a machine-readable JSON diff.
 
 `report` writes the snapshot to `--report-path` (default `.code-split`) as
-`{project-dir}-{ts}.json`, e.g. `.code-split/user-provisioning-20260526-114144.json`;
-`{project-dir}` is the slugified workspace name and `{ts}` is a local
-`YYYYMMDD-HHMMSS` timestamp. The `--json-name` flag overrides the template
-for named states (e.g., `pr.json`). No additional registry is created.
+`{ts}-{git-hash-3}.json`, e.g. `.code-split/20260526-114144-a3f.json`;
+`{ts}` is a local `YYYYMMDD-HHMMSS` timestamp and `{git-hash-3}` is the first
+three characters of the commit. The filename is a template with placeholders
+`{project-dir}` (slugified workspace name), `{ts}`, `{git-hash}` (the 12-char
+short commit) and `{git-hash-N}` (its first N chars). The default is
+resolved as **`--json-name` flag › `[output] json-name` in `code-split.toml`
+› built-in `{ts}-{git-hash-3}.json`**, so a project can pin its own naming
+(e.g. `{project-dir}-{ts}.json`) while a flag still wins for named states
+(e.g., `pr.json`). No additional registry is created.
 
 Each snapshot is a **single self-contained `.json` file** combining
 metadata (command, versions, git state) and the one `files` graph. See
@@ -275,9 +280,11 @@ plugin-agnostic. Splitting into separate binaries is forbidden at
 P1; the separation of concerns lives inside the binary.
 
 **Rationale**: One file per snapshot is easier to copy, archive, attach
-to CI artifacts, and pass to `diff`. A timestamped filename means users
-never have to think about naming for routine snapshots; explicit
-`--json-name` is available for named states (e.g., `snap-before-refactor.json`).
+to CI artifacts, and pass to `diff`. A timestamped, commit-stamped filename
+(`{ts}-{git-hash-3}`) means users never have to think about naming for
+routine snapshots while keeping per-commit runs distinct; the `[output]`
+config sets a project-wide template and explicit `--json-name` is available
+for named states (e.g., `snap-before-refactor.json`).
 
 **Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`
 
@@ -311,8 +318,9 @@ combines metadata and the one `files` graph in one document:
   },
   "git": {
     "branch": "refactor/split-handlers",
-    "commit": "a3f9c21",
-    "dirty_files": 4
+    "commit": "a3f9c21b4d5e",
+    "dirty_files": 4,
+    "origin": "git@gitlab.example.com:team/axum-api.git"
   },
   "timings": [
     { "stage": "syn",        "ms": 600, "detail": "547 module nodes" },
@@ -346,8 +354,10 @@ Top-level fields:
   paths (e.g. `{rust-src}/alloc/src/vec/mod.rs`). Roots that did not
   shorten any node path are pruned, so a JS/TS/Python snapshot carries no
   Rust toolchain roots (only `{target}`)
-- `git` — `branch`, `commit` (short SHA), `dirty_files` (count from
-  `git status --porcelain`); omitted entirely if not a git repository
+- `git` — `branch`, `commit` (12-char short SHA), `dirty_files` (count from
+  `git status --porcelain`), and `origin` (the `remote.origin.url`, used by
+  the HTML viewer to build "open in GitLab/GitHub" source links; omitted when
+  there is no origin remote); omitted entirely if not a git repository
 - `timings` — per-stage wall-clock timings in milliseconds, in execution
   order; each entry has `stage` (name), `ms` (elapsed), `detail` (human
   summary); omitted when empty
@@ -586,11 +596,18 @@ chain      = true        # default: on
 loc        = 800
 hk         = 500_000
 cyclomatic = 10
+
+[output]                     # default report artifact names (report command)
+json-name = "{project-dir}-{ts}.json"   # placeholders: {project-dir} {ts} {git-hash} {git-hash-N}
+html-name = "{project-dir}-{ts}.html"   # a --json-name/--html-name flag still overrides
 ```
 
 **CLI flags**:
 
 - `--plugin <NAME|auto>` — override default plugin (`auto` detects by markers)
+- `--json-name <TEMPLATE>` / `--html-name <TEMPLATE>` (`report`) — override the
+  output filename template (placeholders `{project-dir}`, `{ts}`, `{git-hash}`,
+  `{git-hash-N}`); wins over `[output]`; built-in default `{ts}-{git-hash-3}`
 - `--config <PATH | KEY=VALUE>` — load config from an explicit file path, or
   override a single setting inline via a dotted key (repeatable; inline wins)
 - `--ignore <GLOB>` — add a path glob (repeatable, merged with file)
@@ -736,12 +753,17 @@ Cyclomatic, Cognitive, MI, MI SEI, Logical, Comments, Blank. A checkbox column
 highlights the row (yellow) and the corresponding SVG node (yellow fill
 - amber stroke); shift-click selects a range; the header checkbox
 selects or deselects all visible rows (indeterminate when partial).
+Selection also works directly on the map: **holding Shift** turns the main
+diagram into a selection surface (the cursor changes over the SVG), and
+Shift-clicking an SVG node toggles its selection — exactly like ticking its
+table checkbox, kept in sync — instead of opening the modal.
 The modal popup opened by clicking a row or an SVG node is fullscreen
 (locks body scroll); it includes a synced selection checkbox, fields in
-order id (⎘ copy) → path (⎘ copy, filename bold) → kind → visibility
-→ items/methods → cycle info → status → metric sections in a single
-column. Hover highlight (blue drop-shadow) takes CSS priority over
-selection highlight.
+order id (⎘ copy) → path (⎘ copy, filename bold) → source (a link to the
+file on the project's git host, built from `git.origin`; project files
+only) → kind → visibility → items/methods → cycle info → status → metric
+sections in a single column. Hover highlight (blue drop-shadow) takes CSS
+priority over selection highlight.
 
 **Rationale**: The diff is the quantitative answer to "did my
 refactoring reduce coupling?" Without it, the user must compare two
@@ -966,7 +988,7 @@ to the binary.
   "plugin":         "<plugin-id>",
   "local_only":     false,
   "versions":       { "code-split": "0.3.1", "plugin_rust": "0.3.1", "rustc": "1.78.0" },
-  "git":            { "branch": "main", "commit": "a3f9c21", "dirty_files": 0 },
+  "git":            { "branch": "main", "commit": "a3f9c21b4d5e", "dirty_files": 0, "origin": "git@gitlab.example.com:team/proj.git" },
   "graphs": {
     "files": { "nodes": [...], "edges": [...], "stats": { ... } }
   }

@@ -45,6 +45,10 @@ pub struct GitInfo {
     pub branch: String,
     pub commit: String,
     pub dirty_files: u32,
+    /// Remote `origin` URL (raw, e.g. `git@gitlab.example.com:group/proj.git`).
+    /// Used by the HTML report to build "open in GitLab/GitHub" source links.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -439,6 +443,7 @@ mod tests {
             branch: "main".into(),
             commit: "abc".into(),
             dirty_files: 2,
+            origin: None,
         });
         snap.timings.push(StageTime {
             stage: "parse".into(),

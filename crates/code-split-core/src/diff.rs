@@ -364,6 +364,7 @@ mod tests {
             branch: "main".into(),
             commit: "0123456789abcdef".into(),
             dirty_files: 0,
+            origin: None,
         });
         let before = snap(
             graph(vec![node("a")], vec![]),

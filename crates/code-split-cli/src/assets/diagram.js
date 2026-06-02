@@ -418,6 +418,33 @@ function buildDiagramSVG(node, level) {
   return s;
 }
 
+// Convert a git remote `origin` URL into its web base (https://host/group/proj),
+// handling scp-style SSH (git@host:group/proj.git), ssh:// and https remotes.
+function gitWebBase(origin) {
+  if (!origin) return null;
+  const s = String(origin).trim();
+  if (/^https?:\/\//i.test(s)) {
+    return s.replace(/^(https?:\/\/)[^@/]+@/i, '$1')  // drop embedded credentials
+            .replace(/\.git\/?$/i, '')
+            .replace(/\/$/, '');
+  }
+  // scp-like (`git@host:group/proj.git`) or `ssh://git@host/group/proj.git`.
+  const m = s.match(/^(?:ssh:\/\/)?(?:[^@]+@)?([^:/]+)[:/](.+?)(?:\.git)?\/?$/);
+  return m ? `https://${m[1]}/${m[2]}` : null;
+}
+
+// Build a blob link to a project file at the analysed commit. `relPath` is the
+// repo-relative path (the displayed path, with the `{root}/` token stripped).
+function gitSourceUrl(git, relPath, line) {
+  const base = gitWebBase(git?.origin);
+  if (!base || !relPath) return null;
+  const ref  = git.commit || git.branch || 'HEAD';
+  const enc  = relPath.split('/').map(encodeURIComponent).join('/');
+  const blob = /(^|\/)github\.com\//i.test(base) ? 'blob' : '-/blob';   // GitLab uses /-/blob/
+  const anchor = line != null ? `#L${line}` : '';
+  return `${base}/${blob}/${ref}/${enc}${anchor}`;
+}
+
 function buildModalContent(node, level) {
   const cycles  = window.CYCLES?.[level];
   const cs      = cycles?.nodeCycleStatus?.get(node.id);
@@ -487,6 +514,19 @@ function buildModalContent(node, level) {
       `${dir}<strong>${file}</strong>${lineStr ? esc(lineStr) : ''}` +
       `</td></tr>`
     );
+    // "Source" link to the file on the project's git host, computed from the
+    // snapshot's `git.origin`. Only project files (external libs live elsewhere).
+    if (!node.external) {
+      const url = gitSourceUrl(activeSnap()?.git, path, node.line);
+      if (url) {
+        const host = url.replace(/^https?:\/\//i, '').split('/')[0];
+        cur.rows.push(
+          `<tr><td class="nm-key">Source</td><td class="nm-val">` +
+          `<a class="nm-src" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(host)} ↗</a>` +
+          `</td></tr>`
+        );
+      }
+    }
   }
   // For external libraries, surface every field we have (id, version, …).
   if (node.external) row('id', node.id);
@@ -558,6 +598,39 @@ function buildModalContent(node, level) {
   };
 }
 
+// Toggle a node's selection from the map, mirroring the table-row checkbox:
+// keep the shared selectedIds Set, the SVG highlight, the table row + checkbox,
+// and the "N selected" footer all in sync.
+function toggleNodeSelected(node, level, section) {
+  if (!window._ntSelected) window._ntSelected = {};
+  if (!window._ntSelected[level]) window._ntSelected[level] = new Set();
+  const selectedIds = window._ntSelected[level];
+
+  const sel = !selectedIds.has(node.id);
+  if (sel) selectedIds.add(node.id); else selectedIds.delete(node.id);
+
+  section?._gNodeMap?.get(node.id)?.classList.toggle('node-selected', sel);
+
+  const row = section?.querySelector(
+    `.node-table-body .node-table tbody tr[data-node-id="${CSS.escape(node.id)}"]`);
+  if (row) {
+    row.classList.toggle('row-selected', sel);
+    const cb = row.querySelector('.nt-cb');
+    if (cb) cb.checked = sel;
+  }
+  section?._updateAllCb?.();
+}
+
+// Holding Shift turns the main map into a node-selection surface: the cursor
+// changes (see `.shift-select` in the CSS) and clicking a node toggles its
+// selection instead of opening the modal.
+(function initShiftSelect() {
+  const set = on => document.body.classList.toggle('shift-select', on);
+  window.addEventListener('keydown', e => { if (e.key === 'Shift') set(true); });
+  window.addEventListener('keyup',   e => { if (e.key === 'Shift') set(false); });
+  window.addEventListener('blur',    () => set(false));
+})();
+
 function setupTooltips(svgFrame, level) {
   svgFrame.querySelectorAll('g.edge title, g.cluster title').forEach(t => t.remove());
 
@@ -579,6 +652,9 @@ function setupTooltips(svgFrame, level) {
     g.style.cursor = 'pointer';
     g.addEventListener('click', e => {
       e.stopPropagation();
+      // Shift = "select mode": toggle this node's selection (same as ticking its
+      // table-row checkbox) instead of opening the modal.
+      if (e.shiftKey) { toggleNodeSelected(node, level, section); return; }
       const overlay = getModal();
       const mc = buildModalContent(node, level);
       document.getElementById('node-modal-hdr-title').innerHTML = mc.hdr;

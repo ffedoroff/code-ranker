@@ -2,6 +2,17 @@
 #
 plugin = "rust"   # default plugin; overridden by --plugin
 #
+
+# ── Output ─────────────────────────────────────────────────────────────────────
+# Default artifact filenames for `report`. A `--json-name` / `--html-name` flag
+# still overrides these. Placeholders: {project-dir}, {ts}, {git-hash},
+# {git-hash-N} (first N chars of the commit). Built-in default if unset:
+# "{ts}-{git-hash-3}.json".
+[output]
+json-name = "{project-dir}-{ts}.json"
+html-name = "{project-dir}-{ts}.html"
+
+#
 # Searched automatically (highest priority first):
 #   1. CLI flags (--ignore, --cycle-rule, --threshold)
 #   2. --config <file>

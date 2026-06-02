@@ -16,6 +16,20 @@ pub struct Config {
     pub plugin: Option<String>,
     pub ignore: IgnoreConfig,
     pub rules: RulesConfig,
+    pub output: OutputConfig,
+}
+
+/// Default output artifact names. Overridden by the `--json-name` / `--html-name`
+/// CLI flags; when neither config nor flag is set, built-in defaults are used.
+/// Templates accept the same placeholders as the CLI flags: `{project-dir}`,
+/// `{ts}`, `{git-hash}`, `{git-hash-N}`.
+#[derive(Debug, Deserialize, Default)]
+#[serde(default)]
+pub struct OutputConfig {
+    #[serde(rename = "json-name", alias = "json_name")]
+    pub json_name: Option<String>,
+    #[serde(rename = "html-name", alias = "html_name")]
+    pub html_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -1330,6 +1344,22 @@ cognitive = 30
         assert_eq!(cfg.rules.thresholds.file.loc, Some(800.0));
         assert_eq!(cfg.rules.thresholds.file.cognitive, Some(30.0));
         assert_eq!(cfg.rules.thresholds.file.hk, None);
+    }
+
+    #[test]
+    fn config_toml_parses_output_names() {
+        let src = "
+[output]
+json-name = \"{project-dir}-{ts}.json\"
+html_name = \"custom.html\"
+";
+        let cfg: Config = toml::from_str(src).expect("parse config");
+        assert_eq!(cfg.output.json_name.as_deref(), Some("{project-dir}-{ts}.json"));
+        // snake_case alias is accepted too.
+        assert_eq!(cfg.output.html_name.as_deref(), Some("custom.html"));
+        // Unset → None (caller falls back to the built-in default).
+        let empty: Config = toml::from_str("").unwrap();
+        assert!(empty.output.json_name.is_none());
     }
 
     #[test]

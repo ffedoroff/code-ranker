@@ -123,14 +123,17 @@ enum Command {
         #[arg(long = "report-path", default_value = ".code-split")]
         report_path: PathBuf,
 
-        /// Snapshot filename template. Placeholders: {project-dir}, {ts}.
-        #[arg(long = "json-name", default_value = "{project-dir}-{ts}.json")]
-        json_name: String,
+        /// Snapshot filename template. Placeholders: {project-dir}, {ts},
+        /// {git-hash}, {git-hash-N} (first N chars of the commit). Falls back to
+        /// `[output] json-name` in code-split.toml, then the built-in default.
+        #[arg(long = "json-name")]
+        json_name: Option<String>,
 
         /// HTML filename template (data embedded inline). With --before, `-diff` is
-        /// inserted before `.html`. Placeholders: {project-dir}, {ts}.
-        #[arg(long = "html-name", default_value = "{project-dir}-{ts}.html")]
-        html_name: String,
+        /// inserted before `.html`. Placeholders: {project-dir}, {ts}, {git-hash},
+        /// {git-hash-N}. Falls back to `[output] html-name` in code-split.toml.
+        #[arg(long = "html-name")]
+        html_name: Option<String>,
     },
 
     /// Compare two existing snapshots and write a diff report.
@@ -198,8 +201,8 @@ fn main() -> Result<()> {
             &formats,
             before.as_deref(),
             &report_path,
-            &json_name,
-            &html_name,
+            json_name.as_deref(),
+            html_name.as_deref(),
         ),
         Command::Diff {
             before,
@@ -242,7 +245,16 @@ struct Analyzed {
     violations: Vec<config::Violation>,
     /// Effective cycle-rule policy (for the current-values config dump).
     cycles: config::CycleRules,
+    /// Output name templates from `[output]` in config (a CLI flag, if given,
+    /// still wins over these — resolved in `run_report`).
+    out_json_name: Option<String>,
+    out_html_name: Option<String>,
 }
+
+/// Built-in artifact name templates, used when neither a CLI flag nor the
+/// `[output]` config section sets one.
+const DEFAULT_JSON_NAME: &str = "{ts}-{git-hash-3}.json";
+const DEFAULT_HTML_NAME: &str = "{ts}-{git-hash-3}.html";
 
 /// Load config, run the plugin, annotate the graphs, and collect violations.
 /// Writes nothing — `check` and `report` decide what to do with the result.
@@ -348,6 +360,8 @@ fn analyze_workspace(
         git,
         violations,
         cycles: cfg.rules.cycles,
+        out_json_name: cfg.output.json_name,
+        out_html_name: cfg.output.html_name,
     })
 }
 
@@ -654,11 +668,22 @@ fn run_report(
     formats: &[Format],
     before: Option<&Path>,
     report_path: &Path,
-    json_name: &str,
-    html_name: &str,
+    json_name: Option<&str>,
+    html_name: Option<&str>,
 ) -> Result<()> {
     let a = analyze_workspace(args, &[], &[])?;
     let target = a.target.clone();
+
+    // Resolve the output name templates: explicit CLI flag wins, then the
+    // `[output]` section in config, then the built-in default.
+    let json_name = json_name
+        .or(a.out_json_name.as_deref())
+        .unwrap_or(DEFAULT_JSON_NAME)
+        .to_string();
+    let html_name = html_name
+        .or(a.out_html_name.as_deref())
+        .unwrap_or(DEFAULT_HTML_NAME)
+        .to_string();
 
     let snap = Snapshot::new(
         a.command,
@@ -678,7 +703,8 @@ fn run_report(
         .with_context(|| format!("creating directory {}", report_path.display()))?;
 
     if formats.contains(&Format::Json) {
-        let path = report_path.join(render_name(json_name, &target));
+        let commit = snap.git.as_ref().map(|g| g.commit.as_str());
+        let path = report_path.join(render_name(&json_name, &target, commit));
         let mut json = code_split_core::to_canonical_string_pretty(&snap)?;
         json.push('\n');
         std::fs::write(&path, json)
@@ -689,7 +715,8 @@ fn run_report(
     if formats.contains(&Format::Html) {
         // `<project>-<ts>.html` for a single-snapshot review; `<project>-<ts>-diff.html`
         // when comparing against a baseline. Data is embedded inline (self-contained).
-        let mut name = render_name(html_name, &target);
+        let commit = snap.git.as_ref().map(|g| g.commit.as_str());
+        let mut name = render_name(&html_name, &target, commit);
         if before.is_some() {
             let stem = name
                 .strip_suffix(".html")
@@ -710,8 +737,11 @@ fn run_report(
     Ok(())
 }
 
-/// Expand `{project-dir}` and `{ts}` placeholders in a filename template.
-fn render_name(template: &str, target: &Path) -> String {
+/// Expand filename-template placeholders:
+/// `{project-dir}` (slugified target dir name), `{ts}` (local timestamp),
+/// `{git-hash}` (full short commit) and `{git-hash-N}` (first N chars of it).
+/// When there is no git commit, the hash falls back to zeros.
+fn render_name(template: &str, target: &Path, commit: Option<&str>) -> String {
     let project = target
         .file_name()
         .and_then(|n| n.to_str())
@@ -727,9 +757,21 @@ fn render_name(template: &str, target: &Path) -> String {
         })
         .collect();
     let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
-    template
+    let hash = commit.unwrap_or("000000000000");
+    let mut out = template
         .replace("{project-dir}", &slug)
         .replace("{ts}", &ts)
+        .replace("{git-hash}", hash);
+    // `{git-hash-N}` → first N chars of the commit hash.
+    while let Some(start) = out.find("{git-hash-") {
+        let rest = &out[start + "{git-hash-".len()..];
+        let Some(end_rel) = rest.find('}') else { break };
+        let Ok(n) = rest[..end_rel].parse::<usize>() else { break };
+        let take: String = hash.chars().take(n).collect();
+        let token_end = start + "{git-hash-".len() + end_rel + 1;
+        out.replace_range(start..token_end, &take);
+    }
+    out
 }
 
 /// Resolve the plugin name: explicit `--plugin` > config `plugin` > auto-detect.
@@ -1027,7 +1069,7 @@ mod tests {
 
     #[test]
     fn render_name_expands_placeholders_and_slugifies() {
-        let out = render_name("{project-dir}-{ts}.json", Path::new("/x/My_Project"));
+        let out = render_name("{project-dir}-{ts}.json", Path::new("/x/My_Project"), None);
         assert!(out.starts_with("my-project-"), "slugified prefix: {out}");
         assert!(out.ends_with(".json"), "extension preserved: {out}");
         assert!(
@@ -1042,6 +1084,20 @@ mod tests {
             stamp.chars().all(|c| c.is_ascii_digit() || c == '-'),
             "ts is digits and a dash: {stamp:?}"
         );
+    }
+
+    #[test]
+    fn render_name_expands_git_hash() {
+        let t = Path::new("/x/proj");
+        // Default-style template: `{ts}-{git-hash-3}.json`.
+        let out = render_name("{ts}-{git-hash-3}.json", t, Some("69aa698abcde"));
+        assert!(out.ends_with("-69a.json"), "first 3 hash chars: {out}");
+        // Full short hash.
+        let full = render_name("{git-hash}.json", t, Some("69aa698abcde"));
+        assert_eq!(full, "69aa698abcde.json");
+        // No git → zero fallback, still no leftover placeholder.
+        let none = render_name("{git-hash-3}.json", t, None);
+        assert_eq!(none, "000.json");
     }
 
     #[test]

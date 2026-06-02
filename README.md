@@ -92,7 +92,8 @@ code-split check ./path/to/project
 
 # analyze and write a snapshot JSON + offline HTML report
 code-split report
-# → .code-split/{project-dir}-{ts}.json + .code-split/index.html
+# → .code-split/{ts}-{git-hash-3}.json + .code-split/{ts}-{git-hash-3}.html
+#   (name templates; override via --json-name / [output] in code-split.toml)
 
 # before / after refactor comparison of two snapshots
 code-split diff --before .code-split/before.json --after .code-split/after.json

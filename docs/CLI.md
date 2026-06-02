@@ -3,7 +3,7 @@
 Pluggable multi-language structural analysis platform.
 
 ```
-code-split <command> [options] [path] [-- <plugin-args>...]
+code-split <command> [path] [options]
 ```
 
 `code-split` is command-driven: running it with no command prints help — every action
@@ -25,27 +25,31 @@ goes through an explicit subcommand, there is no default action. Run
 
 ## Global options
 
-Accepted by every command (and before the command name).
+`code-split` takes no global flags of its own beyond the clap built-ins:
 
 | Flag | Meaning |
 |---|---|
-| `--config <PATH \| KEY=VALUE>` | Load config from a file path, **or** override a single setting inline. Repeatable; inline values win. See [Config](#config). |
-| `--color <when>` | `auto` (default), `always`, `never`. |
-| `-v, --verbose` | More logging. |
-| `-q, --quiet` | Suppress everything except diagnostics. |
-| `-h, --help` / `-V, --version` | Help / version. |
+| `-h, --help` | Print help — top-level, or per-command with `code-split <cmd> --help`. |
+| `-V, --version` | Print the version. |
+
+There is **no** `--color`, `--verbose`, or `--quiet` flag. Progress and timing
+lines are always written to **stderr** (`[HH:MM:SS] …`); diagnostics and machine
+output go to **stdout** or files, so the two streams never mix. All other flags
+are per-command and must follow the command name.
 
 ## Common analysis options
 
-Shared by `check` and `report` (the two commands that analyze a workspace).
+Shared by `check` and `report` (the two commands that analyze a workspace);
+**not** accepted by `diff`.
 
 | Flag | Meaning |
 |---|---|
 | `[path]` | Workspace to analyze (positional). Default `.` (current directory). |
 | `--plugin <name\|auto>` | Plugin to use: `rust`, `python`, or `javascript` (covers TypeScript). `auto` (default) resolves the language automatically — see [Plugin resolution](#plugin-resolution). |
+| `--config <PATH \| KEY=VALUE>` | Repeatable. Load config from a file path, **or** override one setting inline (`KEY=VALUE`); inline values win. See [Config](#config). |
 | `--ignore <glob>` | Repeatable. Glob to exclude paths from analysis. Merged with config-file globs. |
 | `--local-only` | Skip any network-dependent step (e.g. `cargo metadata` dependency resolution). |
-| `-- <extra-args>` | Everything after `--` is forwarded verbatim to the plugin. |
+| `-- <extra-args>` | Reserved: arguments after `--` are accepted but **not currently forwarded** to any built-in plugin (no built-in plugin consumes them yet). |
 
 ## `check`
 
@@ -143,8 +147,8 @@ code-split report [path] [options]
 | `--format <kinds>` | `json,html` | Artifacts to emit: `json`, `html`. Comma-separated or repeatable (`--format json --format html`). |
 | `--before <file>` | — | Baseline snapshot (`.json`, or a prior `.html` report). Makes the HTML a diff (before = this file, after = this run) with a verdict, and names it `…-diff.html`. |
 | `--report-path <dir>` | `.code-split` | Output directory for all artifacts. |
-| `--json-name <tpl>` | `{project-dir}-{ts}.json` | Snapshot filename template. Placeholders — see [Name templates](#name-templates). |
-| `--html-name <tpl>` | `{project-dir}-{ts}.html` | HTML filename template (data embedded inline). With `--before`, `-diff` is inserted before `.html`. |
+| `--json-name <tpl>` | `{ts}-{git-hash-3}.json` | Snapshot filename template (overrides `[output] json-name` in config). Placeholders — see [Name templates](#name-templates). |
+| `--html-name <tpl>` | `{ts}-{git-hash-3}.html` | HTML filename template (data embedded inline; overrides `[output] html-name`). With `--before`, `-diff` is inserted before `.html`. |
 
 ```sh
 # snapshot + viewer, in .code-split/
@@ -211,14 +215,27 @@ With `--plugin auto` (the default), the plugin is resolved in this order:
 
 ## Name templates
 
-`--json-name` accepts placeholders:
+`--json-name` / `--html-name` accept placeholders:
 
 | Placeholder | Expands to | Example |
 |---|---|---|
-| `{project-dir}` | The analyzed directory's basename, lowercased, non-alphanumerics collapsed to `-`. Override with `name` in the config file. | `user-provisioning` |
+| `{project-dir}` | The analyzed directory's basename, lowercased, non-alphanumerics collapsed to `-`. | `user-provisioning` |
 | `{ts}` | Local timestamp, `YYYYMMDD-HHMMSS`. | `20260526-114144` |
+| `{git-hash}` | The 12-char short commit hash (zeros if not a git repo). | `a3f9c21b4d5e` |
+| `{git-hash-N}` | The first `N` chars of the commit hash. | `{git-hash-3}` → `a3f` |
 
-So the default `{project-dir}-{ts}.json` yields `user-provisioning-20260526-114144.json`.
+So the default `{ts}-{git-hash-3}.json` yields `20260526-114144-a3f.json`.
+
+The name is resolved as **`--json-name` flag › `[output] json-name` in
+`code-split.toml` › built-in default**. To pin a project-wide template
+(e.g. include the project name), set it in config instead of passing the flag
+every time:
+
+```toml
+[output]
+json-name = "{project-dir}-{ts}.json"   # → user-provisioning-20260526-114144.json
+# html-name = "{project-dir}-{ts}.html"
+```
 
 ## HTML viewer
 
@@ -235,12 +252,19 @@ which the viewer reads on load and which `--before` / `diff` can extract back ou
 
 | Invocation | Output file | Mode | Embedded data |
 |---|---|---|---|
-| `report --format html` | `{project-dir}-{ts}.html` | review (single snapshot) | this run |
-| `report --format html --before A` | `{project-dir}-{ts}-diff.html` | diff + verdict | `A` and this run |
+| `report --format html` | `{ts}-{git-hash-3}.html` | review (single snapshot) | this run |
+| `report --format html --before A` | `{ts}-{git-hash-3}-diff.html` | diff + verdict | `A` and this run |
 | `diff --before A --after B` | `index.html` | diff + verdict | `A` and `B` |
 
 In the viewer, the **↑ change** / **↑ compare…** buttons swap in a different snapshot from
 disk — accepting either a `.json` snapshot or a `.html` report.
+
+Per-node modal: clicking a node opens a fullscreen card; for project files its
+field list includes a **Source** link to the file on the project's git host
+(GitLab/GitHub, built from `git.origin` at the snapshot's commit). To select
+nodes without opening the modal, **hold Shift** over the map (the cursor
+changes) and Shift-click nodes — each toggles selection just like its table
+checkbox.
 
 ## Config
 
@@ -268,9 +292,14 @@ code-split check --config rules.thresholds.file.cognitive=25 \
 
 | Code | Meaning |
 |---|---|
-| 0 | `check` passed (or `--exit-zero`); `report` / `diff` completed. |
-| 1 | Generic error: parsing, IO, plugin failure, ambiguous/undetected plugin under `auto`, or invalid arguments. |
-| Non-zero (other) | `check` found a violation (cycle or threshold) without `--exit-zero`. |
+| 0 | `check` passed (no violations, or `--exit-zero`); `report` / `diff` completed successfully. |
+| 1 | Any failure — a `check` violation (cycle or threshold, without `--exit-zero`) **or** a runtime error (IO / plugin failure, ambiguous-or-undetected plugin under `auto`, malformed config). |
+| 2 | Argument-parsing error (unknown flag, missing required option, bad value) — emitted by the CLI parser before any work runs. |
+
+`check` does **not** use a distinct exit code for "violation found" vs "tool
+error": a violation is reported via the diagnostics on stdout, then the process
+exits `1` — the same code as an error. Parse the diagnostics (`--output-format
+json`/`sarif`) if you need to tell the two apart in CI.
 
 ## Plugins
 

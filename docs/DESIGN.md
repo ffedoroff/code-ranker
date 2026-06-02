@@ -113,7 +113,7 @@ flowchart TD
 
     artifacts --> report
     artifacts --> diff
-    report -->|"{project-dir}-{ts}.html + snapshot.json"| html_report["HTML Report"]
+    report -->|"{ts}-{git-hash-3}.html + snapshot.json"| html_report["HTML Report"]
     diff -->|"index.html / diff.json"| diff_report["Diff Report"]
 ```
 
@@ -485,14 +485,18 @@ config filters: `config::apply_ignore` (path globs + `tests` /
 - **`report`**: runs the shared analysis core (re-analyzing the workspace),
   then writes artifacts into `--report-path` (default `.code-split`) per
   `--format` (`json`, `html`; default both). The JSON snapshot records
-  `config_file` when a config was found; default name
-  `{project-dir}-{ts}.json` (`--json-name`). The HTML viewer template and all assets
+  `config_file` when a config was found; default name `{ts}-{git-hash-3}.json`.
+  Names are templates (`render_name`) with placeholders `{project-dir}`,
+  `{ts}`, `{git-hash}` (12-char short commit) and `{git-hash-N}` (first N
+  chars), resolved as **`--json-name` flag › `[output] json-name` config ›
+  built-in default**. The HTML viewer template and all assets
   (CSS, JS) are embedded in the binary via `include_str!` from
   `crates/code-split-cli/src/assets/`, and the snapshot data is embedded
   inline in the same file as `cs-before` / `cs-after` JSON `<script>` tags;
-  default name `{project-dir}-{ts}.html` (`--html-name`). With
+  default name `{ts}-{git-hash-3}.html` (`--html-name` / `[output] html-name`).
+  With
   `--before <snapshot>` the HTML becomes a diff view (after = this run, before
-  = the file) plus a verdict, named `{project-dir}-{ts}-diff.html` (`-diff`
+  = the file) plus a verdict, named `{ts}-{git-hash-3}-diff.html` (`-diff`
   inserted before `.html`). `--before` accepts a `.json` snapshot or a prior
   `.html` report (the embedded snapshot is extracted via `load_snapshot_any`).
 - **`diff`**: reads two **existing** snapshot files (`--before` / `--after`,
@@ -527,7 +531,7 @@ embedded into the `code-split` binary via `include_str!`. Files:
 | File | Purpose |
 |------|---------|
 | `index.html` | Shell template with a single Files view section and the diff/review summary table. Header: `.header-brand` ("CODE SPLIT"), `#title` (`<target> — diff/review`), before/after metadata, and the `↑ change` / `↑ compare…` snapshot-swap buttons (`#btn-remove-after`). Nav: `[data-side]` Before/After buttons (diff mode only — hidden in review) and `#nav-prompt-btn` ("Prompt Generator AI", always visible). There is one graph level, so no level switcher. No control panel / status chips / review buttons — the UI is simplified so Before/After each render a clean single-snapshot diagram. |
-| `index.css` | Layout, nav, SVG styling; cross-highlight: `.row-hl` (solid blue bg) and `g.node.node-hl` (blue drop-shadow) for hover; `.row-selected` (solid amber bg `rgb(254,245,222)`) and `g.node.node-selected > polygon/ellipse` (yellow fill + amber stroke) for persistent selection — hover rules last so they win; `body.mode-review` hides `#meta-arrow` and after-group metadata; `#node-modal` fills 100% width/height (fullscreen); `body.overflow:hidden` set on open, cleared on close. The popup main card uses `.mn-card` (`copy` cursor); on `.copied` the card body (`.mn-card-body`) is hidden and a centred `.mn-copied-msg` ("copied") is shown for ~1s. (Legacy chip / `hide-*` / `show-cycle-*` visibility rules remain in the file but are unused after the UI simplification.) |
+| `index.css` | Layout, nav, SVG styling; cross-highlight: `.row-hl` (solid blue bg) and `g.node.node-hl` (blue drop-shadow) for hover; `.row-selected` (solid amber bg `rgb(254,245,222)`) and `g.node.node-selected > polygon/ellipse` (yellow fill + amber stroke) for persistent selection — hover rules last so they win; `body.shift-select` changes the cursor over the map (crosshair on `.svg-frame`, `copy` on `g.node`) to signal Shift-to-select; `.nm-src` styles the modal's git-host "Source" link; `body.mode-review` hides `#meta-arrow` and after-group metadata; `#node-modal` fills 100% width/height (fullscreen); `body.overflow:hidden` set on open, cleared on close. The popup main card uses `.mn-card` (`copy` cursor); on `.copied` the card body (`.mn-card-body`) is hidden and a centred `.mn-copied-msg` ("copied") is shown for ~1s. (Legacy chip / `hide-*` / `show-cycle-*` visibility rules remain in the file but are unused after the UI simplification.) |
 | `graphviz.umd.js` | Graphviz compiled to WASM via `@hpcc-js/wasm` (~802 KB, self-contained, no network required); renders DOT→SVG in-browser |
 | `snarkdown.umd.js` | Tiny (~2 KB) Markdown→HTML renderer (`window.snarkdown`), vendored so it works offline; used by `export-popup.js` to render the generated prompt as a styled preview |
 | `diff.js` | Browser-side diff computation: `computeDiff()` (node/edge status), `computeCycles()` via `buildSCCOf()` helper — prefers backend `graph.cycles` array when present (accurate `CycleKind` classification); falls back to Tarjan SCC on edges when absent; marks nodes/edges as `before-only`/`after-only`/`both`/`none`; `computeMeta()` |
@@ -537,7 +541,7 @@ embedded into the `code-split` binary via `include_str!`. Files:
 | `panzoom.js` | `setupPanZoom()` — viewBox-based drag-to-pan; +/−/fit/fullscreen buttons bottom-right (visible when mouse in right 15% of frame); size-mode buttons (■/LOC/HK) top-right re-render the active view; dblclick on SVG background zooms 2× at cursor; stores the fit-all viewBox on `frame.dataset.naturalVB` so `renderView` can preserve pan/zoom across re-renders; fullscreen overlay (`fs-bar`) hosts the live `<nav>` (the control panel was removed) |
 | `ui.js` | Intentionally empty — before/after is now two separate clean diagrams (one graphviz layout per snapshot), so there is no chip-based filtering of a merged layout. Kept as a file because the report inlines its assets by name. |
 | `app.js` | `DOMContentLoaded` handler. `window.viewSide` (`'before'`/`'after'`) selects which snapshot the diagram / node table / modal show; `activeLocalGraph()` returns that snapshot's file graph with external (3rd-party) nodes and their edges dropped from the main diagram entirely (externals appear only in the per-node modal, drawn in amber). `setViewSide()` (the Before/After buttons) re-renders the active view; `renderView()` runs `drawSVG` (which, above `SVG_NODE_LIMIT` = 500 nodes, shows a `too many nodes: N` placeholder with a *Render diagram* confirmation button instead of laying out a slow large graph — confirmed once per frame via `frame.dataset.bigConfirmed`), re-applies the node-table selection, and — across Before/After **and** size-mode re-renders — preserves pan/zoom by carrying the *relative* zoom + fractional centre vs `frame.dataset.naturalVB` (so differing layout extents don't drift the framing). `updateHeader()` switches review/diff mode and shows/hides the Before/After buttons; `buildSummary()` is mode-aware. Reads inline `cs-before` / `cs-after` JSON via `readEmbeddedSnapshot`; `setupFileControls()` / `recomputeAll()` swap a `.json` snapshot or prior `.html` report from disk; `#nav-prompt-btn` → `openExportPopup()`. On load it also reads `epReadUrl()` and, if the Prompt Generator was open, restores its selected nodes (into `window._ntSelected`) **before** the tables render, then re-opens it via `openExportPopup(level, restore)`. |
-| `diagram.js` | `buildDiagramSVG(node)` — inline SVG popup diagram for a selected node. Edges are read from the raw snapshot (`window.AFTER ?? window.BEFORE`) so external library nodes (filtered from `window.DIFF`) are still visible. Connections are **deduped by node** (`collectConns`) into just two columns per direction — an unlabelled internal-`connections` column and a separate amber `external` column — both on the **same tier** (side by side). Each card records the *set* of edge kinds linking it to the main node. A node is shown only if it has an information-flow edge (`uses`/`reexports`); a `contains`-only structural link stays hidden. One arrow per column: the internal arrow is labelled `Fan-in: N` / `Fan-out: N` (distinct connected nodes); the external arrow is amber with no label (external edges count as `fan_out_external`, not `fan_in`/`fan_out`). **Side card layout**: a centred title (always visible). The card has two CSS-toggled states (`g[data-diag-node]:hover` in `index.css`): by default (`.sn-simple`) it shows only the bare `hk` (left, abbreviated, e.g. `189K`/`1.5M`; **nothing** when hk is absent — no `—`) and `loc` (right); on hover (`.sn-detail`) those become labelled `value:key` (`189K:hk` / `loc:210`, and `0:hk` when hk is absent), a bottom row of three connection-kind slots (`uses` · `reexport` · `contains`) appears (split exactly into thirds; absent kinds leave their third empty), and a `pr` chip (private nodes) is revealed top-right. **Tooltips** are the styled `#tt` ones shared with the node table (`renderDescTooltip` — title + bold formula line + description), so a metric's tooltip is byte-identical everywhere: each hk/loc label carries `data-tip`/`data-tip-formula` keyed to the same `COL_TIPS`/`COL_FORMULAS` (the whole `value:key` string is one hover target), each connection-kind label its own description, the title shows the node `path`, and the `pr` chip explains private visibility. Metric tooltips additionally carry `data-tip-calc` — the formula filled with this node's real numbers (`metricCalc`), rendered as a third line so the value's derivation is visible. This is set wherever the inputs are stored and the formula faithfully reproduces the displayed value: `hk` (`sloc × (fan_in × fan_out)²`), Halstead `volume` (`length × log₂(vocabulary)`), `bugs` (`effort^⅔ ÷ 3000` — the engine's actual definition, not the classic `volume ÷ 3000`) and `time` (`effort ÷ 18`). It is deliberately omitted where the computation would not match the displayed value: `mi`/`mi_sei` (the engine feeds MI a different cyclomatic aggregation than the per-file `cyclomatic` we store, so it wouldn't reconcile), `cyclomatic`/`cognitive`, and Halstead `length`/`vocabulary`/`effort` (no stored sub-terms — N₁/N₂, η₁/η₂, difficulty). The matching node-table value cells show the identical computation, but **lazily**: the cells carry no precomputed tooltip attributes — `setupTooltip` derives the description / formula / computation on hover (from the row's node), so nothing is built for cells the user never points at. Every tooltip's title is the metric's **full name** (`COL_NAMES`, e.g. "Halstead volume" — never the abbreviated column label or the cell value), via `data-tip-title` or the element's column id. Arrow labels read `Fan-in: N` / `Fan-out: N`. The hovered label is highlighted (`.sn-hint:hover`). No native `<title>` tooltips on the cards (they conflicted with `#tt`). External cards stay amber, showing the library name (without the `ext:` prefix) and no metrics; an opened external main card uses the same layout as an internal file card — a centred title plus left-aligned `key: value` rows: `kind` (`external`), `version`, and the cargo-cache `path` (e.g. `{registry}/tokio-1.49.0`). The modal field table (left) lists every external field — `id`, `kind`, `version`, `external`, plus the full path — and routes metric rows through the same `#tt`/`COL_FORMULAS` tooltip, with the tooltip attached to the whole `<tr>` so it fires on both the key and the value. The main node card shows `path` / `hk` / `loc` (no `id`) — its labels carry the same `#tt` tooltips (incl. the `hk` computation); a `visibility` row is shown only when **not** `public` (e.g. `private`), since `public` is the default and appears in the left field list; the **whole card is click-to-copy** (`.mn-card` + `data-copy`), and on copy it flashes the copied value above a centred `copied` confirmation for ~1s (no native `<title>`, to avoid conflicting with `#tt`). The metric table spells out abbreviated keys via `NM_LABELS` (`hk` → "Henry-Kafura", `mi` → "Maintainability Index", `mi_sei` → "Maintainability Index (SEI)", `fan_in`/`fan_out` → "Fan-in"/"Fan-out"). `MAX_ITEMS = 24` per column. |
+| `diagram.js` | `buildDiagramSVG(node)` — inline SVG popup diagram for a selected node. Edges are read from the raw snapshot (`window.AFTER ?? window.BEFORE`) so external library nodes (filtered from `window.DIFF`) are still visible. Connections are **deduped by node** (`collectConns`) into just two columns per direction — an unlabelled internal-`connections` column and a separate amber `external` column — both on the **same tier** (side by side). Each card records the *set* of edge kinds linking it to the main node. A node is shown only if it has an information-flow edge (`uses`/`reexports`); a `contains`-only structural link stays hidden. One arrow per column: the internal arrow is labelled `Fan-in: N` / `Fan-out: N` (distinct connected nodes); the external arrow is amber with no label (external edges count as `fan_out_external`, not `fan_in`/`fan_out`). **Side card layout**: a centred title (always visible). The card has two CSS-toggled states (`g[data-diag-node]:hover` in `index.css`): by default (`.sn-simple`) it shows only the bare `hk` (left, abbreviated, e.g. `189K`/`1.5M`; **nothing** when hk is absent — no `—`) and `loc` (right); on hover (`.sn-detail`) those become labelled `value:key` (`189K:hk` / `loc:210`, and `0:hk` when hk is absent), a bottom row of three connection-kind slots (`uses` · `reexport` · `contains`) appears (split exactly into thirds; absent kinds leave their third empty), and a `pr` chip (private nodes) is revealed top-right. **Tooltips** are the styled `#tt` ones shared with the node table (`renderDescTooltip` — title + bold formula line + description), so a metric's tooltip is byte-identical everywhere: each hk/loc label carries `data-tip`/`data-tip-formula` keyed to the same `COL_TIPS`/`COL_FORMULAS` (the whole `value:key` string is one hover target), each connection-kind label its own description, the title shows the node `path`, and the `pr` chip explains private visibility. Metric tooltips additionally carry `data-tip-calc` — the formula filled with this node's real numbers (`metricCalc`), rendered as a third line so the value's derivation is visible. This is set wherever the inputs are stored and the formula faithfully reproduces the displayed value: `hk` (`sloc × (fan_in × fan_out)²`), Halstead `volume` (`length × log₂(vocabulary)`), `bugs` (`effort^⅔ ÷ 3000` — the engine's actual definition, not the classic `volume ÷ 3000`) and `time` (`effort ÷ 18`). It is deliberately omitted where the computation would not match the displayed value: `mi`/`mi_sei` (the engine feeds MI a different cyclomatic aggregation than the per-file `cyclomatic` we store, so it wouldn't reconcile), `cyclomatic`/`cognitive`, and Halstead `length`/`vocabulary`/`effort` (no stored sub-terms — N₁/N₂, η₁/η₂, difficulty). The matching node-table value cells show the identical computation, but **lazily**: the cells carry no precomputed tooltip attributes — `setupTooltip` derives the description / formula / computation on hover (from the row's node), so nothing is built for cells the user never points at. Every tooltip's title is the metric's **full name** (`COL_NAMES`, e.g. "Halstead volume" — never the abbreviated column label or the cell value), via `data-tip-title` or the element's column id. Arrow labels read `Fan-in: N` / `Fan-out: N`. The hovered label is highlighted (`.sn-hint:hover`). No native `<title>` tooltips on the cards (they conflicted with `#tt`). External cards stay amber, showing the library name (without the `ext:` prefix) and no metrics; an opened external main card uses the same layout as an internal file card — a centred title plus left-aligned `key: value` rows: `kind` (`external`), `version`, and the cargo-cache `path` (e.g. `{registry}/tokio-1.49.0`). The modal field table (left) lists every external field — `id`, `kind`, `version`, `external`, plus the full path — and routes metric rows through the same `#tt`/`COL_FORMULAS` tooltip, with the tooltip attached to the whole `<tr>` so it fires on both the key and the value. The main node card shows `path` / `hk` / `loc` (no `id`) — its labels carry the same `#tt` tooltips (incl. the `hk` computation); a `visibility` row is shown only when **not** `public` (e.g. `private`), since `public` is the default and appears in the left field list; the **whole card is click-to-copy** (`.mn-card` + `data-copy`), and on copy it flashes the copied value above a centred `copied` confirmation for ~1s (no native `<title>`, to avoid conflicting with `#tt`). The metric table spells out abbreviated keys via `NM_LABELS` (`hk` → "Henry-Kafura", `mi` → "Maintainability Index", `mi_sei` → "Maintainability Index (SEI)", `fan_in`/`fan_out` → "Fan-in"/"Fan-out"). `MAX_ITEMS = 24` per column. For project (non-external) files the left field table adds a **Source** row after `path` — a link to the file on the project's git host, built by `gitWebBase`/`gitSourceUrl` from the snapshot's `git.origin` (SSH/HTTPS normalized to a web blob URL: GitLab `/-/blob/`, GitHub `/blob/`) at `git.commit`, anchored to `#L<line>` when the node has one. `setupTooltips` also wires **Shift-to-select** on the map: a Shift-click on an SVG node toggles its selection (`toggleNodeSelected` — syncs the shared `_ntSelected` set, the row, its checkbox and the footer) instead of opening the modal; a window `keydown`/`keyup`/`blur` listener toggles `body.shift-select` for the cursor cue. |
 | `nav.js` | `openModalForNode(nodeId)` — looks up node data first in `window.DIFF.files.nodes`, then falls back to the raw snapshot (`window.AFTER ?? window.BEFORE`) to support external library nodes that are excluded from the diff. Calls `window.hideMetricTooltip()` before re-rendering so a tooltip anchored to the replaced element never lingers over the new content. |
 | `node-table.js` | Sortable per-file table ("**Details**" section, collapsed by default). The header shows the title + row-count badge always; the **search box and `⎘ Copy <N> selected` button appear only when expanded** (CSS on `.node-table-wrap.collapsed`); the copy button shows the live selected-row count. `cyclomatic`/`cognitive` columns are omitted; non-name columns are narrow. A **summary footer row** (`.nt-foot`) shows the **average** for each numeric column and a **count** for text columns (Name = total rows; Cycle = nodes in a cycle); its numeric cells carry a `data-tt` percentile distribution (p1/p10/p50/p90/p99 via `pctOf`) shown through the shared `#tt` tooltip, exactly like the summary section. Metric tooltips elsewhere in the table are derived **lazily** on hover (`setupTooltip`), never precomputed per cell. `window.hideMetricTooltip()` (and a capture-phase document `click` handler) force-hides `#tt` so it never lingers when popup nodes are switched or the modal closes. |
 | `summary.js` | Review/diff summary table. Per-metric rows show the median (`p50`) with a `data-tt` percentile-distribution tooltip (`nodePercentiles`). `COL_NAMES`/`COL_TIPS`/`COL_FORMULAS` (full name / description / formula per column id) are the single source of truth reused by the node table and popup. The **Nodes-in-cycles** row's tooltip lists the cycle-group counts per kind (e.g. `mutual: 1, chain: 2`) from the active snapshot's `cycles`. |
@@ -570,8 +574,9 @@ binding.
   (`check`, `report`, `diff`; no default command)
 - **Location**: `crates/code-split-cli/src/main.rs`
 - **Output**: `report` writes a snapshot `.json` to
-  `{--report-path}/{project-dir}-{ts}.json` (default dir `.code-split`); name and
-  directory tunable via `--json-name` / `--report-path`
+  `{--report-path}/{ts}-{git-hash-3}.json` (default dir `.code-split`); name
+  tunable via `--json-name` flag or `[output] json-name` config, directory via
+  `--report-path`
 
 #### Plugins (built-in, in-process)
 
@@ -665,7 +670,7 @@ sequenceDiagram
     Plugin ->> Core: annotate_all_cycles (Kosaraju SCC → CycleKind per node)
     Plugin ->> Core: annotate_hk (internal fan_in / fan_out / HK; fan_out_external per file)
     Plugin -->> CLI: (PluginGraphs, Vec<StageTime>)
-    CLI ->> FS: write {project-dir}-{ts}.json (metadata + timings + files graph)
+    CLI ->> FS: write {ts}-{git-hash-3}.json (metadata + timings + files graph)
     CLI -->> User: exit 0
 ```
 
@@ -685,9 +690,9 @@ sequenceDiagram
     User ->> Report: code-split report . --format json,html
     Report ->> Report: run analysis pipeline (syn → complexity → module-to-file collapse, see Step 1)
     Report ->> Report: compute node weights (fan-in + fan-out)
-    Report ->> FS: write {project-dir}-{ts}.json snapshot (when --format json)
+    Report ->> FS: write {ts}-{git-hash-3}.json snapshot (when --format json)
     Report ->> Report: embed snapshot data inline as cs-before / cs-after JSON script tags
-    Report ->> FS: write {project-dir}-{ts}.html (self-contained: assets + data embedded)
+    Report ->> FS: write {ts}-{git-hash-3}.html (self-contained: assets + data embedded)
     Report -->> User: exit 0
 ```
 
@@ -747,16 +752,19 @@ Multiple matching markers or none → error asking for an explicit
 #### Snapshot File Format
 
 `code-split report` writes the snapshot into `--report-path` (default
-`.code-split` in the current working directory) with a slug-and-timestamp
-name (`--json-name`, default `{project-dir}-{ts}.json`):
+`.code-split` in the current working directory) with a templated name —
+default `{ts}-{git-hash-3}.json` (timestamp + first 3 chars of the commit):
 
 ```
-.code-split/{project-dir}-<YYYYMMDD-HHMMSS>.json
+.code-split/<YYYYMMDD-HHMMSS>-<hash3>.json
 ```
 
-Example: `code-split report /path/to/axum-api --plugin rust --format json`
-(run from `~/projects/code-split`) →
-`~/projects/code-split/.code-split/axum-api-20260522-112233.json`
+The name template is resolved as **`--json-name` flag › `[output] json-name`
+in config › built-in default**, with placeholders `{project-dir}` (slugified
+workspace name), `{ts}`, `{git-hash}` (12-char short commit) and `{git-hash-N}`
+(first N chars). Example: `code-split report /path/to/axum-api --plugin rust
+--format json` → `.code-split/20260522-112233-a3f.json` (or
+`axum-api-20260522-112233.json` if `[output] json-name = "{project-dir}-{ts}.json"`).
 
 The file combines metadata and the single `files` graph in one document:
 
@@ -782,8 +790,9 @@ The file combines metadata and the single `files` graph in one document:
   },
   "git": {
     "branch": "refactor/split-handlers",
-    "commit": "a3f9c21",
-    "dirty_files": 4
+    "commit": "a3f9c21b4d5e",
+    "dirty_files": 4,
+    "origin": "git@gitlab.example.com:team/axum-api.git"
   },
   "graphs": {
     "files": { "nodes": [...], "edges": [...] }
@@ -827,10 +836,14 @@ The `git` fields are collected by `code-split` before invoking the plugin:
 | Field | Source |
 |-------|--------|
 | `branch` | `git -C <workspace> rev-parse --abbrev-ref HEAD` |
-| `commit` | `git -C <workspace> rev-parse --short HEAD` |
+| `commit` | `git -C <workspace> rev-parse --short=12 HEAD` (12-char short SHA) |
 | `dirty_files` | `git -C <workspace> status --porcelain \| wc -l` |
+| `origin` | `git -C <workspace> config --get remote.origin.url` (omitted if empty/absent) |
 
-If any call fails the `git` key is omitted entirely — no error is raised.
+If branch/commit fail the `git` key is omitted entirely — no error is raised.
+`origin` feeds the HTML viewer's per-node "Source" link (`git@host:grp/proj.git`
+or `https://…` is normalized to a web blob URL — GitLab `/-/blob/`, GitHub
+`/blob/` — at the commit).
 
 `code-split report` (from the snapshot it just produced) and `code-split diff`
 (from the two snapshot files it reads) embed this metadata in the generated
@@ -968,13 +981,14 @@ Example — a Django-specific annotation on a file node:
 #### Snapshots — `code-split report --format json`
 
 `code-split report` always re-analyzes the project and writes the snapshot
-to `--report-path` (default `.code-split/`) under the `--json-name` template
-(default `{project-dir}-{ts}.json`, e.g. `.code-split/my-lib-20260522-112233.json`).
+to `--report-path` (default `.code-split/`) under the name template
+(default `{ts}-{git-hash-3}.json`, e.g. `.code-split/20260522-112233-a3f.json`;
+override via `--json-name` flag or `[output] json-name` config).
 
 **Rust (built-in)**
 
 ```bash
-# 1. Default snapshot: .code-split/my-crate-20260522-112233.json
+# 1. Default snapshot: .code-split/20260522-112233-a3f.json ({ts}-{git-hash-3})
 code-split report . --plugin rust --format json
 
 # 2. Explicit file name — for a named state
@@ -1024,7 +1038,7 @@ HTML viewer together.
 ```bash
 # 1. Snapshot + report side by side, in .code-split/ (default format json,html)
 code-split report . --plugin rust
-open .code-split/my-crate-20260522-112233.html   # default {project-dir}-{ts}.html
+open .code-split/20260522-112233-a3f.html   # default {ts}-{git-hash-3}.html
 
 # 2. Report in docs/ for sharing with the team
 code-split report . --plugin rust \
@@ -1071,7 +1085,7 @@ cat /artifacts/code-split/diff.json | jq '.verdict'
 ```bash
 # Steps 1+2: snapshot before the refactor + report (report does both)
 code-split report . --plugin rust --json-name before.json
-open .code-split/my-crate-20260522-112233.html   # {project-dir}-{ts}.html, inspect the heavy nodes
+open .code-split/20260522-112233-a3f.html   # {ts}-{git-hash-3}.html, inspect the heavy nodes
 
 # -- Step 3: the user makes changes (by hand or with an AI) --
 

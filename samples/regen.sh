@@ -42,7 +42,15 @@ d = json.loads(text)
 # Freeze volatile header fields (kept raw in the golden, normalized by the e2e test).
 d["generated_at"] = "1970-01-01T00:00:00Z"
 if "git" in d:
-    d["git"] = {"branch": "main", "commit": "0000000", "dirty_files": 0}
+    # Freeze to the canonical SHAPE the e2e test enforces: all fields present,
+    # a 12-char commit (`--short=12`) and `origin`. Values are placeholders — the
+    # test normalizes them away and checks the live git block's real shape.
+    d["git"] = {
+        "branch": "main",
+        "commit": "000000000000",
+        "dirty_files": 0,
+        "origin": "git@example.com:org/repo.git",
+    }
 for t in d.get("timings", []):
     t["ms"] = 0
 # Re-emit with the same canonical shape the tool uses: sorted keys, trailing newline.

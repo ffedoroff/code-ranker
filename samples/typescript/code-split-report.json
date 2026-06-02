@@ -4,8 +4,9 @@
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
     "branch": "main",
-    "commit": "0000000",
-    "dirty_files": 0
+    "commit": "000000000000",
+    "dirty_files": 0,
+    "origin": "git@example.com:org/repo.git"
   },
   "graphs": {
     "files": {

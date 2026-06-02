@@ -44,7 +44,7 @@ Every test must pass all three:
 | Config parsing | `--cycle-rule KIND=on\|off`, `--threshold SCOPE.METRIC=N`, defaults, rejection of bad input | `code-split-cli/src/config.rs` |
 | Rule evaluation | `check_violations` (cycles + thresholds); `apply_cycle_rules` strips disabled kinds | `code-split-cli/src/config.rs` |
 | Plugin resolution | `resolve_plugin` precedence; `detect_plugin` markers / ambiguity / none | `code-split-cli/src/main.rs` |
-| Name templating | `render_name` — `{project-dir}` slug, `{ts}` stamp | `code-split-cli/src/main.rs` |
+| Name templating | `render_name` — `{project-dir}` slug, `{ts}` stamp, `{git-hash}` / `{git-hash-N}`; `[output]` name resolution | `code-split-cli/src/main.rs`, `config.rs` |
 | Snapshot & graph types | serde round-trip of the snapshot (the public artifact); builder / projection invariants; cycle and HK annotation | `code-split-core/src/*` |
 | Graph extraction | module / file graph shape on small in-source inputs | `code-split-syn/src/*` |
 

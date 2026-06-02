@@ -4,12 +4,15 @@ use std::process::Command;
 
 pub fn collect(workspace: &Path) -> Option<GitInfo> {
     let branch = run_git(workspace, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-    let commit = run_git(workspace, &["rev-parse", "--short", "HEAD"])?;
+    let commit = run_git(workspace, &["rev-parse", "--short=12", "HEAD"])?;
     let dirty = count_dirty(workspace);
+    let origin =
+        run_git(workspace, &["config", "--get", "remote.origin.url"]).filter(|s| !s.is_empty());
     Some(GitInfo {
         branch,
         commit,
         dirty_files: dirty,
+        origin,
     })
 }
 

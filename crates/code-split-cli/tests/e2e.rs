@@ -8,10 +8,16 @@
 //! absolute paths, timings). The comparison therefore:
 //!   1. asserts the volatile fields that MUST differ between two runs actually
 //!      differ (proof we compared a fresh run, not a stale copy);
-//!   2. rewrites every volatile field to a fixed canonical value on BOTH the
-//!      fresh output and the golden;
+//!   2. normalizes the volatile header **structure-preservingly** on BOTH sides
+//!      — only scalar leaves are blanked (with a type tag); object keys, array
+//!      lengths and leaf types are kept, so the comparison still enforces the
+//!      *presence* and *shape* of every field, not just its value (e.g. a golden
+//!      missing `git.origin`, or a field that changed type, still fails);
 //!   3. compares the entire normalized structure character-for-character and
 //!      requires a 100% match.
+//!
+//! Char-length contracts that structure preservation cannot express (the
+//! `git.commit` `--short=12` width) are asserted explicitly in `assert_git_shape`.
 //!
 //! The graph itself (nodes/edges/cycles/stats) is already machine-independent —
 //! the tool relativizes paths to the `{target}` placeholder — so it is compared
@@ -24,20 +30,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde_json::Value;
-
-/// Top-level header fields that are environment- or time-dependent and so are
-/// canonicalized away before the structural comparison.
-const VOLATILE: &[&str] = &[
-    "generated_at",
-    "command",
-    "workspace",
-    "target",
-    "config_file",
-    "versions",
-    "roots",
-    "git",
-    "timings",
-];
 
 /// Fields that MUST differ between the golden (captured earlier) and a fresh
 /// run — otherwise we are not actually exercising the binary.
@@ -91,15 +83,99 @@ fn read_golden(lang: &str) -> Value {
     serde_json::from_str(&text).expect("parse golden report json")
 }
 
-/// Replace every volatile field with a fixed sentinel so two reports captured
-/// at different times / on different machines normalize to the same bytes.
-fn canonicalize(v: &mut Value) {
-    let obj = v.as_object_mut().expect("report root is a JSON object");
-    for key in VOLATILE {
-        if obj.contains_key(*key) {
-            obj.insert((*key).to_string(), Value::String("<normalized>".into()));
-        }
+/// All header fields whose VALUES are volatile (env-/time-dependent) but whose
+/// SHAPE is a contract: presence of every (nested) key, array lengths, and leaf
+/// types must still match between a fresh run and the golden.
+const NORMALIZED_HEADER: &[&str] = &[
+    "generated_at",
+    "command",
+    "workspace",
+    "target",
+    "config_file",
+    "versions",
+    "roots",
+    "git",
+    "timings",
+];
+
+/// Structure-preserving normalization: recurse through a value and replace every
+/// scalar *leaf* with a type-tagged sentinel, while keeping object keys and array
+/// element counts intact. This filters out the volatile values yet still lets the
+/// byte comparison enforce **presence** (a missing/extra key differs), **length**
+/// (a different array/object size differs), and **leaf type** (string vs number).
+fn normalize_leaves(v: &mut Value) {
+    match v {
+        Value::Object(map) => map.values_mut().for_each(normalize_leaves),
+        Value::Array(arr) => arr.iter_mut().for_each(normalize_leaves),
+        Value::String(_) => *v = Value::String("<str>".into()),
+        Value::Number(_) => *v = Value::String("<num>".into()),
+        Value::Bool(_) => *v = Value::String("<bool>".into()),
+        Value::Null => *v = Value::String("<null>".into()),
     }
+}
+
+/// Normalize every volatile header field in place (structure-preserving), so the
+/// later comparison checks shape, not values. Top-level presence is asserted
+/// separately for a clearer error than a whole-document diff.
+fn canonicalize(v: &mut Value, lang: &str) {
+    let obj = v.as_object_mut().expect("report root is a JSON object");
+    for key in NORMALIZED_HEADER {
+        let field = obj
+            .get_mut(*key)
+            .unwrap_or_else(|| panic!("[{lang}] header field `{key}` missing from report"));
+        normalize_leaves(field);
+    }
+}
+
+/// Assert the shape of the dynamic `git` block on a fresh run: every field must
+/// be present with the right type, and the commit must be a (≥12-char) hex
+/// abbreviation. The *values* vary per checkout, so this is where we pin the
+/// contract — the blanket `canonicalize` cannot (it would erase the shape too).
+fn assert_git_shape(report: &Value, lang: &str) {
+    let git = report
+        .get("git")
+        .unwrap_or_else(|| panic!("[{lang}] report has no `git` block"));
+    let obj = git
+        .as_object()
+        .unwrap_or_else(|| panic!("[{lang}] `git` is not an object: {git:?}"));
+
+    for field in ["branch", "commit", "dirty_files", "origin"] {
+        assert!(
+            obj.contains_key(field),
+            "[{lang}] git.{field} missing — every git field must be present: {git:?}"
+        );
+    }
+
+    let branch = obj["branch"]
+        .as_str()
+        .unwrap_or_else(|| panic!("[{lang}] git.branch is not a string: {:?}", obj["branch"]));
+    assert!(!branch.is_empty(), "[{lang}] git.branch is empty");
+
+    let commit = obj["commit"]
+        .as_str()
+        .unwrap_or_else(|| panic!("[{lang}] git.commit is not a string: {:?}", obj["commit"]));
+    // We request `--short=12`; git may extend it to stay unambiguous but never
+    // shortens it. A 7-char value (the old `--short` default) must fail here.
+    assert!(
+        commit.len() >= 12,
+        "[{lang}] git.commit must be at least 12 chars (got {} in {commit:?})",
+        commit.len()
+    );
+    assert!(
+        commit.bytes().all(|b| b.is_ascii_hexdigit()),
+        "[{lang}] git.commit is not a hex hash: {commit:?}"
+    );
+
+    assert!(
+        obj["dirty_files"].is_u64(),
+        "[{lang}] git.dirty_files must be a non-negative integer: {:?}",
+        obj["dirty_files"]
+    );
+
+    let origin = obj["origin"]
+        .as_str()
+        .unwrap_or_else(|| panic!("[{lang}] git.origin is not a string: {:?}", obj["origin"]));
+    assert!(!origin.is_empty(), "[{lang}] git.origin is empty");
 }
 
 fn assert_sample_matches(lang: &str) {
@@ -121,9 +197,16 @@ fn assert_sample_matches(lang: &str) {
         );
     }
 
-    // 2. Normalize the volatile header on both sides.
-    canonicalize(&mut fresh);
-    canonicalize(&mut golden);
+    // 1b. The commit hash has a char-length contract (`--short=12`) that a
+    // structure-preserving normalization cannot express, so check it explicitly
+    // on the fresh, real-git output (alongside presence/type of every git field).
+    assert_git_shape(&fresh, lang);
+
+    // 2. Structure-preserving normalization of the volatile header on both sides:
+    // values are blanked, but keys, array lengths and leaf types are kept — so
+    // the comparison below still enforces presence and shape of every field.
+    canonicalize(&mut fresh, lang);
+    canonicalize(&mut golden, lang);
 
     // 3. Character-for-character comparison of the whole normalized structure.
     // serde_json's default map sorts keys, so both sides serialize identically.
