@@ -72,7 +72,11 @@ pub fn run(workspace: &Path) -> Result<(PluginGraphs, Vec<StageTime>)> {
 /// Returns the `src/` directory if present, otherwise the workspace root.
 fn find_source_root(workspace: &Path) -> PathBuf {
     let src = workspace.join("src");
-    if src.is_dir() { src } else { workspace.to_owned() }
+    if src.is_dir() {
+        src
+    } else {
+        workspace.to_owned()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -268,7 +272,10 @@ fn parse_and_add(
 /// `react` → `react`, `lodash/fp` → `lodash`, `@scope/pkg/sub` → `@scope/pkg`.
 /// Returns `None` for relative (`./`, `../`) and `@/` alias specifiers.
 fn external_package(spec: &str) -> Option<String> {
-    if spec.starts_with("./") || spec.starts_with("../") || spec.starts_with("@/") || spec.is_empty()
+    if spec.starts_with("./")
+        || spec.starts_with("../")
+        || spec.starts_with("@/")
+        || spec.is_empty()
     {
         return None;
     }

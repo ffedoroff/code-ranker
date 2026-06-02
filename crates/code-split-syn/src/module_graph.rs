@@ -702,26 +702,15 @@ mod tests {
         index.insert(vec!["commands".into()], "mod:commands".into());
         let externs: HashMap<String, NodeId> = HashMap::new();
         assert_eq!(
-            resolve_use_path(
-                &["commands".into(), "run".into()],
-                &[],
-                &index,
-                &externs
-            )
-            .as_deref(),
+            resolve_use_path(&["commands".into(), "run".into()], &[], &index, &externs).as_deref(),
             Some("mod:commands")
         );
         // A leading extern segment still resolves to the extern crate.
         let mut externs2: HashMap<String, NodeId> = HashMap::new();
         externs2.insert("once_cell".into(), "crate:once_cell".into());
         assert_eq!(
-            resolve_use_path(
-                &["once_cell".into(), "sync".into()],
-                &[],
-                &index,
-                &externs2
-            )
-            .as_deref(),
+            resolve_use_path(&["once_cell".into(), "sync".into()], &[], &index, &externs2)
+                .as_deref(),
             Some("crate:once_cell")
         );
     }
@@ -737,8 +726,12 @@ mod tests {
         let mut c = CratePathCollector::default();
         syn::visit::Visit::visit_file(&mut c, &f);
         assert!(
-            c.paths
-                .contains(&vec!["once_cell".into(), "sync".into(), "Lazy".into(), "new".into()]),
+            c.paths.contains(&vec![
+                "once_cell".into(),
+                "sync".into(),
+                "Lazy".into(),
+                "new".into()
+            ]),
             "got {:?}",
             c.paths
         );

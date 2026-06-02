@@ -64,8 +64,8 @@ fn run_report(lang: &str) -> Value {
         .expect("spawn code-split");
     assert!(status.success(), "code-split failed for sample `{lang}`");
 
-    let text = std::fs::read_to_string(out_dir.path().join("fresh.json"))
-        .expect("read fresh report json");
+    let text =
+        std::fs::read_to_string(out_dir.path().join("fresh.json")).expect("read fresh report json");
     serde_json::from_str(&text).expect("parse fresh report json")
 }
 

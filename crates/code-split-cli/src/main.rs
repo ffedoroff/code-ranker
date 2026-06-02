@@ -527,7 +527,10 @@ fn print_human_diagnostics(
         if !tune.is_empty() {
             println!("  tune   {tune}");
         }
-        println!("  ref    {DOCS_URL}/ERRORS.md#group-{}", v.group.to_lowercase());
+        println!(
+            "  ref    {DOCS_URL}/ERRORS.md#group-{}",
+            v.group.to_lowercase()
+        );
         println!();
     }
 
@@ -838,7 +841,9 @@ fn render_name(template: &str, target: &Path, commit: Option<&str>) -> String {
     while let Some(start) = out.find("{git-hash-") {
         let rest = &out[start + "{git-hash-".len()..];
         let Some(end_rel) = rest.find('}') else { break };
-        let Ok(n) = rest[..end_rel].parse::<usize>() else { break };
+        let Ok(n) = rest[..end_rel].parse::<usize>() else {
+            break;
+        };
         let take: String = hash.chars().take(n).collect();
         let token_end = start + "{git-hash-".len() + end_rel + 1;
         out.replace_range(start..token_end, &take);

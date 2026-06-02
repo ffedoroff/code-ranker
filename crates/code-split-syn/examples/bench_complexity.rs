@@ -87,9 +87,9 @@ impl<'ast> Visit<'ast> for FileStats {
 // ---------------------------------------------------------------------------
 
 fn main() {
-    let root = std::env::args().nth(1).unwrap_or_else(|| {
-        "/path/to/project".into()
-    });
+    let root = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "/path/to/project".into());
 
     let files: Vec<_> = walkdir::WalkDir::new(&root)
         .into_iter()

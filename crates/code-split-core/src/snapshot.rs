@@ -385,10 +385,7 @@ mod tests {
 
     fn sample_snapshot() -> Snapshot {
         let mut graphs = PluginGraphs::default();
-        graphs
-            .files
-            .nodes
-            .push(node("crate:foo", NodeKind::Crate));
+        graphs.files.nodes.push(node("crate:foo", NodeKind::Crate));
         Snapshot::new(
             "report".into(),
             "/work".into(),

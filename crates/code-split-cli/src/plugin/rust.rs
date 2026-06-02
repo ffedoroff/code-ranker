@@ -1,5 +1,7 @@
 use anyhow::Result;
-use code_split_core::{Edge, EdgeKind, Graph, GraphBuilder, Node, NodeKind, PluginGraphs, StageTime};
+use code_split_core::{
+    Edge, EdgeKind, Graph, GraphBuilder, Node, NodeKind, PluginGraphs, StageTime,
+};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -87,9 +89,10 @@ fn collapse_to_files(full: Graph) -> Graph {
         if e.kind != EdgeKind::Contains {
             continue;
         }
-        let (Some(from), Some(to)) =
-            (node_by_id.get(e.from.as_str()), node_by_id.get(e.to.as_str()))
-        else {
+        let (Some(from), Some(to)) = (
+            node_by_id.get(e.from.as_str()),
+            node_by_id.get(e.to.as_str()),
+        ) else {
             continue;
         };
         if from.kind == NodeKind::Crate && to.kind == NodeKind::Module && !to.path.is_empty() {

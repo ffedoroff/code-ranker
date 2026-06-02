@@ -994,7 +994,6 @@ fn check_node_metrics(
     }
 }
 
-
 /// A clickable "id — path:line" location for a node, falling back to just the id.
 fn node_location(node: &Node) -> String {
     match (node.path.as_str(), node.line) {
