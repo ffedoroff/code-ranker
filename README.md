@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ffedoroff/code-split/actions/workflows/ci.yml/badge.svg)](https://github.com/ffedoroff/code-split/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ffedoroff/code-split/branch/main/graph/badge.svg)](https://codecov.io/gh/ffedoroff/code-split)
-[![dependencies](https://deps.rs/crate/code-split/1.0.0-alpha.1/status.svg)](https://deps.rs/crate/code-split/1.0.0-alpha.1)
+[![dependencies](https://deps.rs/crate/code-split/1.0.0-alpha.2/status.svg)](https://deps.rs/crate/code-split/1.0.0-alpha.2)
 [![Crates.io](https://img.shields.io/crates/v/code-split.svg)](https://crates.io/crates/code-split)
 [![npm](https://img.shields.io/npm/v/code-split.svg)](https://www.npmjs.com/package/code-split)
 [![PyPI](https://img.shields.io/pypi/v/code-split.svg)](https://pypi.org/project/code-split/)
@@ -67,7 +67,7 @@ curl -fsSL https://github.com/ffedoroff/code-split/releases/latest/download/code
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/ffedoroff/code-split/releases/latest/download/code-split-installer.ps1 | iex"
 
 # Rust (Cargo)
-cargo install code-split --version 1.0.0-alpha.1
+cargo install code-split --version 1.0.0-alpha.2
 
 # Node (npm)
 npm install -g code-split
@@ -76,10 +76,10 @@ npm install -g code-split
 pip install code-split
 
 # Docker (Docker Hub)
-docker pull fedoroff/code-split:1.0.0-alpha.1
+docker pull fedoroff/code-split:1.0.0-alpha.2
 
 # Docker (GHCR — no anonymous rate limits)
-docker pull ghcr.io/ffedoroff/code-split:1.0.0-alpha.1
+docker pull ghcr.io/ffedoroff/code-split:1.0.0-alpha.2
 ```
 
 All channels ship the same `code-split` binary built from the same Rust source. Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64).
