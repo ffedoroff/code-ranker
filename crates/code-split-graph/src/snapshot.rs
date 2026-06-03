@@ -1,16 +1,59 @@
-use crate::graph::{Graph, NodeKind};
+//! The serializable analysis artifact ([`Snapshot`]) and its per-level payload
+//! ([`LevelGraph`]), plus canonical (deterministic) JSON serialization and id
+//! relativization.
+//!
+//! Shape (schema version `"2"`): the snapshot keeps the historical header
+//! (workspace/target/plugin/roots/versions/git/timings) and carries a `graphs`
+//! map `level_name -> LevelGraph`. Each [`LevelGraph`] bundles the structural
+//! graph (`nodes`/`edges`) with the level's semantics dictionaries
+//! (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`) and the
+//! computed `cycles` + `stats`, so the UI can render any language/metric set
+//! without hardcoding names.
+
 use chrono::{DateTime, Utc};
+use code_split_plugin_api::{
+    AttrValue, AttributeGroup, AttributeSpec, Edge, EdgeKindSpec, Graph, Node, NodeId,
+};
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
+/// Per-stage timing in milliseconds, in execution order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StageTime {
     pub stage: String,
     pub ms: u64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub detail: String,
+}
+
+/// One strongly-connected component with ≥ 2 nodes, plus its classification
+/// (`"mutual"` / `"chain"` / `"test_embed"`). Node ids match the level graph.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CycleGroup {
+    pub kind: String,
+    pub nodes: Vec<NodeId>,
+}
+
+/// Everything for one analysis level: the structural graph, the semantics
+/// dictionaries that describe its vocabulary, and the computed cycles + stats.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LevelGraph {
+    /// Edge kinds present at this level (keyed by kind), with `flow` semantics.
+    pub edge_kinds: BTreeMap<String, EdgeKindSpec>,
+    /// Node attribute dictionary (structural keys + appended computed metrics).
+    pub node_attributes: BTreeMap<String, AttributeSpec>,
+    /// Edge attribute dictionary.
+    pub edge_attributes: BTreeMap<String, AttributeSpec>,
+    /// Attribute group definitions referenced by `AttributeSpec.group`.
+    pub attribute_groups: BTreeMap<String, AttributeGroup>,
+    pub nodes: Vec<Node>,
+    pub edges: Vec<Edge>,
+    /// SCCs with ≥ 2 members, classified by kind.
+    pub cycles: Vec<CycleGroup>,
+    /// Per-graph averages of numeric node attributes (flat, keyed by attr name).
+    pub stats: BTreeMap<String, AttrValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,16 +69,16 @@ pub struct Snapshot {
     /// Config file used for this analysis, if any was found.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_file: Option<String>,
-    pub versions: HashMap<String, String>,
-    /// Named system roots used to shorten node paths (e.g. `{cargo}`, `{rustup}`).
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub roots: HashMap<String, String>,
+    pub versions: BTreeMap<String, String>,
+    /// Named system roots used to shorten node paths (e.g. `{registry}`).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub roots: BTreeMap<String, String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub git: Option<GitInfo>,
-    /// Per-stage timing in milliseconds, in execution order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub timings: Vec<StageTime>,
-    pub graphs: PluginGraphs,
+    /// Analysis levels, keyed by level name. Today only `"files"` is produced.
+    pub graphs: BTreeMap<String, LevelGraph>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,18 +86,9 @@ pub struct GitInfo {
     pub branch: String,
     pub commit: String,
     pub dirty_files: u32,
-    /// Remote `origin` URL (raw, e.g. `git@gitlab.example.com:group/proj.git`).
-    /// Used by the HTML report to build "open in GitLab/GitHub" source links.
+    /// Remote `origin` URL (raw). Used by the HTML report for source links.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct PluginGraphs {
-    /// The single file-level graph: `File` nodes + `External` library nodes,
-    /// connected by file→file `Uses`/`Reexports` edges and file→library
-    /// `Uses {external}` edges.
-    pub files: Graph,
 }
 
 impl Snapshot {
@@ -65,14 +99,14 @@ impl Snapshot {
         target: String,
         plugin: String,
         config_file: Option<String>,
-        versions: HashMap<String, String>,
-        roots: HashMap<String, String>,
+        versions: BTreeMap<String, String>,
+        roots: BTreeMap<String, String>,
         git: Option<GitInfo>,
         timings: Vec<StageTime>,
-        graphs: PluginGraphs,
+        graphs: BTreeMap<String, LevelGraph>,
     ) -> Self {
         Self {
-            schema_version: "1".to_string(),
+            schema_version: "2".to_string(),
             generated_at: Utc::now(),
             command,
             workspace,
@@ -92,21 +126,16 @@ impl Snapshot {
 // Canonical (deterministic) JSON serialization
 // ---------------------------------------------------------------------------
 
-/// Serialize to canonical pretty JSON: every object key is emitted in
-/// alphabetical order and the graph `nodes` / `edges` arrays are sorted by a
-/// stable key (`id` for nodes; `from`, `to`, `kind` for edges). This makes the
-/// output byte-stable for unchanged input — re-running the analysis never
-/// reorders keys (e.g. from `HashMap` iteration order) or array entries.
-///
-/// `serde_json::Value` is backed by a `BTreeMap`, so round-tripping through it
-/// yields alphabetical keys for free; we only sort the data arrays explicitly.
+/// Serialize to canonical pretty JSON: object keys come out alphabetically
+/// (`serde_json::Value` is backed by a `BTreeMap`), and the `nodes`/`edges`
+/// arrays are sorted by a stable key so unchanged input is byte-identical.
 pub fn to_canonical_string_pretty<T: Serialize>(value: &T) -> serde_json::Result<String> {
     let mut v = serde_json::to_value(value)?;
     canonicalize_value(&mut v);
     serde_json::to_string_pretty(&v)
 }
 
-/// Compact counterpart of [`to_canonical_string_pretty`] (no indentation).
+/// Compact counterpart of [`to_canonical_string_pretty`].
 pub fn to_canonical_string<T: Serialize>(value: &T) -> serde_json::Result<String> {
     let mut v = serde_json::to_value(value)?;
     canonicalize_value(&mut v);
@@ -124,16 +153,14 @@ fn canonicalize_value(v: &mut serde_json::Value) {
             for val in map.values_mut() {
                 canonicalize_value(val);
             }
-            // Data arrays get a stable order so two snapshots of unchanged code
-            // are byte-identical regardless of plugin emission order.
             if let Some(serde_json::Value::Array(nodes)) = map.get_mut("nodes") {
                 nodes.sort_by_key(|a| json_str(a, "id"));
             }
             if let Some(serde_json::Value::Array(edges)) = map.get_mut("edges") {
                 edges.sort_by(|a, b| {
-                    json_str(a, "from")
-                        .cmp(&json_str(b, "from"))
-                        .then_with(|| json_str(a, "to").cmp(&json_str(b, "to")))
+                    json_str(a, "source")
+                        .cmp(&json_str(b, "source"))
+                        .then_with(|| json_str(a, "target").cmp(&json_str(b, "target")))
                         .then_with(|| json_str(a, "kind").cmp(&json_str(b, "kind")))
                 });
             }
@@ -150,33 +177,89 @@ fn json_str(v: &serde_json::Value, key: &str) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Path relativization
+// Id relativization
 // ---------------------------------------------------------------------------
 
-/// Rewrite all node `path` fields to be relative:
-/// - paths under `target` → plain relative path (`src/main.rs`)
-/// - paths under a named root → `{name}/rest/of/path`
-/// - anything else → left as-is
-pub fn relativize_graphs(
-    graphs: &mut PluginGraphs,
-    target: &Path,
-    roots: &HashMap<String, String>,
-) {
-    for node in &mut graphs.files.nodes {
-        node.path = relativize_path(&node.path, target, roots);
+/// Rewrite a file-based level graph from absolute paths to relativized ids:
+/// - file node ids (absolute paths) → `{target}/rel` or `{root}/rel`;
+/// - edge endpoints, node parents and cycle node lists follow the same map;
+/// - external node `path` attributes are relativized too;
+/// - redundant/empty `path` attributes are dropped (a file node's id IS its
+///   path, so it carries none).
+pub fn relativize_level(level: &mut LevelGraph, target: &Path, roots: &BTreeMap<String, String>) {
+    let id_map = relativize_graph_inner(&mut level.nodes, &mut level.edges, target, roots);
+    for cycle in &mut level.cycles {
+        for n in &mut cycle.nodes {
+            if let Some(nn) = id_map.get(n) {
+                *n = nn.clone();
+            }
+        }
     }
+}
+
+/// Relativize a structural [`Graph`] in place (before cycles are computed):
+/// file node ids (absolute paths) become `{target}/rel` / `{root}/rel`, edge
+/// endpoints and node parents follow, external `path` attributes are relativized,
+/// and redundant/empty `path` attributes are dropped.
+pub fn relativize_graph(graph: &mut Graph, target: &Path, roots: &BTreeMap<String, String>) {
+    relativize_graph_inner(&mut graph.nodes, &mut graph.edges, target, roots);
+}
+
+fn relativize_graph_inner(
+    nodes: &mut [Node],
+    edges: &mut [Edge],
+    target: &Path,
+    roots: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut id_map: BTreeMap<String, String> = BTreeMap::new();
+    for node in nodes.iter() {
+        if node.kind == "external" {
+            continue; // external ids (`ext:name`) are already short
+        }
+        let new_id = relativize_path(&node.id, target, roots);
+        if new_id != node.id {
+            id_map.insert(node.id.clone(), new_id);
+        }
+    }
+
+    for node in nodes.iter_mut() {
+        if let Some(new_id) = id_map.get(&node.id) {
+            node.id = new_id.clone();
+        }
+        if let Some(parent) = node.parent.as_mut()
+            && let Some(np) = id_map.get(parent)
+        {
+            *parent = np.clone();
+        }
+        if let Some(AttrValue::Str(p)) = node.attrs.get("path") {
+            let rel = relativize_path(p, target, roots);
+            if rel.is_empty() || rel == node.id {
+                node.attrs.remove("path");
+            } else {
+                node.attrs.insert("path".to_string(), AttrValue::Str(rel));
+            }
+        }
+    }
+    for edge in edges.iter_mut() {
+        if let Some(s) = id_map.get(&edge.source) {
+            edge.source = s.clone();
+        }
+        if let Some(t) = id_map.get(&edge.target) {
+            edge.target = t.clone();
+        }
+    }
+    id_map
 }
 
 pub(crate) fn relativize_path(
     path: &str,
     target: &Path,
-    roots: &HashMap<String, String>,
+    roots: &BTreeMap<String, String>,
 ) -> String {
     if path.is_empty() {
         return path.to_string();
     }
     let p = Path::new(path);
-    // target first — local paths become {target}/src/...
     if let Ok(rel) = p.strip_prefix(target) {
         return format!("{{target}}/{}", rel.to_string_lossy());
     }
@@ -191,406 +274,59 @@ pub(crate) fn relativize_path(
     path.to_string()
 }
 
-// ---------------------------------------------------------------------------
-// ID rewriting  (Variant A: {crate_name}::{path}, version only on conflict)
-// ---------------------------------------------------------------------------
-
-/// Rewrite all node `id`, `parent` and edge `from`/`to` fields from the raw
-/// cargo-based IDs to short human-readable IDs.
-///
-/// Scheme:
-/// - `crate:{pkg_repr}` → `crate:anyhow` / `crate:anyhow@1.0.102` (conflict)
-/// - `mod:{pkg_repr}::{path}` → `mod:anyhow::{path}`
-/// - `trait:{pkg_repr}::{path}` → `trait:anyhow::{path}`
-/// - `file:{abs_path}` → `file:{rel_path}` (relativized via roots)
-pub fn rewrite_ids(graphs: &mut PluginGraphs, target: &Path, roots: &HashMap<String, String>) {
-    // Step 1: collect (pkg_repr → (name, version)) from crate nodes.
-    let mut pkg_info: HashMap<String, (String, String)> = HashMap::new();
-    for node in graphs.files.nodes.iter() {
-        if node.kind == NodeKind::Crate
-            && let Some(pkg_repr) = node.id.strip_prefix("crate:")
-        {
-            pkg_info
-                .entry(pkg_repr.to_string())
-                .or_insert_with(|| parse_pkg_repr(pkg_repr));
-        }
-    }
-
-    // Step 2: detect name conflicts (same name, different versions).
-    let mut name_versions: HashMap<String, HashSet<String>> = HashMap::new();
-    for (name, version) in pkg_info.values() {
-        name_versions
-            .entry(name.clone())
-            .or_default()
-            .insert(version.clone());
-    }
-
-    // Step 3: pkg_repr → short crate identifier.
-    let crate_map: HashMap<String, String> = pkg_info
-        .iter()
-        .map(|(repr, (name, version))| {
-            let conflict = name_versions.get(name).is_some_and(|v| v.len() > 1);
-            let short = if conflict && !version.is_empty() {
-                format!("{name}@{version}")
-            } else {
-                name.clone()
-            };
-            (repr.clone(), short)
-        })
-        .collect();
-
-    // Step 4: build old_id → new_id for every node across all graphs.
-    let mut id_map: HashMap<String, String> = HashMap::new();
-    for node in graphs.files.nodes.iter() {
-        let new_id = rewrite_node_id(&node.id, &crate_map, target, roots);
-        if new_id != node.id {
-            id_map.insert(node.id.clone(), new_id);
-        }
-    }
-
-    // Step 5: apply mapping to nodes and edges.
-    let graph = &mut graphs.files;
-    for node in &mut graph.nodes {
-        if let Some(new_id) = id_map.get(&node.id) {
-            node.id = new_id.clone();
-        }
-        if let Some(parent) = node.parent.as_mut() {
-            if let Some(new_parent) = id_map.get(parent.as_str()) {
-                *parent = new_parent.clone();
-            } else {
-                // parent references a node not in any graph (e.g. stdlib file node);
-                // rewrite it directly instead of relying on id_map lookup.
-                let rewritten = rewrite_node_id(parent, &crate_map, target, roots);
-                if rewritten != *parent {
-                    *parent = rewritten;
-                }
-            }
-        }
-    }
-    for edge in &mut graph.edges {
-        if let Some(v) = id_map.get(&edge.from) {
-            edge.from = v.clone();
-        }
-        if let Some(v) = id_map.get(&edge.to) {
-            edge.to = v.clone();
-        }
-    }
-}
-
-fn rewrite_node_id(
-    id: &str,
-    crate_map: &HashMap<String, String>,
-    target: &Path,
-    roots: &HashMap<String, String>,
-) -> String {
-    // crate:
-    if let Some(pkg_repr) = id.strip_prefix("crate:") {
-        let short = crate_map
-            .get(pkg_repr)
-            .cloned()
-            .unwrap_or_else(|| parse_pkg_repr(pkg_repr).0);
-        return format!("crate:{short}");
-    }
-    // mod: / trait: / fn: / method:
-    for kind in ["mod", "trait", "fn", "method"] {
-        let prefix = format!("{kind}:");
-        if let Some(rest) = id.strip_prefix(&prefix)
-            && let Some((pkg_repr, path_part)) = split_version_boundary(rest)
-        {
-            let short = crate_map
-                .get(&pkg_repr)
-                .cloned()
-                .unwrap_or_else(|| parse_pkg_repr(&pkg_repr).0);
-            // Strip redundant `{crate_name}::` prefix from path when target == crate.
-            let trimmed = path_part
-                .strip_prefix(&format!("{short}::"))
-                .unwrap_or(&path_part)
-                .to_string();
-            return format!("{kind}:{short}::{trimmed}");
-        }
-    }
-    // file:
-    if let Some(abs_path) = id.strip_prefix("file:") {
-        let rel = relativize_path(abs_path, target, roots);
-        return format!("file:{rel}");
-    }
-    id.to_string()
-}
-
-/// Split `path+file:///path#0.1.0::mod::sub` into
-/// (`path+file:///path#0.1.0`, `mod::sub`).
-fn split_version_boundary(s: &str) -> Option<(String, String)> {
-    let hash_pos = s.find('#')?;
-    let after_hash = &s[hash_pos + 1..];
-    let colon_pos = after_hash.find("::")?;
-    let pkg_repr = s[..hash_pos + 1 + colon_pos].to_string();
-    let path_part = after_hash[colon_pos + 2..].to_string();
-    Some((pkg_repr, path_part))
-}
-
-/// Extract `(name, version)` from a raw cargo package repr.
-///
-/// Examples:
-/// - `path+file:///path/to/anyhow#1.0.102`   → (`anyhow`, `1.0.102`)
-/// - `registry+https://...#anyhow@1.0.102`   → (`anyhow`, `1.0.102`)
-/// - `git+https://...?tag=v0.1.0#a3f9c21`    → (`repo-name`, `v0.1.0`)
-fn parse_pkg_repr(repr: &str) -> (String, String) {
-    if let Some(hash_pos) = repr.rfind('#') {
-        let after = &repr[hash_pos + 1..];
-        // registry style: name@version after #
-        if let Some((name, ver)) = after.split_once('@') {
-            return (name.to_string(), ver.to_string());
-        }
-        // path style: version is after #, name is last component before #
-        let version = after.to_string();
-        let before = &repr[..hash_pos];
-        // strip query string (?tag=...) if present
-        let before = before.split('?').next().unwrap_or(before);
-        let name = before
-            .split('/')
-            .next_back()
-            .unwrap_or("unknown")
-            .to_string();
-        return (name, version);
-    }
-    // Fallback: use the whole thing as name
-    (repr.to_string(), String::new())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, EdgeKind, Node};
-
-    fn node(id: &str, kind: NodeKind) -> Node {
-        Node {
-            id: id.into(),
-            kind,
-            name: id.into(),
-            path: String::new(),
-            parent: None,
-            external: None,
-            version: None,
-            visibility: None,
-            loc: None,
-            line: None,
-            item_count: None,
-            method_count: None,
-            complexity: None,
-            cycle_kind: None,
-        }
-    }
-
-    // ── serde round-trip of the public artifact (P1) ────────────────────────
-
-    fn sample_snapshot() -> Snapshot {
-        let mut graphs = PluginGraphs::default();
-        graphs.files.nodes.push(node("crate:foo", NodeKind::Crate));
-        Snapshot::new(
-            "report".into(),
-            "/work".into(),
-            "/work/foo".into(),
-            "rust".into(),
-            None,
-            HashMap::new(),
-            HashMap::new(),
-            None,
-            Vec::new(),
-            graphs,
-        )
-    }
 
     #[test]
-    fn snapshot_roundtrips_through_json() {
-        let snap = sample_snapshot();
-        let json = serde_json::to_string(&snap).unwrap();
-        let back: Snapshot = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.schema_version, "1");
-        assert_eq!(back.command, "report");
-        assert_eq!(back.plugin, "rust");
-        assert_eq!(back.target, "/work/foo");
-        assert_eq!(back.graphs.files.nodes.len(), 1);
-        assert_eq!(back.graphs.files.nodes[0].id, "crate:foo");
-        // generated_at survives the RFC3339 round-trip to the same instant.
-        assert_eq!(back.generated_at, snap.generated_at);
-    }
-
-    #[test]
-    fn snapshot_omits_absent_optional_fields() {
-        let json = serde_json::to_string(&sample_snapshot()).unwrap();
-        assert!(
-            !json.contains("\"git\""),
-            "None git is not serialized: {json}"
-        );
-        assert!(!json.contains("config_file"), "None config_file is skipped");
-        assert!(!json.contains("timings"), "empty timings is skipped");
-    }
-
-    #[test]
-    fn snapshot_keeps_present_optional_fields() {
-        let mut snap = sample_snapshot();
-        snap.git = Some(GitInfo {
-            branch: "main".into(),
-            commit: "abc".into(),
-            dirty_files: 2,
-            origin: None,
-        });
-        snap.timings.push(StageTime {
-            stage: "parse".into(),
-            ms: 5,
-            detail: String::new(),
-        });
-        let json = serde_json::to_string(&snap).unwrap();
-        let back: Snapshot = serde_json::from_str(&json).unwrap();
-        let git = back.git.unwrap();
-        assert_eq!(git.branch, "main");
-        assert_eq!(git.dirty_files, 2);
-        assert_eq!(back.timings.len(), 1);
-        assert_eq!(back.timings[0].stage, "parse");
-    }
-
-    // ── relativize_path ─────────────────────────────────────────────────────
-
-    #[test]
-    fn relativize_path_empty_stays_empty() {
-        assert_eq!(relativize_path("", Path::new("/p"), &HashMap::new()), "");
-    }
-
-    #[test]
-    fn relativize_path_under_target_uses_target_token() {
-        let got = relativize_path("/p/src/main.rs", Path::new("/p"), &HashMap::new());
+    fn relativize_path_under_target_uses_token() {
+        let got = relativize_path("/p/src/main.rs", Path::new("/p"), &BTreeMap::new());
         assert_eq!(got, "{target}/src/main.rs");
     }
 
     #[test]
-    fn relativize_path_under_named_root_uses_root_token() {
-        let roots = HashMap::from([("cargo".to_string(), "/home/u/.cargo".to_string())]);
-        let got = relativize_path("/home/u/.cargo/registry/foo.rs", Path::new("/p"), &roots);
-        assert_eq!(got, "{cargo}/registry/foo.rs");
-    }
-
-    #[test]
     fn relativize_path_longest_root_wins() {
-        // Both roots are prefixes of the path; the longer one (`cargo`) wins.
-        let roots = HashMap::from([
+        let roots = BTreeMap::from([
             ("home".to_string(), "/home/u".to_string()),
-            ("cargo".to_string(), "/home/u/.cargo".to_string()),
+            ("registry".to_string(), "/home/u/.cargo".to_string()),
         ]);
         let got = relativize_path("/home/u/.cargo/x.rs", Path::new("/p"), &roots);
-        assert_eq!(got, "{cargo}/x.rs");
+        assert_eq!(got, "{registry}/x.rs");
     }
 
     #[test]
-    fn relativize_path_unmatched_is_unchanged() {
-        let got = relativize_path("/elsewhere/x.rs", Path::new("/p"), &HashMap::new());
-        assert_eq!(got, "/elsewhere/x.rs");
-    }
-
-    // ── parse_pkg_repr ──────────────────────────────────────────────────────
-
-    #[test]
-    fn parse_pkg_repr_registry_path_and_fallback() {
-        let cases = vec![
-            (
-                "registry+https://github.com/rust-lang/crates.io-index#anyhow@1.0.102",
-                ("anyhow", "1.0.102"),
-            ),
-            ("path+file:///path/to/anyhow#1.0.102", ("anyhow", "1.0.102")),
-            ("bare-name-no-hash", ("bare-name-no-hash", "")),
-        ];
-        for (repr, (name, ver)) in cases {
-            let (gn, gv) = parse_pkg_repr(repr);
-            assert_eq!(gn, name, "name for {repr:?}");
-            assert_eq!(gv, ver, "version for {repr:?}");
-        }
-    }
-
-    #[test]
-    fn parse_pkg_repr_git_uses_commit_after_hash() {
-        // Cargo git source ids carry the commit sha after `#`; the `?tag=...`
-        // query is stripped and the repo name is the last path segment.
-        // NB: the returned "version" is the commit, not the tag.
-        let (name, ver) = parse_pkg_repr("git+https://github.com/foo/repo?tag=v0.1.0#a3f9c21");
-        assert_eq!(name, "repo");
-        assert_eq!(ver, "a3f9c21");
-    }
-
-    // ── split_version_boundary ──────────────────────────────────────────────
-
-    #[test]
-    fn split_version_boundary_splits_after_hash_at_first_path_colons() {
-        let got = split_version_boundary("path+file:///p#0.1.0::mod::sub");
-        assert_eq!(
-            got,
-            Some(("path+file:///p#0.1.0".to_string(), "mod::sub".to_string()))
-        );
-    }
-
-    #[test]
-    fn split_version_boundary_none_without_hash_or_path_colons() {
-        assert_eq!(split_version_boundary("mod::sub"), None, "no '#'");
-        assert_eq!(
-            split_version_boundary("has#hash-but-no-colons"),
-            None,
-            "'#' present but no '::' after it"
-        );
-    }
-
-    // ── rewrite_ids ─────────────────────────────────────────────────────────
-
-    #[test]
-    fn rewrite_ids_shortens_single_crate_to_name() {
-        let mut graphs = PluginGraphs::default();
-        graphs
-            .files
-            .nodes
-            .push(node("crate:path+file:///x/anyhow#1.0.102", NodeKind::Crate));
-        rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
-        assert_eq!(graphs.files.nodes[0].id, "crate:anyhow");
-    }
-
-    #[test]
-    fn rewrite_ids_disambiguates_name_conflicts_with_version() {
-        // Same crate name at two versions → both keep `@version` suffixes.
-        let mut graphs = PluginGraphs::default();
-        graphs
-            .files
-            .nodes
-            .push(node("crate:path+file:///a/foo#1.0.0", NodeKind::Crate));
-        graphs
-            .files
-            .nodes
-            .push(node("crate:path+file:///b/foo#2.0.0", NodeKind::Crate));
-        rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
-        let ids: Vec<&str> = graphs.files.nodes.iter().map(|n| n.id.as_str()).collect();
-        assert!(ids.contains(&"crate:foo@1.0.0"), "got {ids:?}");
-        assert!(ids.contains(&"crate:foo@2.0.0"), "got {ids:?}");
-    }
-
-    #[test]
-    fn rewrite_ids_rewrites_edge_endpoints_and_file_ids() {
-        let mut graphs = PluginGraphs::default();
-        graphs
-            .files
-            .nodes
-            .push(node("crate:path+file:///x/anyhow#1.0.102", NodeKind::Crate));
-        graphs
-            .files
-            .nodes
-            .push(node("file:/x/src/lib.rs", NodeKind::File));
-        graphs.files.edges.push(Edge {
-            from: "crate:path+file:///x/anyhow#1.0.102".into(),
-            to: "file:/x/src/lib.rs".into(),
-            kind: EdgeKind::Contains,
-            unresolved: None,
-            external: None,
-            visibility: None,
+    fn relativize_level_rewrites_ids_edges_and_cycles() {
+        use code_split_plugin_api::Edge;
+        let mut level = LevelGraph::default();
+        level.nodes.push(Node {
+            id: "/p/src/a.rs".into(),
+            kind: "file".into(),
+            name: "a.rs".into(),
+            parent: None,
+            attrs: Default::default(),
         });
-        rewrite_ids(&mut graphs, Path::new("/x"), &HashMap::new());
-        // file id is relativized against the target.
-        assert_eq!(graphs.files.nodes[1].id, "file:{target}/src/lib.rs");
-        // edge endpoints follow the node-id rewrite.
-        assert_eq!(graphs.files.edges[0].from, "crate:anyhow");
-        assert_eq!(graphs.files.edges[0].to, "file:{target}/src/lib.rs");
+        level.nodes.push(Node {
+            id: "ext:serde".into(),
+            kind: "external".into(),
+            name: "serde".into(),
+            parent: None,
+            attrs: Default::default(),
+        });
+        level.edges.push(Edge {
+            source: "/p/src/a.rs".into(),
+            target: "ext:serde".into(),
+            kind: "uses".into(),
+            attrs: Default::default(),
+        });
+        level.cycles.push(CycleGroup {
+            kind: "mutual".into(),
+            nodes: vec!["/p/src/a.rs".into()],
+        });
+        relativize_level(&mut level, Path::new("/p"), &BTreeMap::new());
+        assert_eq!(level.nodes[0].id, "{target}/src/a.rs");
+        assert_eq!(level.nodes[1].id, "ext:serde");
+        assert_eq!(level.edges[0].source, "{target}/src/a.rs");
+        assert_eq!(level.edges[0].target, "ext:serde");
+        assert_eq!(level.cycles[0].nodes[0], "{target}/src/a.rs");
     }
 }

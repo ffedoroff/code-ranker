@@ -7,8 +7,10 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Code Split plugin contract: the LanguagePlugin trait every language plugin implements."
+description = "Code Split plugin contract: the generic entity/relation model + the LanguagePlugin trait. Zero dependency on other code-split crates."
 
+# IMPORTANT: this crate is the FOUNDATION. It must NOT depend on any other
+# code-split crate, and it re-exports nothing — everyone else depends on it.
 [dependencies]
-code-split-graph = { workspace = true }
 anyhow = { workspace = true }
+serde = { workspace = true }

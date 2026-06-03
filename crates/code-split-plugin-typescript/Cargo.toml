@@ -1,5 +1,5 @@
 [package]
-name = "code-split-plugin-javascript"
+name = "code-split-plugin-typescript"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,15 +7,16 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
-description = "Code Split JavaScript/TypeScript plugin: tree-sitter module/import graph."
+description = "Code Split TypeScript plugin: tree-sitter over .ts/.tsx, sharing ECMAScript logic with the JavaScript plugin."
 
 [dependencies]
 code-split-plugin-api = { workspace = true }
 code-split-graph = { workspace = true }
+code-split-plugin-javascript = { workspace = true }
 anyhow = { workspace = true }
 walkdir = { workspace = true }
 tree-sitter = { workspace = true }
-tree-sitter-javascript = { workspace = true }
+tree-sitter-typescript = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

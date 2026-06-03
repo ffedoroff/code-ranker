@@ -1,6 +1,6 @@
 use super::ids::crate_node_id;
+use super::internal::{Edge, EdgeKind, GraphBuilder, Node, NodeKind};
 use cargo_metadata::Metadata;
-use code_split_graph::{Edge, EdgeKind, GraphBuilder, Node, NodeKind};
 use std::collections::HashSet;
 
 pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) {
@@ -20,9 +20,6 @@ pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) {
             loc: None,
             line: None,
             item_count: None,
-            method_count: None,
-            complexity: None,
-            cycle_kind: None,
         });
     }
 
@@ -40,8 +37,6 @@ pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) {
                 from: from.clone(),
                 to: crate_node_id(&dep.pkg.repr),
                 kind: EdgeKind::Uses,
-                unresolved: None,
-                external: None,
                 visibility: None,
             });
         }

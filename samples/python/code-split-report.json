@@ -10,325 +10,390 @@
   },
   "graphs": {
     "files": {
+      "attribute_groups": {
+        "complexity": {
+          "hint": "Code complexity metrics",
+          "label": "Complexity"
+        },
+        "coupling": {
+          "hint": "Internal coupling (Henry-Kafura)",
+          "label": "Coupling"
+        },
+        "halstead": {
+          "hint": "Halstead software metrics",
+          "label": "Halstead"
+        },
+        "loc": {
+          "hint": "Lines of code breakdown",
+          "label": "Lines of Code"
+        },
+        "maintainability": {
+          "hint": "Maintainability index",
+          "label": "Maintainability"
+        }
+      },
       "cycles": [
         {
           "kind": "mutual",
           "nodes": [
-            "file:{target}/pkg/a.py",
-            "file:{target}/pkg/b.py"
+            "{target}/pkg/a.py",
+            "{target}/pkg/b.py"
           ]
         }
       ],
+      "edge_attributes": {},
+      "edge_kinds": {
+        "uses": {
+          "flow": true,
+          "hint": "Import dependency \u2014 this file imports from the other.",
+          "label": "uses"
+        }
+      },
       "edges": [
         {
-          "external": true,
-          "from": "file:{target}/pkg/a.py",
           "kind": "uses",
-          "to": "ext:base64"
+          "source": "{target}/pkg/a.py",
+          "target": "ext:base64"
         },
         {
-          "external": true,
-          "from": "file:{target}/pkg/a.py",
           "kind": "uses",
-          "to": "ext:json"
+          "source": "{target}/pkg/a.py",
+          "target": "ext:json"
         },
         {
-          "external": true,
-          "from": "file:{target}/pkg/a.py",
           "kind": "uses",
-          "to": "ext:os"
+          "source": "{target}/pkg/a.py",
+          "target": "ext:os"
         },
         {
-          "from": "file:{target}/pkg/a.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/__init__.py"
+          "source": "{target}/pkg/a.py",
+          "target": "{target}/pkg/__init__.py"
         },
         {
-          "from": "file:{target}/pkg/a.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/b.py"
+          "source": "{target}/pkg/a.py",
+          "target": "{target}/pkg/b.py"
         },
         {
-          "from": "file:{target}/pkg/a.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/c.py"
+          "source": "{target}/pkg/a.py",
+          "target": "{target}/pkg/c.py"
         },
         {
-          "external": true,
-          "from": "file:{target}/pkg/b.py",
           "kind": "uses",
-          "to": "ext:importlib"
+          "source": "{target}/pkg/b.py",
+          "target": "ext:importlib"
         },
         {
-          "from": "file:{target}/pkg/b.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/__init__.py"
+          "source": "{target}/pkg/b.py",
+          "target": "{target}/pkg/__init__.py"
         },
         {
-          "from": "file:{target}/pkg/b.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/a.py"
+          "source": "{target}/pkg/b.py",
+          "target": "{target}/pkg/a.py"
         },
         {
-          "from": "file:{target}/pkg/b.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/c.py"
+          "source": "{target}/pkg/b.py",
+          "target": "{target}/pkg/c.py"
         },
         {
-          "external": true,
-          "from": "file:{target}/pkg/c.py",
           "kind": "uses",
-          "to": "ext:requests"
+          "source": "{target}/pkg/c.py",
+          "target": "ext:requests"
         },
         {
-          "from": "file:{target}/tests/test_pkg.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/__init__.py"
+          "source": "{target}/tests/test_pkg.py",
+          "target": "{target}/pkg/__init__.py"
         },
         {
-          "from": "file:{target}/tests/test_pkg.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/a.py"
+          "source": "{target}/tests/test_pkg.py",
+          "target": "{target}/pkg/a.py"
         },
         {
-          "from": "file:{target}/tests/test_pkg.py",
           "kind": "uses",
-          "to": "file:{target}/pkg/b.py"
+          "source": "{target}/tests/test_pkg.py",
+          "target": "{target}/pkg/b.py"
         }
       ],
+      "node_attributes": {
+        "blank": {
+          "group": "loc",
+          "label": "Blank",
+          "value_type": "int"
+        },
+        "bugs": {
+          "group": "halstead",
+          "label": "Bugs",
+          "value_type": "float"
+        },
+        "cloc": {
+          "group": "loc",
+          "label": "Comments",
+          "value_type": "int"
+        },
+        "cycle": {
+          "label": "Cycle",
+          "value_type": "str"
+        },
+        "cyclomatic": {
+          "group": "complexity",
+          "label": "Cyclomatic",
+          "value_type": "int"
+        },
+        "effort": {
+          "group": "halstead",
+          "label": "Effort",
+          "value_type": "float"
+        },
+        "exits": {
+          "group": "complexity",
+          "label": "Exits",
+          "value_type": "int"
+        },
+        "external": {
+          "label": "External",
+          "value_type": "bool"
+        },
+        "fan_in": {
+          "group": "coupling",
+          "label": "Fan-in",
+          "value_type": "int"
+        },
+        "fan_out": {
+          "group": "coupling",
+          "label": "Fan-out",
+          "value_type": "int"
+        },
+        "fan_out_external": {
+          "group": "coupling",
+          "label": "Fan-out (external)",
+          "value_type": "int"
+        },
+        "hk": {
+          "group": "coupling",
+          "label": "HK",
+          "value_type": "float"
+        },
+        "length": {
+          "group": "halstead",
+          "label": "Length",
+          "value_type": "float"
+        },
+        "lloc": {
+          "group": "loc",
+          "label": "Logical",
+          "value_type": "int"
+        },
+        "loc": {
+          "label": "Lines",
+          "value_type": "int"
+        },
+        "mi": {
+          "group": "maintainability",
+          "label": "MI",
+          "value_type": "float"
+        },
+        "mi_sei": {
+          "group": "maintainability",
+          "label": "MI (SEI)",
+          "value_type": "float"
+        },
+        "sloc": {
+          "group": "loc",
+          "label": "Source",
+          "value_type": "int"
+        },
+        "time": {
+          "group": "halstead",
+          "label": "Time",
+          "value_type": "float"
+        },
+        "visibility": {
+          "label": "Visibility",
+          "value_type": "str"
+        },
+        "vocabulary": {
+          "group": "halstead",
+          "label": "Vocabulary",
+          "value_type": "float"
+        },
+        "volume": {
+          "group": "halstead",
+          "label": "Volume",
+          "value_type": "float"
+        }
+      },
       "nodes": [
         {
           "external": true,
           "id": "ext:base64",
           "kind": "external",
-          "name": "base64",
-          "path": ""
+          "name": "base64"
         },
         {
           "external": true,
           "id": "ext:importlib",
           "kind": "external",
-          "name": "importlib",
-          "path": ""
+          "name": "importlib"
         },
         {
           "external": true,
           "id": "ext:json",
           "kind": "external",
-          "name": "json",
-          "path": ""
+          "name": "json"
         },
         {
           "external": true,
           "id": "ext:os",
           "kind": "external",
-          "name": "os",
-          "path": ""
+          "name": "os"
         },
         {
           "external": true,
           "id": "ext:requests",
           "kind": "external",
-          "name": "requests",
-          "path": ""
+          "name": "requests"
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 3
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.00223,
-              "effort": 17.414,
-              "length": 5,
-              "time": 0.967,
-              "vocabulary": 5,
-              "volume": 11.609
-            },
-            "loc": {
-              "blank": 6,
-              "comments": 2,
-              "logical": 2,
-              "source": 9
-            },
-            "maintainability": {
-              "mi": 122.425,
-              "mi_sei": 134.378
-            }
-          },
-          "id": "file:{target}/pkg/__init__.py",
+          "blank": 6,
+          "bugs": 0.00223,
+          "cloc": 2,
+          "cyclomatic": 1,
+          "effort": 17.414,
+          "fan_in": 3,
+          "id": "{target}/pkg/__init__.py",
           "kind": "file",
+          "length": 5,
+          "lloc": 2,
           "loc": 10,
+          "mi": 122.425,
+          "mi_sei": 134.378,
           "name": "__init__.py",
-          "path": "{target}/pkg/__init__.py",
-          "visibility": "public"
+          "sloc": 9,
+          "time": 0.967,
+          "visibility": "public",
+          "vocabulary": 5,
+          "volume": 11.609
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 2,
-              "fan_out": 3,
-              "fan_out_external": 3,
-              "hk": 972
-            },
-            "cyclomatic": 1,
-            "exits": 3,
-            "halstead": {
-              "bugs": 0.0611,
-              "effort": 2482.727,
-              "length": 70,
-              "time": 137.929,
-              "vocabulary": 31,
-              "volume": 346.793
-            },
-            "loc": {
-              "blank": 10,
-              "comments": 9,
-              "logical": 11,
-              "source": 27
-            },
-            "maintainability": {
-              "mi": 86.274,
-              "mi_sei": 88.166
-            }
-          },
-          "cycle_kind": "mutual",
-          "id": "file:{target}/pkg/a.py",
+          "blank": 10,
+          "bugs": 0.0611,
+          "cloc": 9,
+          "cycle": "mutual",
+          "cyclomatic": 1,
+          "effort": 2482.727,
+          "exits": 3,
+          "fan_in": 2,
+          "fan_out": 3,
+          "fan_out_external": 3,
+          "hk": 972,
+          "id": "{target}/pkg/a.py",
           "kind": "file",
+          "length": 70,
+          "lloc": 11,
           "loc": 28,
+          "mi": 86.274,
+          "mi_sei": 88.166,
           "name": "a.py",
-          "path": "{target}/pkg/a.py",
-          "visibility": "public"
+          "sloc": 27,
+          "time": 137.929,
+          "visibility": "public",
+          "vocabulary": 31,
+          "volume": 346.793
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 2,
-              "fan_out": 3,
-              "fan_out_external": 1,
-              "hk": 756
-            },
-            "cyclomatic": 2,
-            "exits": 2,
-            "halstead": {
-              "bugs": 0.053,
-              "effort": 2009.868,
-              "length": 47,
-              "time": 111.659,
-              "vocabulary": 32,
-              "volume": 235
-            },
-            "loc": {
-              "blank": 7,
-              "comments": 6,
-              "logical": 9,
-              "source": 21
-            },
-            "maintainability": {
-              "mi": 92.368,
-              "mi_sei": 94.798
-            }
-          },
-          "cycle_kind": "mutual",
-          "id": "file:{target}/pkg/b.py",
+          "blank": 7,
+          "bugs": 0.053,
+          "cloc": 6,
+          "cycle": "mutual",
+          "cyclomatic": 2,
+          "effort": 2009.868,
+          "exits": 2,
+          "fan_in": 2,
+          "fan_out": 3,
+          "fan_out_external": 1,
+          "hk": 756,
+          "id": "{target}/pkg/b.py",
           "kind": "file",
+          "length": 47,
+          "lloc": 9,
           "loc": 22,
+          "mi": 92.368,
+          "mi_sei": 94.798,
           "name": "b.py",
-          "path": "{target}/pkg/b.py",
-          "visibility": "public"
+          "sloc": 21,
+          "time": 111.659,
+          "visibility": "public",
+          "vocabulary": 32,
+          "volume": 235
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 2,
-              "fan_out_external": 1
-            },
-            "cyclomatic": 1,
-            "exits": 2,
-            "halstead": {
-              "bugs": 0.0135,
-              "effort": 260.459,
-              "length": 20,
-              "time": 14.469,
-              "vocabulary": 15,
-              "volume": 78.137
-            },
-            "loc": {
-              "blank": 7,
-              "comments": 1,
-              "logical": 5,
-              "source": 14
-            },
-            "maintainability": {
-              "mi": 104.893,
-              "mi_sei": 96.049
-            }
-          },
-          "id": "file:{target}/pkg/c.py",
+          "blank": 7,
+          "bugs": 0.0135,
+          "cloc": 1,
+          "cyclomatic": 1,
+          "effort": 260.459,
+          "exits": 2,
+          "fan_in": 2,
+          "fan_out_external": 1,
+          "id": "{target}/pkg/c.py",
           "kind": "file",
+          "length": 20,
+          "lloc": 5,
           "loc": 15,
+          "mi": 104.893,
+          "mi_sei": 96.049,
           "name": "c.py",
-          "path": "{target}/pkg/c.py",
-          "visibility": "public"
+          "sloc": 14,
+          "time": 14.469,
+          "visibility": "public",
+          "vocabulary": 15,
+          "volume": 78.137
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_out": 3
-            },
-            "cyclomatic": 2,
-            "halstead": {
-              "bugs": 0.0175,
-              "effort": 381.759,
-              "length": 19,
-              "time": 21.208,
-              "vocabulary": 15,
-              "volume": 74.23
-            },
-            "loc": {
-              "blank": 4,
-              "comments": 1,
-              "logical": 3,
-              "source": 8
-            },
-            "maintainability": {
-              "mi": 114.225,
-              "mi_sei": 115.434
-            }
-          },
-          "id": "file:{target}/tests/test_pkg.py",
+          "blank": 4,
+          "bugs": 0.0175,
+          "cloc": 1,
+          "cyclomatic": 2,
+          "effort": 381.759,
+          "fan_out": 3,
+          "id": "{target}/tests/test_pkg.py",
           "kind": "file",
+          "length": 19,
+          "lloc": 3,
           "loc": 9,
+          "mi": 114.225,
+          "mi_sei": 115.434,
           "name": "test_pkg.py",
-          "path": "{target}/tests/test_pkg.py",
-          "visibility": "public"
+          "sloc": 8,
+          "time": 21.208,
+          "visibility": "public",
+          "vocabulary": 15,
+          "volume": 74.23
         }
       ],
       "stats": {
-        "coupling": {
-          "fan_in": 2.25,
-          "fan_out": 3,
-          "hk": 864
-        },
+        "blank": 6.8,
+        "bugs": 0.0294,
+        "cloc": 3.8,
         "cyclomatic": 1.4,
-        "halstead": {
-          "bugs": 0.0295,
-          "effort": 1030.445,
-          "length": 32.2,
-          "time": 57.246,
-          "vocabulary": 19.6,
-          "volume": 149.154
-        },
-        "loc": {
-          "blank": 6.8,
-          "comments": 3.8,
-          "source": 15.8
-        },
-        "maintainability": {
-          "mi": 104.037,
-          "mi_sei": 105.765
-        }
+        "effort": 1030.445,
+        "fan_in": 2.25,
+        "fan_out": 3,
+        "hk": 864,
+        "length": 32.2,
+        "mi": 104.037,
+        "mi_sei": 105.764,
+        "sloc": 15.8,
+        "time": 57.246,
+        "vocabulary": 19.6,
+        "volume": 149.153
       }
     }
   },
@@ -336,7 +401,7 @@
   "roots": {
     "target": "/home/user/code-split/samples/python"
   },
-  "schema_version": "1",
+  "schema_version": "2",
   "target": "/home/user/code-split/samples/python",
   "timings": [
     {
@@ -350,7 +415,7 @@
       "stage": "complexity"
     },
     {
-      "detail": "files=10 edges=14",
+      "detail": "nodes=10 edges=14",
       "ms": 0,
       "stage": "projection"
     }

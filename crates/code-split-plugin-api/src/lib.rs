@@ -1,41 +1,47 @@
-//! The language-plugin interface. Everything outside the `code-split-plugin-*`
-//! crates works only against this trait — it never names a concrete language.
-//! Adding a language is: write a crate that implements `LanguagePlugin`, then
-//! register one instance in the CLI's plugin list. Nothing else changes.
+//! # code-split-plugin-api
+//!
+//! The contract everything in Code Split builds on: a **generic property-graph
+//! model** plus the [`LanguagePlugin`] trait. This crate is the foundation — it
+//! depends on **nothing** else from Code Split and re-exports nothing. Every
+//! other crate (graph operations, complexity, language plugins, viewer, cli)
+//! depends on *this*.
+//!
+//! ## Model
+//!
+//! Analysis produces a [`Graph`] of **[`Node`]**s connected by **[`Edge`]**s.
+//! A node is *anything we analyze*: today a source file (`kind == "file"`),
+//! tomorrow a folder, module, function, variable or line — with **no model
+//! change**. `kind` is a free-form [`String`] (the plugin's own vocabulary);
+//! the core never interprets it, it only stores and projects.
+//!
+//! Both nodes and edges carry free-form **[`Attributes`]** (string key →
+//! scalar [`AttrValue`]). There is no fixed, file/language-specific field set:
+//! the plugin chooses keys (`path`, `loc`, `visibility`, `version`, or
+//! language-specific ones), the orchestrator adds computed keys (metrics,
+//! cycle), and the core reads only the keys it understands. Each level describes
+//! its keys with an [`AttributeSpec`] dictionary (type + label/hint), so the UI
+//! knows what each key means and what it can do with it.
+//!
+//! ## Responsibilities
+//!
+//! A [`LanguagePlugin`] is a **pure parser**: it turns a workspace into nodes +
+//! edges at a requested level (by name; see [`Level`]). It does **not**
+//! compute metrics — complexity / cycles / Henry-Kafura / stats are filled in
+//! centrally, for all languages, by the orchestrator. The plugin also describes
+//! its edge kinds ([`EdgeKindSpec`]) and attribute keys
+//! ([`AttributeSpec`]), so the core scores, draws and labels unknown
+//! kinds/keys without hardcoding their names.
 
-use anyhow::Result;
-use code_split_graph::{PluginGraphs, StageTime};
-use std::path::Path;
+pub mod attrs;
+pub mod edge;
+pub mod graph;
+pub mod level;
+pub mod node;
+pub mod plugin;
 
-pub trait LanguagePlugin {
-    /// Canonical name, e.g. `"rust"`. Used by `--plugin` and in the snapshot.
-    fn name(&self) -> &'static str;
-
-    /// Extra names accepted on the CLI, e.g. `["typescript", "js", "ts"]`.
-    fn aliases(&self) -> &'static [&'static str] {
-        &[]
-    }
-
-    /// Workspace-root marker files that indicate this language, e.g.
-    /// `["Cargo.toml"]`. Used for `--plugin auto` detection.
-    fn markers(&self) -> &'static [&'static str];
-
-    /// Analyze the workspace and produce the file graph plus stage timings.
-    fn run(&self, workspace: &Path) -> Result<(PluginGraphs, Vec<StageTime>)>;
-
-    /// Tool/toolchain versions to record in the snapshot (e.g. `("rustc", "1.88")`).
-    /// Default: none.
-    fn versions(&self, _workspace: &Path) -> Vec<(String, String)> {
-        Vec::new()
-    }
-
-    /// True if `query` matches this plugin's name or any alias.
-    fn matches(&self, query: &str) -> bool {
-        self.name() == query || self.aliases().contains(&query)
-    }
-
-    /// True if any of this plugin's marker files exists at the workspace root.
-    fn detect(&self, workspace: &Path) -> bool {
-        self.markers().iter().any(|m| workspace.join(m).exists())
-    }
-}
+pub use attrs::{AttrValue, Attributes, ValueType};
+pub use edge::Edge;
+pub use graph::Graph;
+pub use level::{AttributeGroup, AttributeSpec, EdgeKindSpec, Level};
+pub use node::{Node, NodeId};
+pub use plugin::{LanguagePlugin, Options, PluginInput};

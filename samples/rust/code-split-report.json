@@ -10,95 +10,253 @@
   },
   "graphs": {
     "files": {
+      "attribute_groups": {
+        "complexity": {
+          "hint": "Code complexity metrics",
+          "label": "Complexity"
+        },
+        "coupling": {
+          "hint": "Internal coupling (Henry-Kafura)",
+          "label": "Coupling"
+        },
+        "halstead": {
+          "hint": "Halstead software metrics",
+          "label": "Halstead"
+        },
+        "loc": {
+          "hint": "Lines of code breakdown",
+          "label": "Lines of Code"
+        },
+        "maintainability": {
+          "hint": "Maintainability index",
+          "label": "Maintainability"
+        }
+      },
       "cycles": [
         {
           "kind": "mutual",
           "nodes": [
-            "file:{target}/src/a.rs",
-            "file:{target}/src/b.rs"
+            "{target}/src/a.rs",
+            "{target}/src/b.rs"
           ]
         }
       ],
+      "edge_attributes": {
+        "visibility": {
+          "label": "Visibility",
+          "value_type": "str"
+        }
+      },
+      "edge_kinds": {
+        "contains": {
+          "flow": false,
+          "hint": "Module declaration (mod foo;) \u2014 structural ownership; excluded from fan-in / HK / cycles.",
+          "label": "contains"
+        },
+        "reexports": {
+          "flow": true,
+          "hint": "Re-export (pub use) \u2014 re-exposes the other file's items as part of its own API.",
+          "label": "reexport"
+        },
+        "uses": {
+          "flow": true,
+          "hint": "Import / use dependency \u2014 this file uses items from the other.",
+          "label": "uses"
+        }
+      },
       "edges": [
         {
-          "external": true,
-          "from": "file:{target}/src/a.rs",
           "kind": "uses",
-          "to": "ext:serde"
+          "source": "{target}/src/a.rs",
+          "target": "ext:serde"
         },
         {
-          "from": "file:{target}/src/a.rs",
           "kind": "uses",
-          "to": "file:{target}/src/b.rs"
+          "source": "{target}/src/a.rs",
+          "target": "{target}/src/b.rs"
         },
         {
-          "from": "file:{target}/src/a.rs",
           "kind": "uses",
-          "to": "file:{target}/src/c.rs"
+          "source": "{target}/src/a.rs",
+          "target": "{target}/src/c.rs"
         },
         {
-          "external": true,
-          "from": "file:{target}/src/b.rs",
           "kind": "uses",
-          "to": "ext:once_cell"
+          "source": "{target}/src/b.rs",
+          "target": "ext:once_cell"
         },
         {
-          "from": "file:{target}/src/b.rs",
           "kind": "uses",
-          "to": "file:{target}/src/a.rs"
+          "source": "{target}/src/b.rs",
+          "target": "{target}/src/a.rs"
         },
         {
-          "from": "file:{target}/src/foo.rs",
           "kind": "uses",
-          "to": "file:{target}/src/b.rs"
+          "source": "{target}/src/foo.rs",
+          "target": "{target}/src/b.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "contains",
-          "to": "file:{target}/src/a.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/a.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "reexports",
-          "to": "file:{target}/src/a.rs",
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/a.rs",
           "visibility": "public"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "uses",
-          "to": "file:{target}/src/a.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/a.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "contains",
-          "to": "file:{target}/src/b.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/b.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "uses",
-          "to": "file:{target}/src/b.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/b.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "contains",
-          "to": "file:{target}/src/c.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/c.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "contains",
-          "to": "file:{target}/src/foo.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/foo.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "uses",
-          "to": "file:{target}/src/foo.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/foo.rs"
         },
         {
-          "from": "file:{target}/src/lib.rs",
           "kind": "contains",
-          "to": "file:{target}/src/macros.rs"
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/macros.rs"
         }
       ],
+      "node_attributes": {
+        "blank": {
+          "group": "loc",
+          "label": "Blank",
+          "value_type": "int"
+        },
+        "bugs": {
+          "group": "halstead",
+          "label": "Bugs",
+          "value_type": "float"
+        },
+        "cloc": {
+          "group": "loc",
+          "label": "Comments",
+          "value_type": "int"
+        },
+        "cycle": {
+          "label": "Cycle",
+          "value_type": "str"
+        },
+        "cyclomatic": {
+          "group": "complexity",
+          "label": "Cyclomatic",
+          "value_type": "int"
+        },
+        "effort": {
+          "group": "halstead",
+          "label": "Effort",
+          "value_type": "float"
+        },
+        "external": {
+          "label": "External",
+          "value_type": "bool"
+        },
+        "fan_in": {
+          "group": "coupling",
+          "label": "Fan-in",
+          "value_type": "int"
+        },
+        "fan_out": {
+          "group": "coupling",
+          "label": "Fan-out",
+          "value_type": "int"
+        },
+        "fan_out_external": {
+          "group": "coupling",
+          "label": "Fan-out (external)",
+          "value_type": "int"
+        },
+        "hk": {
+          "group": "coupling",
+          "label": "HK",
+          "value_type": "float"
+        },
+        "items": {
+          "label": "Items",
+          "value_type": "int"
+        },
+        "length": {
+          "group": "halstead",
+          "label": "Length",
+          "value_type": "float"
+        },
+        "lloc": {
+          "group": "loc",
+          "label": "Logical",
+          "value_type": "int"
+        },
+        "loc": {
+          "label": "Lines",
+          "value_type": "int"
+        },
+        "mi": {
+          "group": "maintainability",
+          "label": "MI",
+          "value_type": "float"
+        },
+        "mi_sei": {
+          "group": "maintainability",
+          "label": "MI (SEI)",
+          "value_type": "float"
+        },
+        "path": {
+          "label": "Path",
+          "value_type": "str"
+        },
+        "sloc": {
+          "group": "loc",
+          "label": "Source",
+          "value_type": "int"
+        },
+        "time": {
+          "group": "halstead",
+          "label": "Time",
+          "value_type": "float"
+        },
+        "version": {
+          "label": "Version",
+          "value_type": "str"
+        },
+        "visibility": {
+          "label": "Visibility",
+          "value_type": "str"
+        },
+        "vocabulary": {
+          "group": "halstead",
+          "label": "Vocabulary",
+          "value_type": "float"
+        },
+        "volume": {
+          "group": "halstead",
+          "label": "Volume",
+          "value_type": "float"
+        }
+      },
       "nodes": [
         {
           "external": true,
@@ -117,232 +275,160 @@
           "version": "1.0.228"
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 2,
-              "fan_out": 2,
-              "fan_out_external": 1,
-              "hk": 480
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.0896,
-              "effort": 4413.97,
-              "length": 69,
-              "time": 245.22,
-              "vocabulary": 32,
-              "volume": 345
-            },
-            "loc": {
-              "blank": 5,
-              "comments": 11,
-              "logical": 1,
-              "source": 30
-            },
-            "maintainability": {
-              "mi": 85.054,
-              "mi_sei": 87.531
-            }
-          },
-          "cycle_kind": "mutual",
-          "id": "file:{target}/src/a.rs",
-          "item_count": 2,
+          "blank": 5,
+          "bugs": 0.0896,
+          "cloc": 11,
+          "cycle": "mutual",
+          "cyclomatic": 1,
+          "effort": 4413.97,
+          "fan_in": 2,
+          "fan_out": 2,
+          "fan_out_external": 1,
+          "hk": 480,
+          "id": "{target}/src/a.rs",
+          "items": 2,
           "kind": "file",
+          "length": 69,
+          "lloc": 1,
           "loc": 30,
+          "mi": 85.054,
+          "mi_sei": 87.531,
           "name": "a.rs",
-          "path": "{target}/src/a.rs",
-          "visibility": "public"
+          "sloc": 30,
+          "time": 245.22,
+          "visibility": "public",
+          "vocabulary": 32,
+          "volume": 345
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 3,
-              "fan_out": 1,
-              "fan_out_external": 1,
-              "hk": 225
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.0521,
-              "effort": 1958.647,
-              "length": 45,
-              "time": 108.813,
-              "vocabulary": 27,
-              "volume": 213.969
-            },
-            "loc": {
-              "blank": 4,
-              "comments": 12,
-              "logical": 2,
-              "source": 25
-            },
-            "maintainability": {
-              "mi": 90.031,
-              "mi_sei": 98.534
-            }
-          },
-          "cycle_kind": "mutual",
-          "id": "file:{target}/src/b.rs",
-          "item_count": 2,
+          "blank": 4,
+          "bugs": 0.0521,
+          "cloc": 12,
+          "cycle": "mutual",
+          "cyclomatic": 1,
+          "effort": 1958.647,
+          "fan_in": 3,
+          "fan_out": 1,
+          "fan_out_external": 1,
+          "hk": 225,
+          "id": "{target}/src/b.rs",
+          "items": 2,
           "kind": "file",
+          "length": 45,
+          "lloc": 2,
           "loc": 25,
+          "mi": 90.031,
+          "mi_sei": 98.534,
           "name": "b.rs",
-          "path": "{target}/src/b.rs",
-          "visibility": "public"
+          "sloc": 25,
+          "time": 108.813,
+          "visibility": "public",
+          "vocabulary": 27,
+          "volume": 213.969
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 1
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.00867,
-              "effort": 132.877,
-              "length": 16,
-              "time": 7.382,
-              "vocabulary": 10,
-              "volume": 53.15
-            },
-            "loc": {
-              "blank": 2,
-              "comments": 4,
-              "source": 14
-            },
-            "maintainability": {
-              "mi": 106.896,
-              "mi_sei": 115.656
-            }
-          },
-          "id": "file:{target}/src/c.rs",
-          "item_count": 2,
+          "blank": 2,
+          "bugs": 0.00867,
+          "cloc": 4,
+          "cyclomatic": 1,
+          "effort": 132.877,
+          "fan_in": 1,
+          "id": "{target}/src/c.rs",
+          "items": 2,
           "kind": "file",
+          "length": 16,
           "loc": 14,
+          "mi": 106.896,
+          "mi_sei": 115.656,
           "name": "c.rs",
-          "path": "{target}/src/c.rs",
-          "visibility": "public"
+          "sloc": 14,
+          "time": 7.382,
+          "visibility": "public",
+          "vocabulary": 10,
+          "volume": 53.15
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_in": 1,
-              "fan_out": 1,
-              "hk": 15
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.0112,
-              "effort": 196.755,
-              "length": 13,
-              "time": 10.93,
-              "vocabulary": 11,
-              "volume": 44.972
-            },
-            "loc": {
-              "blank": 2,
-              "comments": 9,
-              "source": 15
-            },
-            "maintainability": {
-              "mi": 106.878,
-              "mi_sei": 125.297
-            }
-          },
-          "id": "file:{target}/src/foo.rs",
-          "item_count": 1,
+          "blank": 2,
+          "bugs": 0.0112,
+          "cloc": 9,
+          "cyclomatic": 1,
+          "effort": 196.755,
+          "fan_in": 1,
+          "fan_out": 1,
+          "hk": 15,
+          "id": "{target}/src/foo.rs",
+          "items": 1,
           "kind": "file",
+          "length": 13,
           "loc": 15,
+          "mi": 106.878,
+          "mi_sei": 125.297,
           "name": "foo.rs",
-          "path": "{target}/src/foo.rs",
-          "visibility": "private"
+          "sloc": 15,
+          "time": 10.93,
+          "visibility": "private",
+          "vocabulary": 11,
+          "volume": 44.972
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_out": 3
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.0522,
-              "effort": 1961.09,
-              "length": 59,
-              "time": 108.949,
-              "vocabulary": 29,
-              "volume": 286.62
-            },
-            "loc": {
-              "blank": 7,
-              "comments": 22,
-              "logical": 2,
-              "source": 50
-            },
-            "maintainability": {
-              "mi": 77.512,
-              "mi_sei": 79.235
-            }
-          },
-          "id": "file:{target}/src/lib.rs",
-          "item_count": 8,
+          "blank": 7,
+          "bugs": 0.0522,
+          "cloc": 22,
+          "cyclomatic": 1,
+          "effort": 1961.09,
+          "fan_out": 3,
+          "id": "{target}/src/lib.rs",
+          "items": 8,
           "kind": "file",
+          "length": 59,
+          "lloc": 2,
           "loc": 50,
+          "mi": 77.512,
+          "mi_sei": 79.235,
           "name": "lib.rs",
-          "path": "{target}/src/lib.rs",
-          "visibility": "public"
+          "sloc": 50,
+          "time": 108.949,
+          "visibility": "public",
+          "vocabulary": 29,
+          "volume": 286.62
         },
         {
-          "complexity": {
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.0174,
-              "effort": 377.753,
-              "length": 25,
-              "time": 20.986,
-              "vocabulary": 13,
-              "volume": 92.51
-            },
-            "loc": {
-              "blank": 2,
-              "comments": 7,
-              "source": 22
-            },
-            "maintainability": {
-              "mi": 97.153,
-              "mi_sei": 102.903
-            }
-          },
-          "id": "file:{target}/src/macros.rs",
-          "item_count": 2,
+          "blank": 2,
+          "bugs": 0.0174,
+          "cloc": 7,
+          "cyclomatic": 1,
+          "effort": 377.753,
+          "id": "{target}/src/macros.rs",
+          "items": 2,
           "kind": "file",
+          "length": 25,
           "loc": 22,
+          "mi": 97.153,
+          "mi_sei": 102.903,
           "name": "macros.rs",
-          "path": "{target}/src/macros.rs",
-          "visibility": "private"
+          "sloc": 22,
+          "time": 20.986,
+          "visibility": "private",
+          "vocabulary": 13,
+          "volume": 92.51
         }
       ],
       "stats": {
-        "coupling": {
-          "fan_in": 1.75,
-          "fan_out": 1.75,
-          "hk": 240
-        },
+        "blank": 3.666,
+        "bugs": 0.0385,
+        "cloc": 10.833,
         "cyclomatic": 1,
-        "halstead": {
-          "bugs": 0.0385,
-          "effort": 1506.849,
-          "length": 37.833,
-          "time": 83.713,
-          "vocabulary": 20.333,
-          "volume": 172.704
-        },
-        "loc": {
-          "blank": 3.666,
-          "comments": 10.833,
-          "source": 26
-        },
-        "maintainability": {
-          "mi": 93.921,
-          "mi_sei": 101.526
-        }
+        "effort": 1506.848,
+        "fan_in": 1.75,
+        "fan_out": 1.75,
+        "hk": 240,
+        "length": 37.833,
+        "mi": 93.92,
+        "mi_sei": 101.526,
+        "sloc": 26,
+        "time": 83.713,
+        "vocabulary": 20.333,
+        "volume": 172.703
       }
     }
   },
@@ -351,13 +437,13 @@
     "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
     "target": "/home/user/code-split/samples/rust"
   },
-  "schema_version": "1",
+  "schema_version": "2",
   "target": "/home/user/code-split/samples/rust",
   "timings": [
     {
-      "detail": "17 nodes",
+      "detail": "8 nodes from 6 files",
       "ms": 0,
-      "stage": "syn"
+      "stage": "rust"
     },
     {
       "detail": "6 nodes annotated",
@@ -365,7 +451,7 @@
       "stage": "complexity"
     },
     {
-      "detail": "files=8 edges=15",
+      "detail": "nodes=8 edges=15",
       "ms": 0,
       "stage": "projection"
     }

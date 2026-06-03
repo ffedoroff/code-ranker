@@ -1,12 +1,13 @@
 mod config;
 mod git;
-use code_split_plugin::logger;
+mod logger;
 mod plugin;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use code_split_graph::Snapshot;
-use std::collections::{HashMap, HashSet};
+use code_split_graph::{LevelGraph, Snapshot};
+use code_split_plugin_api::PluginInput;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
 /// Base URL for the published docs. Diagnostics pointers (`ref` lines, SARIF
@@ -253,7 +254,9 @@ fn analyze_from_snapshot(
     let cfg = loaded.config;
 
     let mut graphs = snapshot.graphs.clone();
-    config::apply_cycle_rules(&mut graphs, &cfg.rules.cycles);
+    if let Some(level) = graphs.get_mut("files") {
+        config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &cfg.rules.cycles);
+    }
     let violations = config::check_violations(&graphs, &cfg.rules);
 
     Ok(Analyzed {
@@ -298,35 +301,72 @@ fn analyze_directory(
         std::env::args().skip(1).collect::<Vec<_>>().join(" ")
     );
 
-    let (mut plugin_graphs, timings) = plugin::run(&plugin_name, &target)
-        .with_context(|| format!("plugin '{plugin_name}' failed"))?;
+    let input = PluginInput {
+        ignore: cfg.ignore.paths.clone(),
+        options: BTreeMap::new(),
+    };
 
+    // 1. Parse structure (absolute file-path ids).
+    let mut timings = Vec::new();
+    let t = logger::Timer::start("parse: structure");
+    let (mut graph, levels) = plugin::analyze(&plugin_name, &target, &input)
+        .with_context(|| format!("plugin '{plugin_name}' failed"))?;
+    let file_count = graph.nodes.iter().filter(|n| n.kind == "file").count();
+    timings.push(code_split_graph::StageTime {
+        stage: plugin_name.clone(),
+        ms: t.finish_quiet(),
+        detail: format!("{} nodes from {} files", graph.nodes.len(), file_count),
+    });
+
+    // 2. Central complexity pass (reads files by their absolute id).
+    let t = logger::Timer::start("complexity");
+    let annotated = code_split_complexity::annotate(&mut graph);
+    timings.push(code_split_graph::StageTime {
+        stage: "complexity".into(),
+        ms: t.finish_quiet(),
+        detail: format!("{annotated} nodes annotated"),
+    });
+
+    // 3. Canonicalize structure, then relativize ids against detected roots.
+    let t = logger::Timer::start("projection");
+    code_split_graph::finalize_graph(&mut graph);
     let mut roots = detect_roots();
     roots.insert("target".to_string(), target.display().to_string());
-    code_split_graph::relativize_graphs(&mut plugin_graphs, &target, &roots);
-    code_split_graph::rewrite_ids(&mut plugin_graphs, &target, &roots);
-    // Drop roots that did not shorten any path — e.g. the Rust `cargo`/`rustup`/
-    // `registry` roots are irrelevant to a JS/TS/Python project and would
-    // otherwise leak machine-specific paths into the snapshot header.
-    prune_unused_roots(&plugin_graphs, &mut roots);
+    code_split_graph::relativize_graph(&mut graph, &target, &roots);
 
-    config::apply_ignore(&mut plugin_graphs, &cfg.ignore, &target)?;
+    // 4. Apply ignore filters (tokenized ids), then compute the derived data.
+    config::apply_ignore(&mut graph, &cfg.ignore, &target)?;
 
-    code_split_graph::annotate_all_cycles(&mut plugin_graphs);
-    config::apply_cycle_rules(&mut plugin_graphs, &cfg.rules.cycles);
-    code_split_graph::annotate_hk(&mut plugin_graphs);
-    code_split_graph::annotate_stats(&mut plugin_graphs.files);
+    let level_spec = levels.into_iter().find(|l| l.name == "files");
+    let flow_kinds = flow_kinds(level_spec.as_ref());
+    let mut cycles = code_split_graph::annotate_cycles(&mut graph, &flow_kinds);
+    config::apply_cycle_rules(&mut cycles, &mut graph.nodes, &cfg.rules.cycles);
+    code_split_graph::annotate_hk(&mut graph, &flow_kinds);
+    let stats = code_split_graph::compute_stats(&graph);
 
-    let violations = config::check_violations(&plugin_graphs, &cfg.rules);
+    let edge_count = graph.edges.len();
+    let node_count = graph.nodes.len();
+    let level = assemble_level(level_spec, graph, cycles, stats);
+    prune_unused_roots(&level, &mut roots);
+    timings.push(code_split_graph::StageTime {
+        stage: "projection".into(),
+        ms: t.finish_quiet(),
+        detail: format!("nodes={node_count} edges={edge_count}"),
+    });
+
+    let mut graphs = BTreeMap::new();
+    graphs.insert("files".to_string(), level);
+
+    let violations = config::check_violations(&graphs, &cfg.rules);
 
     let git = git::collect(&target);
 
-    let mut versions = HashMap::new();
+    let mut versions = BTreeMap::new();
     versions.insert(
         "code-split".to_string(),
         env!("CARGO_PKG_VERSION").to_string(),
     );
-    for (k, v) in plugin::versions(&plugin_name, &target) {
+    for (k, v) in plugin::versions(&plugin_name, &target, &input) {
         versions.insert(k, v);
     }
 
@@ -340,7 +380,7 @@ fn analyze_directory(
         roots,
         git,
         timings,
-        plugin_graphs,
+        graphs,
     );
 
     Ok(Analyzed {
@@ -350,6 +390,91 @@ fn analyze_directory(
         rules: cfg.rules,
         output: cfg.output,
     })
+}
+
+/// The set of edge kinds that carry information flow at this level (read from
+/// `EdgeKindSpec.flow`). Cycles and coupling count only these.
+fn flow_kinds(level: Option<&code_split_plugin_api::Level>) -> HashSet<String> {
+    match level {
+        Some(l) => l
+            .edge_kinds
+            .iter()
+            .filter(|(_, spec)| spec.flow)
+            .map(|(k, _)| k.clone())
+            .collect(),
+        None => HashSet::new(),
+    }
+}
+
+/// Assemble one [`LevelGraph`]: merge the plugin's structural attribute specs
+/// with the centrally-produced complexity + coupling specs, prune them (and the
+/// edge kinds / groups) to what is actually present, and attach the graph,
+/// cycles and stats.
+fn assemble_level(
+    level_spec: Option<code_split_plugin_api::Level>,
+    graph: code_split_plugin_api::Graph,
+    cycles: Vec<code_split_graph::CycleGroup>,
+    stats: BTreeMap<String, code_split_plugin_api::AttrValue>,
+) -> LevelGraph {
+    use std::collections::BTreeSet;
+
+    let spec = level_spec.unwrap_or_else(|| code_split_plugin_api::Level {
+        name: "files".into(),
+        edge_kinds: BTreeMap::new(),
+        node_attributes: BTreeMap::new(),
+        edge_attributes: BTreeMap::new(),
+        attribute_groups: BTreeMap::new(),
+    });
+
+    // Master node-attribute dictionary = structural (plugin) + computed.
+    let mut node_attributes = spec.node_attributes;
+    let (metric_specs, metric_groups) = code_split_complexity::metric_specs();
+    let (coupling_specs, coupling_groups) = code_split_graph::coupling_specs();
+    node_attributes.extend(metric_specs);
+    node_attributes.extend(coupling_specs);
+    let mut attribute_groups = spec.attribute_groups;
+    attribute_groups.extend(metric_groups);
+    attribute_groups.extend(coupling_groups);
+
+    // Prune node attributes to keys present on at least one node.
+    let present_node_keys: BTreeSet<&str> = graph
+        .nodes
+        .iter()
+        .flat_map(|n| n.attrs.keys().map(String::as_str))
+        .collect();
+    node_attributes.retain(|k, _| present_node_keys.contains(k.as_str()));
+
+    // Prune edge attributes to keys present on at least one edge.
+    let present_edge_keys: BTreeSet<&str> = graph
+        .edges
+        .iter()
+        .flat_map(|e| e.attrs.keys().map(String::as_str))
+        .collect();
+    let mut edge_attributes = spec.edge_attributes;
+    edge_attributes.retain(|k, _| present_edge_keys.contains(k.as_str()));
+
+    // Prune edge kinds to kinds present on at least one edge.
+    let present_edge_kinds: BTreeSet<&str> = graph.edges.iter().map(|e| e.kind.as_str()).collect();
+    let mut edge_kinds = spec.edge_kinds;
+    edge_kinds.retain(|k, _| present_edge_kinds.contains(k.as_str()));
+
+    // Prune groups to those referenced by a surviving node attribute.
+    let referenced_groups: BTreeSet<&str> = node_attributes
+        .values()
+        .filter_map(|s| s.group.as_deref())
+        .collect();
+    attribute_groups.retain(|k, _| referenced_groups.contains(k.as_str()));
+
+    LevelGraph {
+        edge_kinds,
+        node_attributes,
+        edge_attributes,
+        attribute_groups,
+        nodes: graph.nodes,
+        edges: graph.edges,
+        cycles,
+        stats,
+    }
 }
 
 /// Project label for diagnostics — the basename of the analyzed target.
@@ -386,7 +511,9 @@ fn run_check(
         Some(bpath) => {
             let base = load_snapshot_any(bpath)?;
             let mut bgraphs = base.graphs.clone();
-            config::apply_cycle_rules(&mut bgraphs, &a.rules.cycles);
+            if let Some(level) = bgraphs.get_mut("files") {
+                config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &a.rules.cycles);
+            }
             let base_v = config::check_violations(&bgraphs, &a.rules);
             let sig = |v: &config::Violation| (v.rule.clone(), v.location.clone());
             let base_sigs: HashSet<(String, String)> = base_v.iter().map(sig).collect();
@@ -555,35 +682,28 @@ const METRICS: [&str; 6] = ["cyclomatic", "cognitive", "hk", "fan_in", "fan_out"
 /// Print the current measured values per scope as ready-to-paste `code-split.toml`
 /// threshold blocks: the per-unit worst value (`single`) and the graph-wide
 /// average (`avg`). Lets a user pin today's numbers as a baseline that passes.
-fn print_current_values(graphs: &code_split_graph::PluginGraphs, cycles: &config::CycleRules) {
+fn print_current_values(graphs: &BTreeMap<String, LevelGraph>, cycles: &config::CycleRules) {
+    let Some(level) = graphs.get("files") else {
+        return;
+    };
     println!();
     println!("Current config — copy the blocks below into code-split.toml:");
 
-    // Cycle budgets: today's count per kind (paste to forbid adding more), or
-    // `false` for a disabled kind. `0` = strict — no cycles of that kind allowed.
+    // Cycle budgets: today's count per kind (paste to forbid adding more).
     println!();
     println!(
         "# cycles: max allowed count per kind (today's count — raise only to allow more; false = off)"
     );
     println!("[rules.cycles]");
     for (key, kind, rule) in [
-        (
-            "test-embed",
-            code_split_graph::CycleKind::TestEmbed,
-            cycles.test_embed,
-        ),
-        ("mutual", code_split_graph::CycleKind::Mutual, cycles.mutual),
-        ("chain", code_split_graph::CycleKind::Chain, cycles.chain),
+        ("test-embed", "test_embed", cycles.test_embed),
+        ("mutual", "mutual", cycles.mutual),
+        ("chain", "chain", cycles.chain),
     ] {
         if rule.is_off() {
             println!("{key:<12}= false");
         } else {
-            let n = graphs
-                .files
-                .cycles
-                .iter()
-                .filter(|c| c.kind == kind)
-                .count();
+            let n = level.cycles.iter().filter(|c| c.kind == kind).count();
             println!("{key:<12}= {n}");
         }
     }
@@ -591,32 +711,36 @@ fn print_current_values(graphs: &code_split_graph::PluginGraphs, cycles: &config
     // Thresholds: measured per-file maxima to pin as a baseline.
     println!();
     println!("# thresholds: the worst single file (max) per metric");
-    print_scope_values("file", &graphs.files);
+    print_scope_values("file", level);
 }
 
-/// Emit a `[rules.thresholds.<scope>]` block with the per-file metric maxima.
-fn print_scope_values(scope: &str, graph: &code_split_graph::graph::Graph) {
-    // Per-file maxima across the graph's nodes.
+/// Emit a `[rules.thresholds.<scope>]` block with the per-file metric maxima,
+/// read from the flat node `attrs`.
+fn print_scope_values(scope: &str, level: &LevelGraph) {
+    let attr = |n: &code_split_plugin_api::Node, key: &str| -> f64 {
+        match n.attrs.get(key) {
+            Some(code_split_plugin_api::AttrValue::Int(i)) => *i as f64,
+            Some(code_split_plugin_api::AttrValue::Float(f)) => *f,
+            _ => 0.0,
+        }
+    };
     let mut max = [0f64; 6];
     let mut any = false;
-    for n in &graph.nodes {
-        let Some(cx) = &n.complexity else { continue };
+    for n in &level.nodes {
+        if n.kind == "external" {
+            continue;
+        }
         any = true;
-        max[0] = max[0].max(cx.cyclomatic);
-        max[1] = max[1].max(cx.cognitive);
-        if let Some(c) = &cx.coupling {
-            max[2] = max[2].max(c.hk);
-            max[3] = max[3].max(c.fan_in as f64);
-            max[4] = max[4].max(c.fan_out as f64);
-        }
-        if let Some(l) = &cx.loc {
-            max[5] = max[5].max(l.source);
-        }
+        max[0] = max[0].max(attr(n, "cyclomatic"));
+        max[1] = max[1].max(attr(n, "cognitive"));
+        max[2] = max[2].max(attr(n, "hk"));
+        max[3] = max[3].max(attr(n, "fan_in"));
+        max[4] = max[4].max(attr(n, "fan_out"));
+        max[5] = max[5].max(attr(n, "loc"));
     }
     if !any {
-        return; // no metrics
+        return;
     }
-    // Per-file limits use the exact max (a strict `>` check then passes today).
     print_toml_block(&format!("[rules.thresholds.{scope}]"), &max, false);
 }
 
@@ -858,11 +982,11 @@ fn resolve_plugin(arg: Option<&str>, cfg: Option<&str>, workspace: &Path) -> Res
     {
         return Ok(p.to_string());
     }
-    plugin::detect(workspace)
+    plugin::detect(workspace, &PluginInput::default())
 }
 
-fn detect_roots() -> HashMap<String, String> {
-    let mut roots = HashMap::new();
+fn detect_roots() -> BTreeMap<String, String> {
+    let mut roots = BTreeMap::new();
     let home = std::env::var("HOME").unwrap_or_default();
 
     let cargo = std::env::var("CARGO_HOME").unwrap_or_else(|_| format!("{home}/.cargo"));
@@ -906,16 +1030,17 @@ fn detect_roots() -> HashMap<String, String> {
 /// project even when every node sits directly under it). This keeps the
 /// snapshot header free of roots that are irrelevant to the analyzed language
 /// (e.g. the Rust toolchain roots in a JS/TS/Python snapshot).
-fn prune_unused_roots(
-    graphs: &code_split_graph::PluginGraphs,
-    roots: &mut HashMap<String, String>,
-) {
+fn prune_unused_roots(level: &LevelGraph, roots: &mut BTreeMap<String, String>) {
     let mut used: HashSet<String> = HashSet::new();
     used.insert("target".to_string());
-    for node in &graphs.files.nodes {
+    for node in &level.nodes {
+        let path_attr = match node.attrs.get("path") {
+            Some(code_split_plugin_api::AttrValue::Str(p)) => p.as_str(),
+            _ => "",
+        };
         for name in roots.keys() {
             let token = format!("{{{name}}}");
-            if node.id.contains(&token) || node.path.contains(&token) {
+            if node.id.contains(&token) || path_attr.contains(&token) {
                 used.insert(name.clone());
             }
         }
@@ -993,13 +1118,13 @@ mod tests {
             ("pyproject.toml", "python"),
             ("setup.py", "python"),
             ("package.json", "javascript"),
-            ("tsconfig.json", "javascript"),
+            ("tsconfig.json", "typescript"),
         ];
         for (marker, expected) in cases {
             let d = tempfile::tempdir().unwrap();
             fs::write(d.path().join(marker), "").unwrap();
             assert_eq!(
-                plugin::detect(d.path()).unwrap(),
+                plugin::detect(d.path(), &PluginInput::default()).unwrap(),
                 expected,
                 "marker {marker}"
             );
@@ -1011,11 +1136,17 @@ mod tests {
         let amb = tempfile::tempdir().unwrap();
         fs::write(amb.path().join("Cargo.toml"), "").unwrap();
         fs::write(amb.path().join("package.json"), "").unwrap();
-        let err = format!("{:#}", plugin::detect(amb.path()).unwrap_err());
+        let err = format!(
+            "{:#}",
+            plugin::detect(amb.path(), &PluginInput::default()).unwrap_err()
+        );
         assert!(err.contains("multiple"), "ambiguous error: {err}");
 
         let empty = tempfile::tempdir().unwrap();
-        let err = format!("{:#}", plugin::detect(empty.path()).unwrap_err());
+        let err = format!(
+            "{:#}",
+            plugin::detect(empty.path(), &PluginInput::default()).unwrap_err()
+        );
         assert!(err.contains("no project marker"), "empty error: {err}");
     }
 
@@ -1052,11 +1183,11 @@ mod tests {
             "tgt".into(),
             "rust".into(),
             None,
-            std::collections::HashMap::new(),
-            std::collections::HashMap::new(),
+            BTreeMap::new(),
+            BTreeMap::new(),
             None,
             Vec::new(),
-            code_split_graph::PluginGraphs::default(),
+            BTreeMap::new(),
         )
     }
 

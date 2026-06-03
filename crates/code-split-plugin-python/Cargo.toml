@@ -10,14 +10,11 @@ categories.workspace = true
 description = "Code Split Python plugin: tree-sitter module/import graph."
 
 [dependencies]
-code-split-graph = { workspace = true }
-code-split-plugin = { workspace = true }
 code-split-plugin-api = { workspace = true }
 anyhow = { workspace = true }
 walkdir = { workspace = true }
 tree-sitter = { workspace = true }
 tree-sitter-python = { workspace = true }
-rust-code-analysis = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

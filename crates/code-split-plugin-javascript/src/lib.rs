@@ -1,86 +1,219 @@
+//! JavaScript language plugin for Code Split.
+//!
+//! Handles `.js`, `.jsx`, `.mjs`, `.cjs` files via tree-sitter-javascript.
+//! Also exposes shared ECMAScript parsing helpers (`ecmascript_level`,
+//! `analyze_ecmascript`, `detect_with_marker`) so the TypeScript plugin can
+//! reuse the walker/resolver without any copy-paste.
+
 use anyhow::Result;
-use code_split_graph::{
-    GraphBuilder, NodeKind, PluginGraphs, StageTime,
-    graph::{Edge, EdgeKind, Node, Visibility},
+use code_split_plugin_api::{
+    AttrValue, AttributeSpec, Edge, EdgeKindSpec, Graph, LanguagePlugin, Level, Node, PluginInput,
+    ValueType,
 };
-use rust_code_analysis::{JavascriptParser, ParserTrait, TsxParser, TypescriptParser, metrics};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use code_split_plugin::finalize::finalize_file_graph;
-use code_split_plugin::logger;
+// ─────────────────────────────────────────────────────────────────────────────
+// Public shared helpers (used by the TypeScript plugin)
+// ─────────────────────────────────────────────────────────────────────────────
 
-pub fn run(workspace: &Path) -> Result<(PluginGraphs, Vec<StageTime>)> {
-    let mut timings = Vec::new();
-    let mut builder = GraphBuilder::new();
+/// Build the single "files" [`Level`] that both JS and TS plugins expose.
+///
+/// `name` is the level name (pass `"files"` — kept as a parameter so tests can
+/// verify the returned value without hard-coding a string twice).
+pub fn ecmascript_level(name: &str) -> Level {
+    let mut edge_kinds = BTreeMap::new();
+    edge_kinds.insert(
+        "uses".to_string(),
+        EdgeKindSpec {
+            flow: true,
+            label: Some("uses".to_string()),
+            hint: Some("Import dependency \u{2014} this file imports from the other.".to_string()),
+        },
+    );
 
-    let t = logger::Timer::start("js/ts: scan + parse + build file graph");
+    let mut node_attributes = BTreeMap::new();
+    node_attributes.insert(
+        "path".to_string(),
+        AttributeSpec {
+            value_type: ValueType::Str,
+            label: Some("Path".to_string()),
+            hint: None,
+            group: None,
+        },
+    );
+    node_attributes.insert(
+        "loc".to_string(),
+        AttributeSpec {
+            value_type: ValueType::Int,
+            label: Some("Lines".to_string()),
+            hint: None,
+            group: None,
+        },
+    );
+    node_attributes.insert(
+        "visibility".to_string(),
+        AttributeSpec {
+            value_type: ValueType::Str,
+            label: Some("Visibility".to_string()),
+            hint: None,
+            group: None,
+        },
+    );
+    node_attributes.insert(
+        "external".to_string(),
+        AttributeSpec {
+            value_type: ValueType::Bool,
+            label: Some("External".to_string()),
+            hint: None,
+            group: None,
+        },
+    );
 
-    let source_root = find_source_root(workspace);
-    let alias_root = source_root.clone(); // @/* → source_root/*
-    let js_files = collect_js_files(&source_root);
-    let file_index = build_file_index(workspace, &source_root, &js_files);
-
-    for abs_path in &js_files {
-        let _ = parse_and_add(abs_path, workspace, &alias_root, &file_index, &mut builder);
+    Level {
+        name: name.to_string(),
+        edge_kinds,
+        node_attributes,
+        edge_attributes: BTreeMap::new(),
+        attribute_groups: BTreeMap::new(),
     }
-
-    let n = builder.node_count();
-    let detail = format!("{n} nodes from {} files", js_files.len());
-    let ms = t.finish_quiet();
-    timings.push(StageTime {
-        stage: "js-ts".into(),
-        ms,
-        detail,
-    });
-
-    {
-        let t = logger::Timer::start("complexity: cyclomatic / cognitive / halstead / MI / LOC");
-        let annotated = match code_split_plugin::complexity::annotate(
-            &source_root,
-            &mut builder,
-            &["js", "jsx", "ts", "tsx"],
-            |path, src| match path.extension().and_then(|e| e.to_str()) {
-                Some("ts") => metrics(&TypescriptParser::new(src, path, None), path),
-                Some("tsx") => metrics(&TsxParser::new(src, path, None), path),
-                // js, jsx
-                _ => metrics(&JavascriptParser::new(src, path, None), path),
-            },
-        ) {
-            Ok(n) => n,
-            Err(e) => {
-                logger::info(&format!("complexity skipped: {e:#}"));
-                0
-            }
-        };
-        let detail = format!("{annotated} nodes annotated");
-        let ms = t.finish_quiet();
-        timings.push(StageTime {
-            stage: "complexity".into(),
-            ms,
-            detail,
-        });
-    }
-
-    let t = logger::Timer::start("projecting file graph");
-    let files = finalize_file_graph(builder.build());
-    let detail = format!("files={} edges={}", files.nodes.len(), files.edges.len());
-    let ms = t.finish_quiet();
-    timings.push(StageTime {
-        stage: "projection".into(),
-        ms,
-        detail,
-    });
-
-    Ok((PluginGraphs { files }, timings))
 }
 
-// ---------------------------------------------------------------------------
-// Source root detection
-// ---------------------------------------------------------------------------
+/// Return `true` when `workspace` contains the given marker file.
+///
+/// Signature kept generic so both JS (`"package.json"`) and TS (`"tsconfig.json"`)
+/// can reuse it.
+pub fn detect_with_marker(workspace: &Path, marker: &str) -> bool {
+    workspace.join(marker).exists()
+}
 
-/// Returns the `src/` directory if present, otherwise the workspace root.
+/// Walk `workspace`, parse every file whose extension is in `exts`, and build
+/// an [`api::Graph`] of file + external nodes connected by `"uses"` edges.
+///
+/// `lang_for_ext` maps a file extension to a tree-sitter [`Language`]. Return
+/// `None` to skip the file (the walker already filters by `exts`; returning
+/// `None` here is an escape hatch for finer control).
+///
+/// `candidate_exts_order` controls the order in which candidate extensions are
+/// tried when resolving an extensionless import specifier, e.g. `"./foo"`. The
+/// first match wins. Pass `&["ts", "tsx", "js", "jsx"]` for TypeScript-first
+/// resolution; `&["js", "jsx", "mjs", "cjs"]` for JS-only projects.
+pub fn analyze_ecmascript(
+    workspace: &Path,
+    exts: &[&str],
+    lang_for_ext: impl Fn(&str) -> Option<tree_sitter::Language>,
+    candidate_exts_order: &[&str],
+) -> Result<Graph> {
+    let source_root = find_source_root(workspace);
+    let alias_root = source_root.clone();
+    let files = collect_files(&source_root, exts);
+    let file_index = build_file_index(workspace, &files);
+
+    let mut nodes: Vec<Node> = Vec::new();
+    let mut edges: Vec<Edge> = Vec::new();
+    // Track external nodes we already emitted to avoid duplicates.
+    let mut ext_seen: HashMap<String, ()> = HashMap::new();
+    // Track file nodes we already emitted.
+    let mut file_ids_seen: HashMap<String, ()> = HashMap::new();
+
+    for abs_path in &files {
+        let ext = abs_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let language = match lang_for_ext(ext) {
+            Some(l) => l,
+            None => continue,
+        };
+
+        let source = match std::fs::read(abs_path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+
+        let mut ts_parser = tree_sitter::Parser::new();
+        ts_parser
+            .set_language(&language)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        let tree = match ts_parser.parse(&source, None) {
+            Some(t) => t,
+            None => continue,
+        };
+
+        let loc = source.iter().filter(|&&b| b == b'\n').count() as i64 + 1;
+        let file_id = abs_path.to_string_lossy().into_owned();
+
+        if !file_ids_seen.contains_key(&file_id) {
+            file_ids_seen.insert(file_id.clone(), ());
+            let mut attrs = BTreeMap::new();
+            attrs.insert(
+                "visibility".to_string(),
+                AttrValue::Str("public".to_string()),
+            );
+            attrs.insert("loc".to_string(), AttrValue::Int(loc));
+            nodes.push(Node {
+                id: file_id.clone(),
+                kind: "file".to_string(),
+                name: abs_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
+                parent: None,
+                attrs,
+            });
+        }
+
+        let specifiers = extract_import_specifiers(&tree.root_node(), &source);
+
+        for spec in &specifiers {
+            if let Some(target) = resolve_import(
+                spec,
+                abs_path,
+                workspace,
+                &alias_root,
+                &file_index,
+                candidate_exts_order,
+            ) {
+                let target_id = target.to_string_lossy().into_owned();
+                if target_id != file_id {
+                    edges.push(Edge {
+                        source: file_id.clone(),
+                        target: target_id,
+                        kind: "uses".to_string(),
+                        attrs: BTreeMap::new(),
+                    });
+                }
+            } else if let Some(pkg) = external_package(spec) {
+                let ext_id = format!("ext:{pkg}");
+                if !ext_seen.contains_key(&ext_id) {
+                    ext_seen.insert(ext_id.clone(), ());
+                    let mut attrs = BTreeMap::new();
+                    attrs.insert("external".to_string(), AttrValue::Bool(true));
+                    nodes.push(Node {
+                        id: ext_id.clone(),
+                        kind: "external".to_string(),
+                        name: pkg,
+                        parent: None,
+                        attrs,
+                    });
+                }
+                edges.push(Edge {
+                    source: file_id.clone(),
+                    target: ext_id,
+                    kind: "uses".to_string(),
+                    attrs: BTreeMap::new(),
+                });
+            }
+        }
+    }
+
+    Ok(Graph { nodes, edges })
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Source root detection
+// ─────────────────────────────────────────────────────────────────────────────
+
 fn find_source_root(workspace: &Path) -> PathBuf {
     let src = workspace.join("src");
     if src.is_dir() {
@@ -90,11 +223,11 @@ fn find_source_root(workspace: &Path) -> PathBuf {
     }
 }
 
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // File discovery
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
-fn collect_js_files(root: &Path) -> Vec<PathBuf> {
+fn collect_files(root: &Path, exts: &[&str]) -> Vec<PathBuf> {
     WalkDir::new(root)
         .into_iter()
         .filter_map(|e| e.ok())
@@ -102,7 +235,7 @@ fn collect_js_files(root: &Path) -> Vec<PathBuf> {
             e.file_type().is_file()
                 && e.path()
                     .extension()
-                    .is_some_and(|x| matches!(x.to_str(), Some("ts" | "tsx" | "js" | "jsx")))
+                    .is_some_and(|x| exts.contains(&x.to_str().unwrap_or("")))
                 && !is_skip_path(e.path(), root)
         })
         .map(|e| e.into_path())
@@ -129,15 +262,14 @@ fn is_skip_path(path: &Path, workspace: &Path) -> bool {
                     || s.ends_with(".min.ts")
                     || s.ends_with(".umd.js")
                     || s.ends_with(".bundle.js")
-                    || s.ends_with(".cjs")
             })
         })
         .unwrap_or(false)
 }
 
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Module path helpers
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 /// `src/lib/utils.ts` → `src/lib/utils`
 /// `src/lib/index.ts` → `src/lib`
@@ -149,7 +281,7 @@ fn file_to_mod_path(workspace: &Path, path: &Path) -> Option<String> {
         .collect();
 
     let last = parts.last_mut()?;
-    for ext in &[".tsx", ".ts", ".jsx", ".js"] {
+    for ext in &[".tsx", ".ts", ".jsx", ".js", ".mjs", ".cjs", ".mts", ".cts"] {
         if let Some(stem) = last.strip_suffix(ext) {
             *last = stem.to_string();
             break;
@@ -164,125 +296,23 @@ fn file_to_mod_path(workspace: &Path, path: &Path) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// Build a map: module_path → abs_path for all js/ts files.
-fn build_file_index(
-    workspace: &Path,
-    _source_root: &Path,
-    files: &[PathBuf],
-) -> HashMap<String, PathBuf> {
+/// Build a map: module_path → abs_path for all collected files.
+fn build_file_index(workspace: &Path, files: &[PathBuf]) -> HashMap<String, PathBuf> {
     files
         .iter()
         .filter_map(|p| file_to_mod_path(workspace, p).map(|m| (m, p.clone())))
         .collect()
 }
 
-// ---------------------------------------------------------------------------
-// Per-file parsing
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// External package name extraction
+// ─────────────────────────────────────────────────────────────────────────────
 
-fn parse_and_add(
-    abs_path: &Path,
-    workspace: &Path,
-    alias_root: &Path,
-    file_index: &HashMap<String, PathBuf>,
-    builder: &mut GraphBuilder,
-) -> Result<()> {
-    let source = std::fs::read(abs_path)?;
-    let ext = abs_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-
-    let language = match ext {
-        "tsx" => tree_sitter_typescript::LANGUAGE_TSX.into(),
-        "ts" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-        "jsx" | "js" => tree_sitter_javascript::LANGUAGE.into(),
-        _ => return Ok(()),
-    };
-
-    let mut ts_parser = tree_sitter::Parser::new();
-    ts_parser
-        .set_language(&language)
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-    let tree = ts_parser
-        .parse(&source, None)
-        .ok_or_else(|| anyhow::anyhow!("parse failed: {}", abs_path.display()))?;
-
-    let loc = source.iter().filter(|&&b| b == b'\n').count() as u32 + 1;
-    let file_id = format!("file:{}", abs_path.to_string_lossy());
-
-    builder.add_node(Node {
-        id: file_id.clone(),
-        kind: NodeKind::File,
-        name: abs_path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned(),
-        path: abs_path.to_string_lossy().into_owned(),
-        parent: None,
-        external: None,
-        version: None,
-        visibility: Some(Visibility::Public),
-        loc: Some(loc),
-        line: None,
-        item_count: None,
-        method_count: None,
-        complexity: None,
-        cycle_kind: None,
-    });
-
-    let specifiers = extract_import_specifiers(&tree.root_node(), &source);
-
-    for spec in &specifiers {
-        if let Some(target) = resolve_import(spec, abs_path, workspace, alias_root, file_index) {
-            let target_id = format!("file:{}", target.to_string_lossy());
-            if target_id != file_id {
-                builder.add_edge(Edge {
-                    from: file_id.clone(),
-                    to: target_id,
-                    kind: EdgeKind::Uses,
-                    unresolved: None,
-                    external: None,
-                    visibility: None,
-                });
-            }
-        } else if let Some(pkg) = external_package(spec) {
-            // Bare specifier that does not resolve to a project file → an
-            // external (npm) dependency, recorded at depth 1.
-            let ext_id = format!("ext:{pkg}");
-            builder.add_node(Node {
-                id: ext_id.clone(),
-                kind: NodeKind::External,
-                name: pkg,
-                path: String::new(),
-                parent: None,
-                external: Some(true),
-                version: None,
-                visibility: None,
-                loc: None,
-                line: None,
-                item_count: None,
-                method_count: None,
-                complexity: None,
-                cycle_kind: None,
-            });
-            builder.add_edge(Edge {
-                from: file_id.clone(),
-                to: ext_id,
-                kind: EdgeKind::Uses,
-                unresolved: None,
-                external: Some(true),
-                visibility: None,
-            });
-        }
-    }
-
-    Ok(())
-}
-
-/// The package name for a bare (non-relative, non-alias) import specifier:
-/// `react` → `react`, `lodash/fp` → `lodash`, `@scope/pkg/sub` → `@scope/pkg`.
+/// Extract the package name for a bare (non-relative, non-alias) import
+/// specifier: `react` → `react`, `lodash/fp` → `lodash`,
+/// `@scope/pkg/sub` → `@scope/pkg`.
 /// Returns `None` for relative (`./`, `../`) and `@/` alias specifiers.
-fn external_package(spec: &str) -> Option<String> {
+pub fn external_package(spec: &str) -> Option<String> {
     if spec.starts_with("./")
         || spec.starts_with("../")
         || spec.starts_with("@/")
@@ -293,7 +323,6 @@ fn external_package(spec: &str) -> Option<String> {
     let mut it = spec.split('/');
     let first = it.next().unwrap_or(spec);
     if first.starts_with('@') {
-        // scoped package: keep `@scope/name`
         match it.next() {
             Some(second) => Some(format!("{first}/{second}")),
             None => Some(first.to_string()),
@@ -303,9 +332,9 @@ fn external_package(spec: &str) -> Option<String> {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Tree-sitter extraction (import / require specifiers only)
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
+// Tree-sitter extraction (import / require specifiers)
+// ─────────────────────────────────────────────────────────────────────────────
 
 fn extract_import_specifiers(root: &tree_sitter::Node, source: &[u8]) -> Vec<String> {
     let mut specs = Vec::new();
@@ -379,9 +408,9 @@ fn require_source(node: &tree_sitter::Node, source: &[u8]) -> Option<String> {
     None
 }
 
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 // Import resolution
-// ---------------------------------------------------------------------------
+// ─────────────────────────────────────────────────────────────────────────────
 
 fn resolve_import(
     specifier: &str,
@@ -389,32 +418,31 @@ fn resolve_import(
     workspace: &Path,
     alias_root: &Path,
     file_index: &HashMap<String, PathBuf>,
+    candidate_exts_order: &[&str],
 ) -> Option<PathBuf> {
     let base_path: PathBuf = if specifier.starts_with("./") || specifier.starts_with("../") {
         from_file.parent()?.join(specifier)
     } else if let Some(rest) = specifier.strip_prefix("@/") {
         alias_root.join(rest)
     } else {
-        // External package — not a local import.
         return None;
     };
 
     let normalized = normalize_path(&base_path);
 
-    let candidates = [
-        normalized.with_extension("ts"),
-        normalized.with_extension("tsx"),
-        normalized.with_extension("js"),
-        normalized.with_extension("jsx"),
-        normalized.join("index.ts"),
-        normalized.join("index.tsx"),
-        normalized.join("index.js"),
-        normalized.join("index.jsx"),
-    ];
+    // Build candidate list: bare path with each extension, then index.* with each extension.
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    for ext in candidate_exts_order {
+        candidates.push(normalized.with_extension(ext));
+    }
+    for ext in candidate_exts_order {
+        candidates.push(normalized.join(format!("index.{ext}")));
+    }
 
     for candidate in &candidates {
-        let mod_path = file_to_mod_path(workspace, candidate)?;
-        if file_index.contains_key(&mod_path) {
+        if let Some(mod_path) = file_to_mod_path(workspace, candidate)
+            && file_index.contains_key(&mod_path)
+        {
             return file_index.get(&mod_path).cloned();
         }
     }
@@ -436,34 +464,48 @@ fn normalize_path(path: &Path) -> PathBuf {
     out
 }
 
-/// The JavaScript / TypeScript language plugin (registered by the CLI).
+// ─────────────────────────────────────────────────────────────────────────────
+// Plugin struct
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The JavaScript language plugin (handles .js / .jsx / .mjs / .cjs).
 pub struct JavascriptPlugin;
 
-impl code_split_plugin_api::LanguagePlugin for JavascriptPlugin {
-    fn name(&self) -> &'static str {
+const JS_EXTS: &[&str] = &["js", "jsx", "mjs", "cjs"];
+
+impl LanguagePlugin for JavascriptPlugin {
+    fn name(&self) -> &str {
         "javascript"
     }
-    fn aliases(&self) -> &'static [&'static str] {
-        &["typescript", "js", "ts"]
+
+    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
+        detect_with_marker(workspace, "package.json")
     }
-    fn markers(&self) -> &'static [&'static str] {
-        &["package.json", "tsconfig.json"]
+
+    fn levels(&self) -> Vec<Level> {
+        vec![ecmascript_level("files")]
     }
-    fn run(
-        &self,
-        workspace: &std::path::Path,
-    ) -> anyhow::Result<(
-        code_split_graph::PluginGraphs,
-        Vec<code_split_graph::StageTime>,
-    )> {
-        run(workspace)
+
+    fn analyze(&self, workspace: &Path, _level: &str, _input: &PluginInput) -> Result<Graph> {
+        analyze_ecmascript(
+            workspace,
+            JS_EXTS,
+            |ext| match ext {
+                "js" | "jsx" | "mjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
+                _ => None,
+            },
+            &["js", "jsx", "mjs", "cjs"],
+        )
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use code_split_graph::graph::Graph;
     use std::fs;
     use tempfile::TempDir;
 
@@ -500,6 +542,7 @@ mod tests {
             Path::new("/proj"),
             Path::new("/proj/src"),
             &HashMap::new(),
+            &["ts", "tsx", "js", "jsx"],
         );
         assert_eq!(got, None, "bare package specifiers are not local imports");
     }
@@ -512,60 +555,83 @@ mod tests {
         assert_eq!(find_source_root(tmp.path()), tmp.path().join("src"));
     }
 
-    // ── end-to-end: a tiny TypeScript project through run() ──────────────────
-
-    fn write(dir: &Path, rel: &str, contents: &str) {
+    fn write_file(dir: &Path, rel: &str, contents: &str) {
         let p = dir.join(rel);
         fs::create_dir_all(p.parent().unwrap()).unwrap();
         fs::write(p, contents).unwrap();
     }
 
-    fn has_node(g: &Graph, id: &str) -> bool {
-        g.nodes.iter().any(|n| n.id == id)
-    }
-
     #[test]
-    fn run_builds_a_file_graph_with_imports_and_externals() {
+    fn analyze_builds_file_graph_with_imports_and_externals() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path();
-        write(
+        write_file(
             root,
             "src/a.ts",
             "import { greet } from \"./b\";\n\
              import React from \"react\";\n\
              export function helper() { return greet(); }\n",
         );
-        write(
+        write_file(
             root,
             "src/b.ts",
             "export function greet() { return \"hi\"; }\n",
         );
 
-        let (graphs, _timings) = run(root).expect("js/ts plugin runs");
-        let g = &graphs.files;
+        // Use TS extensions so the tree-sitter-javascript parser (used here
+        // via the shared helper) can still parse the TS syntax subset.
+        let graph = analyze_ecmascript(
+            root,
+            &["ts"],
+            |ext| match ext {
+                "ts" => Some(tree_sitter_javascript::LANGUAGE.into()),
+                _ => None,
+            },
+            &["ts", "tsx", "js", "jsx"],
+        )
+        .expect("analyze_ecmascript should succeed");
+
+        let a_id = root.join("src/a.ts").to_string_lossy().into_owned();
+        let b_id = root.join("src/b.ts").to_string_lossy().into_owned();
 
         assert!(
-            g.nodes
-                .iter()
-                .all(|n| matches!(n.kind, NodeKind::File | NodeKind::External)),
-            "files graph holds only File/External nodes"
+            graph.nodes.iter().any(|n| n.id == a_id && n.kind == "file"),
+            "a.ts node present"
         );
-
-        let a_id = format!("file:{}", root.join("src/a.ts").to_string_lossy());
-        let b_id = format!("file:{}", root.join("src/b.ts").to_string_lossy());
         assert!(
-            g.edges
+            graph
+                .edges
                 .iter()
-                .any(|e| e.from == a_id && e.to == b_id && e.kind == EdgeKind::Uses),
+                .any(|e| e.source == a_id && e.target == b_id && e.kind == "uses"),
             "expected import edge a.ts → b.ts"
         );
-
-        assert!(has_node(g, "ext:react"), "external node for react");
         assert!(
-            g.edges
+            graph
+                .nodes
                 .iter()
-                .any(|e| e.from == a_id && e.to == "ext:react" && e.external == Some(true)),
-            "external edge a.ts → react flagged external"
+                .any(|n| n.id == "ext:react" && n.kind == "external"),
+            "external node for react"
         );
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|e| e.source == a_id && e.target == "ext:react"),
+            "external edge a.ts → react"
+        );
+    }
+
+    #[test]
+    fn ecmascript_level_has_expected_structure() {
+        let level = ecmascript_level("files");
+        assert_eq!(level.name, "files");
+        assert!(level.edge_kinds.contains_key("uses"));
+        let uses = &level.edge_kinds["uses"];
+        assert!(uses.flow);
+        assert!(level.node_attributes.contains_key("loc"));
+        assert!(level.node_attributes.contains_key("visibility"));
+        assert!(level.node_attributes.contains_key("external"));
+        assert!(level.edge_attributes.is_empty());
+        assert!(level.attribute_groups.is_empty());
     }
 }

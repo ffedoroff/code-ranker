@@ -2,7 +2,7 @@
 # Pin the plugin and KEEP test files in the graph (ignore.tests = false) so the
 # fixture is reproducible regardless of any repo-level config and so that test
 # files' imports stay visible in the report.
-plugin = "javascript"
+plugin = "typescript"
 
 [ignore]
 tests = false

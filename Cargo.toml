@@ -14,10 +14,11 @@ categories = ["development-tools", "command-line-utilities"]
 [workspace.dependencies]
 code-split-graph = { path = "crates/code-split-graph", version = "1.0.0-alpha.3" }
 code-split-plugin-api = { path = "crates/code-split-plugin-api", version = "1.0.0-alpha.3" }
-code-split-plugin = { path = "crates/code-split-plugin", version = "1.0.0-alpha.3" }
+code-split-complexity = { path = "crates/code-split-complexity", version = "1.0.0-alpha.3" }
 code-split-plugin-rust = { path = "crates/code-split-plugin-rust", version = "1.0.0-alpha.3" }
 code-split-plugin-python = { path = "crates/code-split-plugin-python", version = "1.0.0-alpha.3" }
 code-split-plugin-javascript = { path = "crates/code-split-plugin-javascript", version = "1.0.0-alpha.3" }
+code-split-plugin-typescript = { path = "crates/code-split-plugin-typescript", version = "1.0.0-alpha.3" }
 code-split-viewer = { path = "crates/code-split-viewer", version = "1.0.0-alpha.3" }
 
 anyhow = "1.0"

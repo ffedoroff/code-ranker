@@ -1,23 +1,16 @@
-// Import from the defining modules (not the crate-root re-exports) so this module
-// depends "down" on `graph`/`snapshot` rather than "up" on the crate root — which
-// would close a `root → hk → root` cycle.
-use crate::graph::{Complexity, Coupling, EdgeKind, Graph, Loc, NodeId, NodeKind};
-use crate::snapshot::PluginGraphs;
+//! Henry-Kafura coupling over flow edges. For each internal (non-external) node
+//! we count unique flow partners (`fan_in` / `fan_out`), track outgoing edges to
+//! external libraries separately (`fan_out_external`), and compute
+//! `hk = sloc · (fan_in · fan_out)²`. Results are written into node `attrs` as
+//! flat keys; zero values are omitted.
+
+use crate::{attr_f64, is_external, num_attr};
+use code_split_plugin_api::{AttrValue, Graph, NodeId};
 use std::collections::{HashMap, HashSet};
 
-pub fn annotate_hk(graphs: &mut PluginGraphs) {
-    annotate_graph_hk(&mut graphs.files);
-}
-
-/// Is this node an external dependency (a library node, not a project file)?
-fn is_external(node: &crate::graph::Node) -> bool {
-    node.kind == NodeKind::External || node.external.unwrap_or(false)
-}
-
-fn annotate_graph_hk(graph: &mut Graph) {
-    // Edges into external libraries are tracked separately (`fan_out_external`)
-    // and excluded from the internal fan-in/out that drives HK — HK measures
-    // *internal* architectural coupling, not 3rd-party library usage.
+/// Annotate `fan_in` / `fan_out` / `fan_out_external` / `hk` on every internal
+/// node, counting only flow edges. External nodes carry no coupling metrics.
+pub fn annotate_hk(graph: &mut Graph, flow_kinds: &HashSet<String>) {
     let external_ids: HashSet<&str> = graph
         .nodes
         .iter()
@@ -30,182 +23,123 @@ fn annotate_graph_hk(graph: &mut Graph) {
     let mut fan_out_ext: HashMap<NodeId, HashSet<NodeId>> = HashMap::new();
 
     for edge in &graph.edges {
-        // `Contains` edges (Rust `mod foo;` declarations) are structural
-        // ownership, not information flow — excluded from coupling.
-        if edge.kind == EdgeKind::Contains {
+        if !flow_kinds.contains(&edge.kind) {
             continue;
         }
-        // External-library edges are split out into `fan_out_external` (below);
-        // the rest (`uses`/`reexports`) count toward internal coupling.
-        let to_external = external_ids.contains(edge.to.as_str());
-        let from_external = external_ids.contains(edge.from.as_str());
+        let to_external = external_ids.contains(edge.target.as_str());
+        let from_external = external_ids.contains(edge.source.as_str());
         if to_external {
             fan_out_ext
-                .entry(edge.from.clone())
+                .entry(edge.source.clone())
                 .or_default()
-                .insert(edge.to.clone());
+                .insert(edge.target.clone());
             continue;
         }
         if from_external {
-            continue; // edges originating from a library are not project coupling
+            continue;
         }
         fan_out
-            .entry(edge.from.clone())
+            .entry(edge.source.clone())
             .or_default()
-            .insert(edge.to.clone());
+            .insert(edge.target.clone());
         fan_in
-            .entry(edge.to.clone())
+            .entry(edge.target.clone())
             .or_default()
-            .insert(edge.from.clone());
+            .insert(edge.source.clone());
     }
 
     for node in &mut graph.nodes {
         if is_external(node) {
-            continue; // library nodes carry no coupling/HK metrics
+            continue;
         }
         let fi = fan_in.get(&node.id).map(|s| s.len()).unwrap_or(0);
         let fo = fan_out.get(&node.id).map(|s| s.len()).unwrap_or(0);
         let foe = fan_out_ext.get(&node.id).map(|s| s.len()).unwrap_or(0);
-        let struct_loc = node.loc; // structural LOC, present on aggregate (crate) nodes
-
-        let cx = node.complexity.get_or_insert_with(Complexity::default);
-        // When rust-code-analysis produced no LOC (e.g. synthetic crate nodes) but a
-        // structural line count exists, mirror it into `complexity.loc` so the displayed
-        // loc and hk always agree instead of one being blank.
-        if cx.loc.is_none()
-            && let Some(n) = struct_loc
-            && n > 0
-        {
-            cx.loc = Some(Loc {
-                source: n as f64,
-                logical: 0.0,
-                comments: 0.0,
-                blank: 0.0,
-            });
-        }
-        // Henry-Kafura: hk = loc × (fan_in × fan_out)². Uses the same loc that is
-        // displayed; with no loc or no in/out coupling, hk is 0.
-        let loc = cx.loc.as_ref().map(|l| l.source).unwrap_or(0.0);
+        // HK uses the source line count (`sloc`); fall back to the structural
+        // `loc` if rust-code-analysis produced no `sloc` for this file.
+        let loc = attr_f64(node, "sloc")
+            .or_else(|| attr_f64(node, "loc"))
+            .unwrap_or(0.0);
         let hk = loc * ((fi * fo) as f64).powi(2);
-        cx.coupling = Some(Coupling {
-            fan_in: fi as u32,
-            fan_out: fo as u32,
-            fan_out_external: foe as u32,
-            hk,
-        });
+
+        set_or_clear(node, "fan_in", fi as f64);
+        set_or_clear(node, "fan_out", fo as f64);
+        set_or_clear(node, "fan_out_external", foe as f64);
+        if hk > 0.0 {
+            node.attrs.insert("hk".to_string(), num_attr(hk));
+        } else {
+            node.attrs.remove("hk");
+        }
+    }
+}
+
+fn set_or_clear(node: &mut code_split_plugin_api::Node, key: &str, v: f64) {
+    if v > 0.0 {
+        node.attrs.insert(key.to_string(), AttrValue::Int(v as i64));
+    } else {
+        node.attrs.remove(key);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{Edge, EdgeKind, Loc, Node};
+    use code_split_plugin_api::{Edge, Node};
 
-    fn module(id: &str, complexity_loc: Option<f64>, struct_loc: Option<u32>) -> Node {
-        Node {
+    fn file(id: &str, sloc: i64) -> Node {
+        let mut n = Node {
             id: id.into(),
-            kind: NodeKind::Module,
+            kind: "file".into(),
             name: id.into(),
-            path: "p".into(),
             parent: None,
-            external: None,
-            version: None,
-            visibility: None,
-            loc: struct_loc,
-            line: None,
-            item_count: None,
-            method_count: None,
-            complexity: complexity_loc.map(|s| Complexity {
-                loc: Some(Loc {
-                    source: s,
-                    logical: 0.0,
-                    comments: 0.0,
-                    blank: 0.0,
-                }),
-                ..Default::default()
-            }),
-            cycle_kind: None,
-        }
+            attrs: Default::default(),
+        };
+        n.attrs.insert("sloc".into(), AttrValue::Int(sloc));
+        n
     }
-
     fn uses(from: &str, to: &str) -> Edge {
         Edge {
-            from: from.into(),
-            to: to.into(),
-            kind: EdgeKind::Uses,
-            unresolved: None,
-            external: None,
-            visibility: None,
+            source: from.into(),
+            target: to.into(),
+            kind: "uses".into(),
+            attrs: Default::default(),
         }
     }
-
-    fn coupling<'a>(g: &'a Graph, id: &str) -> &'a Coupling {
-        g.nodes
-            .iter()
-            .find(|n| n.id == id)
-            .unwrap()
-            .complexity
-            .as_ref()
-            .unwrap()
-            .coupling
-            .as_ref()
-            .unwrap()
+    fn flow() -> HashSet<String> {
+        HashSet::from(["uses".to_string()])
     }
 
     #[test]
     fn hk_is_loc_times_fan_squared() {
-        // A -> B -> C.  B has loc 10, fan_in 1, fan_out 1 → hk = 10·(1·1)² = 10.
-        let mut g = PluginGraphs::default();
-        g.files.nodes = vec![
-            module("A", Some(4.0), Some(4)),
-            module("B", Some(10.0), Some(10)),
-            module("C", Some(5.0), Some(5)),
-        ];
-        g.files.edges = vec![uses("A", "B"), uses("B", "C")];
-        annotate_graph_hk(&mut g.files);
-
-        let b = coupling(&g.files, "B");
-        assert_eq!((b.fan_in, b.fan_out), (1, 1));
-        assert_eq!(b.hk, 10.0, "hk = loc(10) · (fan_in·fan_out)²");
+        let mut g = Graph {
+            nodes: vec![file("A", 4), file("B", 10), file("C", 5)],
+            edges: vec![uses("A", "B"), uses("B", "C")],
+        };
+        annotate_hk(&mut g, &flow());
+        let b = &g.nodes[1];
+        assert_eq!(attr_f64(b, "fan_in"), Some(1.0));
+        assert_eq!(attr_f64(b, "fan_out"), Some(1.0));
+        assert_eq!(attr_f64(b, "hk"), Some(10.0));
     }
 
     #[test]
-    fn hk_falls_back_to_structural_loc_for_crate_like_nodes() {
-        // Y -> X -> Z.  X is crate-like: only structural node.loc, no complexity.loc.
-        // It must keep an hk (fan_in 1, fan_out 1) AND surface that loc in complexity.loc.
-        let mut g = PluginGraphs::default();
-        g.files.nodes = vec![
-            module("X", None, Some(10)),
-            module("Y", Some(5.0), Some(5)),
-            module("Z", Some(5.0), Some(5)),
-        ];
-        g.files.edges = vec![uses("Y", "X"), uses("X", "Z")];
-        annotate_graph_hk(&mut g.files);
-
-        let x = g.files.nodes.iter().find(|n| n.id == "X").unwrap();
-        let xc = x.complexity.as_ref().unwrap();
-        assert_eq!(
-            xc.loc.as_ref().unwrap().source,
-            10.0,
-            "structural loc mirrored into complexity.loc so it is displayed"
-        );
-        let cp = xc.coupling.as_ref().unwrap();
-        assert_eq!((cp.fan_in, cp.fan_out), (1, 1));
-        assert_eq!(
-            cp.hk, 10.0,
-            "crate-like node keeps hk from its structural loc"
-        );
-    }
-
-    #[test]
-    fn hk_is_zero_without_any_loc() {
-        // M -> N : M has neither complexity.loc nor structural loc → hk 0 despite fan_out.
-        let mut g = PluginGraphs::default();
-        g.files.nodes = vec![module("M", None, None), module("N", Some(3.0), Some(3))];
-        g.files.edges = vec![uses("M", "N")];
-        annotate_graph_hk(&mut g.files);
-        let m = coupling(&g.files, "M");
-        assert_eq!(m.fan_out, 1);
-        assert_eq!(m.hk, 0.0, "no loc anywhere → hk 0");
+    fn external_target_counts_as_fan_out_external() {
+        let mut g = Graph {
+            nodes: vec![
+                file("a", 5),
+                Node {
+                    id: "ext:x".into(),
+                    kind: "external".into(),
+                    name: "x".into(),
+                    parent: None,
+                    attrs: Default::default(),
+                },
+            ],
+            edges: vec![uses("a", "ext:x")],
+        };
+        annotate_hk(&mut g, &flow());
+        let a = &g.nodes[0];
+        assert_eq!(attr_f64(a, "fan_out_external"), Some(1.0));
+        assert_eq!(a.attrs.get("hk"), None, "no internal coupling → no hk");
     }
 }

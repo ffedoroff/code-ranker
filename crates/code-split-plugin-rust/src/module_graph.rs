@@ -1,7 +1,7 @@
 use super::ids::crate_node_id;
+use super::internal::{Edge, EdgeKind, GraphBuilder, Node, NodeId, NodeKind, Visibility};
 use anyhow::{Context, Result};
 use cargo_metadata::{Metadata, Package, PackageId, Target};
-use code_split_graph::{Edge, EdgeKind, GraphBuilder, Node, NodeId, NodeKind, Visibility};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use syn::spanned::Spanned as _;
@@ -22,12 +22,8 @@ pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) -> Res
 }
 
 /// Sum module LOC into each crate node.
-/// File nodes no longer exist in the Rust plugin — LOC lives on Module nodes.
 fn aggregate_crate_loc(builder: &mut GraphBuilder) {
-    use code_split_graph::NodeKind;
-    // Collect (crate_id, loc) from root-level module nodes (depth == 1 below crate).
-    // Root module ids have the form "mod:{pkg_repr}::{target_name}" (no further "::" segments
-    // in the path part), and their parent is "crate:{pkg_repr}".
+    // Collect (crate_id, loc) from root-level module nodes (direct children of crate nodes).
     let entries: Vec<(String, u32)> = builder
         .nodes_mut()
         .iter()
@@ -40,11 +36,7 @@ fn aggregate_crate_loc(builder: &mut GraphBuilder) {
                 .then(|| (parent.to_string(), loc))
         })
         .collect();
-    // Sum all module LOC for nested modules by walking every module's parent chain is
-    // expensive; instead sum only root-target modules (direct children of crate nodes).
-    // Root modules already carry the full file LOC because walk_file sets it on them.
-    // Deeper inline modules have their own LOC (span-based) which must NOT be added again.
-    let mut crate_loc: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut crate_loc: HashMap<String, u32> = HashMap::new();
     for (crate_id, loc) in entries {
         crate_loc
             .entry(crate_id)
@@ -80,8 +72,6 @@ fn process_package(
     builder: &mut GraphBuilder,
 ) -> Result<()> {
     let crate_id = crate_node_id(&pkg.id.repr);
-    // Guard against walking the same source file twice when a package has
-    // multiple targets (e.g. lib + bin) that both declare the same modules.
     let mut visited_files: HashSet<PathBuf> = HashSet::new();
 
     for target in &pkg.targets {
@@ -103,16 +93,11 @@ fn process_package(
             loc: None,
             line: None,
             item_count: None,
-            method_count: None,
-            complexity: None,
-            cycle_kind: None,
         });
         builder.add_edge(Edge {
             from: crate_id.clone(),
             to: root_mod_id.clone(),
             kind: EdgeKind::Contains,
-            unresolved: None,
-            external: None,
             visibility: None,
         });
 
@@ -147,16 +132,11 @@ struct PendingUse {
     use_path: Vec<String>,
     visibility: Visibility,
     /// `true` for a crate-qualified path captured from an expression/type
-    /// (`other_crate::item`) rather than a `use` statement — resolved against
-    /// `extern_crates` only (cross-crate), never the local module index.
+    /// (`other_crate::item`) rather than a `use` statement.
     bare: bool,
 }
 
-/// Collects every qualified path (`a::b::…`, ≥ 2 segments) in a parsed file,
-/// as its full segment list. Used to surface bare-path references that never
-/// appear in a `use` — both cross-crate (`code_split_graph::…`, `once_cell::…`)
-/// and intra-crate (`commands::run()`, `crate::foo::Bar`). Resolution against
-/// the module index / extern crates happens later in `emit_uses`.
+/// Collects every qualified path (≥ 2 segments) in a parsed file.
 #[derive(Default)]
 struct CratePathCollector {
     paths: std::collections::BTreeSet<Vec<String>>,
@@ -221,7 +201,6 @@ fn walk_file(
     let loc = content.lines().count() as u32;
     let item_count = count_items(&parsed.items) as u32;
     // Annotate the parent module node with LOC and item_count from this file.
-    // In Rust a file IS its module — no separate File node is needed.
     if let Some(node) = builder
         .nodes_mut()
         .iter_mut()
@@ -232,10 +211,7 @@ fn walk_file(
         node.path = file_path.display().to_string();
     }
 
-    // Capture bare-path references (`other_crate::item`, `commands::run()`,
-    // `crate::foo::Bar`) used in expressions/types without a `use`, so both
-    // cross-crate and intra-crate dependencies are not lost. Resolution (full
-    // `resolve_use_path`) happens in `emit_uses`.
+    // Capture bare-path references used in expressions/types without a `use`.
     let mut collector = CratePathCollector::default();
     syn::visit::Visit::visit_file(&mut collector, &parsed);
     for path in collector.paths {
@@ -349,16 +325,11 @@ fn process_mod(
         loc,
         line,
         item_count: None,
-        method_count: None,
-        complexity: None,
-        cycle_kind: None,
     });
     builder.add_edge(Edge {
         from: parent_mod_id.clone(),
         to: sub_mod_id.clone(),
         kind: EdgeKind::Contains,
-        unresolved: None,
-        external: None,
         visibility: None,
     });
     module_index.insert(sub_path.clone(), sub_mod_id.clone());
@@ -428,13 +399,8 @@ fn emit_uses(
     extern_crates: &HashMap<String, NodeId>,
     builder: &mut GraphBuilder,
 ) {
-    // Dedup on (from, to, kind) — same target via `use` and `pub use` should produce both edges.
-    let mut seen: HashSet<(NodeId, NodeId, EdgeKind)> = HashSet::new();
+    let mut seen: HashSet<(NodeId, NodeId, String)> = HashSet::new();
     for pu in pending {
-        // Both `use`-derived and bare-path pendings resolve through the full
-        // path resolver: it handles `crate`/`self`/`super`, intra-crate child
-        // paths (`commands::run` → the `commands` module), and falls back to
-        // extern crates. Bare references are never re-exports.
         let Some(target_id) =
             resolve_use_path(&pu.use_path, &pu.current_path, module_index, extern_crates)
         else {
@@ -448,16 +414,15 @@ fn emit_uses(
         } else {
             EdgeKind::Uses
         };
-        if !seen.insert((pu.from_mod_id.clone(), target_id.clone(), kind)) {
+        let kind_str = format!("{kind:?}");
+        if !seen.insert((pu.from_mod_id.clone(), target_id.clone(), kind_str)) {
             continue;
         }
         builder.add_edge(Edge {
             from: pu.from_mod_id.clone(),
             to: target_id,
             kind,
-            unresolved: None,
-            external: None,
-            visibility: if kind == EdgeKind::Reexports {
+            visibility: if matches!(kind, EdgeKind::Reexports) {
                 Some(pu.visibility.clone())
             } else {
                 None
@@ -493,12 +458,6 @@ fn resolve_use_path(
         }
         "std" | "core" | "alloc" | "proc_macro" | "test" => None,
         other => {
-            // Rust 2018+ child-path: `use foo::bar` inside a module that
-            // declares `mod foo;` resolves to `self::foo::bar`. We test
-            // for this by checking whether `current_path :: first` is a
-            // known module in the index. If so, walk the path relative
-            // to `current_path`. Otherwise treat the first segment as an
-            // external crate name.
             let mut probe = current_path.to_vec();
             probe.push(first.to_string());
             if module_index.contains_key(&probe) {
@@ -654,7 +613,6 @@ mod tests {
 
     #[test]
     fn resolves_super_super_to_root_sibling() {
-        // `super::super::x` from a::b climbs twice to the root, then resolves `x`.
         let mut idx: HashMap<Vec<String>, NodeId> = HashMap::new();
         idx.insert(vec![], "ROOT".into());
         idx.insert(vec!["a".into()], "A".into());
@@ -695,8 +653,6 @@ mod tests {
 
     #[test]
     fn resolve_use_path_handles_intra_crate_bare_path() {
-        // An intra-crate bare-path call (`commands::run()` at the crate root)
-        // resolves to the local `commands` module node, not an extern crate.
         let mut index: HashMap<Vec<String>, NodeId> = HashMap::new();
         index.insert(vec![], "mod:crate".into());
         index.insert(vec!["commands".into()], "mod:commands".into());
@@ -705,7 +661,6 @@ mod tests {
             resolve_use_path(&["commands".into(), "run".into()], &[], &index, &externs).as_deref(),
             Some("mod:commands")
         );
-        // A leading extern segment still resolves to the extern crate.
         let mut externs2: HashMap<String, NodeId> = HashMap::new();
         externs2.insert("once_cell".into(), "crate:once_cell".into());
         assert_eq!(
@@ -717,8 +672,6 @@ mod tests {
 
     #[test]
     fn collector_captures_qualified_paths() {
-        // Qualified references (≥ 2 segments) in expressions/types are collected
-        // as full segment lists; single-segment names are not.
         let f = syn::parse_file(
             "fn run() { let _ = once_cell::sync::Lazy::new(|| 1); commands::go(); plain(); }",
         )

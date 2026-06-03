@@ -10,247 +10,330 @@
   },
   "graphs": {
     "files": {
+      "attribute_groups": {
+        "complexity": {
+          "hint": "Code complexity metrics",
+          "label": "Complexity"
+        },
+        "coupling": {
+          "hint": "Internal coupling (Henry-Kafura)",
+          "label": "Coupling"
+        },
+        "halstead": {
+          "hint": "Halstead software metrics",
+          "label": "Halstead"
+        },
+        "loc": {
+          "hint": "Lines of code breakdown",
+          "label": "Lines of Code"
+        },
+        "maintainability": {
+          "hint": "Maintainability index",
+          "label": "Maintainability"
+        }
+      },
       "cycles": [
         {
           "kind": "chain",
           "nodes": [
-            "file:{target}/src/a.js",
-            "file:{target}/src/b.js",
-            "file:{target}/src/c.js"
+            "{target}/src/a.js",
+            "{target}/src/b.js",
+            "{target}/src/c.js"
           ]
         }
       ],
+      "edge_attributes": {},
+      "edge_kinds": {
+        "uses": {
+          "flow": true,
+          "hint": "Import dependency \u2014 this file imports from the other.",
+          "label": "uses"
+        }
+      },
       "edges": [
         {
-          "external": true,
-          "from": "file:{target}/src/a.js",
           "kind": "uses",
-          "to": "ext:chalk"
+          "source": "{target}/src/a.js",
+          "target": "ext:chalk"
         },
         {
-          "external": true,
-          "from": "file:{target}/src/a.js",
           "kind": "uses",
-          "to": "ext:lodash"
+          "source": "{target}/src/a.js",
+          "target": "ext:lodash"
         },
         {
-          "from": "file:{target}/src/a.js",
           "kind": "uses",
-          "to": "file:{target}/src/b.js"
+          "source": "{target}/src/a.js",
+          "target": "{target}/src/b.js"
         },
         {
-          "from": "file:{target}/src/a.js",
           "kind": "uses",
-          "to": "file:{target}/src/c.js"
+          "source": "{target}/src/a.js",
+          "target": "{target}/src/c.js"
         },
         {
-          "from": "file:{target}/src/a.test.js",
           "kind": "uses",
-          "to": "file:{target}/src/a.js"
+          "source": "{target}/src/a.test.js",
+          "target": "{target}/src/a.js"
         },
         {
-          "from": "file:{target}/src/b.js",
           "kind": "uses",
-          "to": "file:{target}/src/a.js"
+          "source": "{target}/src/b.js",
+          "target": "{target}/src/a.js"
         },
         {
-          "from": "file:{target}/src/b.js",
           "kind": "uses",
-          "to": "file:{target}/src/c.js"
+          "source": "{target}/src/b.js",
+          "target": "{target}/src/c.js"
         },
         {
-          "external": true,
-          "from": "file:{target}/src/c.js",
           "kind": "uses",
-          "to": "ext:chalk"
+          "source": "{target}/src/c.js",
+          "target": "ext:chalk"
         },
         {
-          "from": "file:{target}/src/c.js",
           "kind": "uses",
-          "to": "file:{target}/src/b.js"
+          "source": "{target}/src/c.js",
+          "target": "{target}/src/b.js"
         }
       ],
+      "node_attributes": {
+        "args": {
+          "group": "complexity",
+          "label": "Args",
+          "value_type": "int"
+        },
+        "blank": {
+          "group": "loc",
+          "label": "Blank",
+          "value_type": "int"
+        },
+        "bugs": {
+          "group": "halstead",
+          "label": "Bugs",
+          "value_type": "float"
+        },
+        "closures": {
+          "group": "complexity",
+          "label": "Closures",
+          "value_type": "int"
+        },
+        "cognitive": {
+          "group": "complexity",
+          "label": "Cognitive",
+          "value_type": "int"
+        },
+        "cycle": {
+          "label": "Cycle",
+          "value_type": "str"
+        },
+        "cyclomatic": {
+          "group": "complexity",
+          "label": "Cyclomatic",
+          "value_type": "int"
+        },
+        "effort": {
+          "group": "halstead",
+          "label": "Effort",
+          "value_type": "float"
+        },
+        "external": {
+          "label": "External",
+          "value_type": "bool"
+        },
+        "fan_in": {
+          "group": "coupling",
+          "label": "Fan-in",
+          "value_type": "int"
+        },
+        "fan_out": {
+          "group": "coupling",
+          "label": "Fan-out",
+          "value_type": "int"
+        },
+        "fan_out_external": {
+          "group": "coupling",
+          "label": "Fan-out (external)",
+          "value_type": "int"
+        },
+        "hk": {
+          "group": "coupling",
+          "label": "HK",
+          "value_type": "float"
+        },
+        "length": {
+          "group": "halstead",
+          "label": "Length",
+          "value_type": "float"
+        },
+        "lloc": {
+          "group": "loc",
+          "label": "Logical",
+          "value_type": "int"
+        },
+        "loc": {
+          "label": "Lines",
+          "value_type": "int"
+        },
+        "mi": {
+          "group": "maintainability",
+          "label": "MI",
+          "value_type": "float"
+        },
+        "mi_sei": {
+          "group": "maintainability",
+          "label": "MI (SEI)",
+          "value_type": "float"
+        },
+        "sloc": {
+          "group": "loc",
+          "label": "Source",
+          "value_type": "int"
+        },
+        "time": {
+          "group": "halstead",
+          "label": "Time",
+          "value_type": "float"
+        },
+        "visibility": {
+          "label": "Visibility",
+          "value_type": "str"
+        },
+        "vocabulary": {
+          "group": "halstead",
+          "label": "Vocabulary",
+          "value_type": "float"
+        },
+        "volume": {
+          "group": "halstead",
+          "label": "Volume",
+          "value_type": "float"
+        }
+      },
       "nodes": [
         {
           "external": true,
           "id": "ext:chalk",
           "kind": "external",
-          "name": "chalk",
-          "path": ""
+          "name": "chalk"
         },
         {
           "external": true,
           "id": "ext:lodash",
           "kind": "external",
-          "name": "lodash",
-          "path": ""
+          "name": "lodash"
         },
         {
-          "complexity": {
-            "args": 2,
-            "closures": 1,
-            "cognitive": 1,
-            "coupling": {
-              "fan_in": 2,
-              "fan_out": 2,
-              "fan_out_external": 2,
-              "hk": 48
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.0354,
-              "effort": 1095.257,
-              "length": 34,
-              "time": 60.847,
-              "vocabulary": 19,
-              "volume": 144.429
-            },
-            "loc": {
-              "blank": -6,
-              "logical": 5,
-              "source": 3
-            },
-            "maintainability": {
-              "mi": 126.423,
-              "mi_sei": 107.097
-            }
-          },
-          "cycle_kind": "chain",
-          "id": "file:{target}/src/a.js",
+          "args": 2,
+          "blank": -6,
+          "bugs": 0.0354,
+          "closures": 1,
+          "cognitive": 1,
+          "cycle": "chain",
+          "cyclomatic": 1,
+          "effort": 1095.257,
+          "fan_in": 2,
+          "fan_out": 2,
+          "fan_out_external": 2,
+          "hk": 48,
+          "id": "{target}/src/a.js",
           "kind": "file",
+          "length": 34,
+          "lloc": 5,
           "loc": 23,
+          "mi": 126.423,
+          "mi_sei": 107.097,
           "name": "a.js",
-          "path": "{target}/src/a.js",
-          "visibility": "public"
+          "sloc": 3,
+          "time": 60.847,
+          "visibility": "public",
+          "vocabulary": 19,
+          "volume": 144.429
         },
         {
-          "complexity": {
-            "coupling": {
-              "fan_out": 1
-            },
-            "loc": {
-              "source": 8
-            }
-          },
-          "id": "file:{target}/src/a.test.js",
+          "fan_out": 1,
+          "id": "{target}/src/a.test.js",
           "kind": "file",
           "loc": 8,
           "name": "a.test.js",
-          "path": "{target}/src/a.test.js",
           "visibility": "public"
         },
         {
-          "complexity": {
-            "args": 2,
-            "closures": 1,
-            "cognitive": 1,
-            "coupling": {
-              "fan_in": 2,
-              "fan_out": 2,
-              "hk": 48
-            },
-            "cyclomatic": 1,
-            "halstead": {
-              "bugs": 0.0095,
-              "effort": 152.156,
-              "length": 16,
-              "time": 8.453,
-              "vocabulary": 9,
-              "volume": 50.718
-            },
-            "loc": {
-              "blank": -3,
-              "logical": 4,
-              "source": 3
-            },
-            "maintainability": {
-              "mi": 132.095,
-              "mi_sei": 115.178
-            }
-          },
-          "cycle_kind": "chain",
-          "id": "file:{target}/src/b.js",
+          "args": 2,
+          "blank": -3,
+          "bugs": 0.0095,
+          "closures": 1,
+          "cognitive": 1,
+          "cycle": "chain",
+          "cyclomatic": 1,
+          "effort": 152.156,
+          "fan_in": 2,
+          "fan_out": 2,
+          "hk": 48,
+          "id": "{target}/src/b.js",
           "kind": "file",
+          "length": 16,
+          "lloc": 4,
           "loc": 15,
+          "mi": 132.095,
+          "mi_sei": 115.178,
           "name": "b.js",
-          "path": "{target}/src/b.js",
-          "visibility": "public"
+          "sloc": 3,
+          "time": 8.453,
+          "visibility": "public",
+          "vocabulary": 9,
+          "volume": 50.718
         },
         {
-          "complexity": {
-            "args": 2,
-            "closures": 1,
-            "cognitive": 1,
-            "coupling": {
-              "fan_in": 2,
-              "fan_out": 1,
-              "fan_out_external": 1,
-              "hk": 12
-            },
-            "cyclomatic": 2,
-            "halstead": {
-              "bugs": 0.0325,
-              "effort": 964.295,
-              "length": 37,
-              "time": 53.571,
-              "vocabulary": 18,
-              "volume": 154.287
-            },
-            "loc": {
-              "blank": -6,
-              "logical": 6,
-              "source": 3
-            },
-            "maintainability": {
-              "mi": 126.08,
-              "mi_sei": 106.602
-            }
-          },
-          "cycle_kind": "chain",
-          "id": "file:{target}/src/c.js",
+          "args": 2,
+          "blank": -6,
+          "bugs": 0.0325,
+          "closures": 1,
+          "cognitive": 1,
+          "cycle": "chain",
+          "cyclomatic": 2,
+          "effort": 964.295,
+          "fan_in": 2,
+          "fan_out": 1,
+          "fan_out_external": 1,
+          "hk": 12,
+          "id": "{target}/src/c.js",
           "kind": "file",
+          "length": 37,
+          "lloc": 6,
           "loc": 20,
+          "mi": 126.08,
+          "mi_sei": 106.602,
           "name": "c.js",
-          "path": "{target}/src/c.js",
-          "visibility": "public"
+          "sloc": 3,
+          "time": 53.571,
+          "visibility": "public",
+          "vocabulary": 18,
+          "volume": 154.287
         },
         {
-          "complexity": {
-            "loc": {
-              "source": 5
-            }
-          },
-          "id": "file:{target}/src/dynamic.js",
+          "id": "{target}/src/dynamic.js",
           "kind": "file",
           "loc": 5,
           "name": "dynamic.js",
-          "path": "{target}/src/dynamic.js",
           "visibility": "public"
         }
       ],
       "stats": {
+        "bugs": 0.0258,
         "cognitive": 1,
-        "coupling": {
-          "fan_in": 2,
-          "fan_out": 1.5,
-          "hk": 36
-        },
         "cyclomatic": 1.333,
-        "halstead": {
-          "bugs": 0.0258,
-          "effort": 737.236,
-          "length": 29,
-          "time": 40.957,
-          "vocabulary": 15.333,
-          "volume": 116.478
-        },
-        "loc": {
-          "source": 4.4
-        },
-        "maintainability": {
-          "mi": 128.2,
-          "mi_sei": 109.626
-        }
+        "effort": 737.236,
+        "fan_in": 2,
+        "fan_out": 1.5,
+        "hk": 36,
+        "length": 29,
+        "mi": 128.199,
+        "mi_sei": 109.625,
+        "sloc": 3,
+        "time": 40.957,
+        "vocabulary": 15.333,
+        "volume": 116.478
       }
     }
   },
@@ -258,13 +341,13 @@
   "roots": {
     "target": "/home/user/code-split/samples/javascript"
   },
-  "schema_version": "1",
+  "schema_version": "2",
   "target": "/home/user/code-split/samples/javascript",
   "timings": [
     {
       "detail": "7 nodes from 5 files",
       "ms": 0,
-      "stage": "js-ts"
+      "stage": "javascript"
     },
     {
       "detail": "3 nodes annotated",
@@ -272,7 +355,7 @@
       "stage": "complexity"
     },
     {
-      "detail": "files=7 edges=9",
+      "detail": "nodes=7 edges=9",
       "ms": 0,
       "stage": "projection"
     }

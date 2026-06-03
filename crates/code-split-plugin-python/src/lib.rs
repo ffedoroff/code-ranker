@@ -1,75 +1,118 @@
 use anyhow::Result;
-use code_split_graph::{
-    GraphBuilder, NodeKind, PluginGraphs, StageTime,
-    graph::{Edge, EdgeKind, Node, Visibility},
+use code_split_plugin_api::{
+    AttrValue, AttributeSpec, Edge, EdgeKindSpec, Graph, LanguagePlugin, Level, Node, PluginInput,
+    ValueType,
 };
-use rust_code_analysis::{ParserTrait, PythonParser, metrics};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-use code_split_plugin::finalize::finalize_file_graph;
-use code_split_plugin::logger;
+/// The Python language plugin (registered by the CLI).
+pub struct PythonPlugin;
 
-pub fn run(workspace: &Path) -> Result<(PluginGraphs, Vec<StageTime>)> {
-    let mut timings = Vec::new();
-    let mut builder = GraphBuilder::new();
+impl LanguagePlugin for PythonPlugin {
+    fn name(&self) -> &str {
+        "python"
+    }
 
-    let t = logger::Timer::start("python: scan + parse + build file graph");
+    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
+        ["pyproject.toml", "setup.py", "setup.cfg"]
+            .iter()
+            .any(|f| workspace.join(f).exists())
+    }
+
+    fn levels(&self) -> Vec<Level> {
+        let mut edge_kinds = BTreeMap::new();
+        edge_kinds.insert(
+            "uses".to_string(),
+            EdgeKindSpec {
+                flow: true,
+                label: Some("uses".into()),
+                hint: Some("Import dependency \u{2014} this file imports from the other.".into()),
+            },
+        );
+
+        let mut node_attributes: BTreeMap<String, AttributeSpec> = BTreeMap::new();
+        node_attributes.insert(
+            "path".to_string(),
+            AttributeSpec {
+                value_type: ValueType::Str,
+                label: Some("Path".into()),
+                hint: None,
+                group: None,
+            },
+        );
+        node_attributes.insert(
+            "loc".to_string(),
+            AttributeSpec {
+                value_type: ValueType::Int,
+                label: Some("Lines".into()),
+                hint: None,
+                group: None,
+            },
+        );
+        node_attributes.insert(
+            "visibility".to_string(),
+            AttributeSpec {
+                value_type: ValueType::Str,
+                label: Some("Visibility".into()),
+                hint: None,
+                group: None,
+            },
+        );
+        node_attributes.insert(
+            "external".to_string(),
+            AttributeSpec {
+                value_type: ValueType::Bool,
+                label: Some("External".into()),
+                hint: None,
+                group: None,
+            },
+        );
+
+        vec![Level {
+            name: "files".into(),
+            edge_kinds,
+            node_attributes,
+            edge_attributes: BTreeMap::new(),
+            attribute_groups: BTreeMap::new(),
+        }]
+    }
+
+    fn analyze(&self, workspace: &Path, _level: &str, _input: &PluginInput) -> Result<Graph> {
+        analyze(workspace)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Core analysis
+// ---------------------------------------------------------------------------
+
+fn analyze(workspace: &Path) -> Result<Graph> {
+    let mut nodes: Vec<Node> = Vec::new();
+    let mut edges: Vec<Edge> = Vec::new();
 
     let py_files = collect_py_files(workspace);
     let module_index = build_module_index(workspace, &py_files);
+
+    // Track external nodes already added (by id) to avoid duplicates.
+    let mut ext_seen: HashSet<String> = HashSet::new();
 
     for abs_path in &py_files {
         let Some(mod_path) = file_to_module_path(workspace, abs_path) else {
             continue;
         };
-        let _ = parse_and_add(abs_path, &mod_path, &module_index, &mut builder);
+        parse_and_add(
+            abs_path,
+            &mod_path,
+            &module_index,
+            &mut nodes,
+            &mut edges,
+            &mut ext_seen,
+        )?;
     }
 
-    let n = builder.node_count();
-    let detail = format!("{n} nodes from {} files", py_files.len());
-    let ms = t.finish_quiet();
-    timings.push(StageTime {
-        stage: "python".into(),
-        ms,
-        detail,
-    });
-
-    {
-        let t = logger::Timer::start("complexity: cyclomatic / cognitive / halstead / MI / LOC");
-        let annotated = match code_split_plugin::complexity::annotate(
-            workspace,
-            &mut builder,
-            &["py"],
-            |path, src| metrics(&PythonParser::new(src, path, None), path),
-        ) {
-            Ok(n) => n,
-            Err(e) => {
-                logger::info(&format!("complexity skipped: {e:#}"));
-                0
-            }
-        };
-        let detail = format!("{annotated} nodes annotated");
-        let ms = t.finish_quiet();
-        timings.push(StageTime {
-            stage: "complexity".into(),
-            ms,
-            detail,
-        });
-    }
-
-    let t = logger::Timer::start("projecting file graph");
-    let files = finalize_file_graph(builder.build());
-    let detail = format!("files={} edges={}", files.nodes.len(), files.edges.len());
-    let ms = t.finish_quiet();
-    timings.push(StageTime {
-        stage: "projection".into(),
-        ms,
-        detail,
-    });
-
-    Ok((PluginGraphs { files }, timings))
+    Ok(Graph { nodes, edges })
 }
 
 // ---------------------------------------------------------------------------
@@ -148,7 +191,9 @@ fn parse_and_add(
     abs_path: &Path,
     mod_path: &str,
     module_index: &HashMap<String, PathBuf>,
-    builder: &mut GraphBuilder,
+    nodes: &mut Vec<Node>,
+    edges: &mut Vec<Edge>,
+    ext_seen: &mut HashSet<String>,
 ) -> Result<()> {
     let source = std::fs::read(abs_path)?;
 
@@ -161,79 +206,66 @@ fn parse_and_add(
         .parse(&source, None)
         .ok_or_else(|| anyhow::anyhow!("parse failed: {}", abs_path.display()))?;
 
-    let loc = source.iter().filter(|&&b| b == b'\n').count() as u32 + 1;
-    let file_id = format!("file:{}", abs_path.to_string_lossy());
+    let loc = source.iter().filter(|&&b| b == b'\n').count() as i64 + 1;
+    // NEW id scheme: plain absolute path (no "file:" prefix).
+    let file_id = abs_path.to_string_lossy().into_owned();
 
     let parts: Vec<&str> = mod_path.split('.').collect();
+    let vis_str = py_visibility_str(parts[parts.len() - 1]);
 
-    builder.add_node(Node {
+    let mut file_attrs = BTreeMap::new();
+    file_attrs.insert("visibility".to_string(), AttrValue::Str(vis_str.into()));
+    file_attrs.insert("loc".to_string(), AttrValue::Int(loc));
+
+    nodes.push(Node {
         id: file_id.clone(),
-        kind: NodeKind::File,
+        kind: "file".into(),
         name: abs_path
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned(),
-        path: abs_path.to_string_lossy().into_owned(),
         parent: None,
-        external: None,
-        version: None,
-        visibility: Some(py_visibility(parts[parts.len() - 1])),
-        loc: Some(loc),
-        line: None,
-        item_count: None,
-        method_count: None,
-        complexity: None,
-        cycle_kind: None,
+        attrs: file_attrs,
     });
 
-    // Walk tree for imports only (the file graph has no function/class nodes).
+    // Walk tree for imports only.
     let imports = extract_imports(&tree.root_node(), &source);
 
     for imp in &imports {
         let targets = resolve_import(&imp.base, &imp.names, mod_path, module_index);
         if targets.is_empty() {
-            // Unresolved → an external (3rd-party / stdlib) dependency. Record it
-            // at depth 1: one `External` node per top-level package.
+            // Unresolved → external (3rd-party / stdlib). One External node per top-level package.
             if let Some(top) = external_top_level(&imp.base) {
                 let ext_id = format!("ext:{top}");
-                builder.add_node(Node {
-                    id: ext_id.clone(),
-                    kind: NodeKind::External,
-                    name: top,
-                    path: String::new(),
-                    parent: None,
-                    external: Some(true),
-                    version: None,
-                    visibility: None,
-                    loc: None,
-                    line: None,
-                    item_count: None,
-                    method_count: None,
-                    complexity: None,
-                    cycle_kind: None,
-                });
-                builder.add_edge(Edge {
-                    from: file_id.clone(),
-                    to: ext_id,
-                    kind: EdgeKind::Uses,
-                    unresolved: None,
-                    external: Some(true),
-                    visibility: None,
+                if ext_seen.insert(ext_id.clone()) {
+                    let mut ext_attrs = BTreeMap::new();
+                    ext_attrs.insert("external".to_string(), AttrValue::Bool(true));
+                    nodes.push(Node {
+                        id: ext_id.clone(),
+                        kind: "external".into(),
+                        name: top,
+                        parent: None,
+                        attrs: ext_attrs,
+                    });
+                }
+                edges.push(Edge {
+                    source: file_id.clone(),
+                    target: ext_id,
+                    kind: "uses".into(),
+                    attrs: BTreeMap::new(),
                 });
             }
             continue;
         }
         for target_path in targets {
-            let target_id = format!("file:{}", target_path.to_string_lossy());
+            let target_id = target_path.to_string_lossy().into_owned();
             if target_id != file_id {
-                builder.add_edge(Edge {
-                    from: file_id.clone(),
-                    to: target_id,
-                    kind: EdgeKind::Uses,
-                    unresolved: None,
-                    external: None,
-                    visibility: None,
+                edges.push(Edge {
+                    source: file_id.clone(),
+                    target: target_id,
+                    kind: "uses".into(),
+                    attrs: BTreeMap::new(),
                 });
             }
         }
@@ -362,7 +394,7 @@ fn resolve_import(
             };
             try_add(&full);
         }
-        // Also add the base itself (might import symbols from it)
+        // Also add the base itself (might import symbols from it).
         if !abs_base.is_empty() {
             try_add(&abs_base);
         }
@@ -398,43 +430,19 @@ fn absolute_base(base: &str, current_mod: &str) -> String {
 // Visibility heuristic
 // ---------------------------------------------------------------------------
 
-fn py_visibility(name: &str) -> Visibility {
+fn py_visibility_str(name: &str) -> &'static str {
     if name.starts_with("__") && !name.ends_with("__") {
-        Visibility::Private
+        "private"
     } else if name.starts_with('_') {
-        Visibility::Restricted {
-            path: "module".into(),
-        }
+        "restricted"
     } else {
-        Visibility::Public
-    }
-}
-
-/// The Python language plugin (registered by the CLI).
-pub struct PythonPlugin;
-
-impl code_split_plugin_api::LanguagePlugin for PythonPlugin {
-    fn name(&self) -> &'static str {
-        "python"
-    }
-    fn markers(&self) -> &'static [&'static str] {
-        &["pyproject.toml", "setup.py", "setup.cfg"]
-    }
-    fn run(
-        &self,
-        workspace: &std::path::Path,
-    ) -> anyhow::Result<(
-        code_split_graph::PluginGraphs,
-        Vec<code_split_graph::StageTime>,
-    )> {
-        run(workspace)
+        "public"
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use code_split_graph::graph::Graph;
     use std::fs;
     use tempfile::TempDir;
 
@@ -517,18 +525,16 @@ mod tests {
     }
 
     #[test]
-    fn py_visibility_classifies_by_underscore_convention() {
-        assert_eq!(py_visibility("public"), Visibility::Public);
-        assert_eq!(py_visibility("__private"), Visibility::Private);
-        assert_eq!(
-            py_visibility("_protected"),
-            Visibility::Restricted {
-                path: "module".into()
-            }
-        );
+    fn py_visibility_str_classifies_by_underscore_convention() {
+        assert_eq!(py_visibility_str("public"), "public");
+        assert_eq!(py_visibility_str("__private"), "private");
+        assert_eq!(py_visibility_str("_protected"), "restricted");
+        // dunder names (e.g. __init__) are not "private" (they have trailing __)
+        // but they start with '_' so they are "restricted" by the heuristic.
+        assert_eq!(py_visibility_str("__init__"), "restricted");
     }
 
-    // ── end-to-end: a tiny package through run() ─────────────────────────────
+    // ── end-to-end: a tiny package through analyze() ────────────────────────
 
     fn write(dir: &Path, rel: &str, contents: &str) {
         let p = dir.join(rel);
@@ -541,7 +547,7 @@ mod tests {
     }
 
     #[test]
-    fn run_builds_a_file_graph_with_imports_and_externals() {
+    fn analyze_builds_a_file_graph_with_imports_and_externals() {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path();
         write(root, "pkg/__init__.py", "");
@@ -556,34 +562,42 @@ mod tests {
         );
         write(root, "pkg/b.py", "def greet():\n    return \"hi\"\n");
 
-        let (graphs, _timings) = run(root).expect("python plugin runs");
-        let g = &graphs.files;
+        let plugin = PythonPlugin;
+        let input = PluginInput::default();
+        let g = plugin
+            .analyze(root, "files", &input)
+            .expect("python plugin runs");
 
-        // Only File + External nodes — no module/class/function nodes.
+        // Only "file" + "external" kind nodes — no module/class/function nodes.
         assert!(
             g.nodes
                 .iter()
-                .all(|n| matches!(n.kind, NodeKind::File | NodeKind::External)),
-            "files graph holds only File/External nodes"
+                .all(|n| n.kind == "file" || n.kind == "external"),
+            "graph holds only file/external nodes"
         );
 
-        // file→file import edge a.py → b.py.
-        let a_id = format!("file:{}", root.join("pkg/a.py").to_string_lossy());
-        let b_id = format!("file:{}", root.join("pkg/b.py").to_string_lossy());
+        // file→file import edge a.py → b.py (new id scheme: bare absolute path).
+        let a_id = root.join("pkg/a.py").to_string_lossy().into_owned();
+        let b_id = root.join("pkg/b.py").to_string_lossy().into_owned();
         assert!(
             g.edges
                 .iter()
-                .any(|e| e.from == a_id && e.to == b_id && e.kind == EdgeKind::Uses),
+                .any(|e| e.source == a_id && e.target == b_id && e.kind == "uses"),
             "expected import edge a.py → b.py"
         );
 
-        // external stdlib import `os` becomes one External node, flagged on the edge.
-        assert!(has_node(g, "ext:os"), "external node for os");
+        // external stdlib import `os` becomes one External node.
+        assert!(has_node(&g, "ext:os"), "external node for os");
         assert!(
             g.edges
                 .iter()
-                .any(|e| e.from == a_id && e.to == "ext:os" && e.external == Some(true)),
-            "external edge a.py → os flagged external"
+                .any(|e| e.source == a_id && e.target == "ext:os" && e.kind == "uses"),
+            "external edge a.py → os"
         );
+
+        // Check structural attrs on a file node.
+        let a_node = g.nodes.iter().find(|n| n.id == a_id).unwrap();
+        assert!(a_node.attrs.contains_key("visibility"), "visibility attr");
+        assert!(a_node.attrs.contains_key("loc"), "loc attr");
     }
 }
