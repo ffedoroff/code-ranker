@@ -8,6 +8,8 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Code Split Python plugin: tree-sitter module/import graph."
+# The e2e fixture project ships next to src/ but is not part of the published crate.
+exclude = ["sample"]
 
 [dependencies]
 code-split-plugin-api = { workspace = true }

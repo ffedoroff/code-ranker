@@ -1,8 +1,9 @@
 //! End-to-end fixture tests.
 //!
-//! For every project under `samples/`, run the built `code-split` binary and
-//! compare its JSON report against the committed golden
-//! `samples/<lang>/code-split-report.json`.
+//! For every language's fixture project (colocated with its plugin crate at
+//! `crates/code-split-plugin-<lang>/sample/`), run the built `code-split` binary
+//! and compare its JSON report against the committed golden
+//! `crates/code-split-plugin-<lang>/sample/code-split-report.json`.
 //!
 //! The committed golden keeps its RAW header (timestamp, command, git, versions,
 //! absolute paths, timings). The comparison therefore:
@@ -24,7 +25,7 @@
 //! verbatim, which is where the real assertions about detected dependencies and
 //! blind spots live.
 //!
-//! To refresh the goldens after an intentional change, run `samples/regen.sh`.
+//! To refresh the goldens after an intentional change, see `docs/e2e.md`.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -44,11 +45,20 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Run the binary on `samples/<lang>` with the sample's own config and return
-/// the parsed JSON report.
+/// The fixture project for a language, now colocated with its plugin crate at
+/// `crates/code-split-plugin-<lang>/sample`.
+fn sample_dir(lang: &str) -> PathBuf {
+    repo_root()
+        .join("crates")
+        .join(format!("code-split-plugin-{lang}"))
+        .join("sample")
+}
+
+/// Run the binary on the language's `sample/` project with its own config and
+/// return the parsed JSON report.
 fn run_report(lang: &str) -> Value {
     let root = repo_root();
-    let sample = root.join("samples").join(lang);
+    let sample = sample_dir(lang);
     let out_dir = tempfile::tempdir().expect("create temp output dir");
 
     let out_json = out_dir.path().join("fresh.json");
@@ -70,10 +80,7 @@ fn run_report(lang: &str) -> Value {
 }
 
 fn read_golden(lang: &str) -> Value {
-    let path = repo_root()
-        .join("samples")
-        .join(lang)
-        .join("code-split-report.json");
+    let path = sample_dir(lang).join("code-split-report.json");
     let text = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("read golden {}: {e}", path.display()));
     serde_json::from_str(&text).expect("parse golden report json")
@@ -211,7 +218,7 @@ fn assert_sample_matches(lang: &str) {
     assert_eq!(
         fresh_s, golden_s,
         "[{lang}] normalized report differs from golden. \
-         If this change is intentional, run `samples/regen.sh`."
+         If this change is intentional, regenerate the goldens (see docs/e2e.md)."
     );
 }
 

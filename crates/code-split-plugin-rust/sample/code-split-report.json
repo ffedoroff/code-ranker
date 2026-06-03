@@ -1,6 +1,6 @@
 {
-  "command": "code-split report samples/rust --config samples/rust/code-split.toml --output.json.path=samples/rust/code-split-report.json",
-  "config_file": "samples/rust/code-split.toml",
+  "command": "code-split report crates/code-split-plugin-rust/sample --config crates/code-split-plugin-rust/sample/code-split.toml --output.json.path=crates/code-split-plugin-rust/sample/code-split-report.json",
+  "config_file": "crates/code-split-plugin-rust/sample/code-split.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
     "branch": "main",
@@ -435,10 +435,10 @@
   "plugin": "rust",
   "roots": {
     "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
-    "target": "/home/user/code-split/samples/rust"
+    "target": "/home/user/code-split/crates/code-split-plugin-rust/sample"
   },
   "schema_version": "2",
-  "target": "/home/user/code-split/samples/rust",
+  "target": "/home/user/code-split/crates/code-split-plugin-rust/sample",
   "timings": [
     {
       "detail": "8 nodes from 6 files",

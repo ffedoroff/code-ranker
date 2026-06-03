@@ -292,10 +292,11 @@ metadata (command, versions, git state) and the one `files` graph. See
 
 The snapshot is written as **canonical JSON**: every object key is emitted
 in alphabetical order and the `nodes` / `edges` arrays are sorted by a
-stable key (node `id`; edge `from`/`to`/`kind`). Re-analyzing unchanged
+stable key (node `id`; edge `source`/`target`/`kind`). Re-analyzing unchanged
 code therefore yields byte-identical graph data — no churn from map
-iteration order — which keeps committed snapshots (e.g. the `samples/`
-goldens) diff-clean and makes a baseline comparison reflect only real changes.
+iteration order — which keeps committed snapshots (e.g. the per-plugin
+`sample/` goldens) diff-clean and makes a baseline comparison reflect only
+real changes.
 
 A `--baseline` comparison consumes snapshot files produced by `report` and
 is plugin-agnostic. Splitting into separate binaries is forbidden at

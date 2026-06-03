@@ -1,6 +1,6 @@
 {
-  "command": "code-split report samples/javascript --config samples/javascript/code-split.toml --output.json.path=samples/javascript/code-split-report.json",
-  "config_file": "samples/javascript/code-split.toml",
+  "command": "code-split report crates/code-split-plugin-javascript/sample --config crates/code-split-plugin-javascript/sample/code-split.toml --output.json.path=crates/code-split-plugin-javascript/sample/code-split-report.json",
+  "config_file": "crates/code-split-plugin-javascript/sample/code-split.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
     "branch": "main",
@@ -339,10 +339,10 @@
   },
   "plugin": "javascript",
   "roots": {
-    "target": "/home/user/code-split/samples/javascript"
+    "target": "/home/user/code-split/crates/code-split-plugin-javascript/sample"
   },
   "schema_version": "2",
-  "target": "/home/user/code-split/samples/javascript",
+  "target": "/home/user/code-split/crates/code-split-plugin-javascript/sample",
   "timings": [
     {
       "detail": "7 nodes from 5 files",

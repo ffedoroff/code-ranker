@@ -8,6 +8,8 @@ repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Code Split TypeScript plugin: tree-sitter over .ts/.tsx, sharing ECMAScript logic with the JavaScript plugin."
+# The e2e fixture project ships next to src/ but is not part of the published crate.
+exclude = ["sample"]
 
 [dependencies]
 code-split-plugin-api = { workspace = true }

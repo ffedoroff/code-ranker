@@ -1,6 +1,6 @@
 {
-  "command": "code-split report samples/typescript --config samples/typescript/code-split.toml --output.json.path=samples/typescript/code-split-report.json",
-  "config_file": "samples/typescript/code-split.toml",
+  "command": "code-split report crates/code-split-plugin-python/sample --config crates/code-split-plugin-python/sample/code-split.toml --output.json.path=crates/code-split-plugin-python/sample/code-split-report.json",
+  "config_file": "crates/code-split-plugin-python/sample/code-split.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
     "branch": "main",
@@ -36,8 +36,8 @@
         {
           "kind": "mutual",
           "nodes": [
-            "{target}/src/a.ts",
-            "{target}/src/b.ts"
+            "{target}/pkg/a.py",
+            "{target}/pkg/b.py"
           ]
         }
       ],
@@ -52,48 +52,73 @@
       "edges": [
         {
           "kind": "uses",
-          "source": "{target}/src/a.test.ts",
-          "target": "{target}/src/a.ts"
+          "source": "{target}/pkg/a.py",
+          "target": "ext:base64"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/a.ts",
-          "target": "ext:@scope/util"
+          "source": "{target}/pkg/a.py",
+          "target": "ext:json"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/a.ts",
-          "target": "ext:axios"
+          "source": "{target}/pkg/a.py",
+          "target": "ext:os"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/a.ts",
-          "target": "ext:~utils"
+          "source": "{target}/pkg/a.py",
+          "target": "{target}/pkg/__init__.py"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/a.ts",
-          "target": "{target}/src/b.ts"
+          "source": "{target}/pkg/a.py",
+          "target": "{target}/pkg/b.py"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/a.ts",
-          "target": "{target}/src/types.ts"
+          "source": "{target}/pkg/a.py",
+          "target": "{target}/pkg/c.py"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/a.ts",
-          "target": "{target}/src/util.ts"
+          "source": "{target}/pkg/b.py",
+          "target": "ext:importlib"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/b.ts",
-          "target": "{target}/src/a.ts"
+          "source": "{target}/pkg/b.py",
+          "target": "{target}/pkg/__init__.py"
         },
         {
           "kind": "uses",
-          "source": "{target}/src/b.ts",
-          "target": "{target}/src/types.ts"
+          "source": "{target}/pkg/b.py",
+          "target": "{target}/pkg/a.py"
+        },
+        {
+          "kind": "uses",
+          "source": "{target}/pkg/b.py",
+          "target": "{target}/pkg/c.py"
+        },
+        {
+          "kind": "uses",
+          "source": "{target}/pkg/c.py",
+          "target": "ext:requests"
+        },
+        {
+          "kind": "uses",
+          "source": "{target}/tests/test_pkg.py",
+          "target": "{target}/pkg/__init__.py"
+        },
+        {
+          "kind": "uses",
+          "source": "{target}/tests/test_pkg.py",
+          "target": "{target}/pkg/a.py"
+        },
+        {
+          "kind": "uses",
+          "source": "{target}/tests/test_pkg.py",
+          "target": "{target}/pkg/b.py"
         }
       ],
       "node_attributes": {
@@ -125,6 +150,11 @@
           "group": "halstead",
           "label": "Effort",
           "value_type": "float"
+        },
+        "exits": {
+          "group": "complexity",
+          "label": "Exits",
+          "value_type": "int"
         },
         "external": {
           "label": "External",
@@ -202,192 +232,190 @@
       "nodes": [
         {
           "external": true,
-          "id": "ext:@scope/util",
+          "id": "ext:base64",
           "kind": "external",
-          "name": "@scope/util"
+          "name": "base64"
         },
         {
           "external": true,
-          "id": "ext:axios",
+          "id": "ext:importlib",
           "kind": "external",
-          "name": "axios"
+          "name": "importlib"
         },
         {
           "external": true,
-          "id": "ext:~utils",
+          "id": "ext:json",
           "kind": "external",
-          "name": "~utils"
+          "name": "json"
         },
         {
-          "blank": 1,
-          "bugs": 0.0166,
+          "external": true,
+          "id": "ext:os",
+          "kind": "external",
+          "name": "os"
+        },
+        {
+          "external": true,
+          "id": "ext:requests",
+          "kind": "external",
+          "name": "requests"
+        },
+        {
+          "blank": 6,
+          "bugs": 0.00223,
           "cloc": 2,
           "cyclomatic": 1,
-          "effort": 353.817,
-          "fan_out": 1,
-          "id": "{target}/src/a.test.ts",
+          "effort": 17.414,
+          "fan_in": 3,
+          "id": "{target}/pkg/__init__.py",
           "kind": "file",
-          "length": 23,
-          "lloc": 4,
-          "loc": 8,
-          "mi": 115.625,
-          "mi_sei": 128.146,
-          "name": "a.test.ts",
-          "sloc": 7,
-          "time": 19.656,
+          "length": 5,
+          "lloc": 2,
+          "loc": 10,
+          "mi": 122.425,
+          "mi_sei": 134.378,
+          "name": "__init__.py",
+          "sloc": 9,
+          "time": 0.967,
           "visibility": "public",
-          "vocabulary": 15,
-          "volume": 89.858
+          "vocabulary": 5,
+          "volume": 11.609
         },
         {
-          "blank": 3,
-          "bugs": 0.131,
-          "cloc": 13,
+          "blank": 10,
+          "bugs": 0.0611,
+          "cloc": 9,
           "cycle": "mutual",
           "cyclomatic": 1,
-          "effort": 7858.206,
+          "effort": 2482.727,
+          "exits": 3,
           "fan_in": 2,
           "fan_out": 3,
           "fan_out_external": 3,
-          "hk": 1116,
-          "id": "{target}/src/a.ts",
+          "hk": 972,
+          "id": "{target}/pkg/a.py",
           "kind": "file",
-          "length": 102,
-          "lloc": 13,
-          "loc": 32,
-          "mi": 81.476,
-          "mi_sei": 84.513,
-          "name": "a.ts",
-          "sloc": 31,
-          "time": 436.567,
+          "length": 70,
+          "lloc": 11,
+          "loc": 28,
+          "mi": 86.274,
+          "mi_sei": 88.166,
+          "name": "a.py",
+          "sloc": 27,
+          "time": 137.929,
           "visibility": "public",
-          "vocabulary": 40,
-          "volume": 542.836
+          "vocabulary": 31,
+          "volume": 346.793
         },
         {
-          "blank": 3,
-          "bugs": 0.0262,
-          "cloc": 3,
+          "blank": 7,
+          "bugs": 0.053,
+          "cloc": 6,
           "cycle": "mutual",
-          "cyclomatic": 1,
-          "effort": 700,
-          "fan_in": 1,
-          "fan_out": 2,
-          "hk": 56,
-          "id": "{target}/src/b.ts",
-          "kind": "file",
-          "length": 30,
-          "lloc": 8,
-          "loc": 15,
-          "mi": 102.662,
-          "mi_sei": 105.576,
-          "name": "b.ts",
-          "sloc": 14,
-          "time": 38.888,
-          "visibility": "public",
-          "vocabulary": 16,
-          "volume": 120
-        },
-        {
-          "bugs": 0.00329,
-          "cloc": 3,
-          "cyclomatic": 1,
-          "effort": 31.019,
-          "id": "{target}/src/lazy.ts",
-          "kind": "file",
-          "length": 6,
-          "lloc": 1,
-          "loc": 5,
-          "mi": 134.056,
-          "mi_sei": 166.496,
-          "name": "lazy.ts",
-          "sloc": 4,
-          "time": 1.723,
-          "visibility": "public",
-          "vocabulary": 6,
-          "volume": 15.509
-        },
-        {
-          "blank": 1,
-          "bugs": 0.0098,
-          "cloc": 1,
-          "cyclomatic": 1,
-          "effort": 159.452,
+          "cyclomatic": 2,
+          "effort": 2009.868,
+          "exits": 2,
           "fan_in": 2,
-          "id": "{target}/src/types.ts",
+          "fan_out": 3,
+          "fan_out_external": 1,
+          "hk": 756,
+          "id": "{target}/pkg/b.py",
           "kind": "file",
-          "length": 12,
-          "lloc": 4,
-          "loc": 7,
-          "mi": 122.349,
-          "mi_sei": 130.571,
-          "name": "types.ts",
-          "sloc": 6,
-          "time": 8.858,
+          "length": 47,
+          "lloc": 9,
+          "loc": 22,
+          "mi": 92.368,
+          "mi_sei": 94.798,
+          "name": "b.py",
+          "sloc": 21,
+          "time": 111.659,
           "visibility": "public",
-          "vocabulary": 10,
-          "volume": 39.863
+          "vocabulary": 32,
+          "volume": 235
         },
         {
-          "blank": 1,
-          "bugs": 0.012,
+          "blank": 7,
+          "bugs": 0.0135,
           "cloc": 1,
           "cyclomatic": 1,
-          "effort": 217.944,
-          "fan_in": 1,
-          "id": "{target}/src/util.ts",
+          "effort": 260.459,
+          "exits": 2,
+          "fan_in": 2,
+          "fan_out_external": 1,
+          "id": "{target}/pkg/c.py",
           "kind": "file",
-          "length": 18,
-          "lloc": 6,
-          "loc": 9,
-          "mi": 115.139,
-          "mi_sei": 116.752,
-          "name": "util.ts",
-          "sloc": 8,
-          "time": 12.108,
+          "length": 20,
+          "lloc": 5,
+          "loc": 15,
+          "mi": 104.893,
+          "mi_sei": 96.049,
+          "name": "c.py",
+          "sloc": 14,
+          "time": 14.469,
           "visibility": "public",
-          "vocabulary": 11,
-          "volume": 62.269
+          "vocabulary": 15,
+          "volume": 78.137
+        },
+        {
+          "blank": 4,
+          "bugs": 0.0175,
+          "cloc": 1,
+          "cyclomatic": 2,
+          "effort": 381.759,
+          "fan_out": 3,
+          "id": "{target}/tests/test_pkg.py",
+          "kind": "file",
+          "length": 19,
+          "lloc": 3,
+          "loc": 9,
+          "mi": 114.225,
+          "mi_sei": 115.434,
+          "name": "test_pkg.py",
+          "sloc": 8,
+          "time": 21.208,
+          "visibility": "public",
+          "vocabulary": 15,
+          "volume": 74.23
         }
       ],
       "stats": {
-        "blank": 1.8,
-        "bugs": 0.0331,
-        "cloc": 3.833,
-        "cyclomatic": 1,
-        "effort": 1553.406,
-        "fan_in": 1.5,
-        "fan_out": 2,
-        "hk": 586,
-        "length": 31.833,
-        "mi": 111.884,
-        "mi_sei": 122.009,
-        "sloc": 11.666,
-        "time": 86.3,
-        "vocabulary": 16.333,
-        "volume": 145.055
+        "blank": 6.8,
+        "bugs": 0.0294,
+        "cloc": 3.8,
+        "cyclomatic": 1.4,
+        "effort": 1030.445,
+        "fan_in": 2.25,
+        "fan_out": 3,
+        "hk": 864,
+        "length": 32.2,
+        "mi": 104.037,
+        "mi_sei": 105.764,
+        "sloc": 15.8,
+        "time": 57.246,
+        "vocabulary": 19.6,
+        "volume": 149.153
       }
     }
   },
-  "plugin": "typescript",
+  "plugin": "python",
   "roots": {
-    "target": "/home/user/code-split/samples/typescript"
+    "target": "/home/user/code-split/crates/code-split-plugin-python/sample"
   },
   "schema_version": "2",
-  "target": "/home/user/code-split/samples/typescript",
+  "target": "/home/user/code-split/crates/code-split-plugin-python/sample",
   "timings": [
     {
-      "detail": "9 nodes from 6 files",
+      "detail": "10 nodes from 5 files",
       "ms": 0,
-      "stage": "typescript"
+      "stage": "python"
     },
     {
-      "detail": "6 nodes annotated",
+      "detail": "5 nodes annotated",
       "ms": 0,
       "stage": "complexity"
     },
     {
-      "detail": "nodes=9 edges=9",
+      "detail": "nodes=10 edges=14",
       "ms": 0,
       "stage": "projection"
     }
