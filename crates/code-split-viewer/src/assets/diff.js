@@ -34,15 +34,15 @@ function computeDiff(before, after) {
     const bg = (before.graphs || {})[level] || { nodes: [], edges: [] };
     const ag = (after.graphs  || {})[level] || { nodes: [], edges: [] };
 
-    const bgMap = new Map(bg.nodes.filter(n => !n.external).map(n => [n.id, n]));
-    const agMap = new Map(ag.nodes.filter(n => !n.external).map(n => [n.id, n]));
+    const bgMap = new Map(bg.nodes.filter(n => !isExternalNode(n, level)).map(n => [n.id, n]));
+    const agMap = new Map(ag.nodes.filter(n => !isExternalNode(n, level)).map(n => [n.id, n]));
 
     const nodeStatus = new Map();
     for (const id of agMap.keys()) nodeStatus.set(id, bgMap.has(id) ? 'unchanged' : 'added');
     for (const id of bgMap.keys()) if (!agMap.has(id)) nodeStatus.set(id, 'removed');
 
-    const edgeKey = e => `${e.from}\x00${e.to}\x00${e.kind}`;
-    const localEdges = edges => edges.filter(e => nodeStatus.has(e.from) && nodeStatus.has(e.to));
+    const edgeKey = e => `${e.source}\x00${e.target}\x00${e.kind}`;
+    const localEdges = edges => edges.filter(e => nodeStatus.has(e.source) && nodeStatus.has(e.target));
 
     const bgEdgeMap = new Map(localEdges(bg.edges).map(e => [edgeKey(e), e]));
     const agEdgeMap = new Map(localEdges(ag.edges).map(e => [edgeKey(e), e]));
@@ -61,13 +61,13 @@ function computeDiff(before, after) {
 
     for (const e of edges) {
       if (e.status === 'unchanged') continue;
-      if (nodeStatus.get(e.from) === 'unchanged') nodeStatus.set(e.from, 'affected');
-      if (nodeStatus.get(e.to)   === 'unchanged') nodeStatus.set(e.to,   'affected');
+      if (nodeStatus.get(e.source) === 'unchanged') nodeStatus.set(e.source, 'affected');
+      if (nodeStatus.get(e.target) === 'unchanged') nodeStatus.set(e.target, 'affected');
     }
     nodes.forEach(n => { n.status = nodeStatus.get(n.id); });
     edges.forEach(e => {
       if (e.status === 'unchanged' &&
-          (nodeStatus.get(e.from) !== 'unchanged' || nodeStatus.get(e.to) !== 'unchanged'))
+          (nodeStatus.get(e.source) !== 'unchanged' || nodeStatus.get(e.target) !== 'unchanged'))
         e.status = 'affected';
     });
 
@@ -78,26 +78,24 @@ function computeDiff(before, after) {
 
 // ── Cycles ────────────────────────────────────────────────────────────────────
 
-// Build SCC membership map from a graph level.
-// Prefers backend-computed `graph.cycles` when present (accurate cycle_kind
-// classification including TestEmbed); falls back to Tarjan SCC on edges.
-function buildSCCOf(graph) {
-  const ids = new Set(graph.nodes.filter(n => !n.external).map(n => n.id));
+// Build SCC membership map from a graph level. Prefers backend-computed
+// `graph.cycles` when present (accurate kind classification); falls back to
+// Tarjan SCC over flow edges (read from the level's edge_kinds dictionary).
+function buildSCCOf(graph, level) {
+  const ids = new Set(graph.nodes.filter(n => !isExternalNode(n, level)).map(n => n.id));
   const sccOf = new Map(); // nodeId → scc group index
 
   if (graph.cycles && graph.cycles.length > 0) {
-    // Use backend pre-computed SCCs
     graph.cycles.forEach((group, i) => {
       for (const id of group.nodes) if (ids.has(id)) sccOf.set(id, i);
     });
     return { sccOf, sccCount: graph.cycles.length };
   }
 
-  // Fallback: Tarjan SCC on non-contains edges
   const adj = new Map([...ids].map(id => [id, []]));
   for (const e of graph.edges)
-    if (e.kind !== 'contains' && adj.has(e.from) && adj.has(e.to))
-      adj.get(e.from).push(e.to);
+    if (edgeIsFlow(level, e.kind) && adj.has(e.source) && adj.has(e.target))
+      adj.get(e.source).push(e.target);
   const sccs = findSCCs([...ids], adj);
   sccs.forEach((scc, i) => scc.forEach(n => sccOf.set(n, i)));
   return { sccOf, sccCount: sccs.length };
@@ -109,8 +107,8 @@ function computeCycles(before, after) {
     const bg = (before.graphs || {})[level] || { nodes: [], edges: [], cycles: [] };
     const ag = (after.graphs  || {})[level] || { nodes: [], edges: [], cycles: [] };
 
-    const { sccOf: bgSCCOf } = buildSCCOf(bg);
-    const { sccOf: agSCCOf } = buildSCCOf(ag);
+    const { sccOf: bgSCCOf } = buildSCCOf(bg, level);
+    const { sccOf: agSCCOf } = buildSCCOf(ag, level);
 
     const nodeCycleStatus = new Map();
     for (const id of new Set([...bgSCCOf.keys(), ...agSCCOf.keys()])) {
@@ -132,10 +130,7 @@ function computeCycles(before, after) {
       else cycleBoth++;
     }
 
-    result[level] = {
-      nodeCycleStatus, edgeCycleStatus,
-      cycleBefore, cycleAfter, cycleBoth,
-    };
+    result[level] = { nodeCycleStatus, edgeCycleStatus, cycleBefore, cycleAfter, cycleBoth };
   }
   return result;
 }
@@ -146,8 +141,6 @@ function computeMeta(before, after) {
   const commit = s => s?.git?.commit?.slice(0, 8) || '';
   const date   = s => s?.generated_at || '';
   const meta   = s => ({ name: label(s), commit: commit(s), date: date(s) });
-  // `after` is the primary snapshot; `before` an optional baseline. Either may be
-  // absent — the present one names the report.
   const primary = after || before;
   return {
     target: (primary?.target || primary?.workspace || 'snapshot').split('/').pop(),

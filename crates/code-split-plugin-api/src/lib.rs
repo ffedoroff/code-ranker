@@ -42,6 +42,69 @@ pub mod plugin;
 pub use attrs::{AttrValue, Attributes, ValueType};
 pub use edge::Edge;
 pub use graph::Graph;
-pub use level::{AttributeGroup, AttributeSpec, EdgeKindSpec, Level};
+pub use level::{
+    AttributeGroup, AttributeSpec, CycleKindSpec, EdgeKindSpec, Level, NodeKindSpec, Thresholds,
+};
 pub use node::{Node, NodeId};
-pub use plugin::{LanguagePlugin, Options, PluginInput};
+pub use plugin::{LanguagePlugin, Options, PluginInput, Preset};
+
+use std::collections::BTreeMap;
+
+/// The generic node-kind palette every file-based plugin seeds its level with:
+/// `file` (a project source unit, blue) and `external` (a third-party library,
+/// amber, flagged external). A plugin may recolor or add kinds.
+pub fn default_node_kinds() -> BTreeMap<String, NodeKindSpec> {
+    BTreeMap::from([
+        (
+            "file".to_string(),
+            NodeKindSpec {
+                label: Some("File".into()),
+                plural: Some("Files".into()),
+                fill: Some("#dbe9f4".into()),
+                stroke: Some("#4d6f9c".into()),
+                external: None,
+            },
+        ),
+        (
+            "external".to_string(),
+            NodeKindSpec {
+                label: Some("Library".into()),
+                plural: Some("Libraries".into()),
+                fill: Some("#f6e2c0".into()),
+                stroke: Some("#b3801f".into()),
+                external: Some(true),
+            },
+        ),
+    ])
+}
+
+/// The generic cycle-kind vocabulary (`mutual` / `chain` / `test_embed`).
+pub fn default_cycle_kinds() -> BTreeMap<String, CycleKindSpec> {
+    let k = |label: &str, desc: &str| CycleKindSpec {
+        label: Some(label.to_string()),
+        description: Some(desc.to_string()),
+    };
+    BTreeMap::from([
+        (
+            "mutual".to_string(),
+            k(
+                "Mutual",
+                "Two nodes that directly depend on each other (A ↔ B).",
+            ),
+        ),
+        (
+            "chain".to_string(),
+            k(
+                "Chain",
+                "Three or more nodes forming a dependency cycle (A → B → C → A).",
+            ),
+        ),
+        (
+            "test_embed".to_string(),
+            k(
+                "Test-embed",
+                "A test-only module pulled into production code.",
+            ),
+        ),
+    ])
+}

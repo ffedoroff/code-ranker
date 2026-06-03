@@ -4,7 +4,8 @@
 //! [`registry`].
 
 use anyhow::{Result, bail};
-use code_split_plugin_api::{Graph, LanguagePlugin, Level, PluginInput};
+use code_split_plugin_api::{Graph, LanguagePlugin, Level, PluginInput, Preset, Thresholds};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 pub fn registry() -> Vec<Box<dyn LanguagePlugin>> {
@@ -45,6 +46,23 @@ pub fn versions(name: &str, workspace: &Path, input: &PluginInput) -> Vec<(Strin
         .find(|p| p.name() == name)
         .map(|p| p.versions(workspace, input))
         .unwrap_or_default()
+}
+
+/// Language-calibrated per-metric thresholds from the matching plugin.
+pub fn thresholds(name: &str) -> BTreeMap<String, Thresholds> {
+    registry()
+        .iter()
+        .find(|p| p.name() == name)
+        .map(|p| p.thresholds())
+        .unwrap_or_default()
+}
+
+/// Let the matching plugin transform the generic default presets.
+pub fn presets(name: &str, defaults: Vec<Preset>, input: &PluginInput) -> Vec<Preset> {
+    match registry().iter().find(|p| p.name() == name) {
+        Some(p) => p.presets(defaults, input),
+        None => defaults,
+    }
 }
 
 /// Auto-detect the plugin from workspace markers. Errors if none or more than

@@ -451,19 +451,16 @@ workspaces. The plugin MUST:
   only by qualified path are not lost
 - NOT emit a function-level call graph (no `Calls` edges, no
   rust-analyzer / `ra_ap_*` dependency); analysis runs in seconds
-- Compute per-file code complexity metrics (cyclomatic, cognitive,
-  Halstead, maintainability index, LOC variants, functions, closures,
-  nexits, nargs) for each `File` node via the shared `code-split-plugin`
-  complexity engine; metrics are stored in the `complexity` field of the node and
-  serialized into the snapshot
-- Detect dependency cycles (Kosaraju SCC) in the file graph; annotate
-  each node in a cycle with `cycle_kind` (`TestEmbed` | `Mutual` |
-  `Chain`) and store `CycleGroup` entries in `Graph.cycles`
-- Compute Henry-Kafura complexity (`HK = LOC × (fan_in × fan_out)²`)
-  for every file node from **internal** file→file edges; store in
-  `complexity.coupling` (`fan_in`, `fan_out`, `fan_out_external`, `hk`).
-  Edges to `External` nodes are excluded from `fan_in`/`fan_out`/`hk`
-  and counted in `fan_out_external` instead
+- Emit **structure only** (file + external nodes, `uses`/`contains`/`reexports`
+  edges). The downstream pipeline then enriches every file node centrally
+  (language-agnostically): per-file complexity metrics (cyclomatic, cognitive,
+  Halstead, maintainability index, LOC variants) via `code-split-complexity`;
+  dependency cycles (Kosaraju SCC over flow edges) annotated as a `cycle` node
+  attribute (`test_embed` | `mutual` | `chain`) with `CycleGroup` entries; and
+  Henry-Kafura (`HK = sloc × (fan_in × fan_out)²`) — all written into the node's
+  flat `attrs`. Edges to external nodes are excluded from `fan_in`/`fan_out`/`hk`
+  and counted in `fan_out_external` instead. The Rust plugin additionally
+  supplies language-calibrated `thresholds()` for `hk`/`sloc`/`fan_out`/`items`
 
 **Rationale**: Rust is the primary use-case for the initial release.
 The `code-split-plugin-rust` crate (cargo metadata + `syn`, including the
@@ -1073,19 +1070,35 @@ can render any language/metric set without hardcoding names.
   "timings":        [ { "stage": "rust", "ms": 0, "detail": "…" }, … ],
   "graphs": {
     "files": {
-      "edge_kinds":       { "<kind>": { "flow": true, "label": "…", "hint": "…" } },
-      "node_attributes":  { "<key>": { "value_type": "int|float|str|bool", "label": "…", "group": "<group?>" } },
+      "edge_kinds":       { "<kind>": { "flow": true, "label": "…", "description": "…" } },
+      "node_attributes":  { "<key>": { "value_type": "int|float|str|bool", "label": "…",
+                                       "name": "…", "short": "…", "description": "…",
+                                       "formula": "…", "calc": "<eval expr>",
+                                       "direction": "higher_better|lower_better",
+                                       "abbreviate": true, "group": "<group?>",
+                                       "thresholds": { "info": N, "warning": N } } },
       "edge_attributes":  { "<key>": { "value_type": "…", "label": "…" } },
-      "attribute_groups": { "<group>": { "label": "…", "hint": "…" } },
+      "attribute_groups": { "<group>": { "label": "…", "description": "…" } },
+      "node_kinds":       { "<kind>": { "label": "…", "plural": "…", "fill": "#…", "stroke": "#…", "external": true } },
+      "cycle_kinds":      { "<kind>": { "label": "…", "description": "…" } },
+      "ui":               { "default_sort": "…", "sort_metrics": [...], "size_metrics": [...],
+                            "card_metrics": [...], "columns": [...], "summary_metrics": [...] },
       "nodes": [...], "edges": [...], "cycles": [...], "stats": { ... }
     }
-  }
+  },
+  "presets": [ { "id": "ADP", "label": "ADP", "title": "…", "prompt": "…",
+                 "doc_url": "…", "sort_metric": "cycle", "connections": ["common","out"] } ]
 }
 ```
 
-`graphs` is a map `level_name → level`; today only `files`. The four semantics
-dictionaries are always present (possibly empty), pruned to the keys/kinds/groups
-actually present at that level.
+`graphs` is a map `level_name → level`; today only `files`. The dictionaries are
+pruned to the keys/kinds/groups actually present at that level, and the `ui`
+block is computed by the orchestrator from the present attributes. Every
+metric's label / name / formula / live-`calc` / direction / threshold lives in
+`node_attributes`, and the Prompt-Generator principles live in top-level
+`presets`, so the **viewer hardcodes no metric, kind, threshold or prompt by
+name** — it renders entirely from this data (see DESIGN §3.2 HTML assets).
+Optional `AttributeSpec` fields are omitted when absent.
 
 **Node shape** — `id`, `kind`, `name`, optional `parent`, plus flat attributes:
 

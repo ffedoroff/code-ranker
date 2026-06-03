@@ -2,10 +2,11 @@ mod config;
 mod git;
 mod logger;
 mod plugin;
+mod presets;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
-use code_split_graph::{LevelGraph, Snapshot};
+use code_split_graph::{LevelGraph, LevelUi, Snapshot};
 use code_split_plugin_api::PluginInput;
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -346,7 +347,8 @@ fn analyze_directory(
 
     let edge_count = graph.edges.len();
     let node_count = graph.nodes.len();
-    let level = assemble_level(level_spec, graph, cycles, stats);
+    let thresholds = plugin::thresholds(&plugin_name);
+    let level = assemble_level(level_spec, graph, cycles, stats, thresholds);
     prune_unused_roots(&level, &mut roots);
     timings.push(code_split_graph::StageTime {
         stage: "projection".into(),
@@ -370,6 +372,9 @@ fn analyze_directory(
         versions.insert(k, v);
     }
 
+    let lang = presets::principle_lang(&plugin_name);
+    let presets = plugin::presets(&plugin_name, presets::default_presets(&lang), &input);
+
     let snapshot = Snapshot::new(
         command,
         cwd.display().to_string(),
@@ -381,6 +386,7 @@ fn analyze_directory(
         git,
         timings,
         graphs,
+        presets,
     );
 
     Ok(Analyzed {
@@ -415,6 +421,7 @@ fn assemble_level(
     graph: code_split_plugin_api::Graph,
     cycles: Vec<code_split_graph::CycleGroup>,
     stats: BTreeMap<String, code_split_plugin_api::AttrValue>,
+    thresholds: BTreeMap<String, code_split_plugin_api::Thresholds>,
 ) -> LevelGraph {
     use std::collections::BTreeSet;
 
@@ -424,6 +431,8 @@ fn assemble_level(
         node_attributes: BTreeMap::new(),
         edge_attributes: BTreeMap::new(),
         attribute_groups: BTreeMap::new(),
+        node_kinds: BTreeMap::new(),
+        cycle_kinds: BTreeMap::new(),
     });
 
     // Master node-attribute dictionary = structural (plugin) + computed.
@@ -435,6 +444,13 @@ fn assemble_level(
     let mut attribute_groups = spec.attribute_groups;
     attribute_groups.extend(metric_groups);
     attribute_groups.extend(coupling_groups);
+
+    // Overlay language-calibrated thresholds onto the matching specs.
+    for (key, th) in thresholds {
+        if let Some(s) = node_attributes.get_mut(&key) {
+            s.thresholds = Some(th);
+        }
+    }
 
     // Prune node attributes to keys present on at least one node.
     let present_node_keys: BTreeSet<&str> = graph
@@ -465,15 +481,112 @@ fn assemble_level(
         .collect();
     attribute_groups.retain(|k, _| referenced_groups.contains(k.as_str()));
 
+    // Prune node kinds to kinds actually present on nodes.
+    let present_node_kinds: BTreeSet<&str> = graph.nodes.iter().map(|n| n.kind.as_str()).collect();
+    let mut node_kinds = spec.node_kinds;
+    node_kinds.retain(|k, _| present_node_kinds.contains(k.as_str()));
+
+    // Prune cycle kinds to kinds actually present in the cycle groups.
+    let present_cycle_kinds: BTreeSet<&str> = cycles.iter().map(|c| c.kind.as_str()).collect();
+    let mut cycle_kinds = spec.cycle_kinds;
+    cycle_kinds.retain(|k, _| present_cycle_kinds.contains(k.as_str()));
+
+    let ui = build_ui(&node_attributes);
+
     LevelGraph {
         edge_kinds,
         node_attributes,
         edge_attributes,
         attribute_groups,
+        node_kinds,
+        cycle_kinds,
         nodes: graph.nodes,
         edges: graph.edges,
         cycles,
         stats,
+        ui,
+    }
+}
+
+/// Curated metric orders (the historical UI vocabulary). The orchestrator
+/// filters each to the attributes actually present, so the viewer reads the
+/// order from data and hardcodes none of it.
+const UI_COLUMNS: &[&str] = &[
+    "kind",
+    "cycle",
+    "sloc",
+    "hk",
+    "fan_in",
+    "fan_out",
+    "volume",
+    "bugs",
+    "effort",
+    "time",
+    "length",
+    "vocabulary",
+    "cyclomatic",
+    "cognitive",
+    "mi",
+    "mi_sei",
+    "lloc",
+    "cloc",
+    "blank",
+];
+const UI_SUMMARY: &[&str] = &[
+    "cyclomatic",
+    "cognitive",
+    "sloc",
+    "mi",
+    "mi_sei",
+    "volume",
+    "bugs",
+    "effort",
+    "time",
+    "length",
+    "vocabulary",
+    "fan_in",
+    "fan_out",
+    "hk",
+    "lloc",
+    "cloc",
+    "blank",
+];
+const UI_SORT: &[&str] = &[
+    "hk",
+    "sloc",
+    "fan_out",
+    "cyclomatic",
+    "cognitive",
+    "items",
+    "cycle",
+];
+const UI_SIZE: &[&str] = &["loc", "hk"];
+const UI_CARD: &[&str] = &["hk", "sloc"];
+
+/// Build the `ui` block from the pruned node-attribute dictionary: keep the
+/// canonical order, drop anything not present. `kind` is always a column;
+/// `cycle` is a column/sort metric only when it survived pruning.
+fn build_ui(node_attributes: &BTreeMap<String, code_split_plugin_api::AttributeSpec>) -> LevelUi {
+    let has = |k: &str| k == "kind" || node_attributes.contains_key(k);
+    let pick = |list: &[&str]| -> Vec<String> {
+        list.iter()
+            .filter(|k| has(k))
+            .map(|k| k.to_string())
+            .collect()
+    };
+    let sort_metrics = pick(UI_SORT);
+    let default_sort = if sort_metrics.iter().any(|m| m == "hk") {
+        Some("hk".to_string())
+    } else {
+        sort_metrics.first().cloned()
+    };
+    LevelUi {
+        default_sort,
+        sort_metrics,
+        size_metrics: pick(UI_SIZE),
+        card_metrics: pick(UI_CARD),
+        columns: pick(UI_COLUMNS),
+        summary_metrics: pick(UI_SUMMARY),
     }
 }
 
@@ -1188,6 +1301,7 @@ mod tests {
             None,
             Vec::new(),
             BTreeMap::new(),
+            Vec::new(),
         )
     }
 

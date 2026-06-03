@@ -8,7 +8,7 @@
 use anyhow::Result;
 use code_split_plugin_api::{
     AttrValue, AttributeSpec, Edge, EdgeKindSpec, Graph, LanguagePlugin, Level, Node, PluginInput,
-    ValueType,
+    ValueType, default_cycle_kinds, default_node_kinds,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -29,46 +29,28 @@ pub fn ecmascript_level(name: &str) -> Level {
         EdgeKindSpec {
             flow: true,
             label: Some("uses".to_string()),
-            hint: Some("Import dependency \u{2014} this file imports from the other.".to_string()),
+            description: Some(
+                "Import dependency \u{2014} this file imports from the other.".to_string(),
+            ),
         },
     );
 
     let mut node_attributes = BTreeMap::new();
     node_attributes.insert(
         "path".to_string(),
-        AttributeSpec {
-            value_type: ValueType::Str,
-            label: Some("Path".to_string()),
-            hint: None,
-            group: None,
-        },
+        AttributeSpec::new(ValueType::Str, "Path"),
     );
     node_attributes.insert(
         "loc".to_string(),
-        AttributeSpec {
-            value_type: ValueType::Int,
-            label: Some("Lines".to_string()),
-            hint: None,
-            group: None,
-        },
+        AttributeSpec::new(ValueType::Int, "Lines"),
     );
     node_attributes.insert(
         "visibility".to_string(),
-        AttributeSpec {
-            value_type: ValueType::Str,
-            label: Some("Visibility".to_string()),
-            hint: None,
-            group: None,
-        },
+        AttributeSpec::new(ValueType::Str, "Visibility"),
     );
     node_attributes.insert(
         "external".to_string(),
-        AttributeSpec {
-            value_type: ValueType::Bool,
-            label: Some("External".to_string()),
-            hint: None,
-            group: None,
-        },
+        AttributeSpec::new(ValueType::Bool, "External"),
     );
 
     Level {
@@ -77,6 +59,8 @@ pub fn ecmascript_level(name: &str) -> Level {
         node_attributes,
         edge_attributes: BTreeMap::new(),
         attribute_groups: BTreeMap::new(),
+        node_kinds: default_node_kinds(),
+        cycle_kinds: default_cycle_kinds(),
     }
 }
 

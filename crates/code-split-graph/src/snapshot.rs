@@ -12,12 +12,27 @@
 
 use chrono::{DateTime, Utc};
 use code_split_plugin_api::{
-    AttrValue, AttributeGroup, AttributeSpec, Edge, EdgeKindSpec, Graph, Node, NodeId,
+    AttrValue, AttributeGroup, AttributeSpec, CycleKindSpec, Edge, EdgeKindSpec, Graph, Node,
+    NodeId, NodeKindSpec, Preset,
 };
 use serde::{Deserialize, Serialize};
 use std::cmp::Reverse;
 use std::collections::BTreeMap;
 use std::path::Path;
+
+/// UI hints for a level: which metrics to offer as table columns, summary rows,
+/// sort/size keys, and the default sort — computed by the orchestrator from the
+/// attributes actually present, so the viewer hardcodes none of it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LevelUi {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_sort: Option<String>,
+    pub sort_metrics: Vec<String>,
+    pub size_metrics: Vec<String>,
+    pub card_metrics: Vec<String>,
+    pub columns: Vec<String>,
+    pub summary_metrics: Vec<String>,
+}
 
 /// Per-stage timing in milliseconds, in execution order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,12 +63,18 @@ pub struct LevelGraph {
     pub edge_attributes: BTreeMap<String, AttributeSpec>,
     /// Attribute group definitions referenced by `AttributeSpec.group`.
     pub attribute_groups: BTreeMap<String, AttributeGroup>,
+    /// Node-kind vocabulary (label/colour/external).
+    pub node_kinds: BTreeMap<String, NodeKindSpec>,
+    /// Cycle-kind vocabulary.
+    pub cycle_kinds: BTreeMap<String, CycleKindSpec>,
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     /// SCCs with ≥ 2 members, classified by kind.
     pub cycles: Vec<CycleGroup>,
     /// Per-graph averages of numeric node attributes (flat, keyed by attr name).
     pub stats: BTreeMap<String, AttrValue>,
+    /// Computed UI hints (column/sort/size/card ordering).
+    pub ui: LevelUi,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +100,9 @@ pub struct Snapshot {
     pub timings: Vec<StageTime>,
     /// Analysis levels, keyed by level name. Today only `"files"` is produced.
     pub graphs: BTreeMap<String, LevelGraph>,
+    /// Prompt-Generator presets (refactoring principles), language-adapted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<Preset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,6 +128,7 @@ impl Snapshot {
         git: Option<GitInfo>,
         timings: Vec<StageTime>,
         graphs: BTreeMap<String, LevelGraph>,
+        presets: Vec<Preset>,
     ) -> Self {
         Self {
             schema_version: "2".to_string(),
@@ -118,6 +143,7 @@ impl Snapshot {
             git,
             timings,
             graphs,
+            presets,
         }
     }
 }

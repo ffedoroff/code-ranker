@@ -25,6 +25,7 @@ pub fn extract_embedded_snapshot(html: &str, id: &str) -> Option<Result<Snapshot
 const ASSET_CSS: &str = include_str!("assets/index.css");
 const ASSET_GV: &str = include_str!("assets/graphviz.umd.js");
 const ASSET_SNARKDOWN: &str = include_str!("assets/snarkdown.umd.js");
+const ASSET_SCHEMA: &str = include_str!("assets/schema.js");
 const ASSET_DIFF: &str = include_str!("assets/diff.js");
 const ASSET_LAYOUT: &str = include_str!("assets/layout.js");
 const ASSET_UTILS: &str = include_str!("assets/utils.js");
@@ -77,6 +78,10 @@ pub fn render_html_viewer(baseline: Option<&Snapshot>, current: Option<&Snapshot
             &format!("<script>{}</script>", ASSET_SNARKDOWN),
         )
         .replace(r#"<script src="./data.js"></script>"#, &data_script)
+        .replace(
+            r#"<script src="./schema.js"></script>"#,
+            &format!("<script>{}</script>", ASSET_SCHEMA),
+        )
         .replace(
             r#"<script src="./diff.js"></script>"#,
             &format!("<script>{}</script>", ASSET_DIFF),

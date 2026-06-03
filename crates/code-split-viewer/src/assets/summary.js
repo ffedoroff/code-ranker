@@ -1,5 +1,5 @@
 function nodePercentiles(snap, level, getVal) {
-  const nodes = (snap?.graphs?.[level]?.nodes || []).filter(n => !n.external);
+  const nodes = (snap?.graphs?.[level]?.nodes || []).filter(n => !isExternalNode(n, level));
   const vals = nodes.map(n => getVal(n)).filter(v => typeof v === 'number' && isFinite(v) && v > 0);
   if (!vals.length) return null;
   vals.sort((a, b) => a - b);
@@ -10,97 +10,6 @@ function nodePercentiles(snap, level, getVal) {
   };
   return { count: vals.length, p1: pct(1), p10: pct(10), p50: pct(50), p90: pct(90), p99: pct(99) };
 }
-
-const METRIC_DESCS = {
-  'Cyclomatic complexity': 'Number of linearly independent paths through the code. Higher values indicate complex branching logic.',
-  'Cognitive complexity':  'Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow.',
-  'Source lines (sloc)':   'Source lines of code (sloc) — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted; a code line with a trailing comment still counts.',
-  'Maintainability index': 'Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.',
-  'Maintainability (SEI)': 'SEI variant of the Maintainability Index — adds a bonus for comment density.',
-  'Halstead volume':       'Algorithm size in bits, from distinct operators and operands.',
-  'Halstead bugs':         'Estimated delivered bugs — a rough predictor of defect density.',
-  'Halstead effort':       'Mental effort to implement the algorithm.',
-  'Halstead time, s':      'Estimated implementation time, in seconds.',
-  'Halstead length':       'Program length — total operator + operand occurrences.',
-  'Halstead vocabulary':   'Vocabulary — distinct operators + operands.',
-  'Fan-in':                'Number of files that import (depend on) this one. High fan-in means broadly reused.',
-  'Fan-out':               'Number of files this one imports. High fan-out means many dependencies. External-library edges are counted separately.',
-  'Henry–Kafura (HK)':     'Henry–Kafura complexity — combines file size with incoming/outgoing coupling (internal file→file edges only).',
-  'Logical LOC':           'Logical lines — counts statements, not physical lines.',
-  'Comment lines':         'Comment-only lines (inline comments on code lines are not counted).',
-  'Blank lines':           'Empty or whitespace-only lines.',
-};
-
-// Full metric name per column id — used as the tooltip title everywhere
-// (table headers, table value cells, popup field rows), so the title is the
-// full name (e.g. "Halstead volume") and never the abbreviated column label.
-const COL_NAMES = {
-  loc:          'Source lines (sloc)',
-  cyclomatic:   'Cyclomatic complexity',
-  cognitive:    'Cognitive complexity',
-  mi:           'Maintainability index',
-  mi_sei:       'Maintainability (SEI)',
-  fan_in:       'Fan-in',
-  fan_out:      'Fan-out',
-  hk:           'Henry–Kafura (HK)',
-  h_vol:        'Halstead volume',
-  h_bugs:       'Halstead bugs',
-  h_effort:     'Halstead effort',
-  h_time:       'Halstead time, s',
-  h_len:        'Halstead length',
-  h_vocab:      'Halstead vocabulary',
-  loc_logical:  'Logical LOC',
-  loc_comments: 'Comment lines',
-  loc_blank:    'Blank lines',
-};
-
-const COL_TIPS = {
-  loc:          METRIC_DESCS['Source lines (sloc)'],
-  cyclomatic:   METRIC_DESCS['Cyclomatic complexity'],
-  cognitive:    METRIC_DESCS['Cognitive complexity'],
-  mi:           METRIC_DESCS['Maintainability index'],
-  mi_sei:       METRIC_DESCS['Maintainability (SEI)'],
-  fan_in:       METRIC_DESCS['Fan-in'],
-  fan_out:      METRIC_DESCS['Fan-out'],
-  hk:           METRIC_DESCS['Henry–Kafura (HK)'],
-  h_vol:        METRIC_DESCS['Halstead volume'],
-  h_bugs:       METRIC_DESCS['Halstead bugs'],
-  h_effort:     METRIC_DESCS['Halstead effort'],
-  h_time:       METRIC_DESCS['Halstead time, s'],
-  h_len:        METRIC_DESCS['Halstead length'],
-  h_vocab:      METRIC_DESCS['Halstead vocabulary'],
-  loc_logical:  METRIC_DESCS['Logical LOC'],
-  loc_comments: METRIC_DESCS['Comment lines'],
-  loc_blank:    METRIC_DESCS['Blank lines'],
-};
-
-// Formula shown on its own bold line in a metric's description tooltip
-// (used by both the summary table and the node-table column headers).
-const METRIC_FORMULAS = {
-  'Henry–Kafura (HK)':     'SLOC × (Fan-in × Fan-out)²',
-  'Cyclomatic complexity': 'branches + 1',
-  'Maintainability index': '171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)',
-  'Maintainability (SEI)': 'MI + 50·sin(√(2.4 × comment-ratio))',
-  'Halstead length':       'N₁ + N₂',
-  'Halstead vocabulary':   'η₁ + η₂',
-  'Halstead volume':       'length × log₂(vocabulary)',
-  'Halstead effort':       'volume × difficulty',
-  'Halstead bugs':         'effort^⅔ ÷ 3000',
-  'Halstead time, s':      'effort ÷ 18',
-};
-// Same formulas keyed by node-table column id.
-const COL_FORMULAS = {
-  hk:         METRIC_FORMULAS['Henry–Kafura (HK)'],
-  cyclomatic: METRIC_FORMULAS['Cyclomatic complexity'],
-  mi:         METRIC_FORMULAS['Maintainability index'],
-  mi_sei:     METRIC_FORMULAS['Maintainability (SEI)'],
-  h_len:      METRIC_FORMULAS['Halstead length'],
-  h_vocab:    METRIC_FORMULAS['Halstead vocabulary'],
-  h_vol:      METRIC_FORMULAS['Halstead volume'],
-  h_effort:   METRIC_FORMULAS['Halstead effort'],
-  h_bugs:     METRIC_FORMULAS['Halstead bugs'],
-  h_time:     METRIC_FORMULAS['Halstead time, s'],
-};
 
 function buildSummary() {
   const tbody = document.getElementById('summary-tbody');
@@ -141,7 +50,7 @@ function buildSummary() {
 
   // Helpers
   const countNodes = (snap, level) =>
-    ((snap?.graphs || {})[level]?.nodes || []).filter(n => !n.external).length;
+    ((snap?.graphs || {})[level]?.nodes || []).filter(n => !isExternalNode(n, level)).length;
 
   const fmtV = v => typeof v === 'number' && isFinite(v) ? fmtNum(v) : '';
 
@@ -174,8 +83,8 @@ function buildSummary() {
 
   const ttAttr = pct => pct ? ` data-tt="${escAttr(JSON.stringify(pct))}"` : '';
 
-  // stat: get reads stats obj → number; getNode reads a node → number (for percentile tooltip)
-  const statCells = (get, getNode, lb = false) =>
+  // statCells: getNode reads a node → number (for percentile tooltip)
+  const statCells = (getNode, lb = false) =>
     levels.map((level, i) => {
       const gs = i > 0 ? ' grp-start' : '';
       const b = nodePercentiles(before, level, getNode);
@@ -189,10 +98,9 @@ function buildSummary() {
              (d !== null ? fmtDelta(d, lb) : '<td></td>');
     }).join('');
 
-  const row = (label, cells, tip) => {
+  const row = (label, cells, tip, formula) => {
     const tipAttr = tip ? ` data-tip="${escAttr(tip)}"` : '';
-    const f = METRIC_FORMULAS[label];
-    const fAttr = f ? ` data-tip-formula="${escAttr(f)}"` : '';
+    const fAttr = formula ? ` data-tip-formula="${escAttr(formula)}"` : '';
     return `<tr><td class="metric-cell"${tipAttr}${fAttr}>${label}</td>${cells}</tr>`;
   };
 
@@ -210,13 +118,13 @@ function buildSummary() {
     return cy && (cy.cycleBefore + cy.cycleBoth + cy.cycleAfter) > 0;
   });
   if (anyCycles) {
-    // Tooltip: how many cycle groups of each kind were found (mutual / chain /
-    // test-embed), from the active snapshot's backend-computed `cycles`.
-    const KIND_LABELS = { mutual: 'mutual', chain: 'chain', test_embed: 'test-embed' };
+    // Tooltip: how many cycle groups of each kind were found, from the active
+    // snapshot's backend-computed `cycles`. Kind labels come from schema.js.
+    const level = 'files';
     const kc = {};
-    for (const g of (after?.graphs?.files?.cycles || [])) kc[g.kind] = (kc[g.kind] || 0) + 1;
+    for (const g of (after?.graphs?.[level]?.cycles || [])) kc[g.kind] = (kc[g.kind] || 0) + 1;
     const kparts = Object.entries(kc).filter(([, n]) => n > 0)
-      .map(([k, n]) => `${KIND_LABELS[k] || k}: ${n}`);
+      .map(([k, n]) => `${cycleKindLabel(level, k)}: ${n}`);
     const cyclesTip = kparts.length
       ? `Nodes in at least one dependency cycle. Cycle groups by type — ${kparts.join(', ')}.`
       : 'Number of nodes that participate in at least one dependency cycle.';
@@ -226,33 +134,23 @@ function buildSummary() {
     ), cyclesTip));
   }
 
-  const STATS = [
-    { get: st => st?.cyclomatic,              getNode: n => n.complexity?.cyclomatic,              label: 'Cyclomatic complexity', lb: true  },
-    { get: st => st?.cognitive,               getNode: n => n.complexity?.cognitive,               label: 'Cognitive complexity',  lb: true  },
-    { get: st => st?.loc?.source,             getNode: n => n.complexity?.loc?.source,             label: 'Source lines (sloc)',   lb: false },
-    { get: st => st?.maintainability?.mi,     getNode: n => n.complexity?.maintainability?.mi,     label: 'Maintainability index',  lb: false },
-    { get: st => st?.maintainability?.mi_sei, getNode: n => n.complexity?.maintainability?.mi_sei, label: 'Maintainability (SEI)',  lb: false },
-    { get: st => st?.halstead?.volume,        getNode: n => n.complexity?.halstead?.volume,        label: 'Halstead volume',       lb: true  },
-    { get: st => st?.halstead?.bugs,          getNode: n => n.complexity?.halstead?.bugs,          label: 'Halstead bugs',         lb: true  },
-    { get: st => st?.halstead?.effort,        getNode: n => n.complexity?.halstead?.effort,        label: 'Halstead effort',       lb: true  },
-    { get: st => st?.halstead?.time,          getNode: n => n.complexity?.halstead?.time,          label: 'Halstead time, s',      lb: true  },
-    { get: st => st?.halstead?.length,        getNode: n => n.complexity?.halstead?.length,        label: 'Halstead length',       lb: true  },
-    { get: st => st?.halstead?.vocabulary,    getNode: n => n.complexity?.halstead?.vocabulary,    label: 'Halstead vocabulary',   lb: true  },
-    { get: st => st?.coupling?.fan_in,        getNode: n => n.complexity?.coupling?.fan_in,        label: 'Fan-in',                lb: false },
-    { get: st => st?.coupling?.fan_out,       getNode: n => n.complexity?.coupling?.fan_out,       label: 'Fan-out',               lb: false },
-    { get: st => st?.coupling?.hk,            getNode: n => n.complexity?.coupling?.hk,            label: 'Henry–Kafura (HK)',     lb: true  },
-    { get: st => st?.loc?.logical,            getNode: n => n.complexity?.loc?.logical,            label: 'Logical LOC',           lb: false },
-    { get: st => st?.loc?.comments,           getNode: n => n.complexity?.loc?.comments,           label: 'Comment lines',         lb: false },
-    { get: st => st?.loc?.blank,              getNode: n => n.complexity?.loc?.blank,              label: 'Blank lines',           lb: false },
-  ];
-
-  for (const { get, getNode, label, lb } of STATS) {
-    const hasData = levels.some(level =>
-      nodePercentiles(before, level, getNode) !== null ||
-      nodePercentiles(after,  level, getNode) !== null
-    );
-    if (!hasData) continue;
-    rows.push(row(label, statCells(get, getNode, lb), METRIC_DESCS[label]));
+  // Metric rows — ordered list from the snapshot's ui.summary_metrics.
+  // Each key's metadata (label, description, formula, direction) comes from schema.js.
+  for (const level of levels) {
+    const summaryKeys = levelUi(level).summary_metrics || [];
+    for (const key of summaryKeys) {
+      const hasData = nodePercentiles(before, level, n => nodeAttr(n, key)) !== null ||
+                      nodePercentiles(after,  level, n => nodeAttr(n, key)) !== null;
+      if (!hasData) continue;
+      const label   = attrName(level, key);
+      const tip     = attrDesc(level, key);
+      const formula = attrFormula(level, key);
+      const lb      = attrDirection(level, key) === 'lower_better';
+      rows.push(row(label, statCells(n => nodeAttr(n, key), lb), tip || undefined, formula || undefined));
+    }
+    // Only iterate once — all metric rows for all levels are handled above.
+    // (levels array is ['files'] for now, but the structure is kept future-proof.)
+    break;
   }
 
   tbody.innerHTML = rows.join('');

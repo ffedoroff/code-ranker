@@ -1,7 +1,7 @@
 use anyhow::Result;
 use code_split_plugin_api::{
     AttrValue, AttributeSpec, Edge, EdgeKindSpec, Graph, LanguagePlugin, Level, Node, PluginInput,
-    ValueType,
+    Thresholds, ValueType, default_cycle_kinds, default_node_kinds,
 };
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -34,7 +34,9 @@ impl LanguagePlugin for RustPlugin {
             EdgeKindSpec {
                 flow: true,
                 label: Some("uses".into()),
-                hint: Some("Import / use dependency — this file uses items from the other.".into()),
+                description: Some(
+                    "Import / use dependency — this file uses items from the other.".into(),
+                ),
             },
         );
         edge_kinds.insert(
@@ -42,7 +44,7 @@ impl LanguagePlugin for RustPlugin {
             EdgeKindSpec {
                 flow: false,
                 label: Some("contains".into()),
-                hint: Some(
+                description: Some(
                     "Module declaration (mod foo;) — structural ownership; excluded from fan-in / HK / cycles.".into(),
                 ),
             },
@@ -52,18 +54,13 @@ impl LanguagePlugin for RustPlugin {
             EdgeKindSpec {
                 flow: true,
                 label: Some("reexport".into()),
-                hint: Some(
+                description: Some(
                     "Re-export (pub use) — re-exposes the other file's items as part of its own API.".into(),
                 ),
             },
         );
 
-        let aspec = |vt: ValueType, label: &str| AttributeSpec {
-            value_type: vt,
-            label: Some(label.into()),
-            hint: None,
-            group: None,
-        };
+        let aspec = AttributeSpec::new;
 
         let mut node_attributes: BTreeMap<String, AttributeSpec> = BTreeMap::new();
         node_attributes.insert("path".into(), aspec(ValueType::Str, "Path"));
@@ -82,7 +79,44 @@ impl LanguagePlugin for RustPlugin {
             node_attributes,
             edge_attributes,
             attribute_groups: BTreeMap::new(),
+            node_kinds: default_node_kinds(),
+            cycle_kinds: default_cycle_kinds(),
         }]
+    }
+
+    fn thresholds(&self) -> BTreeMap<String, Thresholds> {
+        // Calibrated on 21 Rust crates (≥2K SLOC). ~50% of projects breach
+        // `info`, ~10% breach `warning`.
+        BTreeMap::from([
+            (
+                "hk".into(),
+                Thresholds {
+                    info: 150_000.0,
+                    warning: 10_000_000.0,
+                },
+            ),
+            (
+                "sloc".into(),
+                Thresholds {
+                    info: 800.0,
+                    warning: 3_000.0,
+                },
+            ),
+            (
+                "fan_out".into(),
+                Thresholds {
+                    info: 8.0,
+                    warning: 18.0,
+                },
+            ),
+            (
+                "items".into(),
+                Thresholds {
+                    info: 20.0,
+                    warning: 50.0,
+                },
+            ),
+        ])
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, _input: &PluginInput) -> Result<Graph> {

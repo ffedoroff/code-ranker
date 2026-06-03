@@ -30,9 +30,9 @@ function activeGraph(level) {
 // still kept in the snapshot and shown in the per-node neighbourhood modal.
 function activeLocalGraph(level) {
   const g = activeGraph(level);
-  const nodes = g.nodes.filter(n => !n.external && n.kind !== 'external');
+  const nodes = g.nodes.filter(n => !isExternalNode(n, level));
   const ids = new Set(nodes.map(n => n.id));
-  const edges = g.edges.filter(e => ids.has(e.from) && ids.has(e.to));
+  const edges = g.edges.filter(e => ids.has(e.source) && ids.has(e.target));
   return { nodes, edges };
 }
 

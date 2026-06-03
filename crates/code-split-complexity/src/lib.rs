@@ -103,56 +103,263 @@ fn write_metrics(node: &mut code_split_plugin_api::Node, s: &FuncSpace) {
     }
 }
 
-fn spec(group: Option<&str>, label: &str, value_type: ValueType) -> AttributeSpec {
-    AttributeSpec {
-        value_type,
-        label: Some(label.to_string()),
-        hint: None,
-        group: group.map(str::to_string),
-    }
-}
+/// One metric row: (key, group, value_type, label, name, short, description,
+/// formula, calc, direction). Empty strings become `None`.
+type MetricRow = (
+    &'static str,
+    &'static str,
+    ValueType,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+    &'static str,
+);
 
-fn group(label: &str, hint: &str) -> AttributeGroup {
+fn group(label: &str, description: &str) -> AttributeGroup {
     AttributeGroup {
         label: Some(label.to_string()),
-        hint: Some(hint.to_string()),
+        description: Some(description.to_string()),
     }
 }
 
-/// The complexity metric attribute dictionary and its groups. The orchestrator
-/// merges these into each level's `node_attributes` / `attribute_groups` (then
-/// prunes to keys actually present). Coupling/cycle specs live in
-/// `code-split-graph`.
+/// The complexity metric attribute dictionary and its groups, fully enriched
+/// (label/name/short/description/formula/calc/direction) so the UI hardcodes no
+/// metric. The orchestrator merges these into each level's `node_attributes` /
+/// `attribute_groups` (then prunes to keys actually present) and overlays
+/// language thresholds. Coupling/cycle specs live in `code-split-graph`.
 pub fn metric_specs() -> (
     BTreeMap<String, AttributeSpec>,
     BTreeMap<String, AttributeGroup>,
 ) {
     use ValueType::{Float, Int};
+    let opt = |s: &str| {
+        if s.is_empty() {
+            None
+        } else {
+            Some(s.to_string())
+        }
+    };
+    // (key, group, value_type, label, name, short, description, formula, calc, direction)
+    let rows: &[MetricRow] = &[
+        (
+            "cyclomatic",
+            "complexity",
+            Int,
+            "Cyclomatic",
+            "Cyclomatic complexity",
+            "Cyclomatic",
+            "Number of linearly independent paths through the code. Higher values indicate complex branching logic.",
+            "branches + 1",
+            "",
+            "lower_better",
+        ),
+        (
+            "cognitive",
+            "complexity",
+            Int,
+            "Cognitive",
+            "Cognitive complexity",
+            "Cognitive",
+            "Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow.",
+            "",
+            "",
+            "lower_better",
+        ),
+        (
+            "exits",
+            "complexity",
+            Int,
+            "Exits",
+            "Exit points",
+            "Exits",
+            "Number of exit points (return/throw) in the unit.",
+            "",
+            "",
+            "lower_better",
+        ),
+        (
+            "args",
+            "complexity",
+            Int,
+            "Args",
+            "Arguments",
+            "Args",
+            "Number of function / closure arguments.",
+            "",
+            "",
+            "lower_better",
+        ),
+        (
+            "closures",
+            "complexity",
+            Int,
+            "Closures",
+            "Closures",
+            "Closures",
+            "Number of closures defined in the unit.",
+            "",
+            "",
+            "lower_better",
+        ),
+        (
+            "mi",
+            "maintainability",
+            Float,
+            "MI",
+            "Maintainability index",
+            "MI",
+            "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
+            "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)",
+            "",
+            "higher_better",
+        ),
+        (
+            "mi_sei",
+            "maintainability",
+            Float,
+            "MI (SEI)",
+            "Maintainability (SEI)",
+            "MI SEI",
+            "SEI variant of the Maintainability Index — adds a bonus for comment density.",
+            "MI + 50·sin(√(2.4 × comment-ratio))",
+            "",
+            "higher_better",
+        ),
+        (
+            "sloc",
+            "loc",
+            Int,
+            "Source",
+            "Source lines (sloc)",
+            "SLOC",
+            "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted.",
+            "",
+            "",
+            "higher_better",
+        ),
+        (
+            "lloc",
+            "loc",
+            Int,
+            "Logical",
+            "Logical LOC",
+            "Logical",
+            "Logical lines — counts statements, not physical lines.",
+            "",
+            "",
+            "higher_better",
+        ),
+        (
+            "cloc",
+            "loc",
+            Int,
+            "Comments",
+            "Comment lines",
+            "Comments",
+            "Comment-only lines (inline comments on code lines are not counted).",
+            "",
+            "",
+            "higher_better",
+        ),
+        (
+            "blank",
+            "loc",
+            Int,
+            "Blank",
+            "Blank lines",
+            "Blank",
+            "Empty or whitespace-only lines.",
+            "",
+            "",
+            "higher_better",
+        ),
+        (
+            "length",
+            "halstead",
+            Float,
+            "Length",
+            "Halstead length",
+            "H.len",
+            "Program length — total operator + operand occurrences.",
+            "N₁ + N₂",
+            "",
+            "lower_better",
+        ),
+        (
+            "vocabulary",
+            "halstead",
+            Float,
+            "Vocabulary",
+            "Halstead vocabulary",
+            "H.vocab",
+            "Vocabulary — distinct operators + operands.",
+            "η₁ + η₂",
+            "",
+            "lower_better",
+        ),
+        (
+            "volume",
+            "halstead",
+            Float,
+            "Volume",
+            "Halstead volume",
+            "H.vol",
+            "Algorithm size in bits, from distinct operators and operands.",
+            "length × log₂(vocabulary)",
+            "length * Math.log2(vocabulary)",
+            "lower_better",
+        ),
+        (
+            "effort",
+            "halstead",
+            Float,
+            "Effort",
+            "Halstead effort",
+            "H.effort",
+            "Mental effort to implement the algorithm.",
+            "volume × difficulty",
+            "",
+            "lower_better",
+        ),
+        (
+            "time",
+            "halstead",
+            Float,
+            "Time",
+            "Halstead time, s",
+            "H.time(s)",
+            "Estimated implementation time, in seconds.",
+            "effort ÷ 18",
+            "effort / 18",
+            "lower_better",
+        ),
+        (
+            "bugs",
+            "halstead",
+            Float,
+            "Bugs",
+            "Halstead bugs",
+            "H.bugs",
+            "Estimated delivered bugs — a rough predictor of defect density.",
+            "effort^⅔ ÷ 3000",
+            "effort ** (2/3) / 3000",
+            "lower_better",
+        ),
+    ];
     let mut specs = BTreeMap::new();
-    let c = Some("complexity");
-    let h = Some("halstead");
-    let l = Some("loc");
-    let mt = Some("maintainability");
-    for (k, g, lbl, t) in [
-        ("cyclomatic", c, "Cyclomatic", Int),
-        ("cognitive", c, "Cognitive", Int),
-        ("exits", c, "Exits", Int),
-        ("args", c, "Args", Int),
-        ("closures", c, "Closures", Int),
-        ("mi", mt, "MI", Float),
-        ("mi_sei", mt, "MI (SEI)", Float),
-        ("sloc", l, "Source", Int),
-        ("lloc", l, "Logical", Int),
-        ("cloc", l, "Comments", Int),
-        ("blank", l, "Blank", Int),
-        ("length", h, "Length", Float),
-        ("vocabulary", h, "Vocabulary", Float),
-        ("volume", h, "Volume", Float),
-        ("effort", h, "Effort", Float),
-        ("time", h, "Time", Float),
-        ("bugs", h, "Bugs", Float),
-    ] {
-        specs.insert(k.to_string(), spec(g, lbl, t));
+    for (k, g, vt, label, name, short, desc, formula, calc, dir) in rows {
+        let mut s = AttributeSpec::new(*vt, label);
+        s.group = opt(g);
+        s.name = opt(name);
+        s.short = opt(short);
+        s.description = opt(desc);
+        s.formula = opt(formula);
+        s.calc = opt(calc);
+        s.direction = opt(dir);
+        specs.insert((*k).to_string(), s);
     }
     let mut groups = BTreeMap::new();
     groups.insert(

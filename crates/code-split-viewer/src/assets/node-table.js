@@ -35,53 +35,33 @@ function attachModalCheckbox(node, level, section) {
 }
 
 function setupNodeTable(section, level) {
-  const BASE = [
-    {id:'name',label:'Name'},{id:'kind',label:'Kind'},
-    {id:'loc',label:'SLOC'},{id:'hk',label:'HK'},
-    {id:'fan_in',label:'Fan-in'},{id:'fan_out',label:'Fan-out'},
-    {id:'h_vol',label:'H.vol'},{id:'h_bugs',label:'H.bugs'},{id:'h_effort',label:'H.effort'},
-    {id:'h_time',label:'H.time(s)'},{id:'h_len',label:'H.len'},{id:'h_vocab',label:'H.vocab'},
-    {id:'cyclomatic',label:'Cyclomatic'},{id:'cognitive',label:'Cognitive'},
-    {id:'mi',label:'MI'},{id:'mi_sei',label:'MI SEI'},
-    {id:'loc_logical',label:'Logical'},{id:'loc_comments',label:'Comments'},{id:'loc_blank',label:'Blank'},
-  ];
-  const CYCLE_COL = {id:'cycle',label:'Cycle'};
-  const COLS = {
-    modules:   [BASE[0], BASE[1], CYCLE_COL, ...BASE.slice(2)],
-    files:     [BASE[0], CYCLE_COL, ...BASE.slice(2)],
-    functions: BASE,
-  };
-  const cols   = COLS[level] || COLS.modules;
-  const numSet = new Set(['loc','cyclomatic','cognitive','mi','mi_sei','fan_in','fan_out','hk',
-                          'h_vol','h_bugs','h_effort','h_time','h_len','h_vocab',
-                          'loc_logical','loc_comments','loc_blank']);
+  // Build columns from the snapshot's ui.columns — fully data-driven.
+  // "name" is always prepended as the first column.
+  const ui = levelUi(level);
+
+  // Build column descriptors at setup time; re-read on each render in case the
+  // active side switches (before/after).
+  function buildCols() {
+    const uiCols = levelUi(level).columns || [];
+    const cols = [{ id: 'name', label: 'Name', isNum: false }];
+    for (const key of uiCols) {
+      const type = attrType(level, key);
+      cols.push({
+        id: key,
+        label: attrShort(level, key) || key,
+        isNum: type === 'int' || type === 'float',
+      });
+    }
+    return cols;
+  }
+
+  let cols = buildCols();
 
   function nodeVal(n, id) {
-    const cx = n.complexity;
-    switch (id) {
-      case 'name':        return (n.path || '').replace(/^\{[^}]+\}\//, '') || n.id;
-      case 'kind':        return n.kind || '';
-      case 'status':      return n.status || '';
-      case 'loc':         return cx?.loc?.source ?? n.loc ?? null;
-      case 'cyclomatic':  return cx?.cyclomatic ?? null;
-      case 'cognitive':   return cx?.cognitive  ?? null;
-      case 'mi':          return cx?.maintainability?.mi     ?? null;
-      case 'mi_sei':      return cx?.maintainability?.mi_sei ?? null;
-      case 'fan_in':      return cx?.coupling?.fan_in  ?? null;
-      case 'fan_out':     return cx?.coupling?.fan_out ?? null;
-      case 'hk':          return cx?.coupling?.hk      ?? null;
-      case 'h_vol':       return cx?.halstead?.volume     ?? null;
-      case 'h_bugs':      return cx?.halstead?.bugs       ?? null;
-      case 'h_effort':    return cx?.halstead?.effort     ?? null;
-      case 'h_time':      return cx?.halstead?.time       ?? null;
-      case 'h_len':       return cx?.halstead?.length     ?? null;
-      case 'h_vocab':     return cx?.halstead?.vocabulary ?? null;
-      case 'loc_logical': return cx?.loc?.logical  ?? null;
-      case 'loc_comments':return cx?.loc?.comments ?? null;
-      case 'loc_blank':   return cx?.loc?.blank    ?? null;
-      case 'cycle':       return n.cycle_kind ?? null;
-      default:            return null;
-    }
+    if (id === 'name') return n.id.replace(/^\{[^}]+\}\//, '') || n.id;
+    if (id === 'kind')  return n.kind  ?? '';
+    if (id === 'cycle') return n.cycle ?? null;
+    return nodeAttr(n, id);
   }
 
   function fmtVal(v, id) {
@@ -151,7 +131,8 @@ function setupNodeTable(section, level) {
   hdr.addEventListener('click', () => wrap.classList.toggle('collapsed'));
 
   // ── Sort / select state ───────────────────────────────────────────────────
-  let sortId  = 'name';
+  // Default sort from ui.default_sort, falling back to "name".
+  let sortId  = levelUi(level).default_sort || 'name';
   let sortDir = 1;
   let searchQuery = '';
   if (!window._ntSelected) window._ntSelected = {};
@@ -175,6 +156,8 @@ function setupNodeTable(section, level) {
   searchInput.addEventListener('input', () => { searchQuery = searchInput.value.trim().toLowerCase(); renderRows(); });
 
   function buildHeaders() {
+    // Refresh cols in case active side (before/after) switched.
+    cols = buildCols();
     thead.innerHTML = '';
     const tr = document.createElement('tr');
     const selTh = document.createElement('th');
@@ -200,13 +183,20 @@ function setupNodeTable(section, level) {
     selTh.appendChild(allCb);
     updateAllCb();
     tr.appendChild(selTh);
-    cols.forEach(({id, label}) => {
+    cols.forEach(({ id, label, isNum }) => {
       const th = document.createElement('th');
       th.textContent = label;
       th.dataset.col = id;
-      if (COL_TIPS[id]) th.dataset.tip = COL_TIPS[id];
-      if (COL_FORMULAS[id]) th.dataset.tipFormula = COL_FORMULAS[id];
-      if (numSet.has(id)) th.classList.add('num');
+      // Tooltips from schema — skip synthetic "name" column.
+      if (id !== 'name') {
+        const desc = attrDesc(level, id);
+        const formula = attrFormula(level, id);
+        const name = attrName(level, id);
+        if (desc)    th.dataset.tip        = desc;
+        if (formula) th.dataset.tipFormula = formula;
+        if (name)    th.dataset.tipTitle   = name;
+      }
+      if (isNum) th.classList.add('num');
       if (id === sortId) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
       th.addEventListener('click', e => {
         e.stopPropagation();
@@ -221,15 +211,17 @@ function setupNodeTable(section, level) {
 
   // ── Visibility filter ─────────────────────────────────────────────────────
   function getVisible() {
-    // Show every (non-external) node of the active snapshot. Before/After picks
+    // Show every non-external node of the active snapshot. Before/After picks
     // which snapshot; there is no per-status chip filtering anymore.
-    return activeGraph(level).nodes.filter(n => !n.external);
+    return activeGraph(level).nodes.filter(n => !isExternalNode(n, level));
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
   function renderRows() {
     // Reflect the active side in the title: Details / Details Before / Details After.
     hdrTitle.textContent = 'Details' + (typeof viewModeSuffix === 'function' ? viewModeSuffix() : '');
+    // Refresh cols in case active side changed.
+    cols = buildCols();
     const visible = getVisible();
     const filtered = searchQuery
       ? visible.filter(n => nodeVal(n, 'name').toLowerCase().includes(searchQuery))
@@ -317,11 +309,11 @@ function setupNodeTable(section, level) {
       });
       tr.appendChild(selTd);
 
-      cols.forEach(({id}) => {
+      cols.forEach(({ id, isNum }) => {
         const td = document.createElement('td');
         const v  = nodeVal(n, id);
         td.dataset.col = id;
-        if (numSet.has(id)) td.classList.add('num');
+        if (isNum) td.classList.add('num');
         td.textContent = fmtVal(v, id);
         if (id === 'status') td.className += ` cell-s-${n.status}`;
         // Tooltip (description + formula + this node's computation) is derived
@@ -335,17 +327,20 @@ function setupNodeTable(section, level) {
     const foot = document.createElement('tr');
     foot.className = 'nt-foot';
     foot.appendChild(document.createElement('td')).className = 'nt-sel-td';
-    cols.forEach(({ id }) => {
+    cols.forEach(({ id, isNum }) => {
       const td = document.createElement('td');
       td.dataset.col = id;
-      if (numSet.has(id)) {
+      if (isNum) {
         td.classList.add('num');
         const nums = sorted.map(n => nodeVal(n, id)).filter(v => typeof v === 'number' && isFinite(v));
         const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
         td.textContent = avg != null ? fmtVal(avg, id) : '';
         // Percentile distribution tooltip (like the summary section).
         const pct = pctOf(sorted, n => nodeVal(n, id));
-        if (pct) { td.dataset.tt = JSON.stringify(pct); td.dataset.tipTitle = COL_NAMES[id] || id; }
+        if (pct) {
+          td.dataset.tt = JSON.stringify(pct);
+          td.dataset.tipTitle = attrName(level, id) || id;
+        }
       } else if (id === 'name') {
         td.textContent = `${sorted.length}`;            // total rows — the "sum" of text entries
       } else {
@@ -378,41 +373,6 @@ function renderTooltip(label, data) {
 </tbody></table>`;
 }
 
-// The actual HK computation for one node — `loc × (fan_in × fan_out)² = hk`
-// with this node's real numbers, so the tooltip shows how the value was reached.
-function hkCalc(cx) {
-  const c = cx?.coupling;
-  const lo = cx?.loc?.source;
-  if (!c || lo == null) return '';
-  const g = v => Math.round(v).toLocaleString('en-US');
-  return `${g(lo)} × (${c.fan_in || 0} × ${c.fan_out || 0})² = ${g(c.hk || 0)}`;
-}
-
-// The `formula` filled with one node's real values, for the metrics whose
-// inputs are all stored. Returns '' when a faithful computation isn't possible
-// (e.g. MI is displayed normalized 0–100, so the classic formula wouldn't match;
-// cyclomatic/Halstead length/vocabulary have no stored sub-terms).
-function metricCalc(colId, cx) {
-  if (!cx) return '';
-  if (colId === 'hk') return hkCalc(cx);
-  const h = cx.halstead;
-  const g  = v => v == null ? null : Math.round(v).toLocaleString('en-US');
-  const f1 = v => v == null ? null : (Math.round(v * 10) / 10).toLocaleString('en-US');
-  switch (colId) {
-    case 'h_vol':
-      if (!h || h.length == null || h.vocabulary == null || h.volume == null) return '';
-      return `${g(h.length)} × log₂(${g(h.vocabulary)}) = ${f1(h.volume)}`;
-    case 'h_bugs':
-      if (!h || h.effort == null || h.bugs == null) return '';
-      return `${g(h.effort)}^⅔ ÷ 3000 = ${h.bugs.toLocaleString('en-US', { maximumFractionDigits: 4 })}`;
-    case 'h_time':
-      if (!h || h.effort == null || h.time == null) return '';
-      return `${g(h.effort)} ÷ 18 = ${f1(h.time)}`;
-    default:
-      return '';
-  }
-}
-
 function renderDescTooltip(label, desc, formula, calc) {
   const f = formula ? `<div class="tt-formula">${escHtml(formula)}</div>` : '';
   // `calc` is the same formula filled with this node's real values.
@@ -424,9 +384,14 @@ function setupTooltip() {
   const tt = document.getElementById('tt');
   let current = null;
 
-  // Tooltip title = the metric's full name: an explicit `data-tip-title`, else
-  // the full name for the element's column id, else the element's own text.
-  const titleOf = el => el.dataset.tipTitle || COL_NAMES[el.dataset.col] || el.textContent.trim();
+  // Tooltip title = the metric's full name from schema; falls back to the
+  // element's own text.
+  const titleOf = (el, lv) => {
+    if (el.dataset.tipTitle) return el.dataset.tipTitle;
+    const col = el.dataset.col;
+    if (col && lv) return attrName(lv, col) || col;
+    return el.textContent.trim();
+  };
 
   document.addEventListener('mouseover', e => {
     const cellTt  = e.target.closest('[data-tt]');
@@ -435,25 +400,30 @@ function setupTooltip() {
     if (cellTt && cellTt.dataset.tt) {
       // Prefer an explicit / column-derived full name (table footer cells);
       // fall back to the row's first cell (summary table, metric-per-row).
-      const label = cellTt.dataset.tipTitle || COL_NAMES[cellTt.dataset.col]
+      const label = cellTt.dataset.tipTitle
         || cellTt.closest('tr')?.querySelector('td:first-child')?.textContent || '';
       tt.innerHTML = renderTooltip(label, cellTt.dataset.tt);
       tt.removeAttribute('hidden');
       current = cellTt;
     } else if (cellTip && cellTip.dataset.tip) {
-      tt.innerHTML = renderDescTooltip(titleOf(cellTip), cellTip.dataset.tip, cellTip.dataset.tipFormula, cellTip.dataset.tipCalc);
+      tt.innerHTML = renderDescTooltip(titleOf(cellTip, null), cellTip.dataset.tip, cellTip.dataset.tipFormula, cellTip.dataset.tipCalc);
       tt.removeAttribute('hidden');
       current = cellTip;
-    } else if (cellNum && COL_TIPS[cellNum.dataset.col]) {
+    } else if (cellNum) {
       // Value cells carry no precomputed tooltip — derive it on hover only, so we
       // never build a tooltip string for a cell the user never points at. Every
       // metric column gets the description + formula (where one exists); the
       // per-node computation is added for metrics whose inputs are stored.
-      const id   = cellNum.dataset.col;
+      const id  = cellNum.dataset.col;
+      // Determine the active level from the closest section (sections use data-view).
+      const lv  = cellNum.closest('[data-view]')?.dataset.view || 'files';
+      const desc = attrDesc(lv, id);
+      if (!desc) return;  // no description — skip synthetic / unknown columns
+      const formula = attrFormula(lv, id);
       const nid  = cellNum.closest('tr[data-node-id]')?.dataset.nodeId;
-      const node = nid && activeGraph('files').nodes.find(n => n.id === nid);
-      const calc = node ? metricCalc(id, node.complexity) : '';
-      tt.innerHTML = renderDescTooltip(titleOf(cellNum), COL_TIPS[id], COL_FORMULAS[id], calc);
+      const node = nid ? activeGraph(lv).nodes.find(n => n.id === nid) : null;
+      const calc = node ? calcDisplay(lv, id, node) : '';
+      tt.innerHTML = renderDescTooltip(titleOf(cellNum, lv), desc, formula, calc);
       tt.removeAttribute('hidden');
       current = cellNum;
     }

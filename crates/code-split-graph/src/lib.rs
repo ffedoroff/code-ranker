@@ -21,8 +21,8 @@ pub use diff::compare_snapshots;
 pub use finalize::finalize_graph;
 pub use hk::annotate_hk;
 pub use snapshot::{
-    CycleGroup, GitInfo, LevelGraph, Snapshot, StageTime, relativize_graph, relativize_level,
-    to_canonical_string, to_canonical_string_pretty,
+    CycleGroup, GitInfo, LevelGraph, LevelUi, Snapshot, StageTime, relativize_graph,
+    relativize_level, to_canonical_string, to_canonical_string_pretty,
 };
 pub use stats::compute_stats;
 
@@ -36,34 +36,59 @@ pub fn coupling_specs() -> (
     BTreeMap<String, AttributeSpec>,
     BTreeMap<String, AttributeGroup>,
 ) {
-    let cspec = |group: Option<&str>, label: &str, t: ValueType| AttributeSpec {
-        value_type: t,
-        label: Some(label.to_string()),
-        hint: None,
-        group: group.map(str::to_string),
-    };
-    let coupling = Some("coupling");
     let mut specs = BTreeMap::new();
-    specs.insert(
-        "fan_in".to_string(),
-        cspec(coupling, "Fan-in", ValueType::Int),
+
+    let mut fan_in = AttributeSpec::new(ValueType::Int, "Fan-in");
+    fan_in.group = Some("coupling".into());
+    fan_in.name = Some("Fan-in".into());
+    fan_in.short = Some("Fan-in".into());
+    fan_in.description =
+        Some("Number of nodes that depend on this one. High fan-in means broadly reused.".into());
+    fan_in.direction = Some("higher_better".into());
+    specs.insert("fan_in".to_string(), fan_in);
+
+    let mut fan_out = AttributeSpec::new(ValueType::Int, "Fan-out");
+    fan_out.group = Some("coupling".into());
+    fan_out.name = Some("Fan-out".into());
+    fan_out.short = Some("Fan-out".into());
+    fan_out.description = Some(
+        "Number of nodes this one depends on. High fan-out means many dependencies. \
+         External-library edges are counted separately."
+            .into(),
     );
-    specs.insert(
-        "fan_out".to_string(),
-        cspec(coupling, "Fan-out", ValueType::Int),
+    fan_out.direction = Some("higher_better".into());
+    specs.insert("fan_out".to_string(), fan_out);
+
+    let mut foe = AttributeSpec::new(ValueType::Int, "Fan-out (external)");
+    foe.group = Some("coupling".into());
+    foe.description = Some("Number of distinct external libraries this node depends on.".into());
+    specs.insert("fan_out_external".to_string(), foe);
+
+    let mut hk = AttributeSpec::new(ValueType::Float, "HK");
+    hk.group = Some("coupling".into());
+    hk.name = Some("Henry–Kafura (HK)".into());
+    hk.short = Some("HK".into());
+    hk.description = Some(
+        "Henry–Kafura — combines unit size with incoming/outgoing coupling (internal edges only)."
+            .into(),
     );
-    specs.insert(
-        "fan_out_external".to_string(),
-        cspec(coupling, "Fan-out (external)", ValueType::Int),
-    );
-    specs.insert("hk".to_string(), cspec(coupling, "HK", ValueType::Float));
-    specs.insert("cycle".to_string(), cspec(None, "Cycle", ValueType::Str));
+    hk.formula = Some("sloc × (fan_in × fan_out)²".into());
+    hk.calc = Some("sloc * (fan_in * fan_out) ** 2".into());
+    hk.direction = Some("lower_better".into());
+    hk.abbreviate = Some(true);
+    specs.insert("hk".to_string(), hk);
+
+    let mut cycle = AttributeSpec::new(ValueType::Str, "Cycle");
+    cycle.short = Some("Cycle".into());
+    cycle.description = Some("Cycle kind this node participates in.".into());
+    specs.insert("cycle".to_string(), cycle);
+
     let mut groups = BTreeMap::new();
     groups.insert(
         "coupling".to_string(),
         AttributeGroup {
             label: Some("Coupling".to_string()),
-            hint: Some("Internal coupling (Henry-Kafura)".to_string()),
+            description: Some("Internal coupling (Henry-Kafura)".to_string()),
         },
     );
     (specs, groups)

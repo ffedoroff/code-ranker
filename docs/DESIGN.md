@@ -234,13 +234,17 @@ keys it understands, described per level by the semantics dictionaries.
 | Attributes | `BTreeMap<String, AttrValue>` (alphabetical → byte-stable). Plugins fill **structural** keys (`path`, `loc`, `visibility`, `version`, `items`, `external`, …); the orchestrator adds **computed** keys (`cyclomatic`, `cognitive`, `sloc`, `lloc`, `cloc`, `blank`, `mi`, `mi_sei`, `length`, `vocabulary`, `volume`, `effort`, `time`, `bugs`, `fan_in`, `fan_out`, `fan_out_external`, `hk`, `cycle`) into the same map by node id. All flat — no nesting. Zero-valued metrics are omitted. | `crates/code-split-plugin-api/src/attrs.rs` |
 | AttrValue | Untagged scalar: `Bool` / `Int` / `Float` / `Str` (serialized to its natural JSON form). Metric producers round to 3 significant digits and store an integral value as `Int` so e.g. `1.0` serializes as `1`. | `crates/code-split-plugin-api/src/attrs.rs` |
 | NodeId | Stable string key. A **file node's id IS its relativized path** — `{target}/src/a.rs` (no `file:` prefix); an external node is `ext:{name}` (`ext:serde`). During analysis a file id is its absolute path; the orchestrator relativizes it against the named roots. | `crates/code-split-plugin-api/src/node.rs` |
-| Level | What a plugin can produce, with its semantics dictionaries: `name`, `edge_kinds: BTreeMap<String, EdgeKindSpec>`, `node_attributes` / `edge_attributes: BTreeMap<String, AttributeSpec>`, `attribute_groups: BTreeMap<String, AttributeGroup>`. The orchestrator merges the plugin's structural attribute specs with the central complexity + coupling specs, then prunes them — and the edge kinds / groups — to what is actually present. | `crates/code-split-plugin-api/src/level.rs` |
-| EdgeKindSpec | `flow: bool` (single source of truth — counted in coupling/cycles AND drawn when `true`; structural like `contains` when `false`, excluded but stored), plus optional UI `label` / `hint`. | `crates/code-split-plugin-api/src/level.rs` |
-| AttributeSpec | Describes one attribute key: `value_type` (`Bool`/`Int`/`Float`/`Str` — tells the UI what it can do), optional `label` / `hint`, optional `group` (→ an `AttributeGroup`). Grouping is metadata only; storage stays flat. | `crates/code-split-plugin-api/src/level.rs` |
+| Level | What a plugin can produce, with its semantics dictionaries: `name`, `edge_kinds`, `node_attributes` / `edge_attributes`, `attribute_groups`, plus `node_kinds: BTreeMap<String, NodeKindSpec>` and `cycle_kinds: BTreeMap<String, CycleKindSpec>` (seeded from `default_node_kinds()` / `default_cycle_kinds()`, overridable). The orchestrator merges the plugin's structural attribute specs with the central complexity + coupling specs, overlays the plugin's `thresholds()`, computes the `ui` block, then prunes everything to what is actually present. | `crates/code-split-plugin-api/src/level.rs` |
+| EdgeKindSpec | `flow: bool` (single source of truth — counted/drawn when `true`; structural like `contains` when `false`), plus optional `label` / `description`. | `crates/code-split-plugin-api/src/level.rs` |
+| AttributeSpec | Everything the UI needs to render a metric from data: `value_type`, `label`, `name` (tooltip title), `short` (table header), `description`, `formula` (display), `calc` (an `eval`-able JS expression over sibling attrs — the live derivation), `direction` (`higher_better`/`lower_better`, for delta colour), `abbreviate` (K/M), `group`, `thresholds {info, warning}`. All optional but `value_type`. | `crates/code-split-plugin-api/src/level.rs` |
+| NodeKindSpec / CycleKindSpec | Per-kind UI semantics. `NodeKindSpec`: `label`/`plural`/`fill`/`stroke`/`external`. `CycleKindSpec`: `label`/`description`. Generic defaults from `default_node_kinds()` / `default_cycle_kinds()` in `code-split-plugin-api`. | `crates/code-split-plugin-api/src/level.rs` |
+| Thresholds | `{ info: f64, warning: f64 }` — two-tier per-metric thresholds; language-calibrated, returned by a plugin's `thresholds()` and overlaid onto the matching `AttributeSpec`. | `crates/code-split-plugin-api/src/level.rs` |
+| Preset | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-split-cli/src/presets.rs`) and a plugin's `presets(defaults, input)` hook may pass through / edit / extend it. Stored top-level in the snapshot. | `crates/code-split-plugin-api/src/plugin.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"test_embed"` / `"mutual"` / `"chain"`), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-split-graph/src/snapshot.rs` |
-| LevelGraph | One analysis level in the snapshot: the four semantics dictionaries + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages of numeric node attributes). | `crates/code-split-graph/src/snapshot.rs` |
-| Snapshot | The `.json` artifact: `schema_version: "2"`, `generated_at`, `command`, `workspace` (cwd), `target` (analyzed project), `plugin`, `config_file?`, `versions`, `roots` (pruned to those that shortened a path), `git?`, `timings`, and `graphs: BTreeMap<String, LevelGraph>` (today only `"files"`; the map allows future levels). Serialized via `to_canonical_string_pretty` — **canonical JSON**: every object key alphabetical, `nodes`/`edges` arrays sorted by stable key — byte-stable for unchanged input. | `crates/code-split-graph/src/snapshot.rs` |
-| StageTime | Per-stage timing entry: `stage` (name), `ms`, `detail` (human summary). Stored in `Snapshot.timings` in execution order. | `crates/code-split-graph/src/snapshot.rs` |
+| LevelUi | Computed UI hints: `default_sort`, `sort_metrics`, `size_metrics`, `card_metrics`, `columns`, `summary_metrics` — each a curated metric order filtered to the attributes present, so the viewer hardcodes none of it. | `crates/code-split-graph/src/snapshot.rs` |
+| LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-split-graph/src/snapshot.rs` |
+| Snapshot | The `.json` artifact: `schema_version: "2"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, and top-level `presets: Vec<Preset>`. Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-split-graph/src/snapshot.rs` |
+| StageTime | Per-stage timing entry: `stage`, `ms`, `detail`. Stored in `Snapshot.timings` in execution order. | `crates/code-split-graph/src/snapshot.rs` |
 
 **Relationships**:
 
@@ -613,11 +617,26 @@ Static assets for the `code-split report` HTML output (a single-snapshot viewer,
 or a baseline↔current diff with `--baseline`), embedded into the `code-split`
 binary via `include_str!`.
 
-> **Status — not yet migrated to schema `"2"`.** The Rust glue
-> (`render_html_viewer`) compiles and embeds the new snapshot JSON, but the JS
-> assets below still read the **old** schema (`complexity.coupling.*`, `edge.from/to`,
-> `node.cycle_kind`, a single `files` struct). The viewer is the next migration
-> step; until then the description below documents the pre-redesign UI behavior.
+> **Status — migrated to schema `"2"` and fully data-driven.** A new
+> `schema.js` is the single data-access layer; every consumer (`diff.js`,
+> `layout.js`, `app.js`, `node-table.js`, `summary.js`, `diagram.js`,
+> `modal.js`, `export-popup.js`) reads from the snapshot dictionaries: flat node
+> `attrs`, `edge.source/target`, `node.cycle`, per-level `node_attributes` /
+> `edge_kinds` / `node_kinds` / `cycle_kinds` / `attribute_groups` / `ui`, and
+> top-level `presets`. **No metric/kind/colour/threshold/prompt is hardcoded by
+> name** — the former JS catalogs (`COL_NAMES` / `COL_TIPS` / `COL_FORMULAS` /
+> `METRIC_DESCS` / `NM_LABELS` / `METRIC_TH_BY_LANG` / `PROMPTS` /
+> `PRINCIPLE_DOCS` / `PRESET_*`) are gone, replaced by `node_attributes` specs
+> (`label`/`name`/`short`/`description`/`formula`/`calc`/`direction`/`thresholds`),
+> `node_kinds` colours, and the `presets` catalog. Metric formulas show via
+> `AttributeSpec.formula`; the live derivation is `eval`-ing `AttributeSpec.calc`
+> over the node's attributes (`schema.js` `calcDisplay`). Preview a real report
+> with `code-split report <dir> --output.html.path=out.html` (self-contained).
+>
+> **The per-file rows below describe the pre-rewrite structure** (column ids,
+> `metricCalc`, cargo-cache wording, `#L<line>` source anchors, the old catalog
+> names). Behaviorally the assets now source all that data from the snapshot via
+> `schema.js`; treat the rows as a UI-feature map, not a literal field reference.
 
 Files:
 
@@ -915,10 +934,13 @@ dictionaries with the structural graph and the computed cycles/stats:
   "timings": [ { "stage": "rust", "ms": 0, "detail": "17 nodes from 8 files" }, … ],
   "graphs": {
     "files": {
-      "edge_kinds":       { "uses": { "flow": true, "label": "uses", "hint": "…" }, "contains": { "flow": false, … } },
-      "node_attributes":  { "cyclomatic": { "value_type": "int", "label": "Cyclomatic", "group": "complexity" }, … },
+      "edge_kinds":       { "uses": { "flow": true, "label": "uses", "description": "…" }, "contains": { "flow": false, … } },
+      "node_attributes":  { "cyclomatic": { "value_type": "int", "label": "Cyclomatic", "name": "Cyclomatic complexity", "short": "Cyclomatic", "formula": "branches + 1", "direction": "lower_better", "group": "complexity" }, "hk": { "value_type": "float", "calc": "sloc * (fan_in * fan_out) ** 2", "thresholds": { "info": 150000, "warning": 10000000 }, … }, … },
       "edge_attributes":  { "visibility": { "value_type": "str", "label": "Visibility" } },
-      "attribute_groups": { "complexity": { "label": "Complexity", "hint": "…" }, … },
+      "attribute_groups": { "complexity": { "label": "Complexity", "description": "…" }, … },
+      "node_kinds":       { "file": { "label": "File", "fill": "#dbe9f4", "stroke": "#4d6f9c" }, "external": { "external": true, … } },
+      "cycle_kinds":      { "mutual": { "label": "Mutual", "description": "…" } },
+      "ui":               { "default_sort": "hk", "columns": [...], "summary_metrics": [...], "sort_metrics": [...], "size_metrics": [...], "card_metrics": [...] },
       "nodes": [
         { "id": "{target}/src/a.rs", "kind": "file", "name": "a.rs", "sloc": 30, "cyclomatic": 1, "hk": 480, "cycle": "mutual", "visibility": "public", … },
         { "id": "ext:serde", "kind": "external", "name": "serde", "external": true, "version": "1.0.228", "path": "{registry}/serde-1.0.228" }
@@ -927,13 +949,18 @@ dictionaries with the structural graph and the computed cycles/stats:
       "cycles": [ { "kind": "mutual", "nodes": ["{target}/src/a.rs", "{target}/src/b.rs"] } ],
       "stats": { "cyclomatic": 1, "hk": 240, "sloc": 26, … }
     }
-  }
+  },
+  "presets": [ { "id": "ADP", "title": "…", "prompt": "…", "doc_url": "…", "sort_metric": "cycle", "connections": ["common","out"] }, … ]
 }
 ```
 
 All node/edge attributes are **flat** (no nested `complexity`/`coupling`
 objects); a file node carries no `path` (its id IS its path); an edge is
-external iff its `target` is an `ext:` node (no `edge.external`).
+external iff its `target` is an `ext:` node (no `edge.external`). Every metric's
+label/name/formula/`calc`/direction/threshold is in `node_attributes`, node/cycle
+kinds in `node_kinds`/`cycle_kinds`, column/sort ordering in `ui`, and the
+Prompt-Generator principles in top-level `presets` — so the viewer renders
+entirely from this data and hardcodes none of it.
 
 `workspace` is the directory where `code-split` was invoked (cwd). `target`
 is the analyzed project path. `roots` are named prefixes for path

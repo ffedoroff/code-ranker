@@ -33,8 +33,8 @@ document.addEventListener('click', e => {
 // views its source, Shift-click toggles its selection (routed through the modal
 // checkbox so the row / map node / footer all stay in sync). A *plain* click
 // (no modifier) copies its path — the SVG <g> feedback is a CSS class, not a
-// textContent swap that would clobber the group's children. 3rd-party (external)
-// main cards (`diag-ext`) are inert under modifiers.
+// textContent swap that would clobber the group's children. External main cards
+// (`diag-ext`) are inert under modifiers.
 document.addEventListener('click', e => {
   const card = e.target.closest('.mn-card');
   if (!card) return;
@@ -46,7 +46,7 @@ document.addEventListener('click', e => {
         const level  = document.querySelector('.view.active')?.dataset.view;
         const node   = card.dataset.nodeId && level
           ? window.activeGraph?.(level)?.nodes?.find(n => n.id === card.dataset.nodeId) : null;
-        const url = node && window.nodeSourceUrl?.(node);
+        const url = node && window.nodeSourceUrl?.(node, level);
         if (url) window.open(url, '_blank', 'noopener');
       } else {  // Shift → toggle selection via the checkbox (full sync + live highlight)
         const cb = document.getElementById('node-modal-cb');
@@ -117,15 +117,15 @@ function getModal() {
       const level  = document.querySelector('.view.active')?.dataset.view;
       if (!nodeId || !level) return;
 
-      // 3rd-party (external) cards are inert under modifiers: not selectable and
-      // no source to open — only a plain click navigates into them.
+      // External cards are inert under modifiers: not selectable and no source to
+      // open — only a plain click navigates into them.
       const isExt = g.classList.contains('diag-ext');
       const node  = window.activeGraph?.(level)?.nodes?.find(n => n.id === nodeId);
 
       // The map's modifier gestures work here too (mirrors setupTooltips):
       //   ⌘/Ctrl → open source, Shift → toggle selection — both skip navigation.
       if (!isExt && node && window.isOpenSrcClick?.(e)) {
-        const url = window.nodeSourceUrl?.(node);
+        const url = window.nodeSourceUrl?.(node, level);
         if (url) window.open(url, '_blank', 'noopener');
         return;
       }
