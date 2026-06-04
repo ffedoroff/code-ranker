@@ -79,23 +79,36 @@ function buildDOT(nodes, edges, level) {
     dot += '  node  [shape=circle style=filled fixedsize=true width=0.3]\n\n';
   }
 
-  // Cluster nodes by directory derived from the id (a file node's id is its
-  // relativized path). External nodes (should none reach the map) go to their
-  // own cluster.
-  const dirOf = n => {
-    if (isExternalNode(n, level)) return (nodeKindSpec(level, n.kind).plural || 'external').toLowerCase();
-    const p = n.id.replace(/^\{[^}]+\}\//, '');
-    const i = p.lastIndexOf('/');
-    return i > 0 ? p.slice(0, i) : '_root';
+  // Cluster nodes per the level's `ui.grouping` spec:
+  //   { key: "crate" }      → group by the value of that node attribute
+  //   { function: "dir" }   → a named grouper implemented here
+  //   (absent)              → default `dir` grouper (folder from the path)
+  // The group's value doubles as the cluster label. External nodes always go to
+  // their own kind bucket (they have no source attributes like `crate`).
+  const GROUPERS = {
+    // Full project-relative directory path (the `{root}/` token stripped), so
+    // nested folders like `crates/code-split-cli/src/config` stay unambiguous.
+    dir: n => {
+      const p = n.id.replace(/^\{[^}]+\}\//, '');
+      const i = p.lastIndexOf('/');
+      return i > 0 ? p.slice(0, i) : '_root';
+    },
   };
-  const dirs = new Map();
-  nodes.forEach(n => { const d = dirOf(n); (dirs.get(d) || dirs.set(d, []).get(d)).push(n); });
+  const grouping = levelUi(level).grouping || {};
+  const byKey = grouping.key;
+  const grouper = GROUPERS[grouping.function] || GROUPERS.dir;
+  const groupOf = n => {
+    if (isExternalNode(n, level)) return (nodeKindSpec(level, n.kind).plural || 'external').toLowerCase();
+    if (byKey) {
+      const v = n[byKey];
+      return (v === undefined || v === null || v === '') ? '(none)' : String(v);
+    }
+    return grouper(n);
+  };
+  const groups = new Map();
+  nodes.forEach(n => { const g = groupOf(n); (groups.get(g) || groups.set(g, []).get(g)).push(n); });
   let i = 0;
-  for (const [dir, ns] of dirs) {
-    // Full project-relative directory path (the `{root}/` token already stripped
-    // in dirOf), so nested folders like `crates/code-split-cli/src/config` are
-    // unambiguous instead of a truncated `src/config`.
-    const label = dir;
+  for (const [label, ns] of groups) {
     dot += `  subgraph cluster_${i++} {\n`;
     dot += `    label=${dotId(label)} color="#cccccc" fontcolor="#666666"\n`;
     for (const n of ns) dot += `    ${dotId(n.id)} [${nAttr(n)}]\n`;

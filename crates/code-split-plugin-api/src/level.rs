@@ -130,6 +130,18 @@ pub struct CycleKindSpec {
     pub description: Option<String>,
 }
 
+/// How the viewer should cluster nodes in the diagram. Exactly one of `key`
+/// (group by the value of a node attribute, e.g. `crate`) or `function` (a named
+/// grouper the viewer implements, e.g. `dir` — derive the folder from the path).
+/// Absent → the viewer falls back to its default `dir` grouper.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Grouping {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub function: Option<String>,
+}
+
 /// An analysis level the plugin can produce, with the semantics needed to score
 /// and draw it. The orchestrator merges in centrally-computed attribute specs
 /// and the computed `ui` block before writing the snapshot.
@@ -147,4 +159,7 @@ pub struct Level {
     /// Cycle-kind vocabulary. Plugins seed it from [`crate::default_cycle_kinds`].
     #[serde(default)]
     pub cycle_kinds: BTreeMap<String, CycleKindSpec>,
+    /// How the viewer should cluster nodes (defaults to `dir` when absent).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouping: Option<Grouping>,
 }

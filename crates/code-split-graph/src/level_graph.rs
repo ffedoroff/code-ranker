@@ -7,7 +7,7 @@
 use code_split_plugin_api::{
     attrs::AttrValue,
     edge::Edge,
-    level::{AttributeGroup, AttributeSpec, CycleKindSpec, EdgeKindSpec, NodeKindSpec},
+    level::{AttributeGroup, AttributeSpec, CycleKindSpec, EdgeKindSpec, Grouping, NodeKindSpec},
     node::{Node, NodeId},
 };
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,11 @@ pub struct LevelUi {
     pub card_metrics: Vec<String>,
     pub columns: Vec<String>,
     pub summary_metrics: Vec<String>,
+    /// How the viewer should cluster nodes (group by attribute `key`, or a named
+    /// `function`). Carried through from the plugin's level spec, pruned to a
+    /// valid attribute. Absent → the viewer uses its default `dir` grouper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grouping: Option<Grouping>,
 }
 
 /// One strongly-connected component with ≥ 2 nodes, plus its classification

@@ -1,12 +1,12 @@
 {
-  "command": "code-split report crates/code-split-plugin-rust/sample --config crates/code-split-plugin-rust/sample/code-split.toml --output.json.path=crates/code-split-plugin-rust/sample/code-split-report.json",
+  "command": "code-split report crates/code-split-plugin-rust/sample --config crates/code-split-plugin-rust/sample/code-split.toml --output.json.path crates/code-split-plugin-rust/sample/code-split-report.json",
   "config_file": "crates/code-split-plugin-rust/sample/code-split.toml",
-  "generated_at": "1970-01-01T00:00:00Z",
+  "generated_at": "2026-06-04T13:11:20.020750Z",
   "git": {
-    "branch": "main",
-    "commit": "000000000000",
-    "dirty_files": 0,
-    "origin": "git@example.com:org/repo.git"
+    "branch": "refactor/generic-model-cli",
+    "commit": "45ea25a23bdb",
+    "dirty_files": 17,
+    "origin": "git@github.com:ffedoroff/code-split.git"
   },
   "graphs": {
     "files": {
@@ -228,6 +228,10 @@
           "short": "Comments",
           "value_type": "int"
         },
+        "crate": {
+          "label": "Crate",
+          "value_type": "str"
+        },
         "cycle": {
           "description": "Cycle kind this node participates in.",
           "label": "Cycle",
@@ -447,6 +451,7 @@
           "blank": 1,
           "bugs": 0.00447,
           "cloc": 2,
+          "crate": "helper",
           "cyclomatic": 1,
           "effort": 49.128,
           "fan_in": 1,
@@ -468,6 +473,7 @@
           "blank": 2,
           "bugs": 0.00376,
           "cloc": 7,
+          "crate": "helper",
           "cyclomatic": 1,
           "effort": 37.899,
           "fan_in": 1,
@@ -489,6 +495,7 @@
           "blank": 2,
           "bugs": 0.00447,
           "cloc": 2,
+          "crate": "helper",
           "cyclomatic": 1,
           "effort": 49.128,
           "fan_in": 1,
@@ -510,6 +517,7 @@
           "blank": 5,
           "bugs": 0.0896,
           "cloc": 11,
+          "crate": "rust-sample",
           "cycle": "mutual",
           "cyclomatic": 1,
           "effort": 4413.97,
@@ -536,6 +544,7 @@
           "blank": 4,
           "bugs": 0.0521,
           "cloc": 12,
+          "crate": "rust-sample",
           "cycle": "mutual",
           "cyclomatic": 1,
           "effort": 1958.647,
@@ -562,6 +571,7 @@
           "blank": 2,
           "bugs": 0.00867,
           "cloc": 4,
+          "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 132.877,
           "fan_in": 2,
@@ -583,6 +593,7 @@
           "blank": 2,
           "bugs": 0.0331,
           "cloc": 11,
+          "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 991.183,
           "fan_out": 3,
@@ -605,6 +616,7 @@
           "blank": 1,
           "bugs": 0.0051,
           "cloc": 6,
+          "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 60,
           "fan_out_external": 1,
@@ -626,6 +638,7 @@
           "blank": 2,
           "bugs": 0.0112,
           "cloc": 9,
+          "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 196.755,
           "fan_in": 1,
@@ -649,6 +662,7 @@
           "blank": 8,
           "bugs": 0.0616,
           "cloc": 28,
+          "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 2514.31,
           "fan_out": 3,
@@ -671,6 +685,7 @@
           "blank": 2,
           "bugs": 0.0174,
           "cloc": 7,
+          "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 377.753,
           "id": "{target}/src/macros.rs",
@@ -691,6 +706,7 @@
           "blank": 2,
           "bugs": 0.0112,
           "cloc": 5,
+          "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 196.755,
           "fan_out": 1,
@@ -752,6 +768,9 @@
           "blank"
         ],
         "default_sort": "hk",
+        "grouping": {
+          "key": "crate"
+        },
         "size_metrics": [
           "loc",
           "hk"
@@ -917,25 +936,25 @@
     }
   ],
   "roots": {
-    "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
-    "target": "/home/user/code-split/crates/code-split-plugin-rust/sample"
+    "registry": "/Users/roman/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
+    "target": "/Users/roman/work/code-split/crates/code-split-plugin-rust/sample"
   },
   "schema_version": "2",
-  "target": "/home/user/code-split/crates/code-split-plugin-rust/sample",
+  "target": "/Users/roman/work/code-split/crates/code-split-plugin-rust/sample",
   "timings": [
     {
       "detail": "14 nodes from 12 files",
-      "ms": 0,
+      "ms": 76,
       "stage": "rust"
     },
     {
       "detail": "12 nodes annotated",
-      "ms": 0,
+      "ms": 10,
       "stage": "complexity"
     },
     {
       "detail": "nodes=14 edges=25",
-      "ms": 0,
+      "ms": 28,
       "stage": "projection"
     }
   ],
@@ -943,5 +962,5 @@
     "code-split": "1.0.0-alpha.3",
     "rustc": "1.95.0"
   },
-  "workspace": "/home/user/code-split"
+  "workspace": "/Users/roman/work/code-split"
 }

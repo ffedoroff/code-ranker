@@ -1,5 +1,5 @@
 use anyhow::Result;
-use code_split_plugin_api::{attrs::{AttrValue, ValueType}, edge::Edge, graph::Graph, level::{AttributeSpec, EdgeKindSpec, Level, Thresholds}, node::Node, plugin::{LanguagePlugin, PluginInput}, default_cycle_kinds, default_node_kinds};
+use code_split_plugin_api::{attrs::{AttrValue, ValueType}, edge::Edge, graph::Graph, level::{AttributeSpec, EdgeKindSpec, Grouping, Level, Thresholds}, node::Node, plugin::{LanguagePlugin, PluginInput}, default_cycle_kinds, default_node_kinds};
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -61,6 +61,7 @@ impl LanguagePlugin for RustPlugin {
 
         let mut node_attributes: BTreeMap<String, AttributeSpec> = BTreeMap::new();
         node_attributes.insert("path".into(), aspec(ValueType::Str, "Path"));
+        node_attributes.insert("crate".into(), aspec(ValueType::Str, "Crate"));
         node_attributes.insert("loc".into(), aspec(ValueType::Int, "Lines"));
         node_attributes.insert("visibility".into(), aspec(ValueType::Str, "Visibility"));
         node_attributes.insert("external".into(), aspec(ValueType::Bool, "External"));
@@ -78,6 +79,12 @@ impl LanguagePlugin for RustPlugin {
             attribute_groups: BTreeMap::new(),
             node_kinds: default_node_kinds(),
             cycle_kinds: default_cycle_kinds(),
+            // Cluster the diagram by the owning crate (compilation unit), not by
+            // the source folder. Falls back to `dir` if `crate` is ever absent.
+            grouping: Some(Grouping {
+                key: Some("crate".into()),
+                function: None,
+            }),
         }]
     }
 
@@ -260,6 +267,9 @@ fn collapse_to_files(full: InternalGraph) -> Graph {
                         if let Some(items) = node.item_count {
                             attrs.insert("items".to_string(), AttrValue::Int(items as i64));
                         }
+                        if let Some(krate) = &node.crate_label {
+                            attrs.insert("crate".to_string(), AttrValue::Str(krate.clone()));
+                        }
                         v.insert(Node {
                             id: fid,
                             kind: "file".into(),
@@ -286,6 +296,10 @@ fn collapse_to_files(full: InternalGraph) -> Graph {
                             if let Some(items) = node.item_count {
                                 n.attrs
                                     .insert("items".to_string(), AttrValue::Int(items as i64));
+                            }
+                            if let Some(krate) = &node.crate_label {
+                                n.attrs
+                                    .insert("crate".to_string(), AttrValue::Str(krate.clone()));
                             }
                         }
                     }

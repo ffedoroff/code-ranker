@@ -51,6 +51,7 @@ impl LanguagePlugin for PythonPlugin {
             attribute_groups: BTreeMap::new(),
             node_kinds: default_node_kinds(),
             cycle_kinds: default_cycle_kinds(),
+            grouping: None,
         }]
     }
 

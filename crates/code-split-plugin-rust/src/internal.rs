@@ -56,6 +56,10 @@ pub(crate) struct Node {
     /// Some(line) → inline module; None → file-backed module.
     pub line: Option<u32>,
     pub item_count: Option<u32>,
+    /// Human-readable owning-crate label (compilation unit), e.g. `bat` or
+    /// `bat (bin)`. `None` for crate / external nodes. A package can expose
+    /// several crates (a lib and one or more bins), so this is per-target.
+    pub crate_label: Option<String>,
 }
 
 #[derive(Debug, Clone)]

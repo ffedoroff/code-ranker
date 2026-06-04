@@ -32,7 +32,8 @@ pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) -> Res
             if !is_supported_target(target) {
                 continue;
             }
-            let root_mod_id = module_node_id(&pkg.id.repr, &target.name, &[]);
+            let root_mod_id =
+                module_node_id(&pkg.id.repr, target_kind_label(target), &target.name, &[]);
             let root_label = format!("{} ({})", target.name, target_kind_label(target));
             builder.add_node(Node {
                 id: root_mod_id.clone(),
@@ -46,6 +47,7 @@ pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) -> Res
                 loc: None,
                 line: None,
                 item_count: None,
+                crate_label: Some(crate_label(pkg, target)),
             });
             builder.add_edge(Edge {
                 from: crate_id.clone(),
@@ -168,6 +170,22 @@ fn build_dep_maps(
         pkg_map.insert(dep.name.clone(), dep.pkg.repr.clone());
     }
     (extern_map, pkg_map)
+}
+
+/// Human-readable owning-crate (compilation unit) label for a target. A package
+/// can produce several crates — a library plus one or more binaries — so the
+/// label is per-target: the library uses the package name, binaries get a
+/// `(bin …)` suffix that keeps the package name as a prefix (globally unique
+/// among workspace members, where package names are unique).
+fn crate_label(pkg: &Package, target: &Target) -> String {
+    let pkg_name = pkg.name.to_string();
+    if is_lib_target(target) {
+        pkg_name
+    } else if target.name == pkg_name {
+        format!("{pkg_name} (bin)")
+    } else {
+        format!("{pkg_name} (bin {})", target.name)
+    }
 }
 
 /// A target addressable by name from another crate (lib / proc-macro), as
@@ -383,7 +401,8 @@ fn process_mod(
     let sub_name = m.ident.to_string();
     let mut sub_path = parent_mod_path.to_vec();
     sub_path.push(sub_name.clone());
-    let sub_mod_id = module_node_id(&pkg.id.repr, &target.name, &sub_path);
+    let sub_mod_id =
+        module_node_id(&pkg.id.repr, target_kind_label(target), &target.name, &sub_path);
 
     let (loc, line) = if m.content.is_some() {
         let span = m.span();
@@ -405,6 +424,7 @@ fn process_mod(
         loc,
         line,
         item_count: None,
+        crate_label: Some(crate_label(pkg, target)),
     });
     builder.add_edge(Edge {
         from: parent_mod_id.clone(),
@@ -473,6 +493,30 @@ fn collect_use_paths(tree: &UseTree, prefix: Vec<String>, out: &mut Vec<Vec<Stri
     }
 }
 
+/// Per-module re-export table: module path → list of `(exported_symbol,
+/// source_use_path)` captured from `pub use` statements. Lets resolution follow
+/// `crate::Item` / `super::Item` to the file that *defines* `Item` instead of
+/// anchoring on the (facade) module that merely re-exports it.
+type ReexportMap = HashMap<Vec<String>, Vec<(String, Vec<String>)>>;
+
+/// Depth guard for following re-export chains (`pub use a::X` → `pub use b::X` …).
+const MAX_REEXPORT_DEPTH: usize = 8;
+
+fn build_reexports(pending: &[PendingUse]) -> ReexportMap {
+    let mut map: ReexportMap = HashMap::new();
+    for pu in pending {
+        if pu.bare || !is_reexport(&pu.visibility) {
+            continue;
+        }
+        if let Some(sym) = pu.use_path.last() {
+            map.entry(pu.current_path.clone())
+                .or_default()
+                .push((sym.clone(), pu.use_path.clone()));
+        }
+    }
+    map
+}
+
 fn emit_uses(
     pending: &[PendingUse],
     module_index: &HashMap<Vec<String>, NodeId>,
@@ -481,6 +525,7 @@ fn emit_uses(
     lib_index: &HashMap<String, HashMap<Vec<String>, NodeId>>,
     builder: &mut GraphBuilder,
 ) {
+    let reexports = build_reexports(pending);
     let mut seen: HashSet<(NodeId, NodeId, String)> = HashSet::new();
     for pu in pending {
         let Some(target_id) = resolve_use_path(
@@ -490,6 +535,8 @@ fn emit_uses(
             extern_crates,
             dep_pkg_by_name,
             lib_index,
+            &reexports,
+            0,
         ) else {
             continue;
         };
@@ -518,6 +565,7 @@ fn emit_uses(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn resolve_use_path(
     use_path: &[String],
     current_path: &[String],
@@ -525,6 +573,8 @@ fn resolve_use_path(
     extern_crates: &HashMap<String, NodeId>,
     dep_pkg_by_name: &HashMap<String, String>,
     lib_index: &HashMap<String, HashMap<Vec<String>, NodeId>>,
+    reexports: &ReexportMap,
+    depth: usize,
 ) -> Option<NodeId> {
     if use_path.is_empty() {
         return None;
@@ -533,8 +583,26 @@ fn resolve_use_path(
     let rest = &use_path[1..];
 
     match first {
-        "crate" => walk_module_index(&[], rest, module_index),
-        "self" => walk_module_index(current_path, rest, module_index),
+        "crate" => resolve_in_index(
+            &[],
+            rest,
+            module_index,
+            extern_crates,
+            dep_pkg_by_name,
+            lib_index,
+            reexports,
+            depth,
+        ),
+        "self" => resolve_in_index(
+            current_path,
+            rest,
+            module_index,
+            extern_crates,
+            dep_pkg_by_name,
+            lib_index,
+            reexports,
+            depth,
+        ),
         "super" => {
             let mut path = current_path.to_vec();
             let mut tail = rest;
@@ -543,14 +611,32 @@ fn resolve_use_path(
                 tail = &tail[1..];
             }
             path.pop()?;
-            walk_module_index(&path, tail, module_index)
+            resolve_in_index(
+                &path,
+                tail,
+                module_index,
+                extern_crates,
+                dep_pkg_by_name,
+                lib_index,
+                reexports,
+                depth,
+            )
         }
         "std" | "core" | "alloc" | "proc_macro" | "test" => None,
         other => {
             let mut probe = current_path.to_vec();
             probe.push(first.to_string());
             if module_index.contains_key(&probe) {
-                return walk_module_index(current_path, use_path, module_index);
+                return resolve_in_index(
+                    current_path,
+                    use_path,
+                    module_index,
+                    extern_crates,
+                    dep_pkg_by_name,
+                    lib_index,
+                    reexports,
+                    depth,
+                );
             }
             // Cross-crate into another local workspace crate: walk the rest of
             // the path through that crate's library module index, so the edge
@@ -568,25 +654,85 @@ fn resolve_use_path(
     }
 }
 
+/// Walk `base ++ tail` through the module tree, returning the deepest matching
+/// module node, the path that reached it, and how many `tail` segments were
+/// consumed (a trailing item like a struct/fn leaves a leftover segment).
+fn walk_detailed(
+    base: &[String],
+    tail: &[String],
+    module_index: &HashMap<Vec<String>, NodeId>,
+) -> Option<(NodeId, Vec<String>, usize)> {
+    let mut cur = base.to_vec();
+    let mut node = module_index.get(&cur)?.clone();
+    let mut consumed = 0usize;
+    for seg in tail {
+        let mut probe = cur.clone();
+        probe.push(seg.clone());
+        match module_index.get(&probe) {
+            Some(id) => {
+                node = id.clone();
+                cur = probe;
+                consumed += 1;
+            }
+            None => break,
+        }
+    }
+    Some((node, cur, consumed))
+}
+
 fn walk_module_index(
     base: &[String],
     tail: &[String],
     module_index: &HashMap<Vec<String>, NodeId>,
 ) -> Option<NodeId> {
-    let mut path = base.to_vec();
-    if let Some(id) = module_index.get(&path) {
-        let mut best = id.clone();
-        for seg in tail {
-            path.push(seg.clone());
-            match module_index.get(&path) {
-                Some(id) => best = id.clone(),
-                None => break,
+    walk_detailed(base, tail, module_index).map(|(node, _, _)| node)
+}
+
+/// Resolve a path within the owning crate's module tree, following `pub use`
+/// re-exports for a trailing symbol so the edge lands on the file that *defines*
+/// the symbol rather than a facade module that re-exports it.
+#[allow(clippy::too_many_arguments)]
+fn resolve_in_index(
+    base: &[String],
+    tail: &[String],
+    module_index: &HashMap<Vec<String>, NodeId>,
+    extern_crates: &HashMap<String, NodeId>,
+    dep_pkg_by_name: &HashMap<String, String>,
+    lib_index: &HashMap<String, HashMap<Vec<String>, NodeId>>,
+    reexports: &ReexportMap,
+    depth: usize,
+) -> Option<NodeId> {
+    let (node, stop_path, consumed) = walk_detailed(base, tail, module_index)?;
+    if consumed >= tail.len() {
+        // Fully resolved to a module (e.g. `use crate::a::b` where `b` is a mod).
+        return Some(node);
+    }
+    // A leftover segment is a non-module item (struct/fn/const/…). If the module
+    // we stopped at re-exports it via `pub use`, follow that to the definer.
+    if depth < MAX_REEXPORT_DEPTH
+        && let Some(entries) = reexports.get(&stop_path)
+    {
+        let sym = &tail[consumed];
+        for (exported, source) in entries {
+            if exported != sym {
+                continue;
+            }
+            if let Some(redirected) = resolve_use_path(
+                source,
+                &stop_path,
+                module_index,
+                extern_crates,
+                dep_pkg_by_name,
+                lib_index,
+                reexports,
+                depth + 1,
+            ) && redirected != node
+            {
+                return Some(redirected);
             }
         }
-        Some(best)
-    } else {
-        None
     }
+    Some(node)
 }
 
 /// Resolve the file backing `mod <name>;`. Honours an explicit
@@ -663,11 +809,26 @@ fn target_kind_label(target: &Target) -> &str {
         .unwrap_or("?")
 }
 
-fn module_node_id(pkg_id_repr: &str, target_name: &str, path: &[String]) -> String {
+/// A target's node-id namespace. A package can expose several targets that share
+/// a name (e.g. a lib `bat` and a bin `bat`); keying module ids on the name alone
+/// collapses their roots into one node, so `crate::X` in the lib mis-resolves to
+/// the bin's `main.rs` (a library cannot depend on a binary). Disambiguate by the
+/// target kind so each target gets its own module tree.
+fn target_ns(pkg_id_repr: &str, target_kind: &str, target_name: &str) -> String {
+    format!("mod:{pkg_id_repr}::{target_kind}:{target_name}")
+}
+
+fn module_node_id(
+    pkg_id_repr: &str,
+    target_kind: &str,
+    target_name: &str,
+    path: &[String],
+) -> String {
+    let ns = target_ns(pkg_id_repr, target_kind, target_name);
     if path.is_empty() {
-        format!("mod:{pkg_id_repr}::{target_name}")
+        ns
     } else {
-        format!("mod:{pkg_id_repr}::{target_name}::{}", path.join("::"))
+        format!("{ns}::{}", path.join("::"))
     }
 }
 
@@ -739,6 +900,8 @@ mod tests {
             &HashMap::new(),
             &HashMap::new(),
             &HashMap::new(),
+            &ReexportMap::new(),
+            0,
         );
         assert_eq!(r.as_deref(), Some("AB"));
     }
@@ -757,8 +920,69 @@ mod tests {
             &HashMap::new(),
             &HashMap::new(),
             &HashMap::new(),
+            &ReexportMap::new(),
+            0,
         );
         assert_eq!(r.as_deref(), Some("X"));
+    }
+
+    #[test]
+    fn same_named_lib_and_bin_get_distinct_ids() {
+        // A package with a lib `bat` and a bin `bat` must not share a module-id
+        // namespace, or `crate::X` in the lib resolves to the bin's `main.rs`.
+        assert_ne!(
+            module_node_id("bat 1.0", "lib", "bat", &[]),
+            module_node_id("bat 1.0", "bin", "bat", &[]),
+        );
+        assert_ne!(
+            module_node_id("bat 1.0", "lib", "bat", &["theme".into()]),
+            module_node_id("bat 1.0", "bin", "bat", &["theme".into()]),
+        );
+    }
+
+    #[test]
+    fn follows_reexport_to_definer() {
+        // domain/ has children error, local_client. `domain/mod.rs` re-exports
+        // `DomainError` from `error`. A sibling's `use super::DomainError` must
+        // resolve to `domain::error` (the definer), not `domain` (the facade).
+        let mut idx: HashMap<Vec<String>, NodeId> = HashMap::new();
+        idx.insert(vec![], "ROOT".into());
+        idx.insert(vec!["domain".into()], "DOMAIN".into());
+        idx.insert(vec!["domain".into(), "error".into()], "ERROR".into());
+        idx.insert(vec!["domain".into(), "local_client".into()], "LC".into());
+
+        // `pub use error::DomainError;` declared inside the `domain` module.
+        let mut rx = ReexportMap::new();
+        rx.insert(
+            vec!["domain".into()],
+            vec![("DomainError".into(), vec!["error".into(), "DomainError".into()])],
+        );
+
+        // From `domain::local_client`, `use super::DomainError`.
+        let r = resolve_use_path(
+            &["super".into(), "DomainError".into()],
+            &["domain".into(), "local_client".into()],
+            &idx,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &rx,
+            0,
+        );
+        assert_eq!(r.as_deref(), Some("ERROR"));
+
+        // Without the re-export table it falls back to the facade module.
+        let r0 = resolve_use_path(
+            &["super".into(), "DomainError".into()],
+            &["domain".into(), "local_client".into()],
+            &idx,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &ReexportMap::new(),
+            0,
+        );
+        assert_eq!(r0.as_deref(), Some("DOMAIN"));
     }
 
     #[test]
@@ -772,6 +996,8 @@ mod tests {
             &externs,
             &HashMap::new(),
             &HashMap::new(),
+            &ReexportMap::new(),
+            0,
         );
         assert_eq!(r.as_deref(), Some("crate:serde"));
     }
@@ -785,6 +1011,8 @@ mod tests {
             &HashMap::new(),
             &HashMap::new(),
             &HashMap::new(),
+            &ReexportMap::new(),
+            0,
         );
         assert_eq!(r, None);
     }
@@ -805,6 +1033,8 @@ mod tests {
                 &externs,
                 &no_deps,
                 &no_libs,
+                &ReexportMap::new(),
+                0,
             )
             .as_deref(),
             Some("mod:commands")
@@ -819,6 +1049,8 @@ mod tests {
                 &externs2,
                 &no_deps,
                 &no_libs,
+                &ReexportMap::new(),
+                0,
             )
             .as_deref(),
             Some("crate:once_cell")
@@ -849,6 +1081,8 @@ mod tests {
                 &externs,
                 &dep_pkg_by_name,
                 &lib_index,
+                &ReexportMap::new(),
+                0,
             )
             .as_deref(),
             Some("mod:api::lib::node")
@@ -862,6 +1096,8 @@ mod tests {
                 &externs,
                 &dep_pkg_by_name,
                 &lib_index,
+                &ReexportMap::new(),
+                0,
             )
             .as_deref(),
             Some("mod:api::lib")

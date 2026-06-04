@@ -58,6 +58,7 @@ pub fn ecmascript_level(name: &str) -> Level {
         attribute_groups: BTreeMap::new(),
         node_kinds: default_node_kinds(),
         cycle_kinds: default_cycle_kinds(),
+        grouping: None,
     }
 }
 

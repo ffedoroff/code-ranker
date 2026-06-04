@@ -46,6 +46,12 @@ pub fn annotate_cycles(graph: &mut Graph, flow_kinds: &HashSet<String>) -> Vec<C
         if scc.len() < 2 {
             continue;
         }
+        // Rust forbids circular dependencies between crates, so an SCC whose
+        // members span more than one crate cannot be a real cycle — it is an
+        // artifact of imprecise path resolution. Drop it.
+        if spans_multiple_crates(scc, graph) {
+            continue;
+        }
         let kind = classify_scc(scc, graph);
         for &idx in scc {
             node_kind[idx] = Some(kind);
@@ -68,6 +74,32 @@ pub fn annotate_cycles(graph: &mut Graph, flow_kinds: &HashSet<String>) -> Vec<C
         }
     }
     groups
+}
+
+/// The crate a node belongs to. Prefers the plugin-provided `crate` attribute
+/// (the precise per-target compilation unit from `cargo metadata`); falls back
+/// to deriving it from the id as everything before the last `/src/` segment for
+/// nodes/plugins that don't set it. Returns `None` when neither is available, so
+/// callers can stay conservative.
+fn crate_of(node: &code_split_plugin_api::node::Node) -> Option<&str> {
+    if let Some(AttrValue::Str(c)) = node.attrs.get("crate") {
+        return Some(c.as_str());
+    }
+    node.id.rfind("/src/").map(|i| &node.id[..i])
+}
+
+/// True only when every member has a determinable crate and at least two crates
+/// are present. Unknown-crate nodes make this `false` (conservative: keep the
+/// cycle) so non-crate id schemes (tests, other plugins) are never mis-dropped.
+fn spans_multiple_crates(scc: &[usize], graph: &Graph) -> bool {
+    let mut crates = Vec::with_capacity(scc.len());
+    for &i in scc {
+        match crate_of(&graph.nodes[i]) {
+            Some(c) => crates.push(c),
+            None => return false,
+        }
+    }
+    crates.iter().any(|c| *c != crates[0])
 }
 
 fn classify_scc(scc: &[usize], graph: &Graph) -> &'static str {
@@ -102,6 +134,8 @@ fn is_test_node(graph: &Graph, idx: usize) -> bool {
         || id.ends_with("::test")
         || id.contains("/tests/")
         || id.contains("/__tests__/")
+        || id.contains("/test_support/")
+        || id.contains("/test-support/")
 }
 
 // ── Kosaraju's SCC (iterative, O(V+E)) ─────────────────────────────────────
@@ -190,6 +224,44 @@ mod tests {
     fn flow() -> HashSet<String> {
         HashSet::from(["uses".to_string(), "reexports".to_string()])
     }
+    fn node_crate(id: &str, name: &str, krate: &str) -> Node {
+        let mut n = node(id, name);
+        n.attrs
+            .insert("crate".into(), AttrValue::Str(krate.into()));
+        n
+    }
+
+    #[test]
+    fn cross_crate_via_attr_is_dropped() {
+        // deno-style ids (no `/src/`): crate identity comes from the attribute.
+        let mut g = Graph {
+            nodes: vec![
+                node_crate("{t}/cli/a.rs", "a", "deno"),
+                node_crate("{t}/runtime/b.rs", "b", "deno_runtime"),
+            ],
+            edges: vec![
+                edge("{t}/cli/a.rs", "{t}/runtime/b.rs", "uses"),
+                edge("{t}/runtime/b.rs", "{t}/cli/a.rs", "uses"),
+            ],
+        };
+        assert!(annotate_cycles(&mut g, &flow()).is_empty());
+    }
+
+    #[test]
+    fn same_crate_via_attr_is_kept() {
+        // Same crate attr despite different subdirs and no `/src/` in the ids.
+        let mut g = Graph {
+            nodes: vec![
+                node_crate("{t}/cli/a.rs", "a", "deno"),
+                node_crate("{t}/cli/sub/b.rs", "b", "deno"),
+            ],
+            edges: vec![
+                edge("{t}/cli/a.rs", "{t}/cli/sub/b.rs", "uses"),
+                edge("{t}/cli/sub/b.rs", "{t}/cli/a.rs", "uses"),
+            ],
+        };
+        assert_eq!(annotate_cycles(&mut g, &flow()).len(), 1);
+    }
 
     #[test]
     fn two_node_cycle_is_mutual() {
@@ -214,6 +286,40 @@ mod tests {
         };
         let groups = annotate_cycles(&mut g, &flow());
         assert!(groups.is_empty(), "contains is structural, not flow");
+    }
+
+    #[test]
+    fn cross_crate_scc_is_dropped() {
+        // A 2-cycle whose files live in different crates is impossible in Rust.
+        let mut g = Graph {
+            nodes: vec![
+                node("{t}/crateA/src/a.rs", "a"),
+                node("{t}/crateB/src/b.rs", "b"),
+            ],
+            edges: vec![
+                edge("{t}/crateA/src/a.rs", "{t}/crateB/src/b.rs", "uses"),
+                edge("{t}/crateB/src/b.rs", "{t}/crateA/src/a.rs", "uses"),
+            ],
+        };
+        let groups = annotate_cycles(&mut g, &flow());
+        assert!(groups.is_empty(), "cross-crate cycle must be dropped");
+    }
+
+    #[test]
+    fn intra_crate_scc_is_kept() {
+        let mut g = Graph {
+            nodes: vec![
+                node("{t}/crateA/src/a.rs", "a"),
+                node("{t}/crateA/src/b.rs", "b"),
+            ],
+            edges: vec![
+                edge("{t}/crateA/src/a.rs", "{t}/crateA/src/b.rs", "uses"),
+                edge("{t}/crateA/src/b.rs", "{t}/crateA/src/a.rs", "uses"),
+            ],
+        };
+        let groups = annotate_cycles(&mut g, &flow());
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].kind, "mutual");
     }
 
     #[test]

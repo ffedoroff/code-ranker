@@ -110,6 +110,16 @@ Resolved package version (semver), from `cargo metadata`. Present on Rust
 analyzed crates internally. Omitted on file nodes and on Python/JS external
 nodes (no version is resolved).
 
+### `crate` — string, optional (Rust)
+
+The owning crate (compilation unit) of a `file` node, from `cargo metadata`.
+A package can produce several crates — a library plus one or more binaries —
+so this is **per-target**: the library uses the package name (`"bat"`), a
+binary gets a suffix (`"bat (bin)"`, or `"bat (bin <name>)"` when the binary
+name differs from the package name). Omitted on `external` nodes and on
+plugins that do not resolve crates (Python/JS/TS). Drives diagram clustering
+via the level's `ui.grouping` (see DESIGN §3.2).
+
 ### `visibility` — string or object, optional
 
 Declared visibility of the node.

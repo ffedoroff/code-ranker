@@ -97,7 +97,15 @@ pub(crate) fn analyze_directory(
 
     let level_spec = levels.into_iter().find(|l| l.name == "files");
     let flow_kinds = flow_kinds(level_spec.as_ref());
-    let mut cycles = code_split_graph::cycles::annotate_cycles(&mut graph, &flow_kinds);
+    // Cycles run on a stricter edge set than coupling/HK: a `pub use` re-export
+    // is a facade, not a dependency, and re-export hubs (lib.rs / mod.rs) would
+    // otherwise fabricate cycles. Exclude `reexports` from cycle detection only.
+    let cycle_kinds: HashSet<String> = flow_kinds
+        .iter()
+        .filter(|k| k.as_str() != "reexports")
+        .cloned()
+        .collect();
+    let mut cycles = code_split_graph::cycles::annotate_cycles(&mut graph, &cycle_kinds);
     config::apply_cycle_rules(&mut cycles, &mut graph.nodes, &cfg.rules.cycles);
     code_split_graph::hk::annotate_hk(&mut graph, &flow_kinds);
     let stats = code_split_graph::stats::compute_stats(&graph);
@@ -190,6 +198,7 @@ fn assemble_level(
         attribute_groups: BTreeMap::new(),
         node_kinds: BTreeMap::new(),
         cycle_kinds: BTreeMap::new(),
+        grouping: None,
     });
 
     // Master node-attribute dictionary = structural (plugin) + computed.
@@ -248,7 +257,7 @@ fn assemble_level(
     let mut cycle_kinds = spec.cycle_kinds;
     cycle_kinds.retain(|k, _| present_cycle_kinds.contains(k.as_str()));
 
-    let ui = build_ui(&node_attributes);
+    let ui = build_ui(&node_attributes, spec.grouping);
 
     LevelGraph {
         edge_kinds,
@@ -323,7 +332,10 @@ const UI_CARD: &[&str] = &["hk", "sloc"];
 /// Build the `ui` block from the pruned node-attribute dictionary: keep the
 /// canonical order, drop anything not present. `kind` is always a column;
 /// `cycle` is a column/sort metric only when it survived pruning.
-fn build_ui(node_attributes: &BTreeMap<String, code_split_plugin_api::level::AttributeSpec>) -> LevelUi {
+fn build_ui(
+    node_attributes: &BTreeMap<String, code_split_plugin_api::level::AttributeSpec>,
+    grouping: Option<code_split_plugin_api::level::Grouping>,
+) -> LevelUi {
     let has = |k: &str| k == "kind" || node_attributes.contains_key(k);
     let pick = |list: &[&str]| -> Vec<String> {
         list.iter()
@@ -337,6 +349,13 @@ fn build_ui(node_attributes: &BTreeMap<String, code_split_plugin_api::level::Att
     } else {
         sort_metrics.first().cloned()
     };
+    // Keep the grouping only if it is usable: a `key` must reference an attribute
+    // that survived pruning; a `function` is passed through. Otherwise drop it so
+    // the viewer falls back to its default `dir` grouper.
+    let grouping = grouping.filter(|g| match &g.key {
+        Some(k) => node_attributes.contains_key(k),
+        None => g.function.is_some(),
+    });
     LevelUi {
         default_sort,
         sort_metrics,
@@ -344,6 +363,7 @@ fn build_ui(node_attributes: &BTreeMap<String, code_split_plugin_api::level::Att
         card_metrics: pick(UI_CARD),
         columns: pick(UI_COLUMNS),
         summary_metrics: pick(UI_SUMMARY),
+        grouping,
     }
 }
 
