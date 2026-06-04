@@ -159,9 +159,11 @@ tooltip is labelled `Baseline` / `Current` and notes which side is currently
 shown; that slot is also highlighted in the header. Two buttons swap in a
 different snapshot from disk (each accepts a `.json` snapshot or an `.html`
 report): **↑ Replace current** changes the evaluated snapshot, **↑ Set
-baseline** loads a reference to diff against. Cycle detection
-(Tarjan SCC) runs in-browser and annotates nodes/edges for red-stroke
-highlighting (solid red, no dasharray); the highlight is **side-aware** —
+baseline** loads a reference to diff against. Cycle membership comes from each
+snapshot's backend-computed `cycles` (Kosaraju SCC over flow edges; the viewer
+does not re-detect cycles); the viewer derives the per-side status and annotates
+nodes/edges for red-stroke highlighting (solid red, no dasharray). The highlight
+is **side-aware** —
 a `baseline-only` cycle is red only on the Baseline side, `current-only` only
 on Current, `both` on either, so a cycle removed in the current snapshot
 stops being red once you switch to Current. Internal `file` nodes render

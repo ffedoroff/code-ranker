@@ -217,6 +217,8 @@ struct PendingUse {
     /// `true` for a crate-qualified path captured from an expression/type
     /// (`other_crate::item`) rather than a `use` statement.
     bare: bool,
+    /// `true` when this came from a glob `use` (`use path::*`).
+    glob: bool,
     /// 1-based line of the originating `use` statement; `None` for bare paths
     /// (an expression/type reference has no single statement to point at).
     line: Option<u32>,
@@ -331,6 +333,7 @@ fn walk_file(
             use_path: path,
             visibility: Visibility::Private,
             bare: true,
+            glob: false,
             line: None,
         });
     }
@@ -383,13 +386,14 @@ fn walk_items(
                 collect_use_paths(&u.tree, Vec::new(), &mut paths);
                 let vis = convert_visibility(&u.vis);
                 let line = Some(u.span().start().line as u32);
-                for use_path in paths {
+                for (use_path, glob) in paths {
                     pending_uses.push(PendingUse {
                         from_mod_id: current_mod_id.clone(),
                         current_path: current_mod_path.to_vec(),
                         use_path,
                         visibility: vis.clone(),
                         bare: false,
+                        glob,
                         line,
                     });
                 }
@@ -483,7 +487,9 @@ fn process_mod(
     Ok(())
 }
 
-fn collect_use_paths(tree: &UseTree, prefix: Vec<String>, out: &mut Vec<Vec<String>>) {
+/// Flatten a `use` tree to `(path, is_glob)` leaves; `is_glob` marks the `::*`
+/// terminator so resolution can tell a namespace pull apart from a named import.
+fn collect_use_paths(tree: &UseTree, prefix: Vec<String>, out: &mut Vec<(Vec<String>, bool)>) {
     match tree {
         UseTree::Path(p) => {
             let mut new_prefix = prefix;
@@ -493,16 +499,16 @@ fn collect_use_paths(tree: &UseTree, prefix: Vec<String>, out: &mut Vec<Vec<Stri
         UseTree::Name(n) => {
             let mut path = prefix;
             path.push(n.ident.to_string());
-            out.push(path);
+            out.push((path, false));
         }
         UseTree::Rename(r) => {
             let mut path = prefix;
             path.push(r.ident.to_string());
-            out.push(path);
+            out.push((path, false));
         }
         UseTree::Glob(_) => {
             if !prefix.is_empty() {
-                out.push(prefix);
+                out.push((prefix, true));
             }
         }
         UseTree::Group(g) => {
@@ -547,6 +553,52 @@ fn build_reexports(pending: &[PendingUse]) -> ReexportMap {
     map
 }
 
+/// Lexical module a glob `use` pulls from, resolved against the current module
+/// path (`crate::a::b` → `[a,b]`, `super::*` → parent, `self::x` → child). Returns
+/// `None` for a path that doesn't denote an in-crate module.
+fn glob_target_module(use_path: &[String], current_path: &[String]) -> Option<Vec<String>> {
+    match use_path.first().map(String::as_str) {
+        Some("crate") => Some(use_path[1..].to_vec()),
+        Some("self") => {
+            let mut p = current_path.to_vec();
+            p.extend_from_slice(&use_path[1..]);
+            Some(p)
+        }
+        Some("super") => {
+            let mut p = current_path.to_vec();
+            let mut tail = use_path;
+            while tail.first().map(String::as_str) == Some("super") {
+                p.pop()?;
+                tail = &tail[1..];
+            }
+            p.extend_from_slice(tail);
+            Some(p)
+        }
+        Some(_) => {
+            // Bare first segment in a `use`: crate-relative child module (2018) —
+            // a descendant, never an ancestor.
+            let mut p = current_path.to_vec();
+            p.extend_from_slice(use_path);
+            Some(p)
+        }
+        None => None,
+    }
+}
+
+/// True when a glob `use` pulls in a *strict ancestor* module's namespace
+/// (`use super::*`, `use crate::<ancestor>::*`). This is structural scope-sugar
+/// (the child reaching back into its enclosing module), not a real outward
+/// dependency, so it is emitted as `EdgeKind::Super` rather than `Uses`.
+fn is_super_glob(pu: &PendingUse) -> bool {
+    if !pu.glob {
+        return false;
+    }
+    let Some(target) = glob_target_module(&pu.use_path, &pu.current_path) else {
+        return false;
+    };
+    target.len() < pu.current_path.len() && pu.current_path[..target.len()] == target[..]
+}
+
 fn emit_uses(
     pending: &[PendingUse],
     module_index: &HashMap<Vec<String>, NodeId>,
@@ -575,6 +627,8 @@ fn emit_uses(
         }
         let kind = if !pu.bare && is_reexport(&pu.visibility) {
             EdgeKind::Reexports
+        } else if is_super_glob(pu) {
+            EdgeKind::Super
         } else {
             EdgeKind::Uses
         };
@@ -958,6 +1012,32 @@ fn count_items(items: &[Item]) -> usize {
 mod tests {
     use super::*;
 
+    #[test]
+    fn super_glob_only_marks_ancestor_namespace_pulls() {
+        let pu = |use_path: &[&str], current: &[&str], glob: bool| PendingUse {
+            from_mod_id: "x".into(),
+            current_path: current.iter().map(|s| s.to_string()).collect(),
+            use_path: use_path.iter().map(|s| s.to_string()).collect(),
+            visibility: Visibility::Private,
+            bare: false,
+            glob,
+            line: None,
+        };
+        // `use super::*` and `use crate::<ancestor>::*` from a child -> super.
+        assert!(is_super_glob(&pu(&["super"], &["assets", "lazy"], true)));
+        assert!(is_super_glob(&pu(&["crate", "assets"], &["assets", "lazy"], true)));
+        // Globbing a *child* module (descendant) is not a super pull.
+        assert!(!is_super_glob(&pu(&["serialized"], &["assets"], true)));
+        // A specific (non-glob) import of a parent item is a real dependency.
+        assert!(!is_super_glob(&pu(
+            &["crate", "syntax_mapping"],
+            &["syntax_mapping", "builtin"],
+            false
+        )));
+        // A glob of an unrelated/extern module is not an ancestor pull.
+        assert!(!is_super_glob(&pu(&["rayon", "prelude"], &["assets"], true)));
+    }
+
     fn use_paths(src: &str) -> Vec<Vec<String>> {
         let f = syn::parse_file(src).unwrap();
         let mut out = Vec::new();
@@ -966,7 +1046,7 @@ mod tests {
                 collect_use_paths(&u.tree, Vec::new(), &mut out);
             }
         }
-        out
+        out.into_iter().map(|(p, _)| p).collect()
     }
 
     #[test]

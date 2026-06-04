@@ -38,6 +38,11 @@ pub(crate) enum EdgeKind {
     Contains,
     Uses,
     Reexports,
+    /// A glob `use` that pulls in an *enclosing* module's namespace
+    /// (`use super::*`, `use crate::<ancestor>::*`). Structural scope-sugar, not a
+    /// real outward dependency — treated like `Contains` (kept, not drawn,
+    /// excluded from fan-in/out/HK/cycles).
+    Super,
 }
 
 #[derive(Debug, Clone)]

@@ -64,6 +64,11 @@
           "flow": false,
           "label": "reexport"
         },
+        "super": {
+          "description": "Namespace pull from an enclosing module — a glob `use` that reaches *up* the module tree (`use super::*`, `use crate::<ancestor>::*`), bringing the parent's items into the child's scope.<br>This is structural scope-sugar, not a real outward dependency (a module split across files referring back to itself).<br>Kept in the data but not drawn on the main map, and excluded from fan-in / fan-out / HK / cycles — like `contains`.",
+          "flow": false,
+          "label": "super"
+        },
         "uses": {
           "description": "Code dependency — this file references an item the target file defines.<br>Captured from `use path::Item;`, a qualified path (`crate::a::Item`, `other_crate::Item`), or a derive (`#[derive(serde::Serialize)]`).<br>The path resolves to the file that defines the item (following `pub use` re-exports), so the edge points at the definition, not a re-export hub.<br>This is the real dependency: it counts toward fan-in / fan-out, Henry-Kafura coupling and cycles.",
           "flow": true,
@@ -138,6 +143,17 @@
           "line": 10,
           "source": "{target}/src/foo.rs",
           "target": "{target}/src/b.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/foo.rs",
+          "target": "{target}/src/foo/bar.rs"
+        },
+        {
+          "kind": "super",
+          "line": 13,
+          "source": "{target}/src/foo/bar.rs",
+          "target": "{target}/src/foo.rs"
         },
         {
           "kind": "contains",
@@ -647,28 +663,49 @@
           "volume": 24
         },
         {
-          "blank": 2,
-          "bugs": 0.0112,
-          "cloc": 9,
+          "blank": 3,
+          "bugs": 0.0123,
+          "cloc": 12,
           "crate": "rust-sample",
           "cyclomatic": 1,
-          "effort": 196.755,
+          "effort": 225.852,
           "fan_in": 1,
           "fan_out": 1,
-          "hk": 4,
+          "hk": 5,
           "id": "{target}/src/foo.rs",
+          "items": 2,
+          "kind": "file",
+          "length": 15,
+          "loc": 20,
+          "mi": 101.288,
+          "mi_sei": 117.232,
+          "name": "foo.rs",
+          "sloc": 5,
+          "time": 12.547,
+          "visibility": "private",
+          "vocabulary": 12,
+          "volume": 53.774
+        },
+        {
+          "blank": 1,
+          "bugs": 0.01,
+          "cloc": 14,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "effort": 166.052,
+          "id": "{target}/src/foo/bar.rs",
           "items": 1,
           "kind": "file",
-          "length": 13,
-          "loc": 15,
-          "mi": 106.878,
-          "mi_sei": 125.297,
-          "name": "foo.rs",
+          "length": 12,
+          "loc": 19,
+          "mi": 103.464,
+          "mi_sei": 122.326,
+          "name": "bar.rs",
           "sloc": 4,
-          "time": 10.93,
-          "visibility": "private",
+          "time": 9.225,
+          "visibility": "public",
           "vocabulary": 11,
-          "volume": 44.972
+          "volume": 41.513
         },
         {
           "blank": 8,
@@ -738,21 +775,21 @@
         }
       ],
       "stats": {
-        "blank": 2.75,
-        "bugs": 0.0252,
-        "cloc": 8.666,
+        "blank": 2.692,
+        "bugs": 0.0241,
+        "cloc": 9.307,
         "cyclomatic": 1,
-        "effort": 914.867,
+        "effort": 859.504,
         "fan_in": 1.571,
         "fan_out": 1.833,
-        "hk": 103,
-        "length": 25.916,
-        "mi": 103.701,
-        "mi_sei": 116.122,
-        "sloc": 8.166,
-        "time": 50.825,
-        "vocabulary": 15.583,
-        "volume": 113.708
+        "hk": 103.333,
+        "length": 25,
+        "mi": 103.253,
+        "mi_sei": 115.979,
+        "sloc": 7.923,
+        "time": 47.749,
+        "vocabulary": 15.307,
+        "volume": 108.831
       },
       "ui": {
         "card_metrics": [
@@ -955,23 +992,23 @@
   "target": "/home/user/code-split/crates/code-split-plugin-rust/sample",
   "timings": [
     {
-      "detail": "14 nodes from 12 files",
+      "detail": "15 nodes from 13 files",
       "ms": 0,
       "stage": "rust"
     },
     {
-      "detail": "12 nodes annotated",
+      "detail": "13 nodes annotated",
       "ms": 0,
       "stage": "complexity"
     },
     {
-      "detail": "nodes=14 edges=25",
+      "detail": "nodes=15 edges=27",
       "ms": 0,
       "stage": "projection"
     }
   ],
   "versions": {
-    "code-split": "1.0.0-alpha.3",
+    "code-split": "1.0.0-alpha.4",
     "rustc": "1.95.0"
   },
   "workspace": "/home/user/code-split"

@@ -85,6 +85,23 @@ impl LanguagePlugin for RustPlugin {
                 ),
             },
         );
+        edge_kinds.insert(
+            "super".into(),
+            EdgeKindSpec {
+                flow: false,
+                label: Some("super".into()),
+                description: Some(
+                    "Namespace pull from an enclosing module — a glob `use` that reaches \
+                     *up* the module tree (`use super::*`, `use crate::<ancestor>::*`), \
+                     bringing the parent's items into the child's scope.<br>\
+                     This is structural scope-sugar, not a real outward dependency \
+                     (a module split across files referring back to itself).<br>\
+                     Kept in the data but not drawn on the main map, and excluded from \
+                     fan-in / fan-out / HK / cycles — like `contains`."
+                        .into(),
+                ),
+            },
+        );
 
         let aspec = AttributeSpec::new;
 
@@ -393,6 +410,7 @@ fn collapse_to_files(full: InternalGraph) -> Graph {
             EdgeKind::Contains => "contains",
             EdgeKind::Uses => "uses",
             EdgeKind::Reexports => "reexports",
+            EdgeKind::Super => "super",
         };
         if !seen.insert((from.clone(), to.clone(), kind_str.to_string())) {
             continue;

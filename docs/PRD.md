@@ -411,7 +411,7 @@ workspaces. The plugin MUST:
   backing file sits at a non-default location is walked and its edges captured
 - NOT emit a function-level call graph (no `Calls` edges, no
   rust-analyzer / `ra_ap_*` dependency); analysis runs in seconds
-- Emit **structure only** (file + external nodes, `uses`/`contains`/`reexports`
+- Emit **structure only** (file + external nodes, `uses`/`contains`/`reexports`/`super`
   edges). The downstream pipeline then enriches every file node centrally
   (language-agnostically): per-file complexity metrics (cyclomatic, cognitive,
   Halstead, maintainability index, LOC variants) via `code-split-complexity`;
@@ -420,7 +420,14 @@ workspaces. The plugin MUST:
   any SCC that spans more than one crate dropped (Rust forbids circular crate
   dependencies); `reexports` is **non-flow** (a `pub use` facade is not a
   dependency), so it is excluded from cycles **and** fan-in / HK and is not drawn,
-  exactly like `contains`; and
+  exactly like `contains`. A glob `use` that pulls in an **enclosing** module's
+  namespace (`use super::*`, `use crate::<ancestor>::*`) is emitted as the
+  separate **non-flow** kind `super` rather than `uses`: it is scope-sugar (a
+  module split across files reaching back into itself), not a real outward
+  dependency, so — like `contains`/`reexports` — it is kept in the data but
+  excluded from cycles / fan-in / fan-out / HK and not drawn. A glob that pulls
+  in a *child* module, or any **named** import of a parent item
+  (`use crate::parent::Item`, `super::Item`), stays a real `uses` edge. And
   Henry-Kafura (`HK = sloc × (fan_in × fan_out)²`) — all written into the node's
   flat `attrs`. Edges to external nodes are excluded from `fan_in`/`fan_out`/`hk`
   and counted in `fan_out_external` instead. The Rust plugin additionally
@@ -730,7 +737,7 @@ only; edges whose target is external are counted in `fan_out_external`. `cycle`
 **Edge shape**:
 
 ```json
-{ "source": "<node-id>", "kind": "uses | reexports | contains", "target": "<node-id>", "line": 12 }
+{ "source": "<node-id>", "kind": "uses | reexports | contains | super", "target": "<node-id>", "line": 12 }
 ```
 
 An edge is **external iff its `target` is an `ext:` node** — there is no

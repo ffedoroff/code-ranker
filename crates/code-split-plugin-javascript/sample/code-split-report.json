@@ -668,7 +668,7 @@
     }
   ],
   "versions": {
-    "code-split": "1.0.0-alpha.3"
+    "code-split": "1.0.0-alpha.4"
   },
   "workspace": "/home/user/code-split"
 }

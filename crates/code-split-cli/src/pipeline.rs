@@ -222,13 +222,38 @@ fn assemble_level(
         }
     }
 
-    // Prune node attributes to keys present on at least one node.
+    // The node-attribute dictionary keeps every key that exists in the JSON —
+    // present on any node, external included — so the viewer can still label it
+    // (e.g. external-node `path`/`version` shown in the diagram detail panel).
     let present_node_keys: BTreeSet<&str> = graph
         .nodes
         .iter()
         .flat_map(|n| n.attrs.keys().map(String::as_str))
         .collect();
     node_attributes.retain(|k, _| present_node_keys.contains(k.as_str()));
+
+    // The `ui` lists, however, are filtered to keys present on at least one
+    // *internal* (non-external) node. Those lists drive rendering surfaces
+    // (table, summary, sort) that never show external rows (see `isExternalNode`
+    // in schema.js); a metric living only on external nodes would otherwise be
+    // promised in a list but never rendered. A node is external when it carries
+    // `external: true` or its kind spec is marked external.
+    let is_external = |n: &code_split_plugin_api::node::Node| -> bool {
+        matches!(
+            n.attrs.get("external"),
+            Some(code_split_plugin_api::attrs::AttrValue::Bool(true))
+        ) || spec
+            .node_kinds
+            .get(&n.kind)
+            .and_then(|k| k.external)
+            .unwrap_or(false)
+    };
+    let present_internal_keys: BTreeSet<&str> = graph
+        .nodes
+        .iter()
+        .filter(|n| !is_external(n))
+        .flat_map(|n| n.attrs.keys().map(String::as_str))
+        .collect();
 
     // Prune edge attributes to keys present on at least one edge.
     let present_edge_keys: BTreeSet<&str> = graph
@@ -261,7 +286,7 @@ fn assemble_level(
     let mut cycle_kinds = spec.cycle_kinds;
     cycle_kinds.retain(|k, _| present_cycle_kinds.contains(k.as_str()));
 
-    let ui = build_ui(&node_attributes, spec.grouping);
+    let ui = build_ui(&node_attributes, &present_internal_keys, spec.grouping);
 
     LevelGraph {
         edge_kinds,
@@ -333,14 +358,16 @@ const UI_SORT: &[&str] = &[
 const UI_SIZE: &[&str] = &["loc", "hk"];
 const UI_CARD: &[&str] = &["hk", "sloc"];
 
-/// Build the `ui` block from the pruned node-attribute dictionary: keep the
-/// canonical order, drop anything not present. `kind` is always a column;
-/// `cycle` is a column/sort metric only when it survived pruning.
+/// Build the `ui` block: keep the canonical order, drop anything not present on
+/// an internal node (`present_internal_keys`) — external-only keys stay in the
+/// dictionary but never reach a render list. `kind` is always a column; `cycle`
+/// is a column/sort metric only when it survived pruning.
 fn build_ui(
     node_attributes: &BTreeMap<String, code_split_plugin_api::level::AttributeSpec>,
+    present_internal_keys: &std::collections::BTreeSet<&str>,
     grouping: Option<code_split_plugin_api::level::Grouping>,
 ) -> LevelUi {
-    let has = |k: &str| k == "kind" || node_attributes.contains_key(k);
+    let has = |k: &str| k == "kind" || present_internal_keys.contains(k);
     let pick = |list: &[&str]| -> Vec<String> {
         list.iter()
             .filter(|k| has(k))

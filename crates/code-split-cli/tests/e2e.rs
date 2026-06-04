@@ -253,7 +253,7 @@ fn rust_sample_scorecard_triage() {
     let (ok, stdout, stderr) = run_report_capture("rust", &["--output.scorecard"]);
     assert!(ok, "scorecard run failed: {stderr}");
     assert!(
-        stdout.contains("scorecard  (rust, 12 files)"),
+        stdout.contains("scorecard  (rust, 13 files)"),
         "header with file count: {stdout}"
     );
     assert!(

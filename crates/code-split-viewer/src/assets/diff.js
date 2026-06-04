@@ -1,32 +1,3 @@
-// ── Tarjan SCC ────────────────────────────────────────────────────────────────
-function findSCCs(ids, adjList) {
-  let idx = 0;
-  const index = new Map(), lowlink = new Map(), onStack = new Set();
-  const stack = [], sccs = [];
-
-  function dfs(v) {
-    index.set(v, idx); lowlink.set(v, idx); idx++;
-    stack.push(v); onStack.add(v);
-    for (const w of (adjList.get(v) || [])) {
-      if (!index.has(w)) {
-        dfs(w);
-        lowlink.set(v, Math.min(lowlink.get(v), lowlink.get(w)));
-      } else if (onStack.has(w)) {
-        lowlink.set(v, Math.min(lowlink.get(v), index.get(w)));
-      }
-    }
-    if (lowlink.get(v) === index.get(v)) {
-      const scc = [];
-      let w;
-      do { w = stack.pop(); onStack.delete(w); scc.push(w); } while (w !== v);
-      if (scc.length > 1) sccs.push(scc);
-    }
-  }
-
-  for (const id of ids) if (!index.has(id)) dfs(id);
-  return sccs;
-}
-
 // ── Diff ──────────────────────────────────────────────────────────────────────
 function computeDiff(baseline, current) {
   const result = {};
@@ -78,27 +49,17 @@ function computeDiff(baseline, current) {
 
 // ── Cycles ────────────────────────────────────────────────────────────────────
 
-// Build SCC membership map from a graph level. Prefers backend-computed
-// `graph.cycles` when present (accurate kind classification); falls back to
-// Tarjan SCC over flow edges (read from the level's edge_kinds dictionary).
+// Build SCC membership map from the level's backend-computed `graph.cycles`.
+// The backend is the single source of truth for cycle detection and kind
+// classification — no cycles in the JSON means no cycles in the UI.
 function buildSCCOf(graph, level) {
   const ids = new Set(graph.nodes.filter(n => !isExternalNode(n, level)).map(n => n.id));
   const sccOf = new Map(); // nodeId → scc group index
-
-  if (graph.cycles && graph.cycles.length > 0) {
-    graph.cycles.forEach((group, i) => {
-      for (const id of group.nodes) if (ids.has(id)) sccOf.set(id, i);
-    });
-    return { sccOf, sccCount: graph.cycles.length };
-  }
-
-  const adj = new Map([...ids].map(id => [id, []]));
-  for (const e of graph.edges)
-    if (edgeIsFlow(level, e.kind) && adj.has(e.source) && adj.has(e.target))
-      adj.get(e.source).push(e.target);
-  const sccs = findSCCs([...ids], adj);
-  sccs.forEach((scc, i) => scc.forEach(n => sccOf.set(n, i)));
-  return { sccOf, sccCount: sccs.length };
+  const cycles = graph.cycles || [];
+  cycles.forEach((group, i) => {
+    for (const id of group.nodes) if (ids.has(id)) sccOf.set(id, i);
+  });
+  return { sccOf, sccCount: cycles.length };
 }
 
 function computeCycles(baseline, current) {

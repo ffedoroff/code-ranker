@@ -9,6 +9,11 @@
 
 use crate::b::beta;
 
+// File-backed submodule `foo::bar` (at `src/foo/bar.rs`). Its `use super::*`
+// pulls this module's namespace back in — captured as a `super` edge
+// (bar.rs → foo.rs), the glob-namespace-pull-from-an-ancestor case.
+pub mod bar;
+
 /// Called from lib.rs via the bare path `foo::run()` (no `use crate::foo`).
 pub fn run() -> i32 {
     beta() + 1

@@ -2,8 +2,9 @@
 
 Four tiny projects (one per language) exercise the `code-split` analyzer in the
 **files** level of the generic graph model: nodes of `kind` `"file"` /
-`"external"`, connected by `uses` / `reexports` (flow) and `contains`
-(structural) edges.
+`"external"`, connected by `uses` (flow) and `reexports` / `contains` / `super`
+(non-flow, structural) edges — the last being the Rust `use super::*` /
+`use crate::<ancestor>::*` namespace pull.
 
 Each fixture lives **next to its plugin crate** so the sample and the parser that
 produces it sit together:
@@ -95,6 +96,13 @@ modules, `pub use` → `Reexports` edge, external crate via `use serde::` →
 `use` — both cross-crate (`once_cell::sync::Lazy` → the crate's `External` node)
 and intra-crate (`foo::run()` → a `Uses` edge `lib.rs → foo.rs`). A
 `std::`/`core::` path is recognized but is NOT emitted as an External node.
+
+**Namespace pull → `super` edge** (`src/foo/bar.rs`): a glob `use super::*`
+that reaches *up* the module tree is emitted as the non-flow `super` kind
+(`foo/bar.rs → foo.rs`), not `uses` — kept in the JSON but excluded from
+fan-in / fan-out / HK / cycles and not drawn (like `contains` / `reexports`).
+Contrast `b.rs`'s `use super::a::alpha`: a *named* import of a sibling item is a
+real `Uses` edge — only the glob pull from an ancestor becomes `super`.
 
 **Cross-crate, submodule-precise** (the `helper` workspace member): a
 `use helper::widget::{Widget, make}` resolves through `helper`'s library module

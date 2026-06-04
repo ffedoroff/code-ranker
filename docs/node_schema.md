@@ -211,7 +211,7 @@ Halstead treats a program as operators (η₁ unique / N₁ total) and operands
 Derived from the dependency graph (edges), not source code. `fan_in` / `fan_out`
 / `hk` count **internal** file→file flow (`uses`) partners only; edges to
 `external` library nodes are excluded and counted in `fan_out_external` instead.
-Non-flow edges (`contains`, `reexports`) are excluded from all of these.
+Non-flow edges (`contains`, `reexports`, `super`) are excluded from all of these.
 
 | key | meaning |
 |-----|---------|
@@ -227,7 +227,7 @@ Non-flow edges (`contains`, `reexports`) are excluded from all of these.
 Edges live in `graphs.files.edges`, each a flat object:
 
 ```json
-{ "source": "<node-id>", "kind": "uses | reexports | contains", "target": "<node-id>", "line": 12 }
+{ "source": "<node-id>", "kind": "uses | reexports | contains | super", "target": "<node-id>", "line": 12 }
 ```
 
 | `kind` | flow? | drawn? | counted in fan-in / HK / cycles? |
@@ -235,6 +235,7 @@ Edges live in `graphs.files.edges`, each a flat object:
 | `uses` | yes | yes | yes |
 | `reexports` | no | no | no — a `pub use` facade is not a dependency |
 | `contains` | no | no | no — structural module ownership (`mod foo;`), kept as metadata |
+| `super` | no | no | no — a glob `use super::*` / `use crate::<ancestor>::*` namespace pull (Rust); scope-sugar, not a dependency |
 
 An edge is **external iff its `target` is an `ext:` node** (no `edge.external`
 flag). Edge-level attributes (e.g. a Rust `reexports` edge's `visibility`) are

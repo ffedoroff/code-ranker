@@ -135,13 +135,13 @@ function buildSummary() {
   }
 
   // Metric rows — ordered list from the snapshot's ui.summary_metrics.
-  // Each key's metadata (label, description, formula, direction) comes from schema.js.
+  // The Rust orchestrator already prunes this list to metrics present on
+  // internal nodes (see assemble_level), so we render every key verbatim — no
+  // data-presence re-check here. Each key's metadata (label, description,
+  // formula, direction) comes from schema.js.
   for (const level of levels) {
     const summaryKeys = levelUi(level).summary_metrics || [];
     for (const key of summaryKeys) {
-      const hasData = nodePercentiles(baseline, level, n => nodeAttr(n, key)) !== null ||
-                      nodePercentiles(current,  level, n => nodeAttr(n, key)) !== null;
-      if (!hasData) continue;
       const label   = attrName(level, key);
       const tip     = attrDesc(level, key);
       const formula = attrFormula(level, key);
