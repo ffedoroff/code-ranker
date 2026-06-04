@@ -29,10 +29,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Generate HTML report into ./site
-        # Self-contained HTML → site/index.html. Clean git metadata mapped from
-        # Actions vars (a detached checkout otherwise reports branch "HEAD" and
-        # counts job-written files as dirty). The JSON still goes to .code-split/
-        # per code-split.toml; only the HTML is redirected into the Pages dir.
+        # Self-contained HTML → site/report.html (served at <pages-url>/report.html).
+        # Clean git metadata mapped from Actions vars (a detached checkout otherwise
+        # reports branch "HEAD" and counts job-written files as dirty). The JSON
+        # still goes to .code-split/ per code-split.toml; only the HTML is
+        # redirected into the Pages dir.
         run: |
           mkdir -p site
           cargo run -q -p code-split -- report . \
@@ -40,7 +41,7 @@ jobs:
             --git.commit="$GITHUB_SHA" \
             --git.dirty-files=0 \
             --git.origin="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            --output.html.path=site/index.html
+            --output.html.path=site/report.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
