@@ -88,10 +88,10 @@ pub const RULES: &[RuleDoc] = &[
         key: "hk",
         group: "CPL",
         title: "Henry-Kafura coupling",
-        why: "Henry-Kafura — loc × (fan_in × fan_out)² — flags units that are both highly connected \
+        why: "Henry-Kafura — sloc × (fan_in × fan_out)² — flags units that are both highly connected \
               and large: change-amplifiers whose edits ripple widely across the system.",
         fix: "Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or \
-              route dependencies through a smaller interface. Shrinking its LOC also lowers hk.",
+              route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk.",
     },
     RuleDoc {
         key: "fan_in",

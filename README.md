@@ -34,13 +34,13 @@ code-split check . \
   --threshold file.cognitive=25 --threshold file.loc=800
 ```
 
-The linter is the `check` command — exits non-zero on any cycle or threshold violation, e.g. a PR that introduces a new file-level cycle or a file above your LOC limit (`mutual` and `chain` cycle checks are on by default). See [docs/CLI.md](docs/CLI.md) for all flags.
+The linter is the `check` command — exits non-zero on any cycle or threshold violation, e.g. a PR that introduces a new file-level cycle or a file above your LOC limit (`mutual` and `chain` cycle checks are on by default). See [docs/CLI.md](docs/code-split-cli/CLI.md) for all flags.
 
 ## Full CLI
 
 Written in Rust — fast, memory-safe, single static-ish binary with **no runtime dependencies** (no Python, no Node, no JVM, no shared libs to install). One file on PATH, done.
 
-Two commands: `check` (linter — exits non-zero on violations; with `--baseline`, a relative regression gate) and `report` (snapshot JSON + offline HTML; with `--baseline`, a baseline↔current diff). Both accept a directory **or** an existing `.json`/`.html` snapshot as input — analyze once, then run cheap passes over the snapshot. No daemon, no language server, no plugin host required at runtime. Full reference: [docs/CLI.md](docs/CLI.md).
+Two commands: `check` (linter — exits non-zero on violations; with `--baseline`, a relative regression gate) and `report` (snapshot JSON + offline HTML; with `--baseline`, a baseline↔current diff). Both accept a directory **or** an existing `.json`/`.html` snapshot as input — analyze once, then run cheap passes over the snapshot. No daemon, no language server, no plugin host required at runtime. Full reference: [docs/CLI.md](docs/code-split-cli/CLI.md).
 
 ## HTML report with dynamic diagrams
 
@@ -103,9 +103,9 @@ Built-in plugins: `rust` (cargo + syn), `python`, `javascript` (also handles Typ
 
 ## Documentation
 
-- [CLI](docs/CLI.md) — commands, flags, and examples
-- [Rule reference](docs/ERRORS.md) — rule ids grouped by concern (`CYC`/`CPX`/`CPL`/`SIZ`), per-file thresholds (`file`), what each flags, and how to fix it
-- [Config](docs/config.md) — `code-split.toml` schema
+- [CLI](docs/code-split-cli/CLI.md) — commands, flags, and examples
+- [Rule reference](docs/code-split-cli/ERRORS.md) — rule ids grouped by concern (`CYC`/`CPX`/`CPL`/`SIZ`), per-file thresholds (`file`), what each flags, and how to fix it
+- [Config](docs/code-split-cli/config.md) — `code-split.toml` schema
 - [PRD](docs/PRD.md) — product requirements
 - [DESIGN](docs/DESIGN.md) — technical design
 - [Principles corpus](principles/) — Rust / Python / TypeScript principle catalogues used by the prompt generator

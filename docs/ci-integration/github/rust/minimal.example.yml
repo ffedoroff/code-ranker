@@ -47,7 +47,7 @@ jobs:
         # out a merge commit, and files the job writes would inflate the dirty
         # count — so map Actions variables onto the --git.* flags. With
         # branch+commit+dirty-files all set, code-split never shells out to git.
-        # See docs/CLI.md → "Git metadata overrides".
+        # See docs/code-split-cli/CLI.md → "Git metadata overrides".
         env:
           # Real PR head SHA (empty on push, where GITHUB_SHA is already correct).
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}

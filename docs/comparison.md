@@ -57,8 +57,8 @@ but need a separate runtime — see [Distribution footprint](#distribution-footp
 | Halstead (volume/effort/bugs…) | ✓ | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
 | Maintainability Index | ✓ (`mi` + `mi_sei`) | ✓ | ✗ | ✓ | ✓ | ✗ | ✗ |
 | LOC breakdown (sloc/lloc/cloc/blank) | ✓ | ✓ | ~ (NLOC) | ✓ | ~ | ✗ | ✗ |
-| Parameter / argument count | ✗ | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ |
-| Method count (NOM) | ~ (traits) | ✓ | ✗ | ✗ | ~ | ✗ | ✗ |
+| Parameter / argument count | ✓ (`args`, `exits`) | ✓ | ✓ | ✗ | ✓ | ✗ | ✗ |
+| Method count (NOM) | ~ (`items`, `closures`) | ✓ | ✗ | ✗ | ~ | ✗ | ✗ |
 
 ## The tools in detail
 
@@ -164,9 +164,10 @@ Being honest about the trade-offs:
   gates with years of production use.
 - **Specialized depth:** knip's dead-code analysis and cargo-modules' Rust module
   rendering go deeper in their niche than code-split aims to.
-- **Extra per-unit metrics:** rust-code-analysis exposes some metrics (NARGS, NEXITS,
-  full NOM) that code-split does not currently surface in its snapshot, even though the
-  engine computes them.
+- **Per-function granularity:** code-split aggregates metrics per **file** (the
+  files-only model — `args`, `exits`, `closures`, and `items` are whole-file rolls-up),
+  whereas rust-code-analysis exposes them per function / class "space" and surfaces a
+  full method count (NOM) that code-split does not break out.
 
 These are complementary, not mutually exclusive: e.g. run **knip** to prune dead JS/TS,
 then **code-split** to measure and gate what remains.

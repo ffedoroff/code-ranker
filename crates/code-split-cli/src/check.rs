@@ -160,7 +160,7 @@ fn print_human_diagnostics(
     println!(
         "Each finding below is self-contained — copy a block into an AI assistant to act on it."
     );
-    println!("Full rule reference: {DOCS_URL}/ERRORS.md\n");
+    println!("Full rule reference: {DOCS_URL}/code-split-cli/ERRORS.md\n");
 
     for v in violations {
         let doc = config::rule_doc(&v.rule);
@@ -178,7 +178,7 @@ fn print_human_diagnostics(
             println!("  tune   {tune}");
         }
         println!(
-            "  ref    {DOCS_URL}/ERRORS.md#group-{}",
+            "  ref    {DOCS_URL}/code-split-cli/ERRORS.md#group-{}",
             v.group.to_lowercase()
         );
         println!();
@@ -330,7 +330,7 @@ fn sarif_document(violations: &[config::Violation]) -> String {
                 "shortDescription": { "text": doc.map(|d| d.title).unwrap_or(v.rule.as_str()) },
                 "fullDescription": { "text": doc.map(|d| d.why).unwrap_or("") },
                 "helpUri": format!(
-                    "{DOCS_URL}/ERRORS.md#group-{}",
+                    "{DOCS_URL}/code-split-cli/ERRORS.md#group-{}",
                     v.group.to_lowercase()
                 ),
                 "properties": { "group": v.group },

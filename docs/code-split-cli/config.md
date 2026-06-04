@@ -10,7 +10,7 @@ Settings are merged from multiple sources. **Higher priority wins** for the same
 | 2 | `--config KEY=VALUE` inline override | `--config rules.thresholds.file.hk=200000` |
 | 3 | `--config <file>` | `--config ci/code-split.toml` |
 | 4 | `code-split.toml` in cwd | `./code-split.toml` |
-| 5 | `code-split.toml` in workspace root | `<workspace>/code-split.toml` |
+| 5 | `code-split.toml` in the analyzed target directory | `<target>/code-split.toml` |
 | 6 | `Cargo.toml` metadata | `[workspace.metadata.code-split]` |
 | 7 | Built-in defaults | `test-embed` off, `mutual` / `chain` on |
 

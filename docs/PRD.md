@@ -36,6 +36,13 @@
 
 <!-- /toc -->
 
+> **Component PRDs.** This is the product PRD — overview, actors, the
+> plugin/extraction layer, the graph model and JSON schema, and the
+> cross-cutting requirements. The two consumer components have their own PRDs:
+> the command-line interface in [`code-split-cli/PRD.md`](code-split-cli/PRD.md)
+> and the offline HTML viewer in
+> [`code-split-viewer/PRD.md`](code-split-viewer/PRD.md).
+
 ## 1. Overview
 
 ### 1.1 Purpose
@@ -234,91 +241,12 @@ required.
 
 ### 5.1 Plugin System — Step 1
 
-#### Unified Entry-Point Command
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-unified-cli`
-
-All user-facing operations MUST be accessible through a single binary
-`code-split`. Running it with no command prints help — every action goes
-through an explicit subcommand; there is no default command. There are
-exactly **two** subcommands, split by *what they emit* — `check` produces
-an exit code (a CI gate), `report` produces files (a snapshot and a
-viewer):
-
-```
-code-split check  [input] [--plugin <name|auto>] [--baseline <snapshot>] [options]
-code-split report [input] [--plugin <name|auto>] [--baseline <snapshot>] [--output.<fmt>.path <path>] [options]
-```
-
-The single positional `[input]` (default `.`) is **polymorphic**: a
-**directory** is analyzed in-process (run the plugin, build the graph,
-compute metrics), while a **`.json` snapshot** or **`.html` report** is
-read for its embedded snapshot — no analysis, source tree, or toolchain
-required. Analysis-only flags (`--plugin`, `--ignore`) are rejected with a
-snapshot input.
-
-- `check` is the linter: it evaluates cycle rules and thresholds, prints
-  diagnostics, exits non-zero on any violation, and writes **no files**.
-  With `--baseline <snapshot>` it switches to a **relative gate** that
-  fails only on *new* violations versus the baseline (pre-existing ones
-  tolerated) and emits a verdict (`improved` / `degraded` / `neutral`); a
-  machine-readable verdict is produced with `--output-format json`.
-- `report` writes artifacts (a JSON snapshot and/or an HTML viewer) and
-  always exits `0`. Without `--baseline` the HTML is a single-snapshot
-  viewer; with `--baseline <snapshot>` it becomes a baseline↔current diff
-  view with a verdict, named `…-diff.html`.
-
-`report` selects artifacts and their destinations through one flag family,
-`--output.<fmt>.path <path>` (`<fmt>` is `json`, `html`, `prompt`, or
-`scorecard`; the last two are the refactoring-guidance formats, see
-`cpt-code-split-fr-ai-prompts`). When no `--output.*` flag is given it writes
-**both** `json` and `html` with default names into `.code-split/`:
-`{ts}-{git-hash-3}.json` and `{ts}-{git-hash-3}.html`, e.g.
-`.code-split/20260526-114144-a3f.json` (`{ts}` is the run's `generated_at` as a
-local `YYYYMMDD-HHMMSS` timestamp — one value shared by every artifact a run
-writes and identical to the embedded `generated_at`; `{git-hash-3}` the first
-three chars of the commit); `prompt` /
-`scorecard` are never in the default set and are emitted only when explicitly
-named. When one or more `--output.<fmt>.path` are given, **exactly** the
-listed formats are written. The `.path` value is a file path (or a name
-template, or `stdout`/`-` to stream the artifact); it supports placeholders
-`{project-dir}` (slugified workspace name), `{ts}`, `{git-hash}` (the
-12-char short commit), `{git-hash-N}` (its first N chars), and `{preset}` (the
-active principle id, `prompt` / `scorecard` only). The
-destination resolves as **`--output.<fmt>.path` flag › `[output.<fmt>]
-path` in `code-split.toml` › built-in default**, so a project can pin its
-own naming while a flag still wins for named states (e.g., `pr.json`). With
-`--baseline`, the HTML default gains a `-diff` marker
-(`{ts}-{git-hash-3}-diff.html`); the JSON artifact is always the current
-snapshot, never a diff. The `scorecard` default is `stdout` and the `prompt`
-default is `.code-split/{ts}-{git-hash-3}-{preset}.md`. No additional registry
-is created.
-
-Each snapshot is a **single self-contained `.json` file** combining
-metadata (command, versions, git state) and the one `files` graph. See
-`cpt-code-split-fr-snapshot-meta` for the full schema.
-
-The snapshot is written as **canonical JSON**: every object key is emitted
-in alphabetical order and the `nodes` / `edges` arrays are sorted by a
-stable key (node `id`; edge `source`/`target`/`kind`). Re-analyzing unchanged
-code therefore yields byte-identical graph data — no churn from map
-iteration order — which keeps committed snapshots (e.g. the per-plugin
-`sample/` goldens) diff-clean and makes a baseline comparison reflect only
-real changes.
-
-A `--baseline` comparison consumes snapshot files produced by `report` and
-is plugin-agnostic. Splitting into separate binaries is forbidden at
-P1; the separation of concerns lives inside the binary.
-
-**Rationale**: One file per snapshot is easier to copy, archive, attach
-to CI artifacts, and pass as a `--baseline`. A timestamped, commit-stamped
-filename (`{ts}-{git-hash-3}`) means users never have to think about naming
-for routine snapshots while keeping per-commit runs distinct; the
-`[output.<fmt>]` config sets a project-wide template and an explicit
-`--output.<fmt>.path` is available for named states (e.g.,
-`snap-before-refactor.json`).
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`
+> **Moved.** The unified entry-point command (`cpt-code-split-fr-unified-cli`)
+> — the `check` / `report` subcommands, the polymorphic `[input]`, and the
+> `--output.<fmt>.path` artifact selection — is specified in
+> [`code-split-cli/PRD.md`](code-split-cli/PRD.md). The snapshot it writes is a
+> single self-contained `.json` file; its schema is `cpt-code-split-fr-snapshot-meta`
+> below.
 
 #### Snapshot File Format
 
@@ -593,394 +521,33 @@ diff layer.
 
 **Actors**: `cpt-code-split-actor-developer`
 
-#### Configuration System
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-config`
-
-The analyzing commands (`check` / `report`) MUST load a layered
-configuration from multiple sources. Priority order (highest wins for
-scalars; `ignore.paths` is merged):
-
-| Priority | Source |
-|---|---|
-| 1 | CLI flags (`--ignore`, `--cycle-rule`, `--threshold`, `--plugin`, `--output.<fmt>.path`) |
-| 2 | `--config KEY=VALUE` inline overrides (dotted key into the config schema) |
-| 3 | `--config <file>` |
-| 4 | `code-split.toml` in cwd, then in target directory |
-| 5 | `Cargo.toml` `[workspace.metadata.code-split]` / `[package.metadata.code-split]` |
-| 6 | Built-in defaults |
-
-**Config file keys** (`code-split.toml` or `Cargo.toml` metadata section):
-
-```toml
-plugin = "auto"          # default plugin; "auto" detects by project markers, overridden by --plugin
-
-[ignore]
-paths        = ["**/generated/**"]  # glob patterns matched against node path
-tests        = true      # strip test files from the graph (legacy alias: test_modules)
-dev_only_crates = true   # strip crates reachable only via [dev-dependencies]
-                         # (uses `cargo metadata` for transitive accuracy)
-
-[rules.cycles]
-test-embed = false       # default: off  (Rust #[cfg(test)] back-edge)
-mutual     = true        # default: on
-chain      = true        # default: on
-
-[rules.thresholds.file]      # a single file (files graph)
-loc        = 800
-hk         = 500_000
-cyclomatic = 10
-
-[output.json]                # default JSON snapshot destination (report command)
-path    = "{project-dir}-{ts}.json"   # placeholders: {project-dir} {ts} {git-hash} {git-hash-N}
-enabled = true               # whether to write this format by default
-
-[output.html]                # default HTML viewer destination (report command)
-path    = "{project-dir}-{ts}.html"   # a --output.html.path flag still overrides
-enabled = true
-```
-
-**CLI flags**:
-
-- `--plugin <NAME|auto>` — override default plugin (`auto` detects by markers)
-- `--output.<fmt>.path <PATH>` (`report`; `<fmt>` is `json` or `html`) — select
-  that artifact format and set its destination (a path, a name template with
-  placeholders `{project-dir}`, `{ts}`, `{git-hash}`, `{git-hash-N}`, or
-  `stdout`/`-`); wins over `[output.<fmt>] path`; built-in default
-  `{ts}-{git-hash-3}`. Presence of any `--output.*` flag selects exactly the
-  listed formats; with none, both `json` and `html` are written
-- `--baseline <SNAPSHOT>` (`check` / `report`) — compare the current `[input]`
-  against this baseline snapshot (`.json` or `.html`); on `check` it switches
-  to a relative gate (fail only on new violations), on `report` it turns the
-  HTML into a baseline↔current diff with a verdict
-- `--git.<field> <VALUE>` (`check` / `report`) — override a snapshot git field
-  (`--git.branch`, `--git.commit`, `--git.dirty-files`, `--git.origin`) instead
-  of reading it from `git`; for CI, mapped from the platform's variables (e.g.
-  `--git.branch="$CI_COMMIT_REF_NAME"`). Per field: a flag wins, the rest fall
-  back to `git`; with `branch`+`commit`+`dirty-files` all set, `git` is not
-  invoked. Applies only to a directory input
-- `--config <PATH | KEY=VALUE>` — load config from an explicit file path, or
-  override a single setting inline via a dotted key (repeatable; inline wins)
-- `--ignore <GLOB>` — add a path glob (repeatable, merged with file)
-- `--cycle-rule <KIND=on|off|N>` — configure a cycle check: `on` (any cycle of
-  that kind fails), `off` (ignored), or an integer `N` (allow up to `N`, fail on
-  the `N+1`-th — e.g. `chain=7` to pin today's count and forbid new ones)
-- `--threshold <file.METRIC=N>` — set a per-file threshold (e.g.
-  `file.loc=800`, `file.cyclomatic=10`); a breach fails the check (`check`
-  only). The scope is always `file` (a single source file). `N` accepts `_`
-  separators and `K`/`M`/`G` suffixes (e.g. `file.hk=5M`)
-- `--top <N>` — report only the `N` worst violations (`check` only); reporting
-  limit, does not change the exit code
-- `--exit-zero` — exit 0 even when violations are found (`check` only,
-  collect-only mode)
-- `--suggest-config` — also print the current values as a ready-to-paste
-  `code-split.toml` baseline (`check` only; off by default)
-
-**No severity levels**: there is no warning tier — `check` either passes or fails.
-A threshold is set or unset; a cycle kind is off, strict (`on`/`0`), or carries a
-count budget `N` (up to `N` cycles of that kind allowed). A budget lets teams pin
-today's cycle count and fail only on regressions, without fixing the backlog first.
-
-**Rule ids and self-contained diagnostics**: every violation is identified by its
-dotted rule id — the same string used as the config key and CLI flag (e.g.
-`threshold.file.loc`) — and tagged with a concern group: `CYC` (dependency
-cycles), `CPX` (complexity), `CPL` (coupling), `SIZ` (size). The full reference is
-documented in [ERRORS.md](ERRORS.md). The default `human` output renders each
-finding as a self-contained block — rule id, group, location (`id — path:line`),
-measurement, rationale, fix, and the flag/config key that tunes the rule — so a
-single block copied from the terminal is a complete prompt for an AI assistant.
-The rule id and group are carried in every `--output-format` (block header,
-`json` `rule`/`group` fields, `github` annotation title, `sarif` `ruleId` plus a
-fired-rules `tool.driver.rules` catalog).
-
-**Current-values config block (`--suggest-config`)**: with `--suggest-config`,
-`human` output prints — after the findings — the project's current measured values
-as ready-to-paste `code-split.toml` blocks: the `[rules.cycles]` counts per kind,
-and the per-file thresholds (the worst single unit). A team copies the block to pin today's numbers as a baseline that passes
-now and fails on regression. Off by default; the machine formats
-(`json`/`github`/`sarif`) omit it.
-
-The path of the config file actually used is recorded in the snapshot as `config_file`.
-
-**Invalid configuration is fatal**: a malformed config file, an **unknown key or
-section** in `code-split.toml` / `Cargo.toml` metadata (the schema is strict —
-`deny_unknown_fields` — so a typo or stale key like `json-name` is rejected, not
-silently ignored), an unknown threshold scope/metric, or a bad inline `--config`
-/ `--threshold` / `--cycle-rule` value aborts the command with a non-zero exit
-and a clear message (naming the offending field) — the tool never silently falls
-back to defaults, which would drop the user's rules and let `check` pass when it
-should fail (a false green for a CI gate).
-
-**Rationale**: Teams need to suppress expected patterns (e.g. `test-embed`
-cycles, dev-only crate noise) and enforce structural budgets in CI without
-modifying source code.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`
+> **Moved.** The layered configuration system (`cpt-code-split-fr-config`) —
+> source priority, `code-split.toml` keys, the CLI flags, rule ids and
+> self-contained diagnostics — is specified in
+> [`code-split-cli/PRD.md`](code-split-cli/PRD.md). See also
+> [`code-split-cli/config.md`](code-split-cli/config.md) for the full schema and
+> [`code-split-cli/ERRORS.md`](code-split-cli/ERRORS.md) for the rule reference.
 
 ### 5.2 Visualization Reports — Step 2
 
-#### HTML Report Generation
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-html-report`
-
-The `code-split report` subcommand MUST analyze the workspace and, when the
-`html` artifact is selected (the default set is both `json` and `html`),
-generate a single self-contained offline HTML file alongside the snapshot
-`.json`. The HTML MUST include:
-
-- Interactive file-graph visualization, with `external` library nodes
-  shown in a distinct amber colour (dashed edges)
-- A coupling metrics table showing node weight (fan-in + fan-out) for
-  each file
-- All JavaScript and CSS inlined (no CDN or external resources)
-
-**Rationale**: A self-contained HTML file requires no server, no
-internet, and no installed dependencies to view — maximizing
-accessibility for developers and reviewers on any machine.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`
-
-#### Node Sorting by Weight
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-node-sorting`
-
-The HTML report MUST allow the user to sort files by coupling weight
-(fan-in + fan-out edge count). The report MUST display the top-N
-heaviest files prominently. Sorting MUST be performed client-side within
-the HTML (no server required).
-
-**Rationale**: The heaviest nodes are the most likely candidates for
-refactoring. Surfacing them first reduces the time to actionable insight.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`
-
-#### AI Prompt Generator (P2)
-
-- [x] `p2` - **ID**: `cpt-code-split-fr-ai-prompts`
-
-The HTML report SHOULD include a UI control that generates a prompt for
-an LLM, pre-populated with the top-N heaviest nodes and their coupling
-context, asking for refactoring recommendations. The prompt format MUST
-be copyable as plain text for direct paste into any LLM interface.
-
-The **same recommendation engine is exposed on the CLI** as two `report`
-output formats, so the guidance is reachable without opening the HTML
-(driven from the snapshot's calibrated `node_attributes[*].thresholds`
-`info` / `warning` tiers — advisory, never a gate):
-
-- `--output.prompt[.path]` — the LLM prompt for **one** principle, the same
-  Markdown the HTML Prompt Generator produces (intent, summary, principle-doc
-  link, a task checklist, the ranked offending modules, and the principle's
-  connection lists). Defaults to a per-principle file
-  `.code-split/{ts}-{git-hash-3}-{preset}.md` (or `stdout`).
-- `--output.scorecard[.path]` — a console **triage** overview (a per-principle
-  table of `warning` / `info` counts + the worst module, then the worst modules
-  overall, then a hint to the prompt for the worst principle). Defaults to
-  `stdout`.
-
-Both share three flags: `--preset <ID>` (a principle from the snapshot's
-`presets`; **optional** — when omitted the principle with the most violations
-is chosen), `--severity <info|warning|auto>` (the tier; repeatable for the
-scorecard, single for the prompt; `auto` = warning-if-any-else-info), and
-`--top <N>` (how many modules; `--top 1` = the single worst). These flags apply
-only with a `prompt` / `scorecard` format; an explicit `--index` is rejected
-with a hint to use `--top`.
-
-**Rationale**: Connecting structural data to an LLM's reasoning closes
-the loop between measurement and advice without coupling the offline
-tool to a specific LLM provider. The CLI surface lets an agent or a CI
-step pull the same prompt/triage non-interactively.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`
-
-#### Principles-Based Prompt Generation (P3)
-
-- [x] `p3` - **ID**: `cpt-code-split-fr-principles-prompts`
-
-The HTML report SHOULD support a principles-audit prompt mode that maps
-the top coupling findings to the canonical principle corpus under
-`principles/<language>/` (currently `rust/`, `python/`, `typescript/`)
-and instructs the LLM to audit the codebase against each principle.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`
+> **Moved.** The visualization / HTML report requirements are specified in
+> [`code-split-viewer/PRD.md`](code-split-viewer/PRD.md): HTML report generation
+> (`cpt-code-split-fr-html-report`), node sorting by weight
+> (`cpt-code-split-fr-node-sorting`), the AI Prompt Generator
+> (`cpt-code-split-fr-ai-prompts`, whose CLI counterpart is the `recommend`
+> module), and principles-based prompt generation
+> (`cpt-code-split-fr-principles-prompts`).
 
 ### 5.3 Baseline Comparison — Step 4
 
-#### Graph Diff Engine
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-graph-diff`
-
-> **Computed browser-side from two embedded snapshots.** `report --baseline`
-> embeds both the baseline (`cs-baseline`) and current (`cs-current`) snapshots
-> inline; the data-driven viewer (`diff.js` `computeDiff` / `computeCycles`)
-> derives node/edge added / removed / affected status and per-side cycle status
-> at load. There is **no** server-side structured count summary in the JSON (the
-> old `compare_snapshots` engine is gone); the relative gate
-> (`cpt-code-split-fr-compare`) is rule-based, not count-based.
-
-With `--baseline <snapshot>`, `code-split report` computes a structured
-diff between the baseline snapshot and the current `[input]`: nodes and
-edges added, removed, or affected. The diff includes an overall
-verdict: `improved`, `degraded`, or `neutral`. The interactive
-diff HTML uses Graphviz WASM (bundled in the binary) for client-side
-DOT→SVG layout with directory cluster grouping; there is a single Files
-view (no level switcher). The map is laid out **once** from the **union**
-of both snapshots (Graphviz computes a single set of node positions); the
-`[data-side]` Baseline/Current buttons are then a pure CSS visibility flip —
-current-only (added) elements are hidden on the Baseline side, baseline-only
-(removed) elements on the Current side — so every file present on both sides
-keeps its exact position and never moves when toggling. **Current is shown by
-default.** In the metric node-size modes (SLOC/HK) each circle is resized
-to the active side's value around its fixed centre (a file that grew or
-shrank changes size, not position). The active side is reflected
-throughout: the `side=baseline|current` URL parameter, the node-table title
-(`Details` / `Details Baseline` / `Details Current`), and a `Baseline` /
-`Current` badge on the node-popup and Prompt-Generator headers. The two header
-slots are the **current** (right) — the primary snapshot the report is
-about, always present and **not removable** — and an optional **baseline**
-(left, editable, removable). With no baseline it is
-single-snapshot **review** mode: the baseline slot is an empty, editable
-placeholder (`↑ Set baseline`) and the Baseline/Current buttons are hidden;
-loading a baseline turns the report into a diff. Each header slot's hover
-tooltip is labelled `Baseline` / `Current` and notes which side is currently
-shown; that slot is also highlighted in the header. Two buttons swap in a
-different snapshot from disk (each accepts a `.json` snapshot or an `.html`
-report): **↑ Replace current** changes the evaluated snapshot, **↑ Set
-baseline** loads a reference to diff against. Cycle detection
-(Tarjan SCC) runs in-browser and annotates nodes/edges for red-stroke
-highlighting (solid red, no dasharray); the highlight is **side-aware** —
-a `baseline-only` cycle is red only on the Baseline side, `current-only` only
-on Current, `both` on either, so a cycle removed in the current snapshot
-stops being red once you switch to Current. Internal `file` nodes render
-blue; `external` library nodes render amber with dashed edges. The node
-table column order is: checkbox, Name, Kind, Cycle, Status, LOC, HK,
-Fan-in, Fan-out, H.vol, H.bugs, H.effort, H.time, H.len, H.vocab,
-Cyclomatic, Cognitive, MI, MI SEI, Logical, Comments, Blank. A checkbox column
-(leftmost) enables persistent multi-node selection (shared across
-Baseline/Current by node id — a file present in both snapshots stays selected
-when toggling; the selected-row count reflects the active side): clicking a checkbox
-highlights the row (yellow) and the corresponding SVG node (yellow fill
-- amber stroke); shift-click selects a range; the header checkbox
-selects or deselects all visible rows (indeterminate when partial).
-Selection also works directly on the map: **holding Shift** turns the main
-diagram into a selection surface (the cursor changes over the SVG), and
-Shift-clicking an SVG node toggles its selection — exactly like ticking its
-table checkbox, kept in sync — instead of opening the modal. Holding the
-**"open source" modifier** — **⌘ on macOS, Ctrl elsewhere** (Ctrl is left
-alone on macOS, where it maps to right-click) — likewise changes the cursor
-and turns a node click into "open source": it opens the file on the project's
-git host (from `git.origin`) in a new tab instead of the modal (project files
-only). While either modifier is held — or the cursor hovers the right edge — the map's
-right-side controls (zoom and node-size) and a bottom-left shortcut legend are
-revealed; the legend spells out the active keys for the platform (⌘ on macOS,
-Ctrl elsewhere).
-The modal popup opened by clicking a row or an SVG node is fullscreen
-(locks body scroll); it includes a synced selection checkbox, fields in
-order id (⎘ copy) → path (⎘ copy, filename bold) → source (a link to the
-file on the project's git host, built from `git.origin`; project files
-only) → kind → visibility → items/methods → cycle info → status → metric
-sections in a single column. Hover highlight (blue drop-shadow) takes CSS
-priority over selection highlight. **Space** toggles the selection checkbox
-while the popup is open. The popup's neighbourhood diagram mirrors the map's
-gestures — Shift-click toggles a node's selection, ⌘/Ctrl-click opens its
-source — and shows the same yellow highlight for nodes already selected; its
-3rd-party (external) cards and arrows are drawn grey and are inert (not
-selectable, no source, no ⌘-navigation).
-
-**Rationale**: The diff is the quantitative answer to "did my
-refactoring reduce coupling?" Without it, the user must compare two
-static visualizations manually.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`,
-`cpt-code-split-actor-pr-reviewer`
-
-#### Diff HTML Report
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-diff-html-report`
-
-`code-split report --baseline` generates a single self-contained
-offline HTML report (named `…-diff.html`) displaying:
-
-- Added / removed / affected files and edges, color-coded by per-node diff
-  state (added, removed, affected, unchanged)
-- Cycle detection: files/edges in dependency cycles annotated with
-  `baseline-only` / `current-only` / `both` / `none` status and red-stroke
-  highlighting
-- `external` library nodes shown in a distinct amber colour with dashed
-  edges to distinguish them from internal file edges
-- Diff summary table: node/edge counts and cycle counts (SCCs, nodes in
-  cycles), baseline vs current with Δ
-- All JavaScript and CSS bundled locally (no CDN or external resources)
-
-**Rationale**: Self-contained HTML is viewable without tooling and
-suitable for attaching to PRs or sharing with stakeholders.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-tech-lead`,
-`cpt-code-split-actor-pr-reviewer`
-
-#### Machine-Readable Comparison Verdict
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-compare`
-
-`code-split check --baseline <snapshot> --output-format json` MUST compare
-the current `[input]` against the baseline snapshot and emit a
-machine-readable verdict and new-violation summary to stdout. The verdict is
-`improved` (some violations resolved, none added), `degraded` (new violations),
-or `neutral`; the gate is **relative** — it fails only on violations not already
-present in the baseline (matched by `(rule, location)` signature). It is
-implemented by re-evaluating the configured rules against the baseline snapshot
-— **not** by the (deferred) structured graph diff — so it needs no
-`compare_snapshots` engine.
-
-JSON summary — a `verdict` wrapper around the new-violations list:
-
-```json
-{
-  "verdict": "degraded",
-  "violations": [
-    { "rule": "threshold.file.hk", "group": "CPL", "graph": "files",
-      "location": "{target}/src/a.rs", "message": "…", "weight": 2.1 }
-  ]
-}
-```
-
-> A count-based summary (node/edge added/removed/affected, SCC counts) is **not**
-> emitted in the JSON; the visual diff is computed browser-side from the two
-> embedded snapshots (see `cpt-code-split-fr-graph-diff`).
-
-The human-facing counterpart is `code-split report --baseline`
-(`cpt-code-split-fr-diff-html-report`), the interactive self-contained diff HTML
-viewer — the same comparison surfaced two ways.
-
-**Rationale**: `check --baseline` is the machine gate (an exit code and a
-JSON verdict for CI); `report --baseline` is the shareable human diff viewer.
-
-**Actors**: `cpt-code-split-actor-developer`, `cpt-code-split-actor-ci`,
-`cpt-code-split-actor-pr-reviewer`
-
-#### Text Change Report
-
-- [x] `p1` - **ID**: `cpt-code-split-fr-diff-text-report`
-
-`code-split check --baseline <snapshot> --output-format json` emits a
-structured JSON summary (see `cpt-code-split-fr-compare`) embeddable in CI
-logs and PR comments. The JSON contains the verdict, node/edge counts and
-delta per level, plus cycle SCC counts.
-
-**Actors**: `cpt-code-split-actor-ci`, `cpt-code-split-actor-pr-reviewer`
-
-#### CI Diff Integration (P2)
-
-- [x] `p2` - **ID**: `cpt-code-split-fr-ci-diff`
-
-`code-split check --baseline <snapshot>` SHOULD act as a CI regression
-gate: exit non-zero when the current tree introduces *new* violations
-versus the baseline (e.g. new cycles added, HK degraded beyond a limit).
-The base-branch snapshot is fetched from a stored CI artifact; the verdict
-JSON (`--output-format json`) and the `report --baseline` diff HTML are
-attached to the pull request automatically.
-
-**Actors**: `cpt-code-split-actor-ci`, `cpt-code-split-actor-pr-reviewer`
+> **Moved — split across the two component PRDs.** The interactive HTML diff
+> viewer (`cpt-code-split-fr-graph-diff`, `cpt-code-split-fr-diff-html-report`)
+> is specified in [`code-split-viewer/PRD.md`](code-split-viewer/PRD.md). The
+> machine gate and structured verdict (`cpt-code-split-fr-compare`,
+> `cpt-code-split-fr-diff-text-report`, `cpt-code-split-fr-ci-diff`) are
+> specified in [`code-split-cli/PRD.md`](code-split-cli/PRD.md). The diff itself
+> is computed browser-side from the two embedded snapshots; the relative gate
+> (`check --baseline`) is rule-based, not count-based.
 
 ## 6. Non-Functional Requirements
 
@@ -1021,10 +588,11 @@ subcommand at 10k nodes.
 
 - [x] `p1` - **ID**: `cpt-code-split-nfr-portability`
 
-JSON snapshot artifacts MUST conform to Graph JSON Schema v1 and MUST
-be readable by the report generator and baseline comparison without migration
-for all v1.x releases. Generated HTML reports MUST open correctly in
-Chrome, Firefox, and Safari without installation.
+JSON snapshot artifacts MUST conform to the Graph JSON Schema
+(`schema_version: "2"`) and MUST be readable by the report generator and
+baseline comparison without migration within a major schema version. Generated
+HTML reports MUST open correctly in Chrome, Firefox, and Safari without
+installation.
 
 **Threshold**: Zero schema-migration failures within a major version.
 
@@ -1044,41 +612,11 @@ across plugin and tool version bumps within a major version.
 
 - [x] `p1` - **ID**: `cpt-code-split-interface-cli`
 
-**Type**: Single CLI binary (`code-split`)
-
-**Stability**: unstable (pre-1.0)
-
-**Subcommands**: bare `code-split` prints help — there is no default
-command; every action is an explicit subcommand.
-
-```
-# Lint — gate on cycle rules & thresholds; writes no files
-code-split check  [input] [--plugin <name|auto>] [--threshold ...] [--cycle-rule ...] [--baseline <snapshot>] [--output-format <human|json|github|sarif>] [--exit-zero]
-
-# Steps 1+2 — analyze (or read) the input and write a snapshot and/or HTML viewer
-# (also the AI prompt / console scorecard via --output.prompt / --output.scorecard)
-code-split report [input] [--plugin <name|auto>] [--output.<fmt>.path <path>] [--baseline <snapshot>] [--preset <ID>] [--severity <tier>] [--top <N>]
-```
-
-The positional `[input]` (default `.`) is polymorphic: a directory is
-analyzed, while a `.json` snapshot or `.html` report is read for its
-embedded snapshot (no analysis). Step 4 is `--baseline <snapshot>`, accepted
-by both commands: `report --baseline` writes a baseline↔current diff HTML
-viewer with a verdict, and `check --baseline` is a relative CI gate (fail
-only on new violations) whose verdict is machine-readable with
-`--output-format json`.
-
-Global options accepted by every command: `--config <PATH | KEY=VALUE>`
-(repeatable; inline wins), `--color <when>`, `-v/--verbose`, `-q/--quiet`,
-`-h/--help`, `-V/--version`.
-
-**Exit codes**: 0 = `check` passed (or `--exit-zero`), `report`
-completed; non-zero = generic failure, or `check` found a violation;
-failures emit a structured JSON error on stderr.
-
-**Breaking Change Policy**: Adding flags or subcommands is minor;
-renaming or removing flags, changing JSON artifact schema, or changing
-exit-code semantics requires a major-version bump.
+> **Moved.** The unified CLI interface (`cpt-code-split-interface-cli`) — the
+> `check` / `report` subcommands, the polymorphic `[input]`, global options,
+> exit codes, and the breaking-change policy — is specified in
+> [`code-split-cli/PRD.md`](code-split-cli/PRD.md). The full flag reference is
+> in [`code-split-cli/CLI.md`](code-split-cli/CLI.md).
 
 ### 7.2 Plugin Model
 

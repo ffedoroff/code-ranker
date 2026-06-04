@@ -81,12 +81,12 @@ In the default `human` output each violation is one block:
 
 ```text
 threshold.file.cognitive  ·  CPX  ·  files graph
-  where  file:{target}/src/handlers.rs
+  where  {target}/src/handlers.rs
   issue  cognitive complexity 67 exceeds limit 25 (2.7× over budget)
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
   fix    Extract nested blocks into named helpers, use early returns to cut nesting depth…
   tune   set with --threshold file.cognitive=N   ·   rules.thresholds.file.cognitive in code-split.toml
-  ref    https://github.com/ffedoroff/code-split/blob/main/docs/ERRORS.md#group-cpx
+  ref    https://github.com/ffedoroff/code-split/blob/main/docs/code-split-cli/ERRORS.md#group-cpx
 ```
 
 - **rule id + group + graph** — the rule, its concern group, and the graph (files) it fired on.
@@ -144,11 +144,11 @@ file (see [Threshold scopes](#threshold-scopes)). Inactive until a limit is set.
 ### CPL — coupling
 
 Threshold rules over the dependency graph. Henry-Kafura combines size and
-connectivity: `hk = loc × (fan_in × fan_out)²`. Inactive until a limit is set.
+connectivity: `hk = sloc × (fan_in × fan_out)²`. Inactive until a limit is set.
 
 | Metric | What it flags | How to fix |
 |--------|---------------|------------|
-| `hk` | Henry-Kafura coupling: the unit is both highly connected and large — a change-amplifier whose edits ripple widely across the system. | Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking LOC also lowers hk. |
+| `hk` | Henry-Kafura coupling: the unit is both highly connected and large — a change-amplifier whose edits ripple widely across the system. | Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk. |
 | `fan_in` | Too many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately. | If unintended, split the unit so each caller depends only on the slice it uses; otherwise stabilize the interface so high fan-in is safe. |
 | `fan_out` | This unit depends on too many others, so it breaks when any of them change and is hard to test in isolation. | Group related dependencies behind a facade, inject collaborators instead of reaching for them, or move logic closer to the data it uses. |
 

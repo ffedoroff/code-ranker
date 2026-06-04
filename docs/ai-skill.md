@@ -3,7 +3,7 @@
 A task-oriented playbook for an AI assistant driving `code-split`. Each scenario
 starts from a **natural-language request** ("what the user says") and gives the
 exact commands plus how to read the output and act on it. For the full flag
-reference see [CLI.md](CLI.md); for the metrics and rules see [ERRORS.md](ERRORS.md).
+reference see [CLI.md](code-split-cli/CLI.md); for the metrics and rules see [ERRORS.md](code-split-cli/ERRORS.md).
 
 ## Mental model (read this first)
 

@@ -53,7 +53,7 @@ jobs:
         # commit, and files this job writes count as "dirty". With
         # branch+commit+dirty-files all set, code-split skips git entirely. The
         # snapshot carries this block, so the render step reuses it.
-        # See docs/CLI.md → "Git metadata overrides".
+        # See docs/code-split-cli/CLI.md → "Git metadata overrides".
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |

@@ -34,7 +34,7 @@ code-split:
     # a detached checkout reports the branch as "HEAD", and files the job writes
     # before analysis would inflate the dirty count — so map CI variables onto the
     # --git.* flags. With branch+commit+dirty-files all set, code-split never even
-    # shells out to git. See docs/CLI.md → "Git metadata overrides".
+    # shells out to git. See docs/code-split-cli/CLI.md → "Git metadata overrides".
     - BR="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}"
     - |
       code-split report . \
