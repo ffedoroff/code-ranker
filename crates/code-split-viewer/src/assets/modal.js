@@ -132,7 +132,11 @@ function getModal() {
       // The map's modifier gestures work here too (mirrors setupTooltips):
       //   ⌘/Ctrl → open source, Shift → toggle selection — both skip navigation.
       if (!isExt && node && window.isOpenSrcClick?.(e)) {
-        const url = window.nodeSourceUrl?.(node, level);
+        // Anchor at the edge's `#L<line>` for a fan-in neighbour (the `use` site
+        // lives in this node's file); fan-out cards resolve to no line.
+        const centralId = window._modalNode?.id;
+        const line = centralId ? window.connSourceLine?.(nodeId, centralId, level) : null;
+        const url = window.nodeSourceUrl?.(node, level, line);
         if (url) window.open(url, '_blank', 'noopener');
         return;
       }
