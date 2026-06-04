@@ -386,6 +386,27 @@ function renderDescTooltip(label, desc, formula, calc) {
   return `<div class="tt-title">${escHtml(label)}</div>${f}${c}<div class="tt-desc">${descHtml}</div>`;
 }
 
+// Hover tooltip for a node on the main map: title + the basic fields a developer
+// wants at a glance — path, the grouping field (e.g. `crate`) when present, then
+// `hk` and `sloc`. Reuses the shared `#tt` element (and its 300 ms delay).
+function renderNodeTooltip(node, level) {
+  const rows = [];
+  const path = (node.path || node.id || '').replace(/^\{[^}]+\}\//, '');
+  if (path) rows.push(['path', path]);
+  const gk = levelUi(level).grouping?.key;
+  if (gk) {
+    const gv = nodeAttr(node, gk);
+    if (gv != null && gv !== '') rows.push([(attrLabel(level, gk) || gk).toLowerCase(), String(gv)]);
+  }
+  for (const k of ['hk', 'sloc']) {
+    const v = nodeAttr(node, k);
+    if (v != null) rows.push([k, String(v)]);
+  }
+  const body = rows.map(([k, v]) => `<b>${escHtml(k)}:</b> ${escHtml(v)}`).join('<br>');
+  return `<div class="tt-title">${escHtml(node.name || node.id)}</div>` +
+         (body ? `<div class="tt-desc">${body}</div>` : '');
+}
+
 function setupTooltip() {
   const tt = document.getElementById('tt');
   let current = null;
@@ -414,6 +435,15 @@ function setupTooltip() {
 
   // Resolve the tooltip content for the hovered element, or null if none applies.
   const contentFor = e => {
+    // A node on the main map (SVG `g.node` tagged with its id in setupTooltips):
+    // show its basic fields. Native graphviz `<title>` is removed there, so this
+    // is the only tooltip on the map.
+    const mapNode = e.target.closest('g.node[data-node-id]');
+    if (mapNode) {
+      const lv = mapNode.closest('[data-view]')?.dataset.view || 'files';
+      const n  = activeGraph(lv)?.nodes.find(x => x.id === mapNode.dataset.nodeId);
+      return n ? { el: mapNode, html: renderNodeTooltip(n, lv) } : null;
+    }
     const cellTt  = e.target.closest('[data-tt]');
     const cellTip = e.target.closest('[data-tip]');
     const cellNum = e.target.closest('td[data-col]');

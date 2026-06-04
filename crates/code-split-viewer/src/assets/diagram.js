@@ -407,6 +407,23 @@ function buildDiagramSVG(node, level) {
     s += `<text class="sn-hint mn-copy" data-copy="${escA(nodePath)}" data-tip-title="${escA(attrLabel(level, 'path') || 'Path')}" data-tip="${escA(absFull || nodePath)}" ${mono} x="${MNX+14}" y="${my}" font-size="14" fill="#2c3e50"><tspan font-weight="700">path: </tspan>${esc(mnValTrunc('path: ', nodePath))}</text>`;
     my += 22;
 
+    // Grouping field (e.g. `crate`): show it as its own row unless it is already
+    // displayed (path / visibility) or surfaced as a card metric.
+    const groupKey = ui.grouping?.key;
+    const shownKeys = new Set(['path', 'visibility', primaryKey, secondaryKey].filter(k => k != null));
+    if (groupKey && !shownKeys.has(groupKey)) {
+      const gVal = nodeAttr(node, groupKey);
+      if (gVal != null && gVal !== '') {
+        const gLabel = (attrLabel(level, groupKey) || groupKey).toLowerCase();
+        const gDesc  = attrDesc(level, groupKey);
+        const gTip   = gDesc
+          ? ` class="sn-hint mn-copy" data-tip-title="${escA(attrName(level, groupKey) || attrLabel(level, groupKey) || groupKey)}" data-tip="${escA(gDesc)}"`
+          : ` class="mn-copy"`;
+        s += `<text${gTip} data-copy="${escA(String(gVal))}" ${mono} x="${MNX+14}" y="${my}" font-size="14" fill="#2c3e50"><tspan font-weight="700">${esc(gLabel)}: </tspan>${esc(mnValTrunc(gLabel + ': ', String(gVal)))}</text>`;
+        my += 22;
+      }
+    }
+
     // Primary card metric row
     if (primaryKey != null) {
       const primRaw = nodeAttr(node, primaryKey);
