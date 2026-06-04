@@ -28,6 +28,11 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: code-split check (dogfood)
+        # Run our own gate on this repo: exits non-zero on a violation, and the
+        # github format emits ::error annotations inline on the PR. Kept here (not
+        # a separate job) so it reuses the warm build + cache from the steps above.
+        run: cargo run -q -p code-split -- check . --output-format github
 
   coverage:
     name: Coverage
@@ -57,3 +62,20 @@ jobs:
       - uses: taiki-e/install-action@cargo-audit
       - name: cargo audit
         run: cargo audit
+
+  docs:
+    name: Docs lint
+    runs-on: ubuntu-22.04
+    # Mirrors `make lint-md`: offline link check + markdownlint. No Rust
+    # toolchain, so it runs in parallel with the build jobs instead of waiting
+    # behind a compile.
+    steps:
+      - uses: actions/checkout@v6
+      - name: lychee (offline link check)
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --offline --no-progress docs/**/*.md contrib/**/*.md principles/**/*.md AGENTS.md CLAUDE.md
+          fail: true
+      - name: markdownlint
+        # Argless — globs and rules come from .markdownlint-cli2.jsonc.
+        run: npx --yes markdownlint-cli2
