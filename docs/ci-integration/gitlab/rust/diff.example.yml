@@ -30,7 +30,19 @@ code-split:
   script:
     - H="$(git rev-parse --short=12 HEAD)"
     # 1) Analyze the workspace -> JSON snapshot (named by commit hash).
-    - code-split report . --output.json.path="code-split-${H}.json"
+    #    Inject clean git metadata mapped from CI variables: a detached CI checkout
+    #    otherwise reports the branch as "HEAD" and counts the files this job writes
+    #    as "dirty". With branch+commit+dirty-files all set, code-split skips git
+    #    entirely. The snapshot carries this block, so step 3's render reuses it.
+    #    See docs/CLI.md → "Git metadata overrides".
+    - BR="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}"
+    - |
+      code-split report . \
+        --git.branch="$BR" \
+        --git.commit="$CI_COMMIT_SHA" \
+        --git.dirty-files=0 \
+        --git.origin="$CI_PROJECT_URL" \
+        --output.json.path="code-split-${H}.json"
 
     # 2) Fetch the baseline from the target branch (best-effort).
     - |

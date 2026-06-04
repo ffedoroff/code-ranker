@@ -122,7 +122,15 @@ pub(crate) fn analyze_directory(
 
     let violations = config::check_violations(&graphs, &cfg.rules);
 
-    let git = git::collect(&target);
+    let git = git::collect(
+        &target,
+        &git::GitOverride {
+            branch: args.git_branch.clone(),
+            commit: args.git_commit.clone(),
+            dirty_files: args.git_dirty_files,
+            origin: args.git_origin.clone(),
+        },
+    );
 
     let mut versions = BTreeMap::new();
     versions.insert(

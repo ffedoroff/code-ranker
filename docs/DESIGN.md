@@ -663,7 +663,11 @@ the snapshot's `graphs` map under `"files"`.
   snapshot records `config_file` when a config was found. Names are templates
   (`render_name`) with placeholders `{project-dir}`, `{ts}`, `{git-hash}`
   (12-char short commit) and `{git-hash-N}` (first N chars) — plus `{preset}`
-  for the recommendation formats — resolved as **`--output.<fmt>.path` flag
+  for the recommendation formats. `{ts}` is the snapshot's `generated_at`
+  formatted as a local timestamp — read once, not a fresh clock call per file,
+  so every artifact of a run shares one stamp that matches the embedded
+  `generated_at` (for a snapshot input it is the original analysis time).
+  Resolved as **`--output.<fmt>.path` flag
   › `[output.<fmt>] path` config › built-in default**
   (`DEFAULT_JSON_PATH` / `DEFAULT_HTML_PATH` = `.code-split/{ts}-{git-hash-3}.{json,html}`;
   `DEFAULT_PROMPT_PATH` = `.code-split/{ts}-{git-hash-3}-{preset}.md`;
@@ -1109,7 +1113,8 @@ snapshot `target` + `registry`), and writes the final snapshot.
 `versions` records the `code-split` binary version plus any toolchain versions
 the plugin reports (e.g. `rustc` for the Rust plugin).
 
-The `git` fields are collected by `code-split` before invoking the plugin:
+The `git` fields are collected by `code-split` before invoking the plugin
+(`crates/code-split-cli/src/git.rs`):
 
 | Field | Source |
 |-------|--------|
@@ -1118,7 +1123,15 @@ The `git` fields are collected by `code-split` before invoking the plugin:
 | `dirty_files` | `git -C <workspace> status --porcelain \| wc -l` |
 | `origin` | `git -C <workspace> config --get remote.origin.url` (omitted if empty/absent) |
 
-If branch/commit fail the `git` key is omitted entirely — no error is raised.
+Each field can be overridden via a `--git.<field>` flag (`GitOverride`), so a CI
+job can inject clean values mapped from its platform variables — a detached CI
+checkout otherwise reports the branch as `HEAD`, and files the job writes inflate
+the dirty count. The merge is per field (a flag wins, the rest fall back to the
+commands above); when `branch`, `commit`, and `dirty-files` are **all**
+overridden, the commands are not run at all (the CI fast path, which also works
+in a tree with no `.git`).
+
+If branch/commit fail (and are not overridden) the `git` key is omitted entirely — no error is raised.
 `origin` feeds the HTML viewer's per-node "Source" link (`git@host:grp/proj.git`
 or `https://…` is normalized to a web blob URL — GitLab `/-/blob/`, GitHub
 `/blob/` — at the commit).

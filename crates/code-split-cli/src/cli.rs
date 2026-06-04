@@ -46,6 +46,26 @@ pub(crate) struct AnalyzeArgs {
     /// Only applies when the input is a directory.
     #[arg(long = "ignore", value_name = "GLOB")]
     pub(crate) ignore_paths: Vec<String>,
+
+    /// Override the snapshot's git branch instead of reading it from `git`.
+    /// Useful in CI, where a detached checkout reports the branch as `HEAD`
+    /// (map a clean value, e.g. `--git.branch="$CI_COMMIT_REF_NAME"`).
+    #[arg(long = "git.branch", value_name = "NAME")]
+    pub(crate) git_branch: Option<String>,
+
+    /// Override the snapshot's git commit hash (e.g. `--git.commit="$CI_COMMIT_SHA"`).
+    #[arg(long = "git.commit", value_name = "HASH")]
+    pub(crate) git_commit: Option<String>,
+
+    /// Override the dirty-file count (e.g. `--git.dirty-files=0` to ignore the
+    /// untracked files a CI job creates before the analysis runs).
+    #[arg(long = "git.dirty-files", value_name = "N")]
+    pub(crate) git_dirty_files: Option<u32>,
+
+    /// Override the remote origin URL used for source links
+    /// (e.g. `--git.origin="$CI_PROJECT_URL"`, avoiding a token-bearing clone URL).
+    #[arg(long = "git.origin", value_name = "URL")]
+    pub(crate) git_origin: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]

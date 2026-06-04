@@ -84,6 +84,48 @@ are ignored when reading one.
 | `--plugin <name\|auto>` | Plugin to use: `rust`, `python`, or `javascript` (covers TypeScript). `auto` (default) resolves the language automatically — see [Plugin resolution](#plugin-resolution). |
 | `--config <PATH \| KEY=VALUE>` | Repeatable. Load config from a file path, **or** override one setting inline (`KEY=VALUE`); inline values win. See [Config](#config). |
 | `--ignore <glob>` | Repeatable. Glob to exclude paths from analysis. Merged with config-file globs. |
+| `--git.<field> <VALUE>` | Override one of the snapshot's git metadata fields instead of reading it from `git`. See [Git metadata overrides](#git-metadata-overrides). |
+
+### Git metadata overrides
+
+Every snapshot records a small `git` block — `branch`, `commit`, `dirty_files`, and
+the remote `origin` URL — read by shelling out to `git` in the analyzed directory.
+That raw view is correct on a developer's machine but **wrong in CI**, where the
+environment mangles it:
+
+- a **detached checkout** makes `branch` come out as the literal `HEAD`;
+- the untracked files a job writes *before* the analysis (the snapshot JSON, a
+  fetched baseline, build outputs) inflate `dirty_files`;
+- the clone uses a token-bearing URL, so `origin` is not the clean project URL.
+
+Four flags let you inject clean values, mapped from your CI's variables:
+
+| Flag | Overrides | Typical CI source (GitLab) |
+|---|---|---|
+| `--git.branch <NAME>` | `git.branch` | `$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME` / `$CI_COMMIT_REF_NAME` |
+| `--git.commit <HASH>` | `git.commit` | `$CI_COMMIT_SHA` |
+| `--git.dirty-files <N>` | `git.dirty_files` | `0` (CI checkouts are clean before the job writes files) |
+| `--git.origin <URL>` | `git.origin` | `$CI_PROJECT_URL` |
+
+The merge is **per field**: a flag wins for its field, and any field left unset is
+read from `git` as before. When `--git.branch`, `--git.commit`, and
+`--git.dirty-files` are **all** supplied, `git` is **never invoked** — the fast path
+that also works in a checkout with no `.git` at all (`--git.origin` is optional and
+never gates this). The flags apply only when `[input]` is a directory (a snapshot
+already carries its recorded git block).
+
+```sh
+# CI: inject clean values mapped from GitLab variables (git is never shelled out)
+code-split report . \
+  --git.branch="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}" \
+  --git.commit="$CI_COMMIT_SHA" \
+  --git.dirty-files=0 \
+  --git.origin="$CI_PROJECT_URL" \
+  --output.json.path="code-split-${CI_COMMIT_SHORT_SHA}.json"
+
+# fix just the detached-HEAD branch; commit/dirty/origin still come from git
+code-split report . --git.branch="$CI_COMMIT_REF_NAME"
+```
 
 ## `check`
 
@@ -274,7 +316,7 @@ path = "dist/{project-dir}-{ts}.html"
 | Placeholder | Expands to | Example |
 |---|---|---|
 | `{project-dir}` | The analyzed directory's basename, lowercased, non-alphanumerics collapsed to `-`. | `user-provisioning` |
-| `{ts}` | Local timestamp, `YYYYMMDD-HHMMSS`. | `20260526-114144` |
+| `{ts}` | The run's `generated_at` as a local timestamp, `YYYYMMDD-HHMMSS`. One value per run, shared by every artifact. | `20260526-114144` |
 | `{git-hash}` | The 12-char short commit hash (zeros if not a git repo). | `a3f9c21b4d5e` |
 | `{git-hash-N}` | The first `N` chars of the commit hash. | `{git-hash-3}` → `a3f` |
 | `{preset}` | The active `--preset` id (`prompt` / `scorecard` only). | `SRP` |

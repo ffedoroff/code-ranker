@@ -1,0 +1,87 @@
+# ---------------------------------------------------------------------------
+# code-split — MINIMAL mode (advisory linter + artifacts)
+#
+# Runs code-split on every pull request and on the default branch, produces a
+# JSON snapshot and a self-contained HTML viewer, and uploads both as an
+# artifact. It does NOT compare against anything — no baseline, no token, no
+# extra API calls.
+#
+# Prerequisite: `code-split` must be on PATH. The step below installs it with
+# `cargo install` (ubuntu-latest ships a Rust toolchain); alternatively bake it
+# into a container image or copy a prebuilt binary.
+#
+# Drop this file into .github/workflows/. Adjust the `push` branches to your
+# default branch.
+# ---------------------------------------------------------------------------
+name: code-split
+
+on:
+  pull_request:
+  push:
+    branches: [main]   # <-- set to your default branch (e.g. master)
+
+permissions:
+  contents: read
+
+jobs:
+  code-split:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # advisory — a failed analysis never fails the workflow
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rust note: the analysis runs `cargo metadata` under the hood, which
+      # resolves the full dependency graph. Cache $CARGO_HOME so a cold runner
+      # doesn't spend minutes fetching crates before the analysis can start.
+      # See README.md → "Rust: the cargo dependency cache". (Rust-only.)
+      - uses: Swatinem/rust-cache@v2
+
+      # Install code-split (skip if it's baked into your runner/image).
+      - name: Install code-split
+        run: cargo install code-split --locked
+
+      - name: Analyze
+        # Inject clean git metadata into the snapshot. Actions mangles the raw
+        # git view — a detached checkout reports the branch as "HEAD", PRs check
+        # out a merge commit, and files the job writes would inflate the dirty
+        # count — so map Actions variables onto the --git.* flags. With
+        # branch+commit+dirty-files all set, code-split never shells out to git.
+        # See docs/CLI.md → "Git metadata overrides".
+        env:
+          # Real PR head SHA (empty on push, where GITHUB_SHA is already correct).
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          H="$(git rev-parse --short=12 HEAD)"
+          BR="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          code-split report . \
+            --git.branch="$BR" \
+            --git.commit="${PR_HEAD_SHA:-$GITHUB_SHA}" \
+            --git.dirty-files=0 \
+            --git.origin="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --output.json.path="code-split-${H}.json" \
+            --output.html.path="code-split-${H}.html"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-split-report
+          path: |
+            code-split-*.json
+            code-split-*.html
+          retention-days: 30
+
+# ---------------------------------------------------------------------------
+# Optional: a strict gate instead of (or alongside) the advisory report.
+# `check` evaluates thresholds / cycle rules and EXITS NON-ZERO on violation, so
+# OMIT `continue-on-error` to actually fail the workflow. It writes no files.
+#
+#  code-split-gate:
+#    runs-on: ubuntu-latest
+#    steps:
+#      - uses: actions/checkout@v4
+#      - uses: Swatinem/rust-cache@v2
+#      - run: cargo install code-split --locked
+#      - run: code-split check .          # add threshold/cycle flags as needed
+# ---------------------------------------------------------------------------

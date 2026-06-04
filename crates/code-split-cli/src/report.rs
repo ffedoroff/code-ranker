@@ -5,6 +5,7 @@ use crate::analyze::{analyze_input, load_snapshot_any};
 use crate::cli::AnalyzeArgs;
 use crate::{config, logger, recommend};
 use anyhow::{Context, Result};
+use chrono::{DateTime, Local, Utc};
 use code_split_graph::snapshot::Snapshot;
 use std::path::{Path, PathBuf};
 
@@ -88,6 +89,11 @@ pub(crate) fn run_report(
     let snap = &a.snapshot;
     let target = PathBuf::from(&snap.target);
     let commit = snap.git.as_ref().map(|g| g.commit.as_str());
+    // Single source of truth for `{ts}`: the snapshot's `generated_at`. Every
+    // artifact this run writes (json, html, prompt, …) derives the same stamp,
+    // and it matches the value embedded in the snapshot. For a snapshot input it
+    // is the original analysis time, not the current clock.
+    let generated_at = snap.generated_at;
 
     let baseline_snap = match baseline {
         Some(p) => Some(load_snapshot_any(p)?),
@@ -98,7 +104,7 @@ pub(crate) fn run_report(
         let tpl = json_path
             .or(a.output.json.path.as_deref())
             .unwrap_or(DEFAULT_JSON_PATH);
-        let dest = render_name(tpl, &target, commit);
+        let dest = render_name(tpl, &target, commit, generated_at);
         let mut json = code_split_graph::serialize::to_canonical_string_pretty(snap)?;
         json.push('\n');
         write_artifact(&dest, &json, "json")?;
@@ -108,7 +114,7 @@ pub(crate) fn run_report(
         let tpl = html_path
             .or(a.output.html.path.as_deref())
             .unwrap_or(DEFAULT_HTML_PATH);
-        let mut dest = render_name(tpl, &target, commit);
+        let mut dest = render_name(tpl, &target, commit, generated_at);
         // A baseline turns the HTML into a diff; mark the filename `…-diff.html`
         // (unless it goes to the stdout stream).
         if baseline_snap.is_some() && !is_stream(&dest) {
@@ -131,6 +137,7 @@ pub(crate) fn run_report(
             scorecard_path,
             &target,
             commit,
+            generated_at,
         )?;
     }
 
@@ -150,6 +157,7 @@ fn write_recommendations(
     scorecard_path: Option<&str>,
     target: &Path,
     commit: Option<&str>,
+    generated_at: DateTime<Utc>,
 ) -> Result<()> {
     let level = snap
         .graphs
@@ -172,7 +180,7 @@ fn write_recommendations(
         };
         let md = recommend::compose_prompt(level, &snap.presets, &preset_id, sev, reco.top)?;
         let tpl = prompt_path.unwrap_or(DEFAULT_PROMPT_PATH);
-        let dest = render_name(tpl, target, commit).replace("{preset}", &preset_id);
+        let dest = render_name(tpl, target, commit, generated_at).replace("{preset}", &preset_id);
         write_artifact(&dest, &md, "prompt")?;
     }
 
@@ -194,7 +202,7 @@ fn write_recommendations(
             reco.preset.as_deref(),
         )?;
         let tpl = scorecard_path.unwrap_or(DEFAULT_SCORECARD_PATH);
-        let dest = render_name(tpl, target, commit);
+        let dest = render_name(tpl, target, commit, generated_at);
         write_artifact(&dest, &txt, "scorecard")?;
     }
 
@@ -236,10 +244,18 @@ fn write_artifact(dest: &str, content: &str, kind: &str) -> Result<()> {
 }
 
 /// Expand filename-template placeholders:
-/// `{project-dir}` (slugified target dir name), `{ts}` (local timestamp),
-/// `{git-hash}` (full short commit) and `{git-hash-N}` (first N chars of it).
-/// When there is no git commit, the hash falls back to zeros.
-fn render_name(template: &str, target: &Path, commit: Option<&str>) -> String {
+/// `{project-dir}` (slugified target dir name), `{ts}` (the run's `generated_at`,
+/// formatted as a local timestamp), `{git-hash}` (full short commit) and
+/// `{git-hash-N}` (first N chars of it). `{ts}` comes from `generated_at` — not a
+/// fresh clock read — so every artifact a run writes shares one stamp and it
+/// matches the value embedded in the snapshot. When there is no git commit, the
+/// hash falls back to zeros.
+fn render_name(
+    template: &str,
+    target: &Path,
+    commit: Option<&str>,
+    generated_at: DateTime<Utc>,
+) -> String {
     let project = target
         .file_name()
         .and_then(|n| n.to_str())
@@ -254,7 +270,10 @@ fn render_name(template: &str, target: &Path, commit: Option<&str>) -> String {
             }
         })
         .collect();
-    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+    let ts = generated_at
+        .with_timezone(&Local)
+        .format("%Y%m%d-%H%M%S")
+        .to_string();
     let hash = commit.unwrap_or("000000000000");
     let mut out = template
         .replace("{project-dir}", &slug)
@@ -277,10 +296,21 @@ fn render_name(template: &str, target: &Path, commit: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
+
+    /// A fixed instant so the `{ts}` expansion is deterministic in tests.
+    fn fixed_ts() -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(2026, 6, 4, 13, 59, 48).unwrap()
+    }
 
     #[test]
     fn render_name_expands_placeholders_and_slugifies() {
-        let out = render_name("{project-dir}-{ts}.json", Path::new("/x/My_Project"), None);
+        let out = render_name(
+            "{project-dir}-{ts}.json",
+            Path::new("/x/My_Project"),
+            None,
+            fixed_ts(),
+        );
         assert!(out.starts_with("my-project-"), "slugified prefix: {out}");
         assert!(out.ends_with(".json"), "extension preserved: {out}");
         assert!(
@@ -301,13 +331,27 @@ mod tests {
     fn render_name_expands_git_hash() {
         let t = Path::new("/x/proj");
         // Default-style template: `{ts}-{git-hash-3}.json`.
-        let out = render_name("{ts}-{git-hash-3}.json", t, Some("69aa698abcde"));
+        let out = render_name("{ts}-{git-hash-3}.json", t, Some("69aa698abcde"), fixed_ts());
         assert!(out.ends_with("-69a.json"), "first 3 hash chars: {out}");
         // Full short hash.
-        let full = render_name("{git-hash}.json", t, Some("69aa698abcde"));
+        let full = render_name("{git-hash}.json", t, Some("69aa698abcde"), fixed_ts());
         assert_eq!(full, "69aa698abcde.json");
         // No git → zero fallback, still no leftover placeholder.
-        let none = render_name("{git-hash-3}.json", t, None);
+        let none = render_name("{git-hash-3}.json", t, None, fixed_ts());
         assert_eq!(none, "000.json");
+    }
+
+    /// Two artifacts of the same run share one `{ts}` — the snapshot's
+    /// `generated_at` — rather than each re-reading the clock. This is the bug the
+    /// `generated_at` anchoring fixes: json and html names must not drift apart.
+    #[test]
+    fn render_name_ts_is_stable_across_artifacts_of_one_run() {
+        let t = Path::new("/x/proj");
+        let at = fixed_ts();
+        let json = render_name("{ts}-{git-hash-3}.json", t, Some("abc123def456"), at);
+        let html = render_name("{ts}-{git-hash-3}.html", t, Some("abc123def456"), at);
+        let json_ts = json.trim_end_matches("-abc.json");
+        let html_ts = html.trim_end_matches("-abc.html");
+        assert_eq!(json_ts, html_ts, "json and html share one stamp");
     }
 }

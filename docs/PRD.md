@@ -274,8 +274,10 @@ snapshot input.
 `cpt-code-split-fr-ai-prompts`). When no `--output.*` flag is given it writes
 **both** `json` and `html` with default names into `.code-split/`:
 `{ts}-{git-hash-3}.json` and `{ts}-{git-hash-3}.html`, e.g.
-`.code-split/20260526-114144-a3f.json` (`{ts}` is a local `YYYYMMDD-HHMMSS`
-timestamp, `{git-hash-3}` the first three chars of the commit); `prompt` /
+`.code-split/20260526-114144-a3f.json` (`{ts}` is the run's `generated_at` as a
+local `YYYYMMDD-HHMMSS` timestamp — one value shared by every artifact a run
+writes and identical to the embedded `generated_at`; `{git-hash-3}` the first
+three chars of the commit); `prompt` /
 `scorecard` are never in the default set and are emitted only when explicitly
 named. When one or more `--output.<fmt>.path` are given, **exactly** the
 listed formats are written. The `.path` value is a file path (or a name
@@ -378,7 +380,11 @@ Top-level fields:
   path are pruned, so a JS/TS/Python snapshot carries only `{target}` and a Rust
   snapshot `{target}` + `{registry}`
 - `git` — `branch`, `commit` (12-char short SHA), `dirty_files`, and `origin`;
-  the whole block omitted if not a git repository
+  the whole block omitted if not a git repository. Each field is read from `git`
+  but can be overridden with a `--git.<field>` flag (for CI, where a detached
+  checkout otherwise reports the branch as `HEAD` and job-written files inflate
+  the dirty count); when `branch`, `commit`, and `dirty-files` are all supplied,
+  `git` is not invoked at all
 - `timings` — per-stage wall-clock timings (`stage`, `ms`, `detail`), in
   execution order; omitted when empty
 - `graphs` — a map `level_name → level`; today the only key is `files`. Each
@@ -647,6 +653,12 @@ enabled = true
   against this baseline snapshot (`.json` or `.html`); on `check` it switches
   to a relative gate (fail only on new violations), on `report` it turns the
   HTML into a baseline↔current diff with a verdict
+- `--git.<field> <VALUE>` (`check` / `report`) — override a snapshot git field
+  (`--git.branch`, `--git.commit`, `--git.dirty-files`, `--git.origin`) instead
+  of reading it from `git`; for CI, mapped from the platform's variables (e.g.
+  `--git.branch="$CI_COMMIT_REF_NAME"`). Per field: a flag wins, the rest fall
+  back to `git`; with `branch`+`commit`+`dirty-files` all set, `git` is not
+  invoked. Applies only to a directory input
 - `--config <PATH | KEY=VALUE>` — load config from an explicit file path, or
   override a single setting inline via a dotted key (repeatable; inline wins)
 - `--ignore <GLOB>` — add a path glob (repeatable, merged with file)

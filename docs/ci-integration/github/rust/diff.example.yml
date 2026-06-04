@@ -1,0 +1,108 @@
+# ---------------------------------------------------------------------------
+# code-split — DIFF mode (great for pull requests)
+#
+# On a PR, this downloads the code-split JSON from the latest SUCCESSFUL run on
+# the BASE branch and renders the HTML as a baseline<->current diff with a
+# verdict (improved / degraded / neutral). On a push to the default branch (no
+# base), or when no baseline exists yet, it gracefully produces a review report.
+#
+# The job is advisory (`continue-on-error: true`) and the baseline download is
+# strictly best-effort: a missing run, a 404, or any parse miss only downgrades
+# the output to a review report — it NEVER fails the job.
+#
+# Why no extra token: the built-in GITHUB_TOKEN can already read THIS repo's
+# workflow runs and download their artifacts — you just grant `actions: read`
+# below. No personal/bot PAT is needed for a same-repo diff (contrast GitLab,
+# where CI_JOB_TOKEN can't reach the pipelines API). Fork PRs are the exception
+# (read-only token) — they fall back to a review report. See README.md.
+#
+# Prerequisites:
+#   1. `code-split` on PATH (the install step below; or bake it into an image).
+#   2. The base branch must have run this workflow at least once so its artifact
+#      exists — the `push` trigger below produces that baseline.
+# ---------------------------------------------------------------------------
+name: code-split
+
+on:
+  pull_request:
+  push:
+    branches: [main]   # <-- set to your default branch; produces the baseline
+
+permissions:
+  contents: read
+  actions: read        # lets gh/GITHUB_TOKEN download the base-branch artifact
+
+jobs:
+  code-split:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rust note: the analysis runs `cargo metadata` under the hood — cache
+      # $CARGO_HOME so deps are already on disk. See README.md → cargo cache.
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install code-split
+        run: cargo install code-split --locked
+
+      - name: Analyze -> JSON snapshot
+        # Inject clean git metadata mapped from Actions variables: a detached CI
+        # checkout otherwise reports the branch as "HEAD", PRs check out a merge
+        # commit, and files this job writes count as "dirty". With
+        # branch+commit+dirty-files all set, code-split skips git entirely. The
+        # snapshot carries this block, so the render step reuses it.
+        # See docs/CLI.md → "Git metadata overrides".
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          H="$(git rev-parse --short=12 HEAD)"
+          BR="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          echo "H=$H" >> "$GITHUB_ENV"
+          code-split report . \
+            --git.branch="$BR" \
+            --git.commit="${PR_HEAD_SHA:-$GITHUB_SHA}" \
+            --git.dirty-files=0 \
+            --git.origin="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            --output.json.path="code-split-${H}.json"
+
+      - name: Fetch baseline from the base branch (best-effort)
+        # Only meaningful on a PR; a push to the base branch just produces the
+        # review report that becomes a future PR's baseline.
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # gh + GITHUB_TOKEN read this repo's runs/artifacts directly (needs the
+          # `actions: read` permission above). Find the latest successful run of
+          # THIS workflow on the base branch and download its code-split artifact.
+          # Any miss -> no baseline -> review report; never fails the job.
+          set +e
+          RID="$(gh run list --branch "$GITHUB_BASE_REF" --workflow "$GITHUB_WORKFLOW" \
+                   --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [ -n "$RID" ]; then
+            gh run download "$RID" --name code-split-report --dir base
+          fi
+          BASE_JSON="$(ls base/code-split-*.json 2>/dev/null | head -n1)"
+          echo "BASE_JSON=$BASE_JSON" >> "$GITHUB_ENV"
+
+      - name: Render HTML (diff if a baseline was found, else review)
+        run: |
+          if [ -n "${BASE_JSON:-}" ]; then
+            echo "baseline from ${GITHUB_BASE_REF}: ${BASE_JSON}"
+            code-split report "code-split-${H}.json" --baseline "$BASE_JSON" --output.html.path="code-split-${H}.html"
+          else
+            echo "no baseline on ${GITHUB_BASE_REF:-$GITHUB_REF_NAME} yet -> review report"
+            code-split report "code-split-${H}.json" --output.html.path="code-split-${H}.html"
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-split-report
+          path: |
+            code-split-*.json
+            code-split-*.html
+          retention-days: 30
