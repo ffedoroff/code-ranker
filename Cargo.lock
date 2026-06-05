@@ -242,7 +242,9 @@ version = "1.0.0-alpha.4"
 dependencies = [
  "code-split-graph",
  "code-split-plugin-api",
+ "proc-macro2",
  "rust-code-analysis-code-split",
+ "syn",
  "tempfile",
 ]
 

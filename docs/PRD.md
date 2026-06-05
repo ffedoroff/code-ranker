@@ -716,7 +716,7 @@ Optional `AttributeSpec` fields are omitted when absent.
 
 ```json
 { "id": "{target}/src/foo.rs", "kind": "file", "name": "foo.rs",
-  "visibility": "public", "loc": 48, "sloc": 42, "lloc": 12, "cloc": 4, "blank": 6,
+  "visibility": "public", "loc": 48, "sloc": 36, "lloc": 12, "cloc": 4, "blank": 6, "tloc": 2,
   "cyclomatic": 3, "cognitive": 2, "exits": 2, "args": 3,
   "mi": 78.4, "mi_sei": 52.1, "length": 87, "vocabulary": 23, "volume": 312.5,
   "effort": 4820, "time": 267.8, "bugs": 0.104,
@@ -759,7 +759,7 @@ metric emitted only when its average is positive), e.g.:
 
 ```json
 { "cyclomatic": 1.4, "cognitive": 1.8, "fan_in": 2.25, "fan_out": 3, "hk": 864,
-  "mi": 104.0, "mi_sei": 105.7, "sloc": 15.8, "cloc": 3.8, "blank": 6.8,
+  "mi": 104.0, "mi_sei": 105.7, "sloc": 15.8, "cloc": 3.8, "blank": 6.8, "tloc": 4.2,
   "length": 32.2, "vocabulary": 19.6, "volume": 149.1, "effort": 1030.4,
   "time": 57.2, "bugs": 0.029 }
 ```

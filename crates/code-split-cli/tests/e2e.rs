@@ -439,9 +439,10 @@ fn rust_sample_prompt_explicit_preset_top1() {
         stdout.contains("## Modules ordered by"),
         "metric ordering section: {stdout}"
     );
-    // lib.rs is the largest file in the sample (physical SLOC 26).
+    // lib.rs is the largest file in the sample (production SLOC 17 — its
+    // `#[cfg(test)] mod tests` is excluded from the metric).
     assert!(
-        stdout.contains("- `src/lib.rs` (SLOC: 26)"),
+        stdout.contains("- `src/lib.rs` (SLOC: 17)"),
         "the single worst SLOC module: {stdout}"
     );
 }

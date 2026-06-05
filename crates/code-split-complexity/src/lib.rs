@@ -33,24 +33,134 @@ pub fn annotate(graph: &mut Graph) -> usize {
         let Ok(src) = std::fs::read(path) else {
             continue;
         };
-        let Some(space) = parse_metrics(path, src) else {
+        let Some((space, tloc)) = parse_metrics(path, src) else {
             continue;
         };
-        write_metrics(node, &space);
+        write_metrics(node, &space, tloc);
         annotated += 1;
     }
     annotated
 }
 
-/// Pick a parser by file extension and compute the file's `FuncSpace`.
-fn parse_metrics(path: &Path, src: Vec<u8>) -> Option<FuncSpace> {
+/// True if any attribute gates an item to tests: `#[test]`, `#[bench]`, or
+/// `#[cfg(test)]` / `#[cfg(all(test, …))]` / `#[cfg(any(test, …))]`. A `test`
+/// **identifier** inside `cfg(...)` is what matches — `cfg(feature = "test")`
+/// (a string literal) does not.
+fn is_test_attr(attr: &syn::Attribute) -> bool {
+    if attr.path().is_ident("test") || attr.path().is_ident("bench") {
+        return true;
+    }
+    if attr.path().is_ident("cfg")
+        && let syn::Meta::List(list) = &attr.meta
+    {
+        return tokens_have_test_ident(list.tokens.clone());
+    }
+    false
+}
+
+/// Recursively scan a token stream for a bare `test` identifier (descends into
+/// `all(...)` / `any(...)` groups).
+fn tokens_have_test_ident(ts: proc_macro2::TokenStream) -> bool {
+    ts.into_iter().any(|t| match t {
+        proc_macro2::TokenTree::Ident(i) => i == "test",
+        proc_macro2::TokenTree::Group(g) => tokens_have_test_ident(g.stream()),
+        _ => false,
+    })
+}
+
+/// Visitor collecting the 1-based, inclusive line ranges of test-only items
+/// (`#[cfg(test)]` modules, `#[test]`/`#[cfg(test)]` fns), attribute line
+/// included. It recurses into ordinary modules to catch nested test modules but
+/// not into a test item it already captured.
+#[derive(Default)]
+struct TestSpans {
+    ranges: Vec<(usize, usize)>,
+}
+
+impl TestSpans {
+    fn record(&mut self, attrs: &[syn::Attribute], span: proc_macro2::Span) {
+        use syn::spanned::Spanned;
+        let start = attrs
+            .iter()
+            .map(|a| a.span().start().line)
+            .chain(std::iter::once(span.start().line))
+            .min()
+            .unwrap_or(0);
+        self.ranges.push((start, span.end().line));
+    }
+}
+
+impl<'ast> syn::visit::Visit<'ast> for TestSpans {
+    fn visit_item_mod(&mut self, m: &'ast syn::ItemMod) {
+        use syn::spanned::Spanned;
+        if m.attrs.iter().any(is_test_attr) {
+            self.record(&m.attrs, m.span());
+        } else {
+            syn::visit::visit_item_mod(self, m);
+        }
+    }
+    fn visit_item_fn(&mut self, f: &'ast syn::ItemFn) {
+        use syn::spanned::Spanned;
+        if f.attrs.iter().any(is_test_attr) {
+            self.record(&f.attrs, f.span());
+        }
+    }
+}
+
+/// Step 1 of the Rust line accounting: remove `#[cfg(test)]` / `#[test]` /
+/// `#[bench]` items so the production metrics (`sloc` / `cloc` / `blank` / `hk` /
+/// complexity) are then measured on production code only. Returns the production
+/// source **and** `tloc` — the number of test lines removed (the whole test
+/// region: attribute, body, braces). Parse failures or no test items return the
+/// source unchanged with `tloc = 0`.
+fn strip_cfg_test(src: &[u8]) -> (Vec<u8>, usize) {
+    use syn::visit::Visit;
+    let Ok(text) = std::str::from_utf8(src) else {
+        return (src.to_vec(), 0);
+    };
+    let Ok(file) = syn::parse_file(text) else {
+        return (src.to_vec(), 0);
+    };
+    let mut spans = TestSpans::default();
+    spans.visit_file(&file);
+    if spans.ranges.is_empty() {
+        return (src.to_vec(), 0);
+    }
+    let drop: std::collections::HashSet<usize> =
+        spans.ranges.iter().flat_map(|&(s, e)| s..=e).collect();
+    let tloc = drop.len();
+    let mut out: String = text
+        .lines()
+        .enumerate()
+        .filter(|(i, _)| !drop.contains(&(i + 1)))
+        .map(|(_, l)| l)
+        .collect::<Vec<_>>()
+        .join("\n");
+    out.push('\n');
+    (out.into_bytes(), tloc)
+}
+
+/// Pick a parser by file extension and compute the file's production `FuncSpace`
+/// plus `tloc` — the number of **test** lines (`#[cfg(test)]` / `#[test]` /
+/// `#[bench]`) removed before measuring. Only Rust strips tests, so `tloc` is
+/// `0.0` for every other language. (Step 1 strips tests; step 2, in
+/// `write_metrics`, counts sloc/cloc/blank on the production remainder.)
+fn parse_metrics(path: &Path, src: Vec<u8>) -> Option<(FuncSpace, f64)> {
     let ext = path.extension().and_then(|e| e.to_str())?;
     match ext {
-        "rs" => metrics(&RustParser::new(src, path, None), path),
-        "py" => metrics(&PythonParser::new(src, path, None), path),
-        "ts" | "mts" | "cts" => metrics(&TypescriptParser::new(src, path, None), path),
-        "tsx" => metrics(&TsxParser::new(src, path, None), path),
-        "js" | "jsx" | "mjs" | "cjs" => metrics(&JavascriptParser::new(src, path, None), path),
+        "rs" => {
+            let (prod_src, tloc) = strip_cfg_test(&src);
+            let prod = metrics(&RustParser::new(prod_src, path, None), path)?;
+            Some((prod, tloc as f64))
+        }
+        "py" => metrics(&PythonParser::new(src, path, None), path).map(|s| (s, 0.0)),
+        "ts" | "mts" | "cts" => {
+            metrics(&TypescriptParser::new(src, path, None), path).map(|s| (s, 0.0))
+        }
+        "tsx" => metrics(&TsxParser::new(src, path, None), path).map(|s| (s, 0.0)),
+        "js" | "jsx" | "mjs" | "cjs" => {
+            metrics(&JavascriptParser::new(src, path, None), path).map(|s| (s, 0.0))
+        }
         _ => None,
     }
 }
@@ -58,7 +168,7 @@ fn parse_metrics(path: &Path, src: Vec<u8>) -> Option<FuncSpace> {
 /// Write the metric attributes for one file node. Each value is omitted when it
 /// rounds to zero; the LOC block is gated on `sloc > 0` and the Halstead block
 /// on `volume > 0` (matching the historical behavior).
-fn write_metrics(node: &mut code_split_plugin_api::node::Node, s: &FuncSpace) {
+fn write_metrics(node: &mut code_split_plugin_api::node::Node, s: &FuncSpace, tloc: f64) {
     let m = &s.metrics;
     let mut put = |key: &str, v: f64| {
         let a = num_attr(v);
@@ -88,6 +198,11 @@ fn write_metrics(node: &mut code_split_plugin_api::node::Node, s: &FuncSpace) {
     // `sloc` here means *physical lines of code* — lines with real code, excluding
     // blanks and comment-only lines (see this key's spec). rust-code-analysis names
     // that `ploc()`; its `sloc()` is the total line count (already exposed as `loc`).
+    //
+    // NOTE: for Rust these four — `sloc` (physical), `lloc` (logical), `cloc`
+    // (comments), `blank` — are all measured on the *production* source, i.e.
+    // AFTER `strip_cfg_test` removed `#[cfg(test)]` / `#[test]` / `#[bench]`
+    // items. So none of them count lines from inline tests; those go to `tloc`.
     let sloc = m.loc.ploc();
     if sloc > 0.0 {
         put("sloc", sloc);
@@ -95,6 +210,9 @@ fn write_metrics(node: &mut code_split_plugin_api::node::Node, s: &FuncSpace) {
         put("cloc", m.loc.cloc());
         put("blank", m.loc.blank());
     }
+    // Test source lines (`#[cfg(test)]`/`#[test]`/`#[bench]`), the complement of
+    // `sloc`. Zero (non-Rust, or no inline tests) is dropped by `put`.
+    put("tloc", tloc);
 
     let volume = m.halstead.volume();
     if volume > 0.0 {
@@ -242,7 +360,7 @@ pub fn metric_specs() -> (
             "Source",
             "Source lines (sloc)",
             "SLOC",
-            "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted.",
+            "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
             "",
             "",
             "higher_better",
@@ -254,7 +372,7 @@ pub fn metric_specs() -> (
             "Logical",
             "Logical LOC",
             "Logical",
-            "Logical lines — counts statements, not physical lines.",
+            "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
             "",
             "",
             "higher_better",
@@ -266,7 +384,7 @@ pub fn metric_specs() -> (
             "Comments",
             "Comment lines",
             "Comments",
-            "Comment-only lines (inline comments on code lines are not counted).",
+            "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
             "",
             "",
             "higher_better",
@@ -278,7 +396,19 @@ pub fn metric_specs() -> (
             "Blank",
             "Blank lines",
             "Blank",
-            "Empty or whitespace-only lines.",
+            "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
+            "",
+            "",
+            "higher_better",
+        ),
+        (
+            "tloc",
+            "loc",
+            Int,
+            "Test",
+            "Test lines (tloc)",
+            "TLOC",
+            "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
             "",
             "",
             "higher_better",
@@ -386,4 +516,80 @@ pub fn metric_specs() -> (
         group("Maintainability", "Maintainability index"),
     );
     (specs, groups)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strip(src: &str) -> String {
+        String::from_utf8(strip_cfg_test(src.as_bytes()).0).unwrap()
+    }
+
+    #[test]
+    fn strips_cfg_test_module_with_its_attribute() {
+        let out = strip(
+            "pub fn prod() -> i32 {\n    1\n}\n\n\
+             #[cfg(test)]\nmod tests {\n    use super::*;\n    #[test]\n    fn t() { assert_eq!(prod(), 1); }\n}\n",
+        );
+        assert!(out.contains("pub fn prod"), "production kept: {out}");
+        assert!(!out.contains("mod tests"), "test mod removed: {out}");
+        assert!(
+            !out.contains("#[cfg(test)]"),
+            "the cfg attr line removed too: {out}"
+        );
+        assert!(!out.contains("fn t()"), "test fn removed: {out}");
+    }
+
+    #[test]
+    fn strips_standalone_test_and_bench_fns() {
+        let out = strip("fn prod() {}\n#[test]\nfn it_works() {}\n#[bench]\nfn b(_: &mut ()) {}\n");
+        assert!(out.contains("fn prod"));
+        assert!(
+            !out.contains("it_works") && !out.contains("fn b("),
+            "test/bench fns removed: {out}"
+        );
+    }
+
+    #[test]
+    fn keeps_non_test_cfg_and_similarly_named_items() {
+        // `cfg(feature = "test")` is a string literal, not a `test` ident; a
+        // `mod tests_data` is not gated. Both stay.
+        let out = strip("#[cfg(feature = \"test\")]\npub mod gated {}\npub mod tests_data {}\n");
+        assert!(out.contains("pub mod gated"), "feature-cfg kept: {out}");
+        assert!(
+            out.contains("tests_data"),
+            "non-gated lookalike kept: {out}"
+        );
+    }
+
+    #[test]
+    fn strips_cfg_all_test_combinations() {
+        let out = strip("fn p() {}\n#[cfg(all(test, feature = \"x\"))]\nmod t {}\n");
+        assert!(out.contains("fn p"));
+        assert!(!out.contains("mod t"), "cfg(all(test,…)) removed: {out}");
+    }
+
+    #[test]
+    fn unchanged_without_tests_or_on_parse_error() {
+        let prod = "pub fn a() {}\n";
+        assert_eq!(
+            strip_cfg_test(prod.as_bytes()),
+            (prod.as_bytes().to_vec(), 0)
+        );
+        let broken = "@@@ not rust @@@";
+        assert_eq!(
+            strip_cfg_test(broken.as_bytes()),
+            (broken.as_bytes().to_vec(), 0)
+        );
+    }
+
+    #[test]
+    fn tloc_counts_the_whole_removed_test_region() {
+        // 4 lines removed: the #[cfg(test)] attr, `mod tests {`, the body line,
+        // and the closing `}`.
+        let src = "pub fn p() {}\n#[cfg(test)]\nmod tests {\n    fn t() {}\n}\n";
+        let (_prod, tloc) = strip_cfg_test(src.as_bytes());
+        assert_eq!(tloc, 4);
+    }
 }

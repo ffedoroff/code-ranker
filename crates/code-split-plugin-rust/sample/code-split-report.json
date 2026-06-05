@@ -300,7 +300,7 @@
       ],
       "node_attributes": {
         "blank": {
-          "description": "Empty or whitespace-only lines.",
+          "description": "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Blank",
@@ -320,7 +320,7 @@
           "value_type": "float"
         },
         "cloc": {
-          "description": "Comment-only lines (inline comments on code lines are not counted).",
+          "description": "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Comments",
@@ -425,7 +425,7 @@
           "value_type": "float"
         },
         "lloc": {
-          "description": "Logical lines — counts statements, not physical lines.",
+          "description": "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Logical",
@@ -462,7 +462,7 @@
           "value_type": "str"
         },
         "sloc": {
-          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted.",
+          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Source",
@@ -484,6 +484,15 @@
           "name": "Halstead time, s",
           "short": "H.time(s)",
           "value_type": "float"
+        },
+        "tloc": {
+          "description": "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
+          "direction": "higher_better",
+          "group": "loc",
+          "label": "Test",
+          "name": "Test lines (tloc)",
+          "short": "TLOC",
+          "value_type": "int"
         },
         "version": {
           "label": "Version",
@@ -668,23 +677,24 @@
           "volume": 213.969
         },
         {
-          "blank": 2,
+          "blank": 3,
           "bugs": 0.00867,
-          "cloc": 4,
+          "cloc": 9,
           "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 132.877,
           "fan_in": 2,
           "id": "{target}/src/c.rs",
-          "items": 2,
+          "items": 3,
           "kind": "file",
           "length": 16,
-          "loc": 14,
-          "mi": 106.896,
-          "mi_sei": 115.656,
+          "loc": 32,
+          "mi": 101.118,
+          "mi_sei": 113.588,
           "name": "c.rs",
           "sloc": 8,
           "time": 7.382,
+          "tloc": 12,
           "visibility": "public",
           "vocabulary": 10,
           "volume": 53.15
@@ -863,23 +873,24 @@
           "volume": 22.458
         },
         {
-          "blank": 1,
+          "blank": 2,
           "bugs": 0.0051,
-          "cloc": 6,
+          "cloc": 9,
           "crate": "rust-sample",
           "cyclomatic": 1,
           "effort": 60,
           "fan_out_external": 1,
           "id": "{target}/src/derives.rs",
-          "items": 1,
+          "items": 2,
           "kind": "file",
           "length": 8,
-          "loc": 11,
-          "mi": 115.398,
-          "mi_sei": 136.403,
+          "loc": 23,
+          "mi": 110.373,
+          "mi_sei": 130.238,
           "name": "derives.rs",
           "sloc": 4,
           "time": 3.333,
+          "tloc": 8,
           "visibility": "public",
           "vocabulary": 8,
           "volume": 24
@@ -930,27 +941,28 @@
           "volume": 41.513
         },
         {
-          "blank": 8,
-          "bugs": 0.0627,
-          "cloc": 30,
+          "blank": 7,
+          "bugs": 0.0331,
+          "cloc": 29,
           "crate": "rust-sample",
           "cyclomatic": 1,
-          "effort": 2584.135,
+          "effort": 992.898,
           "fan_out": 3,
           "id": "{target}/src/lib.rs",
           "items": 12,
           "kind": "file",
-          "length": 71,
-          "lloc": 2,
+          "length": 42,
+          "lloc": 1,
           "loc": 64,
-          "mi": 72.227,
-          "mi_sei": 72.44,
+          "mi": 78.737,
+          "mi_sei": 83.652,
           "name": "lib.rs",
-          "sloc": 26,
-          "time": 143.563,
+          "sloc": 17,
+          "time": 55.161,
+          "tloc": 11,
           "visibility": "public",
-          "vocabulary": 36,
-          "volume": 367.064
+          "vocabulary": 26,
+          "volume": 197.418
         },
         {
           "blank": 2,
@@ -997,21 +1009,22 @@
         }
       ],
       "stats": {
-        "blank": 2.7,
-        "bugs": 0.0183,
-        "cloc": 9.25,
+        "blank": 2.75,
+        "bugs": 0.0167,
+        "cloc": 9.6,
         "cyclomatic": 1,
-        "effort": 617.192,
+        "effort": 533.443,
         "fan_in": 1.4,
         "fan_out": 1.555,
         "hk": 103.333,
-        "length": 19.45,
-        "mi": 106.144,
-        "mi_sei": 120.896,
-        "sloc": 6.6,
-        "time": 34.288,
-        "vocabulary": 12.35,
-        "volume": 80.296
+        "length": 18,
+        "mi": 105.929,
+        "mi_sei": 121.045,
+        "sloc": 6.15,
+        "time": 29.635,
+        "tloc": 10.333,
+        "vocabulary": 11.85,
+        "volume": 71.813
       },
       "ui": {
         "card_metrics": [
@@ -1036,7 +1049,8 @@
           "mi_sei",
           "lloc",
           "cloc",
-          "blank"
+          "blank",
+          "tloc"
         ],
         "default_sort": "hk",
         "grouping": {
@@ -1071,7 +1085,8 @@
           "hk",
           "lloc",
           "cloc",
-          "blank"
+          "blank",
+          "tloc"
         ]
       }
     }

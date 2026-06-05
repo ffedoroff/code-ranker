@@ -111,6 +111,12 @@ item (`sup_parent` — a genuine but deprioritized cycle), and one where it does
 (`sup_loose` — benign scope-sugar). None are cycles today (only `uses` is flow);
 the full reasoning is in [what-is-cycle.md](../principles/rust/what-is-cycle.md).
 
+**Inline tests excluded from metrics** (`lib.rs`, `c.rs`, `derives.rs` carry
+`#[cfg(test)] mod tests`): the complexity pass strips test items first, so those
+lines are excluded from `sloc` / `lloc` / `cloc` / `blank` (and HK) and counted
+as `tloc` instead — production metrics only. The test bodies reference items by
+their own `crate::<mod>::…` path, so they add no cross-file edges.
+
 **Cross-crate, submodule-precise** (the `helper` workspace member): a
 `use helper::widget::{Widget, make}` resolves through `helper`'s library module
 index to the **owning submodule file** — `cross.rs → helper/src/widget.rs` and

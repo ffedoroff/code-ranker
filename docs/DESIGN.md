@@ -459,7 +459,13 @@ reads the file, picks a parser **by extension** (`rs` → Rust, `py` → Python,
 computes the file's root `FuncSpace`, and writes the metrics into the node's
 `attrs` as flat keys. There is no per-plugin extension list or parser callback —
 the dispatch lives here. Whole-file aggregate, so all functions, methods, arrow
-functions and closures roll up into the file's single node.
+functions and closures roll up into the file's single node. **Rust-only
+pre-pass**: before measuring a `.rs` file, `strip_cfg_test` (a `syn` walk)
+removes `#[cfg(test)]` / `#[test]` / `#[bench]` items, so `sloc` and everything
+derived from it (`hk`, `mi`, Halstead, cyclomatic/cognitive) count **production**
+code only — inline unit tests don't inflate a file's size or coupling. The
+removed line count becomes `tloc` (test lines), and the raw `loc` (set by the
+plugin from the full file) is unchanged, giving `loc = sloc + cloc + blank + tloc`.
 
 `metric_specs()` exposes the metric `AttributeSpec`s + their groups (complexity /
 halstead / loc / maintainability), which the orchestrator merges into each

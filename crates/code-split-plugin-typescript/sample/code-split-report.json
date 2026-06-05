@@ -113,7 +113,7 @@
       ],
       "node_attributes": {
         "blank": {
-          "description": "Empty or whitespace-only lines.",
+          "description": "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Blank",
@@ -133,7 +133,7 @@
           "value_type": "float"
         },
         "cloc": {
-          "description": "Comment-only lines (inline comments on code lines are not counted).",
+          "description": "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Comments",
@@ -218,7 +218,7 @@
           "value_type": "float"
         },
         "lloc": {
-          "description": "Logical lines — counts statements, not physical lines.",
+          "description": "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Logical",
@@ -251,7 +251,7 @@
           "value_type": "float"
         },
         "sloc": {
-          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted.",
+          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
           "direction": "higher_better",
           "group": "loc",
           "label": "Source",

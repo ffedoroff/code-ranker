@@ -178,11 +178,12 @@ up into the file's single node.
 
 | key | meaning |
 |-----|---------|
-| `loc` | **Total lines** in the file (everything). |
-| `sloc` | **Source lines** — lines with at least one non-whitespace, non-comment character (rust-code-analysis `ploc`). The main size metric; it is the `sloc` used by HK and MI. |
-| `lloc` | **Logical lines** — statements/expressions rather than physical lines. |
-| `cloc` | **Comment-only lines** (inline comments on code lines are not counted). |
-| `blank` | Empty or whitespace-only lines. |
+| `loc` | **Total lines** in the file (everything — including any test code). |
+| `sloc` | **Source lines** — lines with at least one non-whitespace, non-comment character (rust-code-analysis `ploc`). The main size metric; it is the `sloc` used by HK and MI. **In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded** (see `tloc`), so `sloc` (and everything derived from it — `hk`, `mi`, the Halstead/complexity metrics) reflects **production** code only, not inline unit tests. `loc` stays the raw file count. |
+| `tloc` | **Test lines** — lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust only; absent/omitted elsewhere). The complement of `sloc`: tests are removed *first*, then the production remainder is counted, so `loc = sloc + cloc + blank + tloc`. |
+| `lloc` | **Logical lines** — statements/expressions rather than physical lines (Rust: production only). |
+| `cloc` | **Comment-only lines** (inline comments on code lines are not counted; Rust: production only). |
+| `blank` | Empty or whitespace-only lines (Rust: production only). |
 
 ### Maintainability — `mi`, `mi_sei`
 

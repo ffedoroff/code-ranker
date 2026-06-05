@@ -9,3 +9,15 @@
 pub struct OnlyDerived {
     pub v: i32,
 }
+
+// Inline unit test — excluded from this file's `sloc` / `lloc` / `cloc` /
+// `blank` (counted as `tloc`). Referenced by its own defining path
+// (`crate::derives::…`), i.e. this file, so no cross-file edge is added.
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn builds_only_derived() {
+        let d = crate::derives::OnlyDerived { v: 7 };
+        assert_eq!(d.v, 7);
+    }
+}

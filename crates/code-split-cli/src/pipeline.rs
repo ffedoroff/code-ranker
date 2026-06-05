@@ -326,6 +326,7 @@ const UI_COLUMNS: &[&str] = &[
     "lloc",
     "cloc",
     "blank",
+    "tloc",
 ];
 const UI_SUMMARY: &[&str] = &[
     "cyclomatic",
@@ -345,6 +346,7 @@ const UI_SUMMARY: &[&str] = &[
     "lloc",
     "cloc",
     "blank",
+    "tloc",
 ];
 const UI_SORT: &[&str] = &[
     "hk",

@@ -21,6 +21,7 @@ const STAT_KEYS: &[&str] = &[
     "sloc",
     "cloc",
     "blank",
+    "tloc",
     "length",
     "vocabulary",
     "volume",
