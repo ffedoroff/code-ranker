@@ -52,22 +52,49 @@ function buildSummary() {
   const countNodes = (snap, level) =>
     ((snap?.graphs || {})[level]?.nodes || []).filter(n => !isExternalNode(n, level)).length;
 
+  // Edges between two internal nodes — the edges actually drawn on the map
+  // (external endpoints dropped, matching countNodes / activeLocalGraph).
+  const countEdges = (snap, level) => {
+    const g = (snap?.graphs || {})[level];
+    if (!g) return 0;
+    const ids = new Set((g.nodes || []).filter(n => !isExternalNode(n, level)).map(n => n.id));
+    return (g.edges || []).filter(e => ids.has(e.source) && ids.has(e.target)).length;
+  };
+
+  // Sum of a numeric node attribute across internal nodes (project total).
+  const sumAttr = (snap, level, key) =>
+    ((snap?.graphs || {})[level]?.nodes || [])
+      .filter(n => !isExternalNode(n, level))
+      .reduce((s, n) => {
+        const v = nodeAttr(n, key);
+        return s + (typeof v === 'number' && isFinite(v) ? v : 0);
+      }, 0);
+
+  const hasAttr = level => !!levelSpec(level).node_attributes?.sloc;
+
   const fmtV = v => typeof v === 'number' && isFinite(v) ? fmtNum(v) : '';
 
-  const fmtDelta = (d, lb) => {
+  // `dir` is tri-state: true = lower_better, false = higher_better, null/undefined
+  // = neutral (no colour). A non-boolean direction means the metric has no agreed
+  // "good" way to move (raw sizes, structural counts), so the delta stays uncoloured.
+  const fmtDelta = (d, dir) => {
     const ds = d === 0 ? '0' : (d > 0 ? `+${fmtNum(d)}` : `−${fmtNum(-d)}`);
-    const cls = (lb ? d < 0 : d > 0) ? ' delta-good' : (lb ? d > 0 : d < 0) ? ' delta-bad' : '';
+    let cls = '';
+    if (typeof dir === 'boolean') {
+      const lb = dir;
+      cls = (lb ? d < 0 : d > 0) ? ' delta-good' : (lb ? d > 0 : d < 0) ? ' delta-bad' : '';
+    }
     return `<td class="num${cls}">${ds}</td>`;
   };
 
-  const valueCells = (getB, getA, lb = false) =>
+  const valueCells = (getB, getA, dir = null) =>
     levels.map((level, i) => {
       const gs = i > 0 ? ' grp-start' : '';
       const b = getB(level), a = getA(level);
       if (isReview) return `<td class="num${gs}">${fmtV(b)}</td>`;
       const d = typeof b === 'number' && typeof a === 'number' ? a - b : null;
       return `<td class="num${gs}">${fmtV(b)}</td><td class="num">${fmtV(a)}</td>` +
-             (d !== null ? fmtDelta(d, lb) : '<td></td>');
+             (d !== null ? fmtDelta(d, dir) : '<td></td>');
     }).join('');
 
   const cycleCells = (getB, getA) =>
@@ -83,8 +110,9 @@ function buildSummary() {
 
   const ttAttr = pct => pct ? ` data-tt="${escAttr(JSON.stringify(pct))}"` : '';
 
-  // statCells: getNode reads a node → number (for percentile tooltip)
-  const statCells = (getNode, lb = false) =>
+  // statCells: getNode reads a node → number (for percentile tooltip). `dir` is the
+  // tri-state direction passed straight to fmtDelta (true/false/null).
+  const statCells = (getNode, dir = null) =>
     levels.map((level, i) => {
       const gs = i > 0 ? ' grp-start' : '';
       const b = nodePercentiles(baseline, level, getNode);
@@ -95,7 +123,7 @@ function buildSummary() {
       const d = typeof bAvg === 'number' && typeof aAvg === 'number' ? aAvg - bAvg : null;
       return `<td class="num${gs}"${ttAttr(b)}>${fmtV(bAvg)}</td>` +
              `<td class="num"${ttAttr(a)}>${fmtV(aAvg)}</td>` +
-             (d !== null ? fmtDelta(d, lb) : '<td></td>');
+             (d !== null ? fmtDelta(d, dir) : '<td></td>');
     }).join('');
 
   const row = (label, cells, tip, formula) => {
@@ -106,11 +134,25 @@ function buildSummary() {
 
   const rows = [];
 
-  // Node counts
+  // Node counts (neutral — a count has no intrinsic "good" direction).
   rows.push(row('Nodes', valueCells(
     level => countNodes(baseline, level),
     level => countNodes(current, level)
   )));
+
+  // Total dependency edges between internal nodes (neutral count).
+  rows.push(row('Edges', valueCells(
+    level => countEdges(baseline, level),
+    level => countEdges(current, level)
+  ), 'Total dependency edges between internal nodes (external-library edges excluded).'));
+
+  // Project-wide total source lines (sum of per-file sloc). Neutral, like sloc itself.
+  if (levels.some(hasAttr)) {
+    rows.push(row('Source lines (total)', valueCells(
+      level => sumAttr(baseline, level, 'sloc'),
+      level => sumAttr(current, level, 'sloc')
+    ), 'Total source lines across all files — the sum of every file’s sloc.'));
+  }
 
   // Cycles
   const anyCycles = levels.some(level => {
@@ -145,8 +187,10 @@ function buildSummary() {
       const label   = attrName(level, key);
       const tip     = attrDesc(level, key);
       const formula = attrFormula(level, key);
-      const lb      = attrDirection(level, key) === 'lower_better';
-      rows.push(row(label, statCells(n => nodeAttr(n, key), lb), tip || undefined, formula || undefined));
+      const dirRaw  = attrDirection(level, key);  // 'lower_better' | 'higher_better' | null
+      const dir     = dirRaw === 'lower_better' ? true
+                    : dirRaw === 'higher_better' ? false : null;
+      rows.push(row(label, statCells(n => nodeAttr(n, key), dir), tip || undefined, formula || undefined));
     }
     // Only iterate once — all metric rows for all levels are handled above.
     // (levels array is ['files'] for now, but the structure is kept future-proof.)

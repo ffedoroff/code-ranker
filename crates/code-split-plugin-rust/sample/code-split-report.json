@@ -301,7 +301,6 @@
       "node_attributes": {
         "blank": {
           "description": "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-          "direction": "higher_better",
           "group": "loc",
           "label": "Blank",
           "name": "Blank lines",
@@ -321,7 +320,6 @@
         },
         "cloc": {
           "description": "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-          "direction": "higher_better",
           "group": "loc",
           "label": "Comments",
           "name": "Comment lines",
@@ -364,7 +362,6 @@
         },
         "fan_in": {
           "description": "Number of nodes that depend on this one. High fan-in means broadly reused.",
-          "direction": "higher_better",
           "group": "coupling",
           "label": "Fan-in",
           "name": "Fan-in",
@@ -373,7 +370,7 @@
         },
         "fan_out": {
           "description": "Number of nodes this one depends on. High fan-out means many dependencies. External-library edges are counted separately.",
-          "direction": "higher_better",
+          "direction": "lower_better",
           "group": "coupling",
           "label": "Fan-out",
           "name": "Fan-out",
@@ -426,7 +423,6 @@
         },
         "lloc": {
           "description": "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-          "direction": "higher_better",
           "group": "loc",
           "label": "Logical",
           "name": "Logical LOC",
@@ -463,7 +459,6 @@
         },
         "sloc": {
           "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
-          "direction": "higher_better",
           "group": "loc",
           "label": "Source",
           "name": "Source lines (sloc)",
@@ -487,7 +482,6 @@
         },
         "tloc": {
           "description": "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
-          "direction": "higher_better",
           "group": "loc",
           "label": "Test",
           "name": "Test lines (tloc)",

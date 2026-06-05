@@ -363,7 +363,7 @@ pub fn metric_specs() -> (
             "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
             "",
             "",
-            "higher_better",
+            "",
         ),
         (
             "lloc",
@@ -375,7 +375,7 @@ pub fn metric_specs() -> (
             "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
             "",
             "",
-            "higher_better",
+            "",
         ),
         (
             "cloc",
@@ -387,7 +387,7 @@ pub fn metric_specs() -> (
             "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
             "",
             "",
-            "higher_better",
+            "",
         ),
         (
             "blank",
@@ -399,7 +399,7 @@ pub fn metric_specs() -> (
             "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
             "",
             "",
-            "higher_better",
+            "",
         ),
         (
             "tloc",
@@ -411,7 +411,7 @@ pub fn metric_specs() -> (
             "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
             "",
             "",
-            "higher_better",
+            "",
         ),
         (
             "length",

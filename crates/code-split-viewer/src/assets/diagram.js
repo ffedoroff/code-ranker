@@ -35,8 +35,10 @@ function buildDiagramSVG(node, level) {
       v = typeof v === 'number' ? v : Number(v);
       if (!isFinite(v)) return null;
       v = Math.round(v);
-      if (v >= 1e6) return (v / 1e6).toFixed(v >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
-      if (v >= 1e3) return (v / 1e3).toFixed(v >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'K';
+      // Whole-number magnitudes only — the K/M suffix is already approximate, so
+      // no decimal digit (1500000 → 2M, 189000 → 189K).
+      if (v >= 1e6) return Math.round(v / 1e6) + 'M';
+      if (v >= 1e3) return Math.round(v / 1e3) + 'K';
       return String(v);
     }
     return fmtNum(v);
@@ -430,7 +432,8 @@ function buildDiagramSVG(node, level) {
     // Primary card metric row
     if (primaryKey != null) {
       const primRaw = nodeAttr(node, primaryKey);
-      const primFmt = primRaw != null ? (fmtCard(primaryKey, primRaw) ?? '0') : '0';
+      // Central card is roomy → verbatim value, no abbreviation (side cards abbreviate).
+      const primFmt = primRaw != null ? (fmtFull(primRaw) ?? '0') : '0';
       const primName = attrShort(level, primaryKey).toLowerCase();
       const tipTitle   = escA(attrName(level, primaryKey));
       const tipDesc    = escA(attrDesc(level, primaryKey));
@@ -443,7 +446,7 @@ function buildDiagramSVG(node, level) {
     // Secondary card metric row
     if (secondaryKey != null) {
       const secRaw = nodeAttr(node, secondaryKey);
-      const secFmt = secRaw != null ? String(secRaw) : '—';
+      const secFmt = secRaw != null ? (fmtFull(secRaw) ?? '—') : '—';
       const secName = attrShort(level, secondaryKey).toLowerCase();
       const tipTitle = escA(attrName(level, secondaryKey));
       const tipDesc  = escA(attrDesc(level, secondaryKey));
@@ -602,18 +605,8 @@ function buildModalContent(node, level) {
 
   const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 
-  // Format a numeric value: integers without decimals, floats with up to `d`
-  // significant decimal places and thousands separators.
-  const fmt = (v, d) => {
-    if (v == null) return null;
-    const s = d > 0
-      ? parseFloat(v.toFixed(d)).toFixed(d).replace(/\.0+$/, '').replace(/(\.\d*[1-9])0+$/, '$1')
-      : String(Math.round(v));
-    const [int, dec] = s.includes('.') ? s.split('.') : [s, ''];
-    const fi = int.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    return dec ? `${fi}.${dec}` : fi;
-  };
-  const n3 = v => v == null ? null : String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  // The node popup is roomy, so it shows every value VERBATIM (`fmtFull` in
+  // utils.js — no rounding or abbreviation, just thousands separators).
 
   // ── Structural fields ─────────────────────────────────────────────────────
 
@@ -647,7 +640,7 @@ function buildModalContent(node, level) {
   if (mnExt) row('external', 'true');
   // visibility: only when present and not "public"
   if (vis && vis !== 'public') row('visibility', vis);
-  if (node.items != null) row('items', n3(node.items));
+  if (node.items != null) row('items', fmtFull(node.items));
   // node.cycle is the cycle kind (mutual/chain/…); cs is the diff-side status
   // (both/baseline-only/current-only) computed at runtime from window.CYCLES.
   if (node.cycle != null) row('cycle', node.cycle);
@@ -679,10 +672,8 @@ function buildModalContent(node, level) {
   if (ungrouped.length > 0) {
     sect(null);
     for (const k of ungrouped) {
-      const v  = nodeAttr(node, k);
-      const ty = attrType(level, k);
-      const formatted = ty === 'float' ? fmt(v, 2) : n3(v);
-      row(k, formatted, { calc: calcDisplay(level, k, node) });
+      const v = nodeAttr(node, k);
+      row(k, fmtFull(v), { calc: calcDisplay(level, k, node) });
     }
   }
 
@@ -700,10 +691,8 @@ function buildModalContent(node, level) {
     const gLabel = groups[gId]?.label || gId;
     sect(gLabel);
     for (const k of keys) {
-      const v  = nodeAttr(node, k);
-      const ty = attrType(level, k);
-      const formatted = ty === 'float' ? fmt(v, 2) : n3(v);
-      row(k, formatted, { calc: calcDisplay(level, k, node) });
+      const v = nodeAttr(node, k);
+      row(k, fmtFull(v), { calc: calcDisplay(level, k, node) });
     }
   }
 

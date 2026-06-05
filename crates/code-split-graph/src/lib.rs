@@ -50,7 +50,8 @@ pub fn coupling_specs() -> (
     fan_in.short = Some("Fan-in".into());
     fan_in.description =
         Some("Number of nodes that depend on this one. High fan-in means broadly reused.".into());
-    fan_in.direction = Some("higher_better".into());
+    // No direction: raw fan-in is neutral — broad reuse (good) and bottleneck risk
+    // (bad) pull opposite ways, so a growing/shrinking count carries no clear verdict.
     specs.insert("fan_in".to_string(), fan_in);
 
     let mut fan_out = AttributeSpec::new(ValueType::Int, "Fan-out");
@@ -62,7 +63,9 @@ pub fn coupling_specs() -> (
          External-library edges are counted separately."
             .into(),
     );
-    fan_out.direction = Some("higher_better".into());
+    // Lower is better: outgoing dependencies are efferent coupling — a node that
+    // depends on more things is harder to change in isolation (mirrors HK).
+    fan_out.direction = Some("lower_better".into());
     specs.insert("fan_out".to_string(), fan_out);
 
     let mut foe = AttributeSpec::new(ValueType::Int, "Fan-out (external)");
