@@ -11,6 +11,10 @@ ci = "github"
 installers = ["shell", "powershell", "npm"]
 publish-jobs = ["npm"]
 publish-prereleases = true
+# release.yml is hand-edited away from dist's default tag-push trigger (it runs
+# only on manual dispatch via publish.yml). Tell dist NOT to run its generated-CI
+# consistency check, or `dist host`/`dist plan` red-Xes on those intentional edits.
+allow-dirty = ["ci"]
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Where to host releases
