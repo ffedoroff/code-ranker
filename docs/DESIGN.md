@@ -327,17 +327,17 @@ Modules:
   only on the plugin API, never on the crate root — so the passes import helpers
   from here instead of `use crate::…`, which would otherwise close a
   `submodule → lib.rs → submodule` dependency cycle.
-- **`lib.rs`** — declares the submodules (`pub mod attrs; … pub mod stats;`) and
+- **`lib.rs`** — declares the submodules (`pub mod attrs; … pub mod stats;`),
   holds `coupling_specs()` (the coupling/cycle `AttributeSpec`s + the `coupling`
-  group, merged in by the orchestrator). It carries **no `pub use` re-exports** —
-  consumers import each item from its owning submodule path
-  (`code_split_graph::snapshot::Snapshot`, `…::cycles::annotate_cycles`,
-  `…::attrs::num_attr`, …). Keeping the crate root off the flow graph (no
-  re-export hub) is deliberate: a flat prelude gave `lib.rs` a flow edge to every
-  submodule (`fan_out`), and Henry-Kafura — `sloc × (fan_in × fan_out)²` —
-  squares that, so the root scored a large false-positive HK. (There is no
-  server-side snapshot-diff module — `--baseline` diffing is done browser-side by
-  the viewer's `diff.js`.)
+  group, merged in by the orchestrator), and re-exports the crate's main items
+  via a `pub use` prelude (`code_split_graph::Snapshot`, `…::annotate_cycles`,
+  …) for ergonomic imports. This is **metric-neutral**: `pub use` emits
+  `reexports` edges, which are non-flow, so they do not count toward `fan_out` /
+  HK / cycles — the root stays off the coupling metrics regardless of the
+  prelude. (An earlier revision dropped the prelude believing it inflated HK;
+  once `reexports` became non-flow that was unnecessary, so the ergonomic
+  prelude is back.) (There is no server-side snapshot-diff module — `--baseline`
+  diffing is done browser-side by the viewer's `diff.js`.)
 
 #### code-split-plugin-api
 
@@ -346,13 +346,12 @@ Modules:
 The **foundation** crate: it defines the generic model (`Node` / `Edge` /
 `Graph` / `Attributes` / `AttrValue` / `Level` + the `EdgeKindSpec` /
 `AttributeSpec` / `AttributeGroup` spec types) and the single trait,
-`LanguagePlugin`. It depends on **nothing** of ours (only `serde` + `anyhow`)
-and re-exports nothing; every other crate depends on it. The model lives in
-topic submodules (`attrs` / `edge` / `graph` / `level` / `node` / `plugin`) and
-consumers import from those paths (`code_split_plugin_api::node::Node`,
-`…::graph::Graph`, …) rather than a flat crate-root prelude — the root has no
-`pub use` hub, which keeps its `fan_out` (and therefore Henry-Kafura HK) low for
-a crate that everything else depends on.
+`LanguagePlugin`. It depends on **nothing** of ours (only `serde` + `anyhow`);
+every other crate depends on it. The model lives in topic submodules (`attrs` / `edge` / `graph` /
+`level` / `node` / `plugin`), re-exported from the crate root via a `pub use`
+prelude (`code_split_plugin_api::Node`, `…::Graph`, …) for ergonomic imports.
+This is metric-neutral — `pub use` emits non-flow `reexports` edges, so the
+prelude adds no `fan_out` / HK to the root.
 
 `LanguagePlugin` is a **pure parser** contract — `name`, `detect(ws, input)`
 (can-parse, replacing markers), `levels` (the levels + their semantics
@@ -384,7 +383,9 @@ classifies crates as local vs. external; walks local source trees with `syn` to
 extract the module hierarchy and `use` / `pub use` statements, emitting internal
 crate / module / trait nodes and `contains` / `uses` / `reexports` / `super` edges
 (`super` = a glob `use super::*` / `use crate::<ancestor>::*` reaching back into an
-enclosing module — non-flow scope-sugar, not a real dependency). It also runs a `syn::visit`
+enclosing module — non-flow scope-sugar, or a real back-dependency the analyzer
+can't tell apart, so kept non-flow as a low-priority cycle; see
+`principles/rust/what-is-cycle.md`). It also runs a `syn::visit`
 path collector over each file to capture **bare qualified paths** in
 expressions/types (≥ 2 segments, no `use`) **and qualified paths inside
 `#[derive(...)]`** (e.g. `serde::Serialize`), resolved through the same

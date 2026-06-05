@@ -1,7 +1,10 @@
 //! Module `b` — imports `a`, completing the a ⇄ b cycle. Also home to the one
 //! remaining blind spot: a dependency hidden inside a macro invocation.
 
-// `use super::...` — DETECTED (b.rs → a.rs). Completes the a ⇄ b cycle.
+// NAMED up-path `use super::a::alpha` → a real `uses` edge (b.rs → a.rs): it
+// names a concrete item, so it is a genuine dependency and DOES count — this is
+// the edge that closes the a ⇄ b cycle. (A glob `use super::*` would instead be
+// the non-flow `super` kind — see cycle_examples/sup_parent/child.rs.)
 use super::a::alpha;
 
 pub fn beta() -> i32 {

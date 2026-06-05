@@ -169,8 +169,12 @@ impl LanguagePlugin for RustPlugin {
                     "Namespace pull from an enclosing module — a glob `use` that reaches \
                      *up* the module tree (`use super::*`, `use crate::<ancestor>::*`), \
                      bringing the parent's items into the child's scope.<br>\
-                     This is structural scope-sugar, not a real outward dependency \
-                     (a module split across files referring back to itself).<br>\
+                     Usually structural scope-sugar (a module split across files referring \
+                     back to itself). But if the child actually uses a parent item brought \
+                     in by the glob, it IS a real back-dependency — technically a cycle. \
+                     code-split can't tell the two apart without name resolution, so it \
+                     treats `super` as a **low-priority** cycle and leaves it non-flow: \
+                     deprioritized next to obvious cross-module cycles.<br>\
                      Kept in the data but not drawn on the main map, and excluded from \
                      fan-in / fan-out / HK / cycles — like `contains`."
                         .into(),

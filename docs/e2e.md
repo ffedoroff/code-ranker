@@ -104,6 +104,13 @@ fan-in / fan-out / HK / cycles and not drawn (like `contains` / `reexports`).
 Contrast `b.rs`'s `use super::a::alpha`: a *named* import of a sibling item is a
 real `Uses` edge — only the glob pull from an ancestor becomes `super`.
 
+**Cycle semantics** (`src/cycle_examples/`): a dedicated module spelling out which
+edge forms close a cycle and which do not — a `reexports` + back-`uses` pair
+(`reex_hub` / `reex_spoke`), a `super` glob where the child really uses a parent
+item (`sup_parent` — a genuine but deprioritized cycle), and one where it does not
+(`sup_loose` — benign scope-sugar). None are cycles today (only `uses` is flow);
+the full reasoning is in [what-is-cycle.md](../principles/rust/what-is-cycle.md).
+
 **Cross-crate, submodule-precise** (the `helper` workspace member): a
 `use helper::widget::{Widget, make}` resolves through `helper`'s library module
 index to the **owning submodule file** — `cross.rs → helper/src/widget.rs` and

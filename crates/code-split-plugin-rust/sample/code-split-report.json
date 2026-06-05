@@ -65,7 +65,7 @@
           "label": "reexport"
         },
         "super": {
-          "description": "Namespace pull from an enclosing module — a glob `use` that reaches *up* the module tree (`use super::*`, `use crate::<ancestor>::*`), bringing the parent's items into the child's scope.<br>This is structural scope-sugar, not a real outward dependency (a module split across files referring back to itself).<br>Kept in the data but not drawn on the main map, and excluded from fan-in / fan-out / HK / cycles — like `contains`.",
+          "description": "Namespace pull from an enclosing module — a glob `use` that reaches *up* the module tree (`use super::*`, `use crate::<ancestor>::*`), bringing the parent's items into the child's scope.<br>Usually structural scope-sugar (a module split across files referring back to itself). But if the child actually uses a parent item brought in by the glob, it IS a real back-dependency — technically a cycle. code-split can't tell the two apart without name resolution, so it treats `super` as a **low-priority** cycle and leaves it non-flow: deprioritized next to obvious cross-module cycles.<br>Kept in the data but not drawn on the main map, and excluded from fan-in / fan-out / HK / cycles — like `contains`.",
           "flow": false,
           "label": "super"
         },
@@ -111,7 +111,7 @@
         },
         {
           "kind": "uses",
-          "line": 5,
+          "line": 8,
           "source": "{target}/src/b.rs",
           "target": "{target}/src/a.rs"
         },
@@ -132,6 +132,73 @@
           "line": 11,
           "source": "{target}/src/cross.rs",
           "target": "{target}/helper/src/widget.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/cycle_examples.rs",
+          "target": "{target}/src/cycle_examples/reex_hub.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/cycle_examples.rs",
+          "target": "{target}/src/cycle_examples/reex_spoke.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/cycle_examples.rs",
+          "target": "{target}/src/cycle_examples/sup_loose.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/cycle_examples.rs",
+          "target": "{target}/src/cycle_examples/sup_parent.rs"
+        },
+        {
+          "kind": "reexports",
+          "line": 8,
+          "source": "{target}/src/cycle_examples/reex_hub.rs",
+          "target": "{target}/src/cycle_examples/reex_spoke.rs",
+          "visibility": "public"
+        },
+        {
+          "kind": "uses",
+          "line": 6,
+          "source": "{target}/src/cycle_examples/reex_spoke.rs",
+          "target": "{target}/src/cycle_examples/reex_hub.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/cycle_examples/sup_loose.rs",
+          "target": "{target}/src/cycle_examples/sup_loose/child.rs"
+        },
+        {
+          "kind": "uses",
+          "line": 8,
+          "source": "{target}/src/cycle_examples/sup_loose.rs",
+          "target": "{target}/src/cycle_examples/sup_loose/child.rs"
+        },
+        {
+          "kind": "super",
+          "line": 9,
+          "source": "{target}/src/cycle_examples/sup_loose/child.rs",
+          "target": "{target}/src/cycle_examples/sup_loose.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/cycle_examples/sup_parent.rs",
+          "target": "{target}/src/cycle_examples/sup_parent/child.rs"
+        },
+        {
+          "kind": "uses",
+          "line": 16,
+          "source": "{target}/src/cycle_examples/sup_parent.rs",
+          "target": "{target}/src/cycle_examples/sup_parent/child.rs"
+        },
+        {
+          "kind": "super",
+          "line": 11,
+          "source": "{target}/src/cycle_examples/sup_parent/child.rs",
+          "target": "{target}/src/cycle_examples/sup_parent.rs"
         },
         {
           "kind": "uses",
@@ -162,14 +229,14 @@
         },
         {
           "kind": "reexports",
-          "line": 32,
+          "line": 35,
           "source": "{target}/src/lib.rs",
           "target": "{target}/src/a.rs",
           "visibility": "public"
         },
         {
           "kind": "uses",
-          "line": 54,
+          "line": 57,
           "source": "{target}/src/lib.rs",
           "target": "{target}/src/a.rs"
         },
@@ -180,7 +247,7 @@
         },
         {
           "kind": "uses",
-          "line": 55,
+          "line": 58,
           "source": "{target}/src/lib.rs",
           "target": "{target}/src/b.rs"
         },
@@ -193,6 +260,11 @@
           "kind": "contains",
           "source": "{target}/src/lib.rs",
           "target": "{target}/src/cross.rs"
+        },
+        {
+          "kind": "contains",
+          "source": "{target}/src/lib.rs",
+          "target": "{target}/src/cycle_examples.rs"
         },
         {
           "kind": "contains",
@@ -571,7 +643,7 @@
         {
           "blank": 4,
           "bugs": 0.0521,
-          "cloc": 12,
+          "cloc": 15,
           "crate": "rust-sample",
           "cycle": "mutual",
           "cyclomatic": 1,
@@ -585,9 +657,9 @@
           "kind": "file",
           "length": 45,
           "lloc": 2,
-          "loc": 25,
-          "mi": 90.031,
-          "mi_sei": 98.534,
+          "loc": 28,
+          "mi": 88.195,
+          "mi_sei": 97.249,
           "name": "b.rs",
           "sloc": 9,
           "time": 108.813,
@@ -639,6 +711,156 @@
           "visibility": "public",
           "vocabulary": 19,
           "volume": 127.437
+        },
+        {
+          "blank": 1,
+          "bugs": 0.00147,
+          "cloc": 16,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "effort": 9.287,
+          "id": "{target}/src/cycle_examples.rs",
+          "items": 4,
+          "kind": "file",
+          "length": 8,
+          "loc": 21,
+          "mi": 106.255,
+          "mi_sei": 126.505,
+          "name": "cycle_examples.rs",
+          "sloc": 4,
+          "time": 0.515,
+          "visibility": "public",
+          "vocabulary": 5,
+          "volume": 18.575
+        },
+        {
+          "blank": 2,
+          "bugs": 0.000974,
+          "cloc": 7,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "effort": 5,
+          "fan_in": 1,
+          "id": "{target}/src/cycle_examples/reex_hub.rs",
+          "items": 1,
+          "kind": "file",
+          "length": 5,
+          "loc": 11,
+          "mi": 119.95,
+          "mi_sei": 144.674,
+          "name": "reex_hub.rs",
+          "sloc": 2,
+          "time": 0.277,
+          "visibility": "public",
+          "vocabulary": 4,
+          "volume": 10
+        },
+        {
+          "blank": 3,
+          "bugs": 0.00736,
+          "cloc": 4,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "effort": 103.782,
+          "fan_out": 1,
+          "id": "{target}/src/cycle_examples/reex_spoke.rs",
+          "items": 2,
+          "kind": "file",
+          "length": 12,
+          "loc": 12,
+          "mi": 110.909,
+          "mi_sei": 123.503,
+          "name": "reex_spoke.rs",
+          "sloc": 5,
+          "time": 5.765,
+          "visibility": "public",
+          "vocabulary": 11,
+          "volume": 41.513
+        },
+        {
+          "blank": 4,
+          "bugs": 0.00959,
+          "cloc": 4,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "effort": 154.533,
+          "fan_out": 1,
+          "id": "{target}/src/cycle_examples/sup_loose.rs",
+          "items": 3,
+          "kind": "file",
+          "length": 13,
+          "loc": 14,
+          "mi": 108.45,
+          "mi_sei": 117.795,
+          "name": "sup_loose.rs",
+          "sloc": 6,
+          "time": 8.585,
+          "visibility": "public",
+          "vocabulary": 9,
+          "volume": 41.209
+        },
+        {
+          "blank": 2,
+          "cloc": 7,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "fan_in": 1,
+          "id": "{target}/src/cycle_examples/sup_loose/child.rs",
+          "items": 1,
+          "kind": "file",
+          "length": 3,
+          "loc": 11,
+          "mi": 126.211,
+          "mi_sei": 153.706,
+          "name": "child.rs",
+          "sloc": 2,
+          "visibility": "public",
+          "vocabulary": 2,
+          "volume": 3
+        },
+        {
+          "blank": 4,
+          "bugs": 0.00959,
+          "cloc": 12,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "effort": 154.533,
+          "fan_out": 1,
+          "id": "{target}/src/cycle_examples/sup_parent.rs",
+          "items": 3,
+          "kind": "file",
+          "length": 13,
+          "loc": 22,
+          "mi": 101.128,
+          "mi_sei": 115.917,
+          "name": "sup_parent.rs",
+          "sloc": 6,
+          "time": 8.585,
+          "visibility": "public",
+          "vocabulary": 9,
+          "volume": 41.209
+        },
+        {
+          "blank": 3,
+          "bugs": 0.00488,
+          "cloc": 9,
+          "crate": "rust-sample",
+          "cyclomatic": 1,
+          "effort": 56.147,
+          "fan_in": 1,
+          "id": "{target}/src/cycle_examples/sup_parent/child.rs",
+          "items": 2,
+          "kind": "file",
+          "length": 8,
+          "loc": 15,
+          "mi": 110.488,
+          "mi_sei": 130.506,
+          "name": "child.rs",
+          "sloc": 3,
+          "time": 3.119,
+          "visibility": "public",
+          "vocabulary": 7,
+          "volume": 22.458
         },
         {
           "blank": 1,
@@ -709,26 +931,26 @@
         },
         {
           "blank": 8,
-          "bugs": 0.0616,
-          "cloc": 28,
+          "bugs": 0.0627,
+          "cloc": 30,
           "crate": "rust-sample",
           "cyclomatic": 1,
-          "effort": 2514.31,
+          "effort": 2584.135,
           "fan_out": 3,
           "id": "{target}/src/lib.rs",
-          "items": 11,
+          "items": 12,
           "kind": "file",
-          "length": 69,
+          "length": 71,
           "lloc": 2,
-          "loc": 61,
-          "mi": 73.194,
-          "mi_sei": 73.563,
+          "loc": 64,
+          "mi": 72.227,
+          "mi_sei": 72.44,
           "name": "lib.rs",
-          "sloc": 25,
-          "time": 139.683,
+          "sloc": 26,
+          "time": 143.563,
           "visibility": "public",
-          "vocabulary": 35,
-          "volume": 353.92
+          "vocabulary": 36,
+          "volume": 367.064
         },
         {
           "blank": 2,
@@ -775,21 +997,21 @@
         }
       ],
       "stats": {
-        "blank": 2.692,
-        "bugs": 0.0241,
-        "cloc": 9.307,
+        "blank": 2.7,
+        "bugs": 0.0183,
+        "cloc": 9.25,
         "cyclomatic": 1,
-        "effort": 859.504,
-        "fan_in": 1.571,
-        "fan_out": 1.833,
+        "effort": 617.192,
+        "fan_in": 1.4,
+        "fan_out": 1.555,
         "hk": 103.333,
-        "length": 25,
-        "mi": 103.253,
-        "mi_sei": 115.979,
-        "sloc": 7.923,
-        "time": 47.749,
-        "vocabulary": 15.307,
-        "volume": 108.831
+        "length": 19.45,
+        "mi": 106.144,
+        "mi_sei": 120.896,
+        "sloc": 6.6,
+        "time": 34.288,
+        "vocabulary": 12.35,
+        "volume": 80.296
       },
       "ui": {
         "card_metrics": [
@@ -1035,17 +1257,17 @@
   "target": "/home/user/code-split/crates/code-split-plugin-rust/sample",
   "timings": [
     {
-      "detail": "15 nodes from 13 files",
+      "detail": "22 nodes from 20 files",
       "ms": 0,
       "stage": "rust"
     },
     {
-      "detail": "13 nodes annotated",
+      "detail": "20 nodes annotated",
       "ms": 0,
       "stage": "complexity"
     },
     {
-      "detail": "nodes=15 edges=27",
+      "detail": "nodes=22 edges=40",
       "ms": 0,
       "stage": "projection"
     }

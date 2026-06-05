@@ -18,6 +18,9 @@ pub mod c;
 // `cross` depends on the `helper` workspace member by SUBMODULE path; `derives`
 // depends on serde only through a qualified derive (see those files).
 pub mod cross;
+// `cycle_examples` — self-contained demo of which edge forms close a cycle and
+// which do not (uses/contains/reexports/super); see principles/rust/what-is-cycle.md.
+pub mod cycle_examples;
 pub mod derives;
 mod foo;
 

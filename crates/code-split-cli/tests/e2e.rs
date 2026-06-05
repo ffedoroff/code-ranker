@@ -253,7 +253,7 @@ fn rust_sample_scorecard_triage() {
     let (ok, stdout, stderr) = run_report_capture("rust", &["--output.scorecard"]);
     assert!(ok, "scorecard run failed: {stderr}");
     assert!(
-        stdout.contains("scorecard  (rust, 13 files)"),
+        stdout.contains("scorecard  (rust, 20 files)"),
         "header with file count: {stdout}"
     );
     assert!(
@@ -323,9 +323,9 @@ fn rust_sample_prompt_explicit_preset_top1() {
         stdout.contains("## Modules ordered by"),
         "metric ordering section: {stdout}"
     );
-    // lib.rs is the largest file in the sample (physical SLOC 25).
+    // lib.rs is the largest file in the sample (physical SLOC 26).
     assert!(
-        stdout.contains("- `src/lib.rs` (SLOC: 25)"),
+        stdout.contains("- `src/lib.rs` (SLOC: 26)"),
         "the single worst SLOC module: {stdout}"
     );
 }
