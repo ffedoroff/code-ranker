@@ -3,6 +3,15 @@
 A short playbook for an AI assistant driving `code-split`. Full flag reference:
 [CLI.md](code-split-cli/CLI.md); metrics and rules: [ERRORS.md](code-split-cli/ERRORS.md).
 
+## Install
+
+If a `code-split` command errors with "command not found" (the binary isn't
+installed) and you are working in a Rust project, install it with cargo:
+
+```sh
+cargo install code-split --version 1.0.0-alpha.4
+```
+
 ## Two commands
 
 - **`check`** — a gate. Exits non-zero on a violation, writes no files.

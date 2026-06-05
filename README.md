@@ -36,8 +36,8 @@ code-split always runs **entirely on your machine**. It makes **no network calls
 
 Then just ask, e.g.:
 
-- *"Read `ai-skill.md`. Find the worst dependency cycle in this project and propose a refactor that breaks it — show me the plan before changing code."*
-- *"Read `ai-skill.md`. Find the most complex / highest-HK file and analyze how to split it; explain what the split buys (lower coupling, smaller blast radius). Take a **before report**, apply the split, take an **after report**, and show me the **HTML diff**."*
+- *"Read `https://raw.githubusercontent.com/ffedoroff/code-split/main/docs/ai-skill.md`. Find the worst dependency cycle in this project and propose a refactor that breaks it — show me the plan before changing code."*
+- *"Read `https://raw.githubusercontent.com/ffedoroff/code-split/main/docs/ai-skill.md`. Find the most complex / highest-HK file and analyze how to split it; explain what the split buys for me (lower coupling, smaller blast radius). Take a **before report**, apply the split, take an **after report**, and show me the **HTML diff**."*
 
 The agent drives the CLI itself — `ai-skill.md` already spells out the commands and the loop, so no glue is needed.
 
