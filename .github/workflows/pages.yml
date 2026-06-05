@@ -32,12 +32,13 @@ jobs:
         # No prior build/test in this job, so $CARGO_HOME lacks the full dep
         # graph and offline metadata resolution fails. Fetch fills it first.
         run: cargo fetch --locked
-      - name: Generate HTML report into ./site
-        # Self-contained HTML → site/report.html (served at <pages-url>/report.html).
-        # Clean git metadata mapped from Actions vars (a detached checkout otherwise
-        # reports branch "HEAD" and counts job-written files as dirty). The JSON
-        # still goes to .code-split/ per code-split.toml; only the HTML is
-        # redirected into the Pages dir.
+      - name: Generate report into ./site
+        # Self-contained HTML → site/index.html, so the bare Pages URL
+        # (<pages-url>/) serves the report directly; the JSON snapshot →
+        # site/report.json (<pages-url>/report.json) for programmatic access /
+        # external baseline diffs. Clean git metadata mapped from Actions vars
+        # (a detached checkout otherwise reports branch "HEAD" and counts
+        # job-written files as dirty).
         run: |
           mkdir -p site
           cargo run -q -p code-split -- report . \
@@ -45,7 +46,8 @@ jobs:
             --git.commit="$GITHUB_SHA" \
             --git.dirty-files=0 \
             --git.origin="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            --output.html.path=site/report.html
+            --output.html.path=site/index.html \
+            --output.json.path=site/report.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v5
         with:

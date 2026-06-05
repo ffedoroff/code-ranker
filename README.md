@@ -80,6 +80,8 @@ Two commands: `check` (linter — exits non-zero on violations; with `--baseline
 
 No network, no analytics, no telemetry. Open in any browser, share as a file.
 
+**Live demo — code-split run on its own repo:** [interactive HTML report](https://ffedoroff.github.io/code-split/) · [JSON snapshot](https://ffedoroff.github.io/code-split/report.json) (regenerated on every push to `main`).
+
 ## Install
 
 **Package pages:** [crates.io](https://crates.io/crates/code-split) · [npm](https://www.npmjs.com/package/code-split) · [PyPI](https://pypi.org/project/code-split/) · [Docker Hub](https://hub.docker.com/r/fedoroff/code-split) · [GHCR](https://github.com/ffedoroff/code-split/pkgs/container/code-split)
