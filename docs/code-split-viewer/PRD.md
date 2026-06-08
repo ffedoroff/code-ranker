@@ -72,8 +72,10 @@ be shown and the state MUST round-trip through the URL (`dig=`).
 
 Cycle membership MUST be **visible at every level**: file nodes and edges in a
 dependency cycle are drawn red, and a collapsed group (crate/folder) is marked
-when it contains cycle members. Cycle data is sourced solely from the backend
-(`graph.cycles`); per-language thresholds are kept in
+when it contains cycle members. A **cycle filter** toggle (next to the size
+controls) MUST be able to reduce the map to only the nodes in a cycle and the
+edges between them (callers/dependencies clusters kept). Cycle data is sourced
+solely from the backend (`graph.cycles`); per-language thresholds are kept in
 `principles/<lang>/metric-thresholds.md`.
 
 **Rationale**: A flat per-file map does not scale to large workspaces. Semantic

@@ -52,6 +52,10 @@ function buildDOT(nodes, edges, level, viewport) {
   const activeDig  = drillGroup === null ? (window.dig || 0) : (window.drillDig ?? 0);
   const gOf        = grouperForDig(level, activeDig);
   const cycleOf    = window.CYCLES?.[level]?.nodeCycleStatus;
+  // Cycle filter: when on, keep only nodes that sit in a dependency cycle (and
+  // the edges between them); callers/dependencies clusters are kept as usual.
+  const cycleOnly  = !!window.cycleOnly;
+  const isCyc      = id => !!(cycleOf && cycleOf.has(id));
 
   let dot = 'digraph {\n';
   dot += '  rankdir=LR\n';
@@ -67,12 +71,14 @@ function buildDOT(nodes, edges, level, viewport) {
   } else {
     dot += '  node  [shape=box style=filled fontname="Helvetica" fontsize=11 margin="0.044,0.022" height=0 width=0]\n\n';
   }
+  dot += '  edge  [arrowsize=2]\n';   // bigger arrowheads (normalizeArrows keeps them constant on screen)
 
   // ── Group view: one node per group, deduped inter-group edges ─────────────────
   if (drillGroup === null) {
     const nodeGroup  = new Map();
     const groupNodes = new Map();
     for (const n of nodes) {
+      if (cycleOnly && !isCyc(n.id)) continue;   // cycle filter: drop non-cycle nodes
       const g = gOf(n);
       nodeGroup.set(n.id, g);
       if (!groupNodes.has(g)) groupNodes.set(g, []);
@@ -126,7 +132,7 @@ function buildDOT(nodes, edges, level, viewport) {
   }
 
   // ── Drilled file view: only files in the selected group ───────────────────────
-  const drillNodes = nodes.filter(n => gOf(n) === drillGroup);
+  const drillNodes = nodes.filter(n => gOf(n) === drillGroup && (!cycleOnly || isCyc(n.id)));
   const drillIds   = new Set(drillNodes.map(n => n.id));
   dot += '  newrank=true\n';
 

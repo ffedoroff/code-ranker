@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.drillGroup   = null;
   window.dig         = 0;   // relative LOD on the overview (see grouping.js)
   window.drillDig    = 0;
+  window.cycleOnly   = false;   // cycle filter (show only nodes in cycles)
 
   // Read the snapshots embedded inline in the page (cs-baseline / cs-current script tags).
   window.BASELINE = readEmbeddedSnapshot('cs-baseline');

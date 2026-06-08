@@ -37,11 +37,11 @@ g.node polygon, g.node ellipse { stroke-width: 1; }
 .svg-frame.side-baseline g.node:is(.cycle-status-baseline-only,.cycle-status-both) > ellipse,
 .svg-frame.side-current  g.node:is(.cycle-status-current-only,.cycle-status-both)  > polygon,
 .svg-frame.side-current  g.node:is(.cycle-status-current-only,.cycle-status-both)  > ellipse {
-  stroke: #c00 !important; stroke-width: 3 !important;
+  stroke: #c00 !important;   /* red, normal weight (the colour already marks it) */
 }
 .svg-frame.side-baseline g.edge:is(.cycle-status-baseline-only,.cycle-status-both) > path,
 .svg-frame.side-current  g.edge:is(.cycle-status-current-only,.cycle-status-both)  > path {
-  stroke: #c00 !important; stroke-width: 2.5 !important;
+  stroke: #c00 !important;   /* red, but normal weight — a thick line hid the arrowhead */
 }
 .svg-frame.side-baseline g.edge:is(.cycle-status-baseline-only,.cycle-status-both) > polygon,
 .svg-frame.side-current  g.edge:is(.cycle-status-current-only,.cycle-status-both)  > polygon {
@@ -112,7 +112,7 @@ g.node.node-selected > ellipse { fill: #fffde7 !important; stroke: #f9a825 !impo
 .svg-frame.side-baseline g.node.node-selected:is(.cycle-status-baseline-only,.cycle-status-both) > ellipse,
 .svg-frame.side-current  g.node.node-selected:is(.cycle-status-current-only,.cycle-status-both)  > polygon,
 .svg-frame.side-current  g.node.node-selected:is(.cycle-status-current-only,.cycle-status-both)  > ellipse {
-  stroke: #c00 !important; stroke-width: 3 !important;
+  stroke: #c00 !important;
 }
 /* Same selection highlight inside the per-node popup diagram (side + main cards). */
 #node-modal-diagram g[data-diag-node].diag-selected > rect,

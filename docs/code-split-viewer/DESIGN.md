@@ -74,7 +74,7 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 
 | File | Purpose |
 |------|---------|
-| `layout.js` | `buildDOT()` — emits the DOT for the map. Overview groups by `grouperForDig(level, window.dig)` (one node per group, deduped inter-group flow edges); each group box is labelled `name (memberCount)`, filled pink at the crate tier / white otherwise, and tagged `cycle-status-*` aggregated from its members. The drilled (focus) view filters to the focused group and renders per-file nodes (`name (fan_in+fan_out)`) with crate-relative dir sub-clusters plus **callers** (green) / **dependencies** (orange) neighbour clusters whose `edge-in`/`edge-out` edges are `constraint=false`. No `ratio=fill`/`size` (natural layout, packed spacing). Metric (SLOC/HK) sizing helpers live here too. |
+| `layout.js` | `buildDOT()` — emits the DOT for the map. Overview groups by `grouperForDig(level, window.dig)` (one node per group, deduped inter-group flow edges); each group box is labelled `name (memberCount)`, filled pink at the crate tier / white otherwise, and tagged `cycle-status-*` aggregated from its members. The drilled (focus) view filters to the focused group and renders per-file nodes (`name (fan_in+fan_out)`) with crate-relative dir sub-clusters plus **callers** (green) / **dependencies** (orange) neighbour clusters whose `edge-in`/`edge-out` edges are `constraint=false`. No `ratio=fill`/`size` (natural layout, packed spacing). The **cycle filter** (`window.cycleOnly`) drops every node not in a dependency cycle (keeping the edges between cycle nodes and the callers/dependencies clusters). Metric (SLOC/HK) sizing helpers live here too. |
 | `map-render.js` | `drawSVG()` (big-graph confirm guard, drilled views only) and `renderSVGNow()` (DOT→SVG via `window.gv`, then wires pan/zoom, the status bar, edge-highlight and tooltips); `normalizeArrows()` keeps arrowheads a constant on-screen size regardless of fit/zoom. |
 
 ### Map interactions
@@ -126,7 +126,7 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 
 | File | Purpose |
 |------|---------|
-| `index.html` | The shell: one `<header>` row (brand, title, two snapshot controls + a toggle), the single Files `.view` with `.frame-wrap` (svg frame, drill breadcrumb, **dig** control (`.dig-lod`) top-left, zoom/size controls, kbd legend), and the collapsible summary. |
+| `index.html` | The shell: one `<header>` row (brand, title, two snapshot controls + a toggle), the single Files `.view` with `.frame-wrap` (svg frame, drill breadcrumb, **dig** control (`.dig-lod`) top-left, zoom/size controls incl. a **cycle** filter toggle, kbd legend), and the collapsible summary. |
 | `base.css` · `map.css` · `modal.css` · `tables.css` · `export.css` · `snap.css` · `map-svg.css` | The former `index.css` split by concern; concatenated in `lib.rs` **in source order** into one inlined `<style>` (preserving the cascade, no extra requests → keeps the offline guarantee). `map-svg.css` holds the graphviz node/edge state rules: visibility toggles, **cycle red stroke** (side-gated), selection, hover, status bar and edge highlight. |
 
 ## Relative dig (level-of-detail)
@@ -199,9 +199,13 @@ Cycle members are drawn with a **red stroke**: `layout.js` emits the real
 and on **group nodes** the status is aggregated from members (`aggCycleStatus`) so
 the overview shows which crates/folders contain a cycle (with an `in cycle: N`
 count in the status bar). `map-svg.css` colours any non-`none` `cycle-status-*`
-node/edge red, side-gated by the `.svg-frame.side-*` marker. The per-node popup
-(`node-popup.js`) marks cycle nodes red the same way. The summary reports cycle
-counts per side.
+node/edge red (normal weight — the colour alone marks it), side-gated by the
+`.svg-frame.side-*` marker. An **edge** is red only when both endpoints share a
+cycle (`edgeCycleStatus`), so a link from a cycle node to a non-cycle node stays
+neutral. The per-node popup (`node-popup.js`) marks cycle nodes red the same way.
+The summary reports cycle counts per side. The **cycle filter** (`window.cycleOnly`,
+the `cycle` toggle by the size controls) reduces the map to only the cycle nodes
+and the edges between them (callers/dependencies clusters kept).
 
 ## Offline guarantee
 

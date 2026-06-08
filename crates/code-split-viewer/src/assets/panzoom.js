@@ -134,6 +134,15 @@ function setupPanZoom(frame, svg) {
       });
     });
 
+    // Cycle filter toggle: show only nodes in dependency cycles (+ connections).
+    wrap.querySelector('[data-filter="cycle"]')?.addEventListener('click', e => {
+      window.cycleOnly = !window.cycleOnly;
+      e.currentTarget.classList.toggle('active', window.cycleOnly);
+      document.querySelectorAll('.view').forEach(sec => { sec.dataset.rendered = 'false'; });
+      const active = document.querySelector('.view.active');
+      if (active && window.gv) renderView(active, { preserve: false });
+    });
+
     // Drill back button: return from file view to group view.
     wrap.querySelector('[data-drill="back"]')?.addEventListener('click', () => {
       const lv = wrap.closest('.view')?.dataset.view || 'files';
