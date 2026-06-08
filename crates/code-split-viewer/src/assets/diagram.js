@@ -817,12 +817,180 @@ function drillOutOfGroup(level) {
   if (active && window.gv) renderView(active, { preserve: false });
 }
 
+// Format a single status-bar line for a file node.
+function statusLineFor(node, level) {
+  const parts = [];
+  const name = node.name || node.id.split('/').pop() || node.id;
+  parts.push(name);
+  const path = (node.path || node.id || '').replace(/^\{[^}]+\}\//, '');
+  if (path && path !== name) parts.push(path);
+  const gk = levelUi(level)?.grouping?.key;
+  if (gk) {
+    const gv = nodeAttr(node, gk);
+    if (gv != null && gv !== '') parts.push(`${gk}: ${gv}`);
+  }
+  const hkV = nodeAttr(node, 'hk') ?? node.hk;
+  if (hkV != null) parts.push(`hk: ${fmtMetricShort(Number(hkV))}`);
+  const slocV = nodeAttr(node, 'sloc') ?? nodeAttr(node, 'loc') ?? node.sloc ?? node.loc;
+  if (slocV != null) parts.push(`sloc: ${fmtMetricShort(Number(slocV))}`);
+  if (node.fan_in  != null) parts.push(`fan-in: ${node.fan_in}`);
+  if (node.fan_out != null) parts.push(`fan-out: ${node.fan_out}`);
+  return parts.join('  ·  ');
+}
+
+// Format a single status-bar line for a group node.
+function statusLineForGroup(stats) {
+  const parts = [stats.name];
+  if (stats.files) parts.push(`files: ${stats.files}`);
+  if (stats.sloc > 0) parts.push(`sloc: ${fmtMetricShort(stats.sloc)}`);
+  if (stats.hk   > 0) parts.push(`hk: ${fmtMetricShort(stats.hk)}`);
+  return parts.join('  ·  ');
+}
+
+// Build edge-highlight behaviour: on node/cluster hover dim unrelated edges and
+// show connected ones; if IN/OUT cluster edges exceed 10, hide them until the
+// cluster zone is hovered. Must be called BEFORE setupTooltips (reads titles).
+function setupEdgeHighlight(svgFrame) {
+  const allEdgeEls = [...svgFrame.querySelectorAll('g.edge')];
+  const allNodeEls = [...svgFrame.querySelectorAll('g.node')];
+  if (allEdgeEls.length === 0) return;
+
+  const sb = svgFrame._statusBar;
+  const showSB = text => { if (sb) { sb.textContent = text; sb.hidden = false; } };
+  const hideSB = ()   => { if (sb) { sb.hidden = true; sb.textContent = ''; } };
+
+  // Classify IN/OUT edges by the DOT class attribute written in layout.js.
+  // Using CSS classes instead of \x01 prefix in edge titles because the HTML
+  // parser strips U+0001 control chars when setting innerHTML.
+  const inEdges  = allEdgeEls.filter(e => e.classList.contains('edge-in'));
+  const outEdges = allEdgeEls.filter(e => e.classList.contains('edge-out'));
+
+  // Build nodeId → Set<edgeEl> from edge titles ("src->tgt").
+  const edgeMap = new Map();
+  for (const edgeEl of allEdgeEls) {
+    const title = edgeEl.querySelector('title')?.textContent?.trim() ?? '';
+    const sep   = title.indexOf('->');
+    if (sep < 0) continue;
+    const src = title.slice(0, sep);
+    const tgt = title.slice(sep + 2);
+    for (const id of [src, tgt]) {
+      if (!edgeMap.has(id)) edgeMap.set(id, new Set());
+      edgeMap.get(id).add(edgeEl);
+    }
+  }
+
+  // ── Shared helpers ───────────────────────────────────────────────────────────
+  const applyHighlight = connected => {
+    svgFrame.classList.add('node-hovered');
+    for (const e of allEdgeEls) {
+      e.classList.remove('edge-connected', 'edge-dim');
+      if (connected.has(e)) e.classList.add('edge-connected');
+      else                   e.classList.add('edge-dim');
+    }
+  };
+  const clearHighlight = () => {
+    svgFrame.classList.remove('node-hovered');
+    for (const e of allEdgeEls) e.classList.remove('edge-connected', 'edge-dim');
+  };
+
+  // ── Cluster highlight: hover on cluster background highlights all its edges ──
+  // Graphviz SVG uses generated ids (clust1, clust2, …) — the subgraph name is
+  // only in the cluster's <title> child. Nodes are NOT inside cluster <g>s.
+  // cluster_in  → inEdges (class="edge-in" set in layout.js DOT attributes)
+  // cluster_out → outEdges (class="edge-out")
+  // cluster_N   → directory sub-cluster; label = dir path; match edgeMap keys
+  const clusterData = new Map();
+  let clusterInEl = null, clusterOutEl = null;
+
+  for (const clusterEl of svgFrame.querySelectorAll('g.cluster')) {
+    const cTitle = clusterEl.querySelector('title')?.textContent?.trim() || '';
+    const label  = clusterEl.querySelector('text')?.textContent?.trim()  || '';
+
+    let edges, nc;
+    if (cTitle === 'cluster_in') {
+      clusterInEl = clusterEl;
+      edges = new Set(inEdges);
+      nc = inEdges.length;
+    } else if (cTitle === 'cluster_out') {
+      clusterOutEl = clusterEl;
+      edges = new Set(outEdges);
+      nc = outEdges.length;
+    } else {
+      // Directory sub-cluster: label is the dir path (or '_root' for top-level).
+      const matchIds = [...edgeMap.keys()].filter(k => {
+        const s = k.replace(/^\{[^}]+\}\//, '');
+        const dir = s.lastIndexOf('/') > 0 ? s.slice(0, s.lastIndexOf('/')) : '_root';
+        return dir === label;
+      });
+      edges = new Set();
+      for (const id of matchIds) {
+        for (const e of (edgeMap.get(id) ?? new Set())) edges.add(e);
+      }
+      nc = matchIds.length;
+    }
+
+    const ec = edges.size;
+    const statusText = [label,
+      nc ? `${nc} node${nc !== 1 ? 's' : ''}` : '',
+      ec ? `${ec} edge${ec !== 1 ? 's' : ''}` : '',
+    ].filter(Boolean).join('  ·  ');
+    clusterData.set(clusterEl, { edges, statusText });
+
+    clusterEl.addEventListener('mouseenter', () => { applyHighlight(edges); showSB(statusText); });
+    clusterEl.addEventListener('mouseleave', () => { clearHighlight(); hideSB(); });
+  }
+
+  // ── Hide IN/OUT edges when combined total > 10; reveal on cluster zone hover ──
+  // Both are hidden or both are shown — no asymmetry between in and out.
+  const hideInOut = inEdges.length + outEdges.length > 10;
+  const hideIn = hideInOut, hideOut = hideInOut;
+  if (hideInOut) {
+    inEdges.forEach(e  => e.classList.add('cluster-edge-hidden'));
+    outEdges.forEach(e => e.classList.add('cluster-edge-hidden'));
+  }
+
+  // Use the cluster elements found by title above (ids are generated: clust1, …)
+  if (hideIn && clusterInEl) {
+    clusterInEl.addEventListener('mouseenter', () => svgFrame.classList.add('show-in-edges'));
+    clusterInEl.addEventListener('mouseleave', () => svgFrame.classList.remove('show-in-edges'));
+  }
+  if (hideOut && clusterOutEl) {
+    clusterOutEl.addEventListener('mouseenter', () => svgFrame.classList.add('show-out-edges'));
+    clusterOutEl.addEventListener('mouseleave', () => svgFrame.classList.remove('show-out-edges'));
+  }
+
+  // ── Node hover ───────────────────────────────────────────────────────────────
+  for (const nodeEl of allNodeEls) {
+    const nodeId = nodeEl.querySelector('title')?.textContent?.trim();
+    if (!nodeId) continue;
+
+    nodeEl.addEventListener('mouseenter', () => {
+      applyHighlight(edgeMap.get(nodeId) ?? new Set());
+      // Status bar is updated by setupTooltips handlers (fire after these).
+    });
+
+    nodeEl.addEventListener('mouseleave', e => {
+      // When moving back to a cluster background re-apply cluster highlight;
+      // otherwise clear. setupTooltips mouseleave is registered after ours and
+      // will skip hideStatus when relatedTarget is inside a cluster.
+      const destCluster = e.relatedTarget?.closest?.('g.cluster');
+      const cd = destCluster ? clusterData.get(destCluster) : null;
+      if (cd) { applyHighlight(cd.edges); showSB(cd.statusText); }
+      else    clearHighlight();
+    });
+  }
+}
+
 function setupTooltips(svgFrame, level) {
   svgFrame.querySelectorAll('g.edge title, g.cluster title').forEach(t => t.remove());
 
   const drillGroup = window.drillGroup || null;
   const section    = svgFrame.closest('.view');
   const gNodeMap   = new Map();
+
+  const sb = svgFrame._statusBar;
+  const showStatus = text => { if (sb) { sb.textContent = text; sb.hidden = false; } };
+  const hideStatus = ()   => { if (sb) { sb.hidden = true; sb.textContent = ''; } };
 
   if (drillGroup !== null) {
     // ── Drilled file view: wire up individual file nodes ─────────────────────────
@@ -844,8 +1012,14 @@ function setupTooltips(svgFrame, level) {
           e.stopPropagation();
           drillIntoGroup(neighborGroup, level);
         });
-        g.addEventListener('mouseenter', () => g.classList.add('node-hl'));
-        g.addEventListener('mouseleave', () => g.classList.remove('node-hl'));
+        g.addEventListener('mouseenter', () => {
+          g.classList.add('node-hl');
+          showStatus((neighborPrefix === 'IN\x01' ? '← ' : '→ ') + neighborGroup);
+        });
+        g.addEventListener('mouseleave', e => {
+          g.classList.remove('node-hl');
+          if (!e.relatedTarget?.closest?.('g.cluster')) hideStatus();
+        });
         return;
       }
 
@@ -871,11 +1045,13 @@ function setupTooltips(svgFrame, level) {
         g.classList.add('node-hl');
         section?.querySelector(`tr[data-node-id="${nodeId.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"]`)
                 ?.classList.add('row-hl');
+        showStatus(statusLineFor(node, level));
       });
-      g.addEventListener('mouseleave', () => {
+      g.addEventListener('mouseleave', e => {
         g.classList.remove('node-hl');
         section?.querySelector(`tr[data-node-id="${nodeId.replace(/\\/g,'\\\\').replace(/"/g,'\\"')}"]`)
                 ?.classList.remove('row-hl');
+        if (!e.relatedTarget?.closest?.('g.cluster')) hideStatus();
       });
     });
 
@@ -908,8 +1084,14 @@ function setupTooltips(svgFrame, level) {
         e.stopPropagation();
         drillIntoGroup(groupId, level);
       });
-      g.addEventListener('mouseenter', () => g.classList.add('node-hl'));
-      g.addEventListener('mouseleave', () => g.classList.remove('node-hl'));
+      g.addEventListener('mouseenter', () => {
+        g.classList.add('node-hl');
+        showStatus(statusLineForGroup(stats));
+      });
+      g.addEventListener('mouseleave', e => {
+        g.classList.remove('node-hl');
+        if (!e.relatedTarget?.closest?.('g.cluster')) hideStatus();
+      });
     });
   }
 
@@ -963,6 +1145,18 @@ function renderSVGNow(svgFrame, nodes, edges, level) {
     svg.setAttribute('height', '100%');
     svg.style.display = 'block';
     setupPanZoom(svgFrame, svg);
+    // Status bar: one persistent element per frame-wrap, reused across re-renders.
+    const fw = svgFrame.parentElement;
+    let statusBar = fw.querySelector(':scope > .svg-status-bar');
+    if (!statusBar) {
+      statusBar = document.createElement('div');
+      statusBar.className = 'svg-status-bar';
+      fw.appendChild(statusBar);
+    }
+    statusBar.hidden = true;
+    statusBar.textContent = '';
+    svgFrame._statusBar = statusBar;
+    setupEdgeHighlight(svgFrame);   // reads titles before setupTooltips removes them
     setupTooltips(svgFrame, level);
   }
 }

@@ -669,3 +669,54 @@ g.node.node-selected > ellipse { fill: #fffde7 !important; stroke: #f9a825 !impo
 .node-table tr.row-hl td { background: rgb(210,235,248); }
 .node-table tr.row-hl td[data-col="name"] { background: rgb(210,235,248); }
 g.node.node-hl { filter: drop-shadow(0 0 28px rgba(30,160,220,1)) drop-shadow(0 0 14px rgba(30,160,220,.85)) drop-shadow(0 0 6px rgba(30,160,220,.6)); }
+
+/* ── SVG status bar (bottom of frame-wrap, replaces tooltip on map nodes) ─── */
+.svg-status-bar {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 15;
+  background: rgba(28, 42, 57, 0.90);
+  color: #c8d8e8; font-family: ui-monospace, 'SF Mono', monospace; font-size: 11px;
+  padding: 4px 72px 4px 12px;   /* right pad: avoid zoom-controls */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
+  border-top: 1px solid rgba(255,255,255,.10);
+}
+/* The bar is toggled with the `hidden` attribute; no extra display rule needed. */
+
+/* ── SVG edge hover / cluster edge visibility ─────────────────────────────── */
+/* Base transition so all opacity changes animate smoothly */
+.svg-frame g.edge > path,
+.svg-frame g.edge > polygon,
+.svg-frame g.edge > text { transition: opacity 0.12s; }
+
+/* Cluster IN/OUT edges (>10): hidden until cluster zone is hovered */
+.svg-frame g.edge.cluster-edge-hidden > path,
+.svg-frame g.edge.cluster-edge-hidden > polygon,
+.svg-frame g.edge.cluster-edge-hidden > text {
+  opacity: 0; pointer-events: none;
+}
+/* Cluster zone hover reveals them */
+.svg-frame.show-in-edges  g.edge.edge-in.cluster-edge-hidden  > path,
+.svg-frame.show-in-edges  g.edge.edge-in.cluster-edge-hidden  > polygon,
+.svg-frame.show-in-edges  g.edge.edge-in.cluster-edge-hidden  > text,
+.svg-frame.show-out-edges g.edge.edge-out.cluster-edge-hidden > path,
+.svg-frame.show-out-edges g.edge.edge-out.cluster-edge-hidden > polygon,
+.svg-frame.show-out-edges g.edge.edge-out.cluster-edge-hidden > text {
+  opacity: 1; pointer-events: auto;
+}
+/* Node hover: dim non-connected edges */
+.svg-frame.node-hovered g.edge.edge-dim > path,
+.svg-frame.node-hovered g.edge.edge-dim > polygon,
+.svg-frame.node-hovered g.edge.edge-dim > text { opacity: 0.06; }
+/* Node hover: keep non-connected cluster-hidden edges fully hidden
+   (higher specificity than the cluster-zone show rule) */
+.svg-frame.node-hovered g.edge.cluster-edge-hidden.edge-dim > path,
+.svg-frame.node-hovered g.edge.cluster-edge-hidden.edge-dim > polygon,
+.svg-frame.node-hovered g.edge.cluster-edge-hidden.edge-dim > text {
+  opacity: 0; pointer-events: none;
+}
+/* Node hover: show connected edges at full opacity (overrides cluster-hidden) */
+.svg-frame.node-hovered g.edge.edge-connected > path,
+.svg-frame.node-hovered g.edge.edge-connected > polygon,
+.svg-frame.node-hovered g.edge.edge-connected > text {
+  opacity: 1; pointer-events: auto;
+}

@@ -11,11 +11,12 @@ plugin = "rust"
 # {project-dir}, {ts}, {git-hash}, {git-hash-N} (first N chars of the commit).
 # Built-in defaults if unset: .code-split/{ts}-{git-hash-3}.{json,html}.
 [output.json]
-path = ".code-split/{project-dir}-{ts}.json"
-# enabled = true
+# path = ".code-split/{project-dir}-{ts}.json"
+enabled = false
 
 [output.html]
-path = ".code-split/{project-dir}-{ts}.html"
+# path = ".code-split/{project-dir}-{ts}.html"
+path = ".code-split/{project-dir}.html"
 # enabled = true
 
 # ── Ignore filters (applied before cycles/metrics) ───────────────────────────

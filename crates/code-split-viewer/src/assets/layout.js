@@ -190,20 +190,22 @@ function buildDOT(nodes, edges, level, viewport) {
 
   const IN_EDGE_COLOR  = '#88bb88';
   const OUT_EDGE_COLOR = '#ccaa77';
+  const IN_FILL        = '#edf7ed';
+  const OUT_FILL       = '#fdf3e3';
 
   // Node style for external group boxes in the neighbor clusters
   // Always boxes regardless of metric mode — fixedsize/width from global node default must be reset.
-  const extNode = (g, borderColor) =>
-    `[label=${dotId(g)} fillcolor="#d8e8f0" color="${borderColor}" shape=box style=filled fixedsize=false fontname="Helvetica" fontsize=11]`;
+  const extNode = (g, borderColor, fillColor) =>
+    `[label=${dotId(g)} fillcolor="${fillColor}" color="${borderColor}" shape=box style=filled fixedsize=false fontname="Helvetica" fontsize=11]`;
   const inNodeId  = g => 'IN\x01' + g;
   const outNodeId = g => 'OUT\x01' + g;
 
   // Left cluster — callers of this group
   if (inGrpFiles.size > 0) {
     dot += `  subgraph cluster_in {\n`;
-    dot += `    label="callers" style=filled fillcolor="#edf7ed" color="#88bb88" fontcolor="#447744" fontname="Helvetica" fontsize=10\n`;
+    dot += `    label="callers" style=filled fillcolor="${IN_FILL}" color="#88bb88" fontcolor="#447744" fontname="Helvetica" fontsize=10\n`;
     for (const g of inGrpFiles.keys())
-      dot += `    ${dotId(inNodeId(g))} ${extNode(g, IN_EDGE_COLOR)}\n`;
+      dot += `    ${dotId(inNodeId(g))} ${extNode(g, IN_EDGE_COLOR, IN_FILL)}\n`;
     dot += '  }\n';
   }
 
@@ -226,9 +228,9 @@ function buildDOT(nodes, edges, level, viewport) {
   // Right cluster — dependencies of this group
   if (outGrpFiles.size > 0) {
     dot += `  subgraph cluster_out {\n`;
-    dot += `    label="dependencies" style=filled fillcolor="#fdf3e3" color="#ccaa77" fontcolor="#886633" fontname="Helvetica" fontsize=10\n`;
+    dot += `    label="dependencies" style=filled fillcolor="${OUT_FILL}" color="#ccaa77" fontcolor="#886633" fontname="Helvetica" fontsize=10\n`;
     for (const g of outGrpFiles.keys())
-      dot += `    ${dotId(outNodeId(g))} ${extNode(g, OUT_EDGE_COLOR)}\n`;
+      dot += `    ${dotId(outNodeId(g))} ${extNode(g, OUT_EDGE_COLOR, OUT_FILL)}\n`;
     dot += '  }\n';
   }
 
@@ -259,18 +261,18 @@ function buildDOT(nodes, edges, level, viewport) {
   for (const [g, files] of inGrpFiles) {
     const src = dotId(inNodeId(g));
     for (const fid of files)
-      dot += `  ${src} -> ${dotId(fid)} [color="${IN_EDGE_COLOR}" style="solid"]\n`;
+      dot += `  ${src} -> ${dotId(fid)} [color="${IN_EDGE_COLOR}" style="solid" class="edge-in"]\n`;
     // If this group is also an outbound group (both roles), draw those edges too
     if (outGrpFiles.has(g)) {
       for (const fid of outGrpFiles.get(g))
-        dot += `  ${dotId(fid)} -> ${src} [color="${IN_EDGE_COLOR}" style="solid"]\n`;
+        dot += `  ${dotId(fid)} -> ${src} [color="${IN_EDGE_COLOR}" style="solid" class="edge-in"]\n`;
     }
   }
   // Our file → outbound group
   for (const [g, files] of outGrpFiles) {
     const tgt = dotId(outNodeId(g));
     for (const fid of files)
-      dot += `  ${dotId(fid)} -> ${tgt} [color="${OUT_EDGE_COLOR}" style="solid"]\n`;
+      dot += `  ${dotId(fid)} -> ${tgt} [color="${OUT_EDGE_COLOR}" style="solid" class="edge-out"]\n`;
   }
 
   dot += '}';

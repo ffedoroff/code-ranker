@@ -443,16 +443,9 @@ function setupTooltip() {
     // A node on the main map (SVG `g.node` tagged with its id in setupTooltips):
     // show its basic fields. Native graphviz `<title>` is removed there, so this
     // is the only tooltip on the map.
-    const mapGroup = e.target.closest('g.node[data-group-id]');
-    if (mapGroup?.dataset.groupStats) {
-      return { el: mapGroup, html: renderGroupTooltip(JSON.parse(mapGroup.dataset.groupStats)) };
-    }
-    const mapNode = e.target.closest('g.node[data-node-id]');
-    if (mapNode) {
-      const lv = mapNode.closest('[data-view]')?.dataset.view || 'files';
-      const n  = activeGraph(lv)?.nodes.find(x => x.id === mapNode.dataset.nodeId);
-      return n ? { el: mapNode, html: renderNodeTooltip(n, lv) } : null;
-    }
+    // SVG map nodes use the status bar instead of the #tt tooltip.
+    if (e.target.closest('g.node[data-group-id]')) return null;
+    if (e.target.closest('g.node[data-node-id]'))  return null;
     const cellTt  = e.target.closest('[data-tt]');
     const cellTip = e.target.closest('[data-tip]');
     const cellNum = e.target.closest('td[data-col]');
