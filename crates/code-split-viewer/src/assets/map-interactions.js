@@ -71,11 +71,12 @@ window.kbdHintsHtml = kbdHintsHtml;
   window.addEventListener('blur', () => { setShift(false); setSrc(false); });
 })();
 
-function drillIntoGroup(groupId, level) {
+function drillIntoGroup(groupId, level, dig) {
   window.drillGroup = groupId;
   // The drilled view filters by the grouper that produced this group key, so
-  // remember the zoom that was active at drill time.
-  window.drillDig  = window.dig || 0;
+  // remember the dig it came from — caller may override (a crate cluster drills
+  // into the whole crate → crate-tier grouper, dig 0).
+  window.drillDig  = (dig != null) ? dig : (window.dig || 0);
   const frameWrap = document.querySelector(`.view[data-view="${level}"] .frame-wrap`);
   const bc = frameWrap?.querySelector('.drill-breadcrumb');
   if (bc) {
@@ -358,6 +359,14 @@ function setupEdgeHighlight(svgFrame, level) {
         for (const e of (edgeMap.get(id) ?? new Set())) edges.add(e);
       }
       nc = matchIds.length;
+      // Clicking the crate container (not a folder box inside it) drills into the
+      // whole crate — crate-tier grouper, so the focus shows all its files.
+      clusterEl.style.cursor = 'pointer';
+      clusterEl.addEventListener('click', e => {
+        if (e.target.closest('g.node')) return;   // a folder box handles its own click
+        e.stopPropagation();
+        drillIntoGroup(label, level, 0);
+      });
     } else {
       // Directory sub-cluster: label is the full workspace-relative dir
       // ("/libs/modkit-odata-macros/src") — must match layout.js's dirOf.

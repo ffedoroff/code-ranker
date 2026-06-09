@@ -170,7 +170,9 @@ drills into it**: the map re-renders showing only that group's files in
 directory sub-clusters, plus two neighbor clusters — **callers** (left, green
 background) listing other groups whose files call into this group, and
 **dependencies** (right, orange background) listing groups this group calls
-out to; clicking a neighbor group navigates into it. A `← all` breadcrumb
+out to; clicking a neighbor group navigates into it. When digging in (folder
+groups wrapped in crate clusters), clicking a folder box drills into that folder
+while clicking the crate cluster around it drills into the whole crate. A `← all` breadcrumb
 badge (top-left of the diagram) returns to the group overview. The drill
 state is reflected in the `group=` URL parameter so browser Back / Forward /
 Refresh work correctly; mode changes update the URL via `replaceState`.
