@@ -118,6 +118,19 @@ function groupKeyAtDig(level, n, dig) {
   return keep.length ? keep.join('/') : '_root';
 }
 
+// How many group boxes the overview would show at a given dig level — the count
+// of distinct group keys over the level's nodes. Used to preview the result of
+// digging in/out under the dig control's +/- buttons. Returns null when the dig
+// is out of range (so the caller can blank a disabled button's count).
+function groupCountAtDig(level, dig) {
+  const d = dig | 0;
+  if (d > DIG_MAX || d < -maxCrateDepth(level)) return null;
+  const keys = new Set();
+  for (const n of (unionGraph(level).nodes || [])) keys.add(groupKeyAtDig(level, n, d));
+  return keys.size;
+}
+window.groupCountAtDig = groupCountAtDig;
+
 // A `groupOf(node)` closure for a given dig level. grouperForDig(level, 0)
 // reproduces the legacy per-crate grouping.
 function grouperForDig(level, dig) {
@@ -125,12 +138,12 @@ function grouperForDig(level, dig) {
 }
 window.grouperForDig = grouperForDig;
 
-// Display label for a group node's box:
+// Display label for a group node's box: the FULL folder path from the workspace
+// root with a leading slash (e.g. `/crates/code-split-viewer/src/config`), never
+// just `/src` or a leaf segment.
 //  • dig 0 (crate tier): the crate value.
-//  • dig IN (dig > 0): the folder path UNDER THE CRATE with a leading slash,
-//    including the common source prefix absorbed into the crate root — so a group
-//    keyed `crate/services` reads `/src/services`, not just `services`.
-//  • otherwise (dig < 0 collapse, or non-crate levels): the leaf path segment.
+//  • dig IN (dig > 0): crate dir + absorbed source prefix + the folders under it.
+//  • dig OUT (dig < 0 collapse): the collapsed crate-dir path (already full).
 function groupLabel(level, key, dig) {
   const d = dig | 0;
   if (d > 0) {
@@ -140,9 +153,10 @@ function groupLabel(level, key, dig) {
     const root    = crateRoots(level).get(crate) || [];
     const crateD  = crateDirs(level).dirOf.get(crate) || [];
     const srcTail = root.slice(crateD.length);   // e.g. ['src'] absorbed into the crate root
-    const full    = [...srcTail, ...under];       // crate-root files → just ['src'] → "/src"
+    const full    = [...crateD, ...srcTail, ...under];   // FULL path from the workspace root
     return full.length ? '/' + full.join('/') : key;
   }
+  if (d < 0) return key;   // dig OUT: full folder path, not the leaf segment
   return key.includes('/') ? key.slice(key.lastIndexOf('/') + 1) : key;
 }
 window.groupLabel = groupLabel;
@@ -162,6 +176,16 @@ function crateRelDir(level, n) {
   return rel.length ? '/' + rel.join('/') : '/';
 }
 window.crateRelDir = crateRelDir;
+
+// A node's full workspace-relative directory path with a leading slash
+// (e.g. "/libs/modkit-odata-macros/src"); "/" for a file at the workspace root.
+// Used for the drilled-view directory sub-cluster labels so they read in full
+// rather than just the crate-relative tail.
+function nodeFullDir(n) {
+  const segs = relPathOf(n.id).split('/').slice(0, -1);   // drop the filename
+  return segs.length ? '/' + segs.join('/') : '/';
+}
+window.nodeFullDir = nodeFullDir;
 
 // Aggregate the per-node cycle statuses of a group's members into one status for
 // the group node (used to red-stroke groups that contain a dependency cycle).

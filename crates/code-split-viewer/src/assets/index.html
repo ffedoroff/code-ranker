@@ -48,9 +48,18 @@
          crates into folders) / + dig in (descend into folders within crates).
          Top-left next to the map; shown in the overview, hidden while drilled. -->
     <div class="dig-lod" id="dig-lod-files">
-      <button class="dig-lod-btn" type="button" data-lod="out" title="Dig out — collapse the deepest crates into folders">−</button>
-      <span class="dig-lod-val">crate</span>
-      <button class="dig-lod-btn" type="button" data-lod="in" title="Dig in — descend into folders within crates">+</button>
+      <div class="dig-lod-col">
+        <button class="dig-lod-btn" type="button" data-lod="out" title="Dig out — collapse the deepest crates into folders">−</button>
+        <span class="dig-lod-count" data-count="out"></span>
+      </div>
+      <div class="dig-lod-col">
+        <span class="dig-lod-val">crate</span>
+        <span class="dig-lod-count" data-count="cur"></span>
+      </div>
+      <div class="dig-lod-col">
+        <button class="dig-lod-btn" type="button" data-lod="in" title="Dig in — descend into folders within crates">+</button>
+        <span class="dig-lod-count" data-count="in"></span>
+      </div>
     </div>
     <div class="size-controls">
       <div class="size-row" data-row="metric">

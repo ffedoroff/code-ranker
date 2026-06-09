@@ -66,7 +66,7 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 | File | Purpose |
 |------|---------|
 | `schema.js` | The single data-access layer over the snapshot dictionaries (readers for `node_attributes` / `edge_kinds` / `node_kinds` / `cycle_kinds` / `attribute_groups` / `ui` / `presets`, plus `evalCalc`/`calcDisplay`). |
-| `grouping.js` | The **grouping ladder** for relative dig: `grouperForDig(level, dig)` / `groupKeyAtDig` (dig 0 = crate tier; +N folders under the crate; −N progressive deepest-first collapse via `crateRoots`/`crateDirs`/`maxCrateDepth`), plus `groupLabel` (box label), `crateRelDir` (drilled sub-cluster / neighbour labels), `aggCycleStatus`, `clampDig`. Derives every tier from file-id paths + the crate attribute — no extra backend data. |
+| `grouping.js` | The **grouping ladder** for relative dig: `grouperForDig(level, dig)` / `groupKeyAtDig` (dig 0 = crate tier; +N folders under the crate; −N progressive deepest-first collapse via `crateRoots`/`crateDirs`/`maxCrateDepth`), plus `groupLabel` (box label — the **full** folder path: crate dir + absorbed source dir + folders when digging in, the collapsed crate-dir path when digging out), `groupCountAtDig` (group-box count at a dig level — powers the dig-control +/- previews), `nodeFullDir` (full workspace-relative dir of a node, e.g. `/crates/foo/src` — drilled sub-cluster labels), `crateRelDir` (crate-relative dir for neighbour labels), `aggCycleStatus`, `clampDig`. Derives every tier from file-id paths + the crate attribute — no extra backend data. |
 | `diff.js` | Browser-side diff: `computeDiff()` (node/edge status), `computeCycles()` (reads cycle membership **solely** from the backend `graph.cycles`; derives per-side status + `edgeCycleStatus`), `computeMeta()`. |
 | `utils.js` | Shared formatting/escaping/DOM helpers (`fmtNum`, `fmtFull`, `fmtDate`, `escHtml`, …). |
 
@@ -74,14 +74,14 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 
 | File | Purpose |
 |------|---------|
-| `layout.js` | `buildDOT()` — emits the DOT for the map. Overview groups by `grouperForDig(level, window.dig)` (one node per group, deduped inter-group flow edges); each group box is labelled `name (memberCount)`, filled pink at the crate tier / white otherwise, and tagged `cycle-status-*` aggregated from its members. The drilled (focus) view filters to the focused group and renders per-file nodes (`name (fan_in+fan_out)`) with crate-relative dir sub-clusters plus **callers** (green) / **dependencies** (orange) neighbour clusters whose `edge-in`/`edge-out` edges are `constraint=false`. Only **flow** edges are drawn/counted on the map (internal edges, neighbour discovery and the overview all guard on `edgeIsFlow`); non-flow `contains`/`reexports` links are shown only in the popup. No `ratio=fill`/`size` (natural layout, packed spacing). The **cycle filter** (`window.cycleOnly`) drops every node not in a dependency cycle (keeping the edges between cycle nodes and the callers/dependencies clusters). Metric (SLOC/HK) sizing helpers live here too. |
+| `layout.js` | `buildDOT()` — emits the DOT for the map. Overview groups by `grouperForDig(level, window.dig)` (one node per group, deduped inter-group flow edges); each group box is labelled `fullPath (memberCount)` and tagged `cycle-status-*` aggregated from its members. Box fill: pink at the crate tier, white otherwise; metric **circles are always filled** — red at the crate tier, blue (`N_FILL`) otherwise (never empty white). At **dig in** (`dig > 0`) with crate grouping the folder-group boxes are wrapped in a labelled **crate cluster** (`subgraph cluster_crate_N`, faint-pink) so folders read as inside their crate; dig 0 / dig out stay flat. The drilled (focus) view filters to the focused group and renders per-file nodes (label = file **name** only) with **full-path** dir sub-clusters (`nodeFullDir`, e.g. `/crates/foo/src`) plus **callers** (green) / **dependencies** (orange) neighbour clusters whose `edge-in`/`edge-out` edges are `constraint=false`. Only **flow** edges are drawn/counted on the map (internal edges, neighbour discovery and the overview all guard on `edgeIsFlow`); non-flow `contains`/`reexports` links are shown only in the popup. No `ratio=fill`/`size` (natural layout, packed spacing); edges carry `arrowsize=0.6` (smaller arrowheads, which otherwise read oversized once the viewBox scales up on sparse graphs). The **cycle filter** (`window.cycleOnly`) drops every node not in a dependency cycle (keeping the edges between cycle nodes and the callers/dependencies clusters). Metric (SLOC/HK) sizing helpers live here too. |
 | `map-render.js` | `drawSVG()` (big-graph confirm guard, drilled views only) and `renderSVGNow()` (DOT→SVG via `window.gv`, then wires pan/zoom, the status bar, edge-highlight and tooltips). |
 
 ### Map interactions
 
 | File | Purpose |
 |------|---------|
-| `map-interactions.js` | All behaviour on the main SVG map: node selection + the platform open-source modifier (`isOpenSrcClick`, ⌘/Ctrl), the shortcut legend (`kbdHintsHtml`), **drill** nav (`drillIntoGroup`/`drillOutOfGroup`) and **relative-dig** (`setDig`/`updateDigLabel`), the status bar (`statusLineFor`/`statusLineForGroup`), `setupEdgeHighlight(svgFrame, level)` (must run **before** `setupTooltips`, which removes SVG `<title>`s; the green/orange in/out connectors are hidden by default and revealed only on cluster/node hover), `setupTooltips`. |
+| `map-interactions.js` | All behaviour on the main SVG map: node selection + the platform open-source modifier (`isOpenSrcClick`, ⌘/Ctrl), the shortcut legend (`kbdHintsHtml`), **drill** nav (`drillIntoGroup`/`drillOutOfGroup`) and **relative-dig** (`setDig`/`updateDigLabel` — the dig control shows `/crate/folder±N`, with `groupCountAtDig` previews of the resulting group count under the −/current/+ slots, and disables `+` once digging deeper no longer splits anything), the status bar (`computeGroupStats` → `statusLineFor`/`statusLineForGroup`: group/neighbour lines carry the full path, **folders** count and files/sloc/hk/cycle; hovering a caller/dependency neighbour box shows the same crate-style stats), `setupEdgeHighlight(svgFrame, level)` (must run **before** `setupTooltips`, which removes SVG `<title>`s; the green/orange in/out connectors are hidden by default and revealed only on cluster/node hover; `cluster_crate_*` overview clusters highlight all edges of the groups inside them), `setupTooltips`. |
 | `panzoom.js` | `setupPanZoom()` — viewBox drag-to-pan, +/−/fit/fullscreen buttons, the SLOC/HK metric-size row, the drill-back button, and the **zoom-lod** (−/+) buttons that call `setZoom`. |
 
 ### Node modal / popup
@@ -89,7 +89,7 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 | File | Purpose |
 |------|---------|
 | `modal.js` | `getModal()`/`closeModal()` overlay shell; delegated copy/select handlers; Esc/Space keys; mirrors the map's ⌘/Shift gestures inside the popup diagram; `setModalDiagram` re-attaches the shortcut legend. |
-| `node-popup.js` | `buildDiagramSVG()` — the per-node neighbourhood SVG (deduped fan-in/fan-out cards, every edge kind, abbreviated side-card metrics, cycle red, selection highlight, column budget + scroll) and `markPopupSelected()`. A neighbour linked only through non-flow edges (`contains`/`reexports`, not counted in fan_in/fan_out) gets a **dashed** card outline. |
+| `node-popup.js` | `buildDiagramSVG()` — the per-node neighbourhood SVG (deduped fan-in/fan-out cards, every edge kind, abbreviated side-card metrics, cycle red, selection highlight, column budget + scroll) and `markPopupSelected()`. A neighbour linked only through non-flow edges (`contains`/`reexports`, not counted in fan_in/fan_out) gets a **dashed** card outline. A **cross-crate** neighbour (its grouping value differs from the main node's) is tinted to match the map's clusters — green fill for callers (fan-in), yellow for dependencies (fan-out); same-crate cards stay neutral, externals grey. Each card's hover tooltip shows the file name (title) + `crate:` and `path:` rows (the path with the `{token}` root marker stripped, leading slash kept → `/foo/bar`). |
 | `modal-content.js` | `buildModalContent()` — the modal's left field-table HTML (verbatim values via `fmtFull`, a git-host **Source** row, schema-driven metric rows/tooltips). |
 | `source-links.js` | `gitWebBase`/`gitSourceUrl`/`nodeSourceUrl`/`connSourceLine` (git blob URLs at the analysed commit, optional `#L<line>`) and `absPath` (token→on-disk path). Pure, no DOM. |
 
@@ -118,7 +118,7 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 |------|---------|
 | `nav.js` | URL/history state: `getNavParams`, `navViewState`/`navViewUrl` (carry `level`/`side`/`group`/`mode`/`zoom`), `navPushView`/`navReplaceView`/`navPush`/`navSetSide`, and `openModalForNode` (the single node-modal entry point). |
 | `view-state.js` | Which side is shown and how the map/tables reflect it: `activeSnap`/`viewMode`/`activeGraph`/`unionGraph`, `applySideVisibility`/`applySideSizing` (CSS-flip the shared union layout, no relayout), `setViewSide`, `recomputeAll`, `renderView`, and `applyViewState` (restores `group`/`mode`/`zoom` from a state object). |
-| `snap-controls.js` | Header chrome: side-toggle wiring + `t` hotkey, the fly-out header, the warning count, `updateHeader`, the snapshot details/actions popup, and file-upload (snapshot swap) controls. |
+| `snap-controls.js` | Header chrome: side-toggle wiring + `t` hotkey, the fly-out header, the warning count, `updateHeader`, the snapshot details/actions popup, and file-upload (snapshot swap) controls. The global map hotkeys (`t`, the Shift/Ctrl modifier classes in `map-interactions.js`) bail while the Prompt Generator popup is open (`window.isPromptPopupOpen` in `export-popup.js`) so keys — notably ⌘/Ctrl+C to copy — reach the popup instead of toggling map state. |
 | `app.js` | The thin `DOMContentLoaded` bootstrap: read embedded snapshots, compute diff/cycles/meta, restore side/zoom/drill/node from the URL, load graphviz, render, and the `popstate` handler. |
 | `ui.js` | Intentionally empty (kept because assets are inlined by name). |
 
@@ -139,26 +139,31 @@ Two orthogonal navigation axes over the single Files graph (the control is the
     grouping byte-for-byte). Crate group boxes are pink; any non-crate grouping
     is a neutral white.
   - `+N` — **dig in**: descend N directory levels inside crates. Folder groups are
-    labelled with the path under the crate, leading slash + absorbed source dir,
-    e.g. `/src`, `/src/services` (`groupLabel`).
+    labelled with their **full** path from the workspace root — crate dir +
+    absorbed source dir + folders, e.g. `/crates/code-split-viewer/src`,
+    `/crates/code-split-viewer/src/services` (`groupLabel`). The folder-group
+    boxes of one crate are wrapped in a labelled **crate cluster**
+    (`subgraph cluster_crate_N`) so they read as inside their crate.
   - `-N` — **dig out**: progressively collapse the **deepest** crates into their
     parent folder, one depth level per step (`crateDirs` + `maxCrateDepth`), until
     a single root group remains. The "−" button disables at that point.
 - **focus (`window.drillGroup`)** — **clicking a group** drills into just that
   group's files; clicking a leaf file opens the popup. `window.drillDig` records
   the dig at drill time so the focused view filters by the matching grouper. In
-  the focused view, directory sub-cluster labels are crate-relative (`crateRelDir`
-  → `/src/services`); caller/dependency neighbour boxes drop the crate prefix when
-  every neighbour shares the drilled crate (`/services`), else keep the full key.
+  the focused view, directory sub-cluster labels are the **full** workspace path
+  (`nodeFullDir` → `/crates/foo/src`); caller/dependency neighbour boxes drop the
+  crate prefix when every neighbour shares the drilled crate (`/services`), else
+  keep the full key.
 
 The tier ladder (`grouperForDig` / `groupKeyAtDig`) lives in `grouping.js`, derived
 entirely from file-id paths plus the `crate` grouping attribute — no extra backend
 data. Both axes are carried in the URL (`dig=` param) and restored on load /
 `popstate` via `applyViewState`.
 
-**Node labels** carry one count after the name: a group box shows its member-node
-count `(N)` (what opens on drill-in); a file box shows `fan_in + fan_out` when
-non-zero. Box mode only — metric (SLOC/HK) circles show the metric value.
+**Node labels**: a group box shows its full path + member-node count `(N)` (what
+opens on drill-in); a file box (drilled view) shows just the file **name** — no
+counts. Box mode only — metric (SLOC/HK) circles show the metric value and are
+always filled (red at the crate tier, blue otherwise).
 
 **Layout density**: the map is laid out at natural size with packed spacing
 (`nodesep`/`ranksep` tiny, `height=0`/`width=0` boxes) and **no `ratio=fill` /
@@ -166,10 +171,12 @@ non-zero. Box mode only — metric (SLOC/HK) circles show the metric value.
 inter-node gaps small instead of being stretched. Caller/dependency (`edge-in` /
 `edge-out`) edges are `constraint=false` so they draw without dragging the layout
 vertically. Strokes (node borders, edges) and arrowheads scale with the SVG fit
-like everything else.
+like everything else; edges set `arrowsize=0.6` so the arrowheads stay legible
+rather than oversized on sparse, scaled-up graphs.
 
-Not yet implemented: nested clusters at `dig +1` (crate clusters wrapping folder
-nodes) and the diagonal in/out cluster placement — see `REFACTOR-split-plan.md`.
+Nested **crate clusters** at `dig +1` (crate boxes wrapping their folder groups)
+are implemented (`cluster_crate_N`). Not yet implemented: the diagonal in/out
+cluster placement — see `REFACTOR-split-plan.md`.
 
 ## Affected status
 

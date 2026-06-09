@@ -18,6 +18,15 @@ function warningTypeCount(level) {
 }
 window.warningTypeCount = warningTypeCount;
 
+// True while the Prompt-Generator popup is on screen. Global map hotkeys bail on
+// this so keys (notably Ctrl/Cmd+C to copy the generated prompt) reach the popup
+// instead of toggling map modifiers.
+function isPromptPopupOpen() {
+  const ov = document.getElementById('export-popup-overlay');
+  return !!ov && ov.style.display !== 'none';
+}
+window.isPromptPopupOpen = isPromptPopupOpen;
+
 // ── Prompt-Generator state in the URL ────────────────────────────────────────
 // The popup persists its full state in the query string so a refresh restores it
 // exactly (open state, preset, source, count, sort metric, connection toggles,

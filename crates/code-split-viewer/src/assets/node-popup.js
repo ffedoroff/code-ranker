@@ -31,6 +31,14 @@ function buildDiagramSVG(node, level) {
   const primaryKey   = cardMetrics[0] ?? null;
   const secondaryKey = cardMetrics[1] ?? null;
 
+  // Cross-crate detection: a neighbour whose grouping value (e.g. `crate`) differs
+  // from the main node's. Such callers/dependencies get the same green/yellow tint
+  // as the map's callers/dependencies clusters.
+  const _groupKey  = ui.grouping?.key;
+  const _mainCrate = _groupKey != null ? nodeAttr(node, _groupKey) : null;
+  const isCrossCrate = n => _groupKey != null && _mainCrate != null
+    && nodeAttr(n, _groupKey) != null && nodeAttr(n, _groupKey) !== _mainCrate;
+
   // Abbreviated number for the card (e.g. 189,000 → 189K, 1,500,000 → 1.5M).
   // Respects `abbreviate:true` in the spec; otherwise uses plain fmtNum.
   const fmtCard = (key, v) => {
@@ -245,13 +253,19 @@ function buildDiagramSVG(node, level) {
     }).join('');
   };
 
-  const sideNode = (item, x, y) => {
+  const sideNode = (item, x, y, dir) => {
     const n       = item.node;
     const inMap   = nodeMap.has(n.id);
     const cycle   = isCycleNode(n.id);
     const ext     = item.ext || isExternalNode(n, level);
     const clipId  = `sn-clip-${_snIdx++}`;
-    const fill    = ext ? '#ececec' : '#f0f4f8';
+    // Cross-crate callers get the green / dependencies the yellow tint of the
+    // map's callers/dependencies clusters; same-crate neighbours stay neutral.
+    const xc      = !ext && isCrossCrate(n);
+    const fill    = ext                   ? '#ececec'
+                  : xc && dir === 'in'    ? '#edf7ed'
+                  : xc && dir === 'out'   ? '#fdf3e3'
+                  :                         '#f0f4f8';
     const stroke  = cycle ? '#c00' : ext ? '#9aa0a6' : (inMap ? '#8ba6c0' : '#bbb');
     const strokeW = cycle ? '2' : '1';
     // Dashed outline when the neighbour is NOT counted in fan_in/fan_out — i.e. it
@@ -314,9 +328,18 @@ function buildDiagramSVG(node, level) {
         `<text ${mono} x="${x+SNW-15}" y="${y+14}" text-anchor="middle" font-size="9" fill="#7a5b18">pr</text></g>`
       : '';
 
+    // Hover tooltip: file name (title) + crate and the full repo-relative path
+    // (`/foo/bar` — the `{token}` root marker stripped, leading slash kept).
+    const crateVal = _groupKey != null ? nodeAttr(n, _groupKey) : null;
+    const relPath  = String(n.path || n.id || '').replace(/^\{[^}]+\}/, '');
+    const tipBody  = [
+      crateVal != null && crateVal !== '' ? `crate: ${crateVal}` : '',
+      relPath ? `path: ${relPath}` : '',
+    ].filter(Boolean).join('<br>');
+
     return clipDef + open +
       `<g clip-path="url(#${clipId})" ${mono} fill="#2c3e50">` +
-      `<text class="sn-hint" data-tip="${escA(pathTip)}" x="${x+SNW/2}" y="${y+16}" text-anchor="middle" font-size="11" font-weight="600">${esc(nameOf(n))}</text>` +
+      `<text class="sn-hint" data-tip-title="${escA(n.name || n.id)}" data-tip="${escA(tipBody)}" x="${x+SNW/2}" y="${y+16}" text-anchor="middle" font-size="11" font-weight="600">${esc(nameOf(n))}</text>` +
       (primSimple  ? `<text class="sn-simple" x="${x+8}" y="${ty}" font-size="10" fill="#5c7a96">${esc(primSimple)}</text>` : '') +
       (secVal != null ? `<text class="sn-simple" x="${x+SNW-8}" y="${ty}" text-anchor="end" font-size="10" fill="#5c7a96">${esc(secStr)}</text>` : '') +
       detailPrim +
@@ -326,7 +349,7 @@ function buildDiagramSVG(node, level) {
   };
 
   // Render one column (dashed box + optional header + node cards).
-  const renderCol = col => {
+  const renderCol = (col, dir) => {
     const color = kindColor(col.kind);
     const dash  = kindDash(col.kind);
     let r = '';
@@ -337,7 +360,7 @@ function buildDiagramSVG(node, level) {
     }
     col.rows.forEach((row, ri) =>
       row.forEach((item, pi) =>
-        r += sideNode(item, nodeXInCol(col, pi, row.length), col.y + PAD_TOP + ri * ROW_H)
+        r += sideNode(item, nodeXInCol(col, pi, row.length), col.y + PAD_TOP + ri * ROW_H, dir)
       )
     );
     return r;
@@ -346,7 +369,7 @@ function buildDiagramSVG(node, level) {
   // Fan-in columns (above main node, bottom-anchored) — one arrow per column
   if (inCols.length > 0) {
     inCols.forEach(c => {
-      s += renderCol(c);
+      s += renderCol(c, 'in');
       const cx  = Math.round(c.x + c.px_w / 2);
       const my  = Math.round((c.y + c.h + MNY) / 2);
       const stroke = c.ext ? '#9aa0a6' : '#4d6f9c';
@@ -480,7 +503,7 @@ function buildDiagramSVG(node, level) {
       // card count, and only when there is flow coupling to report.
       if (!c.ext && node.fan_out != null && node.fan_out > 0)
         s += `<text x="${cx+5}" y="${my+4}" font-family="system-ui,sans-serif" font-size="10" fill="#5c7a96">Fan-out: ${node.fan_out}</text>`;
-      s += renderCol(c);
+      s += renderCol(c, 'out');
     });
   }
 

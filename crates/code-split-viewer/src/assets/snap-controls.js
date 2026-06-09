@@ -5,6 +5,7 @@
 function setupModeToggle() {
   document.getElementById('meta-mode')?.addEventListener('click', toggleViewSide);
   document.addEventListener('keydown', e => {
+    if (window.isPromptPopupOpen?.()) return;   // popup open → let keys reach it
     if ((e.key !== 't' && e.key !== 'T') || e.metaKey || e.ctrlKey || e.altKey) return;
     const t = e.target;
     if (t && (/^(input|textarea|select)$/i.test(t.tagName) || t.isContentEditable)) return;

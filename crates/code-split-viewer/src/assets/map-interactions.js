@@ -60,6 +60,7 @@ window.kbdHintsHtml = kbdHintsHtml;
   const hints = document.getElementById('kbd-hints');
   if (hints) hints.innerHTML = kbdHintsHtml();
   window.addEventListener('keydown', e => {
+    if (window.isPromptPopupOpen?.()) return;   // popup open → don't grab Ctrl/Shift
     if (e.key === 'Shift') setShift(true);
     if (e.key === OPEN_SRC_KEY) setSrc(true);
   });
@@ -127,9 +128,10 @@ function setDig(delta, level) {
 window.setDig = setDig;
 
 // Sync the dig-control label + button disabled-state for a level. dig 0 shows the
-// grouping key (e.g. "crate"); otherwise shows the signed dig level. "Out" is
-// disabled once the overview has collapsed to a single root group (dig reaches
-// -maxCrateDepth); "in" at the static DIG_MAX.
+// grouping key (e.g. "crate"); otherwise shows the signed level as "crate folder
+// ±N". Under each button sits the count of group boxes that pressing it would
+// show. "Out" is disabled once the overview has collapsed to a single root group
+// (dig reaches -maxCrateDepth); "in" at the static DIG_MAX.
 function updateDigLabel(level) {
   level = level || currentLevel();
   const root = document.querySelector(`.view[data-view="${level}"] .dig-lod`);
@@ -137,10 +139,25 @@ function updateDigLabel(level) {
   const z   = window.dig || 0;
   const gk  = levelUi(level).grouping?.key || 'group';
   const val = root.querySelector('.dig-lod-val');
-  if (val) val.textContent = z === 0 ? gk : `dig ${z > 0 ? '+' : ''}${z}`;
+  if (val) val.textContent = z === 0 ? gk : `/crate/folder${z > 0 ? '+' : ''}${z}`;
+  // Group-box counts: current level under the label, and what one step out / in
+  // would render under the − / + buttons.
+  const curN = window.groupCountAtDig?.(level, z);
+  const outN = window.groupCountAtDig?.(level, z - 1);
+  const inN  = window.groupCountAtDig?.(level, z + 1);
   const maxD = window.maxCrateDepth?.(level) ?? 0;
+  // "Out" runs all the way to a single _root group. "In" also stops once digging
+  // deeper no longer splits anything (next-level count == current) — every file
+  // already sits at its deepest folder.
   root.querySelector('[data-lod="out"]')?.toggleAttribute('disabled', z <= -maxD || z <= DIG_MIN);
-  root.querySelector('[data-lod="in"]') ?.toggleAttribute('disabled', z >= DIG_MAX);
+  root.querySelector('[data-lod="in"]') ?.toggleAttribute('disabled',
+    z >= DIG_MAX || (inN != null && curN != null && inN === curN));
+  const curC = root.querySelector('[data-count="cur"]');
+  const outC = root.querySelector('[data-count="out"]');
+  const inC  = root.querySelector('[data-count="in"]');
+  if (curC) curC.textContent = curN != null ? String(curN) : '';
+  if (outC) outC.textContent = outN != null ? String(outN) : '';
+  if (inC)  inC.textContent  = inN  != null ? String(inN)  : '';
 }
 window.updateDigLabel = updateDigLabel;
 
@@ -165,10 +182,44 @@ function statusLineFor(node, level) {
   return parts.join('  ·  ');
 }
 
+// Aggregate per-group stats (files/sloc/hk/cycle) keyed by a grouper closure —
+// the figures the status bar shows for a crate/group box, and for the external
+// caller/dependency neighbour boxes in the drilled view.
+function computeGroupStats(level, grouper) {
+  const cyc = window.CYCLES?.[level]?.nodeCycleStatus;
+  const stats = new Map();
+  for (const n of unionGraph(level).nodes) {
+    const grp = grouper(n);
+    let s = stats.get(grp);
+    if (!s) { s = { name: grp, files: 0, folders: 0, sloc: 0, hk: 0, cycle: 0, _common: null, _dirs: new Set() }; stats.set(grp, s); }
+    s.files++;
+    s.sloc += Number(n.sloc ?? n.loc ?? 0);
+    s.hk   += Number(n.hk ?? 0);
+    const cs = cyc?.get(n.id);
+    if (cs && cs !== 'none') s.cycle++;
+    // Track the members' directories → the group's distinct-folder count and the
+    // common directory (its full path).
+    const dir = relPathOf(n.id).split('/').slice(0, -1);
+    s._dirs.add(dir.join('/'));
+    if (s._common === null) s._common = dir.slice();
+    else { let i = 0; while (i < s._common.length && i < dir.length && s._common[i] === dir[i]) i++; s._common.length = i; }
+  }
+  for (const s of stats.values()) {
+    s.path = s._common && s._common.length ? '/' + s._common.join('/') : '/';
+    s.folders = s._dirs.size;
+    delete s._common; delete s._dirs;
+  }
+  return stats;
+}
+
 // Format a single status-bar line for a group node.
 function statusLineForGroup(stats) {
   const parts = [stats.name];
-  if (stats.files) parts.push(`files: ${stats.files}`);
+  // Full directory path of the group, unless it just repeats the name.
+  const norm = s => String(s).replace(/^[←→]\s*/, '').replace(/^\//, '');
+  if (stats.path && stats.path !== '/' && norm(stats.path) !== norm(stats.name)) parts.push(stats.path);
+  if (stats.files)   parts.push(`files: ${stats.files}`);
+  if (stats.folders) parts.push(`folders: ${stats.folders}`);
   if (stats.sloc > 0) parts.push(`sloc: ${fmtMetricShort(stats.sloc)}`);
   if (stats.hk   > 0) parts.push(`hk: ${fmtMetricShort(stats.hk)}`);
   if (stats.cycle > 0) parts.push(`in cycle: ${stats.cycle}`);
@@ -246,11 +297,22 @@ function setupEdgeHighlight(svgFrame, level) {
       clusterOutEl = clusterEl;
       edges = new Set(outEdges);
       nc = outEdges.length;
+    } else if (cTitle.startsWith('cluster_crate_')) {
+      // Overview crate cluster (dig IN): match the group boxes whose key sits in
+      // this crate (key === crate, or starts with `crate/`). edgeMap keys here
+      // are group ids, not file ids.
+      const matchIds = [...edgeMap.keys()].filter(k => k === label || k.startsWith(label + '/'));
+      edges = new Set();
+      for (const id of matchIds) {
+        for (const e of (edgeMap.get(id) ?? new Set())) edges.add(e);
+      }
+      nc = matchIds.length;
     } else {
-      // Directory sub-cluster: label is the crate-relative dir ("/src/…").
+      // Directory sub-cluster: label is the full workspace-relative dir
+      // ("/libs/modkit-odata-macros/src") — must match layout.js's dirOf.
       const matchIds = [...edgeMap.keys()].filter(k => {
         const node = nodeById.get(k);
-        return node ? crateRelDir(level, node) === label : false;
+        return node ? nodeFullDir(node) === label : false;
       });
       edges = new Set();
       for (const id of matchIds) {
@@ -327,6 +389,9 @@ function setupTooltips(svgFrame, level) {
     // ── Drilled file view: wire up individual file nodes ─────────────────────────
     // Map EVERY union node so baseline-only / current-only nodes get handlers too.
     const nodeMap = new Map(unionGraph(level).nodes.map(n => [n.id, n]));
+    // External neighbour boxes are keyed by the drill-time grouper (same as
+    // layout.js) — aggregate their stats so a hover shows crate-style details.
+    const neighbourStats = computeGroupStats(level, grouperForDig(level, window.drillDig ?? 0));
 
     svgFrame.querySelectorAll('g.node').forEach(g => {
       const titleEl = g.querySelector('title');
@@ -338,13 +403,16 @@ function setupTooltips(svgFrame, level) {
                            : nodeId?.startsWith('OUT\x01') ? 'OUT\x01' : null;
       if (neighborPrefix) {
         const neighborGroup = nodeId.slice(neighborPrefix.length);
+        const arrow = neighborPrefix === 'IN\x01' ? '← ' : '→ ';
         g.addEventListener('click', e => {
           e.stopPropagation();
           drillIntoGroup(neighborGroup, level);
         });
         g.addEventListener('mouseenter', () => {
           g.classList.add('node-hl');
-          showStatus((neighborPrefix === 'IN\x01' ? '← ' : '→ ') + neighborGroup);
+          const st = neighbourStats.get(neighborGroup);
+          showStatus(st ? statusLineForGroup({ ...st, name: arrow + st.name })
+                        : arrow + neighborGroup);
         });
         g.addEventListener('mouseleave', e => {
           g.classList.remove('node-hl');
@@ -387,18 +455,7 @@ function setupTooltips(svgFrame, level) {
   } else {
     // ── Group view: tag group nodes and wire up drill-in click ───────────────────
     const gOf = grouperForDig(level, window.dig || 0);
-    const cyc = window.CYCLES?.[level]?.nodeCycleStatus;
-    const groupStats = new Map();
-    for (const n of unionGraph(level).nodes) {
-      const grp = gOf(n);
-      if (!groupStats.has(grp)) groupStats.set(grp, { name: grp, files: 0, sloc: 0, hk: 0, cycle: 0 });
-      const s = groupStats.get(grp);
-      s.files++;
-      s.sloc += Number(n.sloc ?? n.loc ?? 0);
-      s.hk   += Number(n.hk ?? 0);
-      const cs = cyc?.get(n.id);
-      if (cs && cs !== 'none') s.cycle++;
-    }
+    const groupStats = computeGroupStats(level, gOf);
 
     svgFrame.querySelectorAll('g.node').forEach(g => {
       const titleEl = g.querySelector('title');

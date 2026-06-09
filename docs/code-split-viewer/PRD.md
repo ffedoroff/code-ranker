@@ -218,7 +218,11 @@ while the popup is open. The popup's neighbourhood diagram mirrors the map's
 gestures — Shift-click toggles a node's selection, ⌘/Ctrl-click opens its
 source — and shows the same yellow highlight for nodes already selected; its
 3rd-party (external) cards and arrows are drawn grey and are inert (not
-selectable, no source, no ⌘-navigation).
+selectable, no source, no ⌘-navigation). A neighbour from a **different crate**
+is tinted like the map's clusters — green for callers (fan-in), yellow for
+dependencies (fan-out) — while same-crate neighbours stay neutral. Hovering a
+neighbour card shows its file name, `crate:` and `path:` (repo-relative,
+`/foo/bar`).
 
 **Rationale**: The diff is the quantitative answer to "did my
 refactoring reduce coupling?" Without it, the user must compare two

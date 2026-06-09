@@ -66,6 +66,9 @@ function buildDOT(nodes, edges, level, viewport) {
   // frame relative to whitespace (edges route less prettily — an accepted trade
   // for bigger, more legible nodes).
   dot += '  graph [bgcolor="white" fontname="Helvetica" pad="0.1" nodesep="0.12" ranksep="0.6"]\n';
+  // Smaller arrowheads — graphviz default (arrowsize=1) reads oversized once the
+  // SVG viewBox is scaled up to fill the frame on sparse graphs.
+  dot += '  edge  [arrowsize=0.6]\n';
   if (isMetric) {
     dot += '  node  [shape=circle style=filled fixedsize=true width=0.3]\n\n';
   } else {
@@ -91,13 +94,18 @@ function buildDOT(nodes, edges, level, viewport) {
     // uniform neutral white, so the colour signals "these are crates".
     const isCrateTier = activeDig === 0 && !!(levelUi(level).grouping?.key);
     const groupFill   = isCrateTier ? '#ffd4d4' : '#ffffff';
-    for (const [g, gNodes] of groupNodes) {
+    // Metric circles are always filled — red for the crate tier, blue otherwise
+    // (white reads as "empty" / unfinished on the folder tiers).
+    const circleFill  = isCrateTier ? '#ffd4d4' : N_FILL;
+
+    // One DOT statement for a single group box (circle in metric mode, box otherwise).
+    const groupBoxDot = (g, gNodes) => {
       // A group is red when any member sits in a dependency cycle (aggregated
       // per side); reuses the same cycle-status CSS as individual nodes.
       const gCyc = aggCycleStatus(gNodes.map(n => cycleOf?.get(n.id) || 'none'));
       const cyc  = `class="cycle-status-${gCyc}"`;
-      // Group label: crate name at dig 0, the `/src/services`-style folder path
-      // when digging in, the leaf segment when collapsing (see grouping.js).
+      // Group label: crate name at dig 0, the full folder path when digging in
+      // or collapsing (see grouping.js).
       const leaf = groupLabel(level, g, activeDig);
       if (isMetric) {
         const aggB = gNodes.reduce((s, n) => s + metricNodeVal(baselineById.get(n.id), sizeMode), 0);
@@ -106,12 +114,36 @@ function buildDOT(nodes, edges, level, viewport) {
         const d    = metricGroupDiam(agg, sizeMode);
         const lbl  = agg > 0 ? fmtMetricShort(agg) : '';
         const fs   = metricFontSize(d);
-        dot += `  ${dotId(g)} [label=${dotId(lbl)} fontsize=${fs} fontcolor="#333" fillcolor="${groupFill}" color="${N_COLOR}" width=${d} shape=circle style=filled fixedsize=true ${cyc}]\n`;
-      } else {
-        // Group box: name + the count of member nodes (what opens on drill-in).
-        const lbl = `${leaf} (${gNodes.length})`;
-        dot += `  ${dotId(g)} [label=${dotId(lbl)} fillcolor="${groupFill}" color="${N_COLOR}" shape=box style=filled fontname="Helvetica" fontsize=11 ${cyc}]\n`;
+        return `${dotId(g)} [label=${dotId(lbl)} fontsize=${fs} fontcolor="#333" fillcolor="${circleFill}" color="${N_COLOR}" width=${d} shape=circle style=filled fixedsize=true ${cyc}]`;
       }
+      // Group box: name + the count of member nodes (what opens on drill-in).
+      const lbl = `${leaf} (${gNodes.length})`;
+      return `${dotId(g)} [label=${dotId(lbl)} fillcolor="${groupFill}" color="${N_COLOR}" shape=box style=filled fontname="Helvetica" fontsize=11 ${cyc}]`;
+    };
+
+    // At dig IN (>0) with crate grouping, wrap each crate's folder-groups in a
+    // labelled crate cluster — so folders read as "inside their crate", mirroring
+    // the drilled view's directory sub-clusters. dig 0 / dig OUT render flat.
+    const clusterByCrate = activeDig > 0 && !!(levelUi(level).grouping?.key);
+    if (clusterByCrate) {
+      const crateOf = g => { const i = g.indexOf('/'); return i >= 0 ? g.slice(0, i) : g; };
+      const byCrate = new Map();   // crate → [[g, gNodes], …]
+      const loose   = [];          // external / crate-less groups stay outside clusters
+      for (const [g, gNodes] of groupNodes) {
+        if (gNodes.every(n => isExternalNode(n, level))) { loose.push([g, gNodes]); continue; }
+        const c = crateOf(g);
+        (byCrate.get(c) || byCrate.set(c, []).get(c)).push([g, gNodes]);
+      }
+      let ci = 0;
+      for (const [crate, entries] of byCrate) {
+        dot += `  subgraph cluster_crate_${ci++} {\n`;
+        dot += `    label=${dotId(crate)} style=filled fillcolor="#fff2f2" color="#e3b3b3" fontname="Helvetica" fontsize=11 fontcolor="#a05a5a"\n`;
+        for (const [g, gNodes] of entries) dot += `    ${groupBoxDot(g, gNodes)}\n`;
+        dot += '  }\n';
+      }
+      for (const [g, gNodes] of loose) dot += `  ${groupBoxDot(g, gNodes)}\n`;
+    } else {
+      for (const [g, gNodes] of groupNodes) dot += `  ${groupBoxDot(g, gNodes)}\n`;
     }
 
     const seenGroupEdge = new Set();
@@ -162,10 +194,8 @@ function buildDOT(nodes, edges, level, viewport) {
       const fs  = metricFontSize(d);
       return `label=${dotId(lbl)} fontsize=${fs} fontcolor="#333" fillcolor="${fill}" color="${col}" width=${d} ${cls}`;
     }
-    // File box: name + total connections (fan_in + fan_out) when it has any.
-    const conns = Number(n.fan_in || 0) + Number(n.fan_out || 0);
-    const lbl   = conns > 0 ? `${n.name} (${conns})` : n.name;
-    return `label=${dotId(lbl)} fillcolor="${fill}" color="${col}" ${cls}`;
+    // File box: just the file name, no connection counts.
+    return `label=${dotId(n.name)} fillcolor="${fill}" color="${col}" ${cls}`;
   };
 
   // ── Collect external neighbor groups (no 3rd-party) ───────────────────────────
@@ -231,9 +261,11 @@ function buildDOT(nodes, edges, level, viewport) {
     dot += '  }\n';
   }
 
-  // Sub-clusters by directory within the drilled group. Labels are relative to
-  // the crate dir with a leading slash (e.g. "/src", "/src/services").
-  const dirOf = n => crateRelDir(level, n);
+  // Sub-clusters by directory within the drilled group. Labels are the full
+  // workspace-relative directory path with a leading slash (e.g.
+  // "/libs/modkit-odata-macros/src"), so the folder reads in full, not just its
+  // crate-relative tail.
+  const dirOf = n => nodeFullDir(n);
   const subGroups = new Map();
   drillNodes.forEach(n => { const d = dirOf(n); (subGroups.get(d) || subGroups.set(d, []).get(d)).push(n); });
   let si = 0;
