@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/ffedoroff/code-ranker/actions/workflows/ci.yml/badge.svg)](https://github.com/ffedoroff/code-ranker/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ffedoroff/code-ranker/branch/main/graph/badge.svg)](https://codecov.io/gh/ffedoroff/code-ranker)
-[![dependencies](https://deps.rs/crate/code-ranker/1.0.0-alpha.4/status.svg)](https://deps.rs/crate/code-ranker/1.0.0-alpha.4)
+[![dependencies](https://deps.rs/crate/code-ranker/1.0.0-alpha.5/status.svg)](https://deps.rs/crate/code-ranker/1.0.0-alpha.5)
 [![Crates.io](https://img.shields.io/crates/v/code-ranker.svg)](https://crates.io/crates/code-ranker)
 [![npm](https://img.shields.io/npm/v/code-ranker.svg)](https://www.npmjs.com/package/code-ranker)
 [![PyPI](https://img.shields.io/pypi/v/code-ranker.svg)](https://pypi.org/project/code-ranker/)
@@ -17,7 +17,7 @@ Structural-analysis tool for **Rust, Python, JavaScript and TypeScript** codebas
 ## Rust quick start
 
 ```sh
-cargo install code-ranker --version 1.0.0-alpha.4   # install the CLI
+cargo install code-ranker --version 1.0.0-alpha.5   # install the CLI
 code-ranker report .                                # make html report in .code-ranker/ folder
 ```
 
@@ -96,7 +96,7 @@ curl -fsSL https://github.com/ffedoroff/code-ranker/releases/latest/download/cod
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/ffedoroff/code-ranker/releases/latest/download/code-ranker-installer.ps1 | iex"
 
 # Rust (Cargo)
-cargo install code-ranker --version 1.0.0-alpha.4
+cargo install code-ranker --version 1.0.0-alpha.5
 
 # Node (npm)
 npm install -g code-ranker
@@ -105,10 +105,10 @@ npm install -g code-ranker
 pip install code-ranker
 
 # Docker (Docker Hub)
-docker pull fedoroff/code-ranker:1.0.0-alpha.4
+docker pull fedoroff/code-ranker:1.0.0-alpha.5
 
 # Docker (GHCR — no anonymous rate limits)
-docker pull ghcr.io/ffedoroff/code-ranker:1.0.0-alpha.4
+docker pull ghcr.io/ffedoroff/code-ranker:1.0.0-alpha.5
 ```
 
 All channels ship the same `code-ranker` binary built from the same Rust source. Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64).
@@ -143,7 +143,7 @@ Built-in plugins: `rust` (cargo + syn), `python`, `javascript` (also handles Typ
 ## Try it now
 
 ```sh
-cargo install code-ranker --version 1.0.0-alpha.4 && code-ranker report . && open .code-ranker/
+cargo install code-ranker --version 1.0.0-alpha.5 && code-ranker report . && open .code-ranker/
 ```
 
 One command on any Rust project — you'll have an interactive structural map and an AI-ready shortlist in seconds. ⭐ the repo if it helps.
