@@ -12,7 +12,7 @@ plugin = "rust"
 # Built-in defaults if unset: .code-split/{ts}-{git-hash-3}.{json,html}.
 [output.json]
 # path = ".code-split/{project-dir}-{ts}.json"
-# path = ".code-split/{project-dir}.json"
+path = ".code-split/{project-dir}.json"
 # enabled = true
 
 [output.html]
