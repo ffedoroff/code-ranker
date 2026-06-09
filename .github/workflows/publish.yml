@@ -1,9 +1,13 @@
 name: Release (publish — pick registries)
 
-# The single manual "Release" button, with a checkbox per registry. Run it AFTER
-# Verify is green for the tag, tick only the registries you want, and only those
-# are published. Everything defaults to OFF so an experiment never pushes a
-# version somewhere it isn't needed.
+# The single manual "Release" button, with a checkbox per registry. Tick only the
+# registries you want, and only those are published. Everything defaults to OFF so
+# an experiment never pushes a version somewhere it isn't needed.
+#
+# Safety gate: this workflow checks ONCE that 'Verify (no publish)' is green for the
+# exact commit the tag points at (the tag push triggers Verify automatically). If it
+# isn't green the release stops — unless you tick `force`, which deploys anyway.
+# (Dispatching the per-registry workflows directly is intentionally NOT gated.)
 #
 # Flow: bump version -> commit -> push main -> push tag v<version> (runs Verify)
 # -> once Verify is green, run THIS workflow, ticking the registries to publish.
@@ -31,6 +35,10 @@ on:
         description: 'GitHub Release + prebuilt binaries + npm (cargo-dist)'
         type: boolean
         default: false
+      force:
+        description: 'Deploy even if Verify is not green for this tag (override the safety gate)'
+        type: boolean
+        default: false
 
 permissions:
   actions: write     # required to dispatch the per-registry workflows
@@ -53,6 +61,27 @@ jobs:
             echo "tag v$V does not exist — push it first (that runs Verify), then release"; exit 1
           fi
           echo "tag v$V exists"
+      - name: Verify must be green for this tag (unless forced)
+        # Checked once, here, only for the real "Release" entry point. If Verify
+        # isn't green for the tag's commit the release stops — re-run with
+        # force=true to override. Running a per-registry workflow directly is
+        # not gated by design.
+        run: |
+          SHA="$(git rev-parse "v$V^{commit}")"
+          echo "tag v$V → commit $SHA"
+          green="$(gh run list --workflow verify.yml --limit 100 \
+                     --json headSha,status,conclusion \
+                     --jq "[.[] | select(.headSha==\"$SHA\" and .status==\"completed\" and .conclusion==\"success\")] | length")"
+          if [ "${green:-0}" -ge 1 ]; then
+            echo "Verify is green for $SHA ✅ — proceeding."
+          elif [ "${{ inputs.force }}" = "true" ]; then
+            echo "::warning::No green Verify run for $SHA, but force=true — deploying anyway."
+          else
+            echo "::error::No green 'Verify (no publish)' run for commit $SHA (tag v$V)."
+            echo "Wait for Verify to pass (gh run list --workflow verify.yml --limit 5),"
+            echo "or re-run this with force=true to override the gate."
+            exit 1
+          fi
       - name: Dispatch selected registries
         run: |
           set -e
