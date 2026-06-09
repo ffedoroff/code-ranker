@@ -428,7 +428,7 @@ A short list of legitimate inheritance in TS:
 Note the pattern: each case is a *single, shallow* inheritance step
 imposed by the runtime or a framework, not a tower of subclasses.
 
-## How code-split detects composition issues
+## How code-ranker detects composition issues
 
 Graph signals:
 
@@ -442,7 +442,7 @@ Graph signals:
 | `class X extends Y` where `Y` has only one subclass | Collapse |
 | HOC nested more than 2 deep | Likely candidate for hook extraction |
 
-Future Code Split rules could specifically flag:
+Future Code Ranker rules could specifically flag:
 
 - Inheritance chains > 2 levels.
 - Mixin towers (`A(B(C(D)))`) without a stabilising explicit type.

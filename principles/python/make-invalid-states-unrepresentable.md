@@ -585,9 +585,9 @@ need. A single-use invariant ("this helper takes a list with an even
 number of elements") may be cheaper as an `assert len(xs) % 2 == 0`
 at the top of the function.
 
-## How code-split detects representable-invalid-state risk
+## How code-ranker detects representable-invalid-state risk
 
-Code Split's static graph cannot directly read invariants. It can flag
+Code Ranker's static graph cannot directly read invariants. It can flag
 *structural risk*:
 
 | Signal | Interpretation |
@@ -599,9 +599,9 @@ Code Split's static graph cannot directly read invariants. It can flag
 | `dict[str, Any]` parameter or return type flowing through call chains | "Stringly typed" smell. Candidate for a Pydantic model at the boundary. |
 | `status: str` parameters with a small closed set of accepted values | `Literal[...]` or `Enum` candidate. |
 
-Code Split's current rule set does not catch these directly. The
+Code Ranker's current rule set does not catch these directly. The
 **LLM-verification** prompt mode (see
-`cpt-code-split-fr-prompt-composer`) can ask an LLM reading the code
+`cpt-code-ranker-fr-prompt-composer`) can ask an LLM reading the code
 to flag these patterns.
 
 ## Suggested recommendation template

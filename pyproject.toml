@@ -3,7 +3,7 @@ requires = ["maturin>=1.7,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "code-split"
+name = "code-ranker"
 dynamic = ["version"]   # source of truth: Cargo.toml workspace.package.version (via maturin)
 description = "Polyglot structural-analysis platform: extract dependency graphs, visualize coupling, track architectural drift."
 readme = "README.md"
@@ -26,10 +26,10 @@ classifiers = [
 ]
 
 [project.urls]
-Repository = "https://github.com/ffedoroff/code-split"
-Issues = "https://github.com/ffedoroff/code-split/issues"
+Repository = "https://github.com/ffedoroff/code-ranker"
+Issues = "https://github.com/ffedoroff/code-ranker/issues"
 
 [tool.maturin]
 bindings = "bin"
-manifest-path = "crates/code-split-cli/Cargo.toml"
+manifest-path = "crates/code-ranker-cli/Cargo.toml"
 strip = true

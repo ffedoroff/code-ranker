@@ -389,9 +389,9 @@ repo/
 Each package has one actor; cross-package dependencies are explicit in
 `package.json` rather than smuggled through a top-level barrel.
 
-## How code-split detects SRP violations
+## How code-ranker detects SRP violations
 
-Code Split cannot read actors directly, but the graph signatures of an
+Code Ranker cannot read actors directly, but the graph signatures of an
 SRP violation are unambiguous:
 
 | Signal | SRP interpretation |
@@ -402,7 +402,7 @@ SRP violation are unambiguous:
 | Public export with very high fan-in (high-fan-in-public-api rule) | Single API surface used by many unrelated actors — every change is a coordination event |
 | Component file > N LOC with > M hooks (god-component rule) | React component mixing data, logic, and presentation |
 
-Cross-references in code-split's catalog:
+Cross-references in code-ranker's catalog:
 
 - `god-module-coupling` directly maps to "module-serving-many-actors"
 - `mega-file` maps to "file-with-too-many-reasons-to-change"
@@ -411,7 +411,7 @@ Cross-references in code-split's catalog:
 
 ## Suggested recommendation template
 
-When code-split detects a candidate SRP violation, the Finding should:
+When code-ranker detects a candidate SRP violation, the Finding should:
 
 1. Quote Martin's "one reason to change" / "one actor" (and, for
    components, Kent C. Dodds' "one component, one job").

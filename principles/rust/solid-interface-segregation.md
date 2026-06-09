@@ -267,7 +267,7 @@ utils/                 ←  becomes  →   string_utils/
 Now a downstream crate that needs only string helpers pulls only
 `string_utils`, not the whole drawer.
 
-## How code-split detects ISP violations
+## How code-ranker detects ISP violations
 
 The structural signals:
 
@@ -275,10 +275,10 @@ The structural signals:
 |---|---|
 | Trait with > N methods (high method-count) | Possible fat trait. Threshold tunable per project. Future rule. |
 | Multiple impls calling `unimplemented!()` / `todo!()` in trait method bodies | Direct ISP smell. Requires AST inspection. Future rule. |
-| Trait imported by many crates but only one method called from most call sites | Fan-out asymmetry — most callers want a smaller surface. (Requires call-graph aggregation per method, which code-split already has partially via fn nodes.) |
+| Trait imported by many crates but only one method called from most call sites | Fan-out asymmetry — most callers want a smaller surface. (Requires call-graph aggregation per method, which code-ranker already has partially via fn nodes.) |
 | Crate consumed by N crates where each only uses 1-2 of the crate's M public items | "Kitchen sink" crate. Detectable from existing graph. |
 
-A concrete future rule code-split could add:
+A concrete future rule code-ranker could add:
 
 **`fat-trait`**: trait has ≥ 7 public methods AND has ≥ 2
 implementations across the workspace AND no segregated extension

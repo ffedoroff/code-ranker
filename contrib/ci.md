@@ -1,6 +1,6 @@
 # CI
 
-How continuous integration runs for `code-split`.
+How continuous integration runs for `code-ranker`.
 
 ## Workflow
 

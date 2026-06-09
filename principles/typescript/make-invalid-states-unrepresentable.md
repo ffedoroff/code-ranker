@@ -528,7 +528,7 @@ A pragmatic heuristic: **encode invariants that multiple consumers
 need**. A single-function precondition may be cheaper as a
 `assert()` call than a branded type.
 
-## How code-split detects representable-invalid-state risk
+## How code-ranker detects representable-invalid-state risk
 
 Static AST analysis can flag structural smells:
 
@@ -541,7 +541,7 @@ Static AST analysis can flag structural smells:
 | Functions with multiple same-type parameters (e.g., `(s1: string, s2: string)`) | Swapping risk. |
 | `switch` on a union without `default: assertNever(x)` | Missing exhaustiveness guard. |
 
-Code Split's LLM-verification mode can also surface "this `useState`
+Code Ranker's LLM-verification mode can also surface "this `useState`
 has multiple booleans that should be a union" or "this `interface`
 has many optionals; consider a Zod schema".
 

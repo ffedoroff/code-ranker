@@ -1,0 +1,22 @@
+[package]
+name = "code-ranker-plugin-python"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Code Ranker Python plugin: tree-sitter module/import graph."
+# The e2e fixture project ships next to src/ but is not part of the published crate.
+exclude = ["sample"]
+
+[dependencies]
+code-ranker-plugin-api = { workspace = true }
+anyhow = { workspace = true }
+walkdir = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-python = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

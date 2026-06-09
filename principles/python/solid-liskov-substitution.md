@@ -413,10 +413,10 @@ Get this wrong and the type checker rejects it (good) — get it
 right by accident and the runtime will reject it later (bad). Always
 declare variance explicitly on `Protocol`s and `Generic`s.
 
-## How code-split detects LSP violations
+## How code-ranker detects LSP violations
 
 LSP violations are usually invisible to a graph analyzer — they live
-in method bodies and runtime behaviour. But code-split can flag
+in method bodies and runtime behaviour. But code-ranker can flag
 *structural risk*:
 
 | Signal | LSP interpretation |
@@ -428,7 +428,7 @@ in method bodies and runtime behaviour. But code-split can flag
 | Override missing the `@override` decorator | Silent contract drift on parent renames. Recommend adding `@override`. |
 
 The honest answer is that LSP is mostly a documentation discipline —
-code-split's contribution is to *flag ABCs and Protocols that have no
+code-ranker's contribution is to *flag ABCs and Protocols that have no
 contract section* and to *recommend writing one*, plus the easy
 syntactic checks above. Behavioural verification belongs in tests.
 

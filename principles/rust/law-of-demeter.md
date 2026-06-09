@@ -298,7 +298,7 @@ use other_crate::Pool;
 
 The path is one hop. Internals are free to evolve.
 
-## How code-split detects LoD violations
+## How code-ranker detects LoD violations
 
 Module-level LoD violations have a graph signature:
 

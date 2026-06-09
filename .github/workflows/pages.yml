@@ -1,4 +1,4 @@
-# Publishes the code-split HTML report for the default branch to GitHub Pages,
+# Publishes the code-ranker HTML report for the default branch to GitHub Pages,
 # so the latest structure view is always live at the repo's Pages URL — the
 # GitHub equivalent of browsing a GitLab job artifact. Dogfoods `report` (the
 # CI test job already dogfoods the `check` gate).
@@ -41,7 +41,7 @@ jobs:
         # job-written files as dirty).
         run: |
           mkdir -p site
-          cargo run -q -p code-split -- report . \
+          cargo run -q -p code-ranker -- report . \
             --git.branch=main \
             --git.commit="$GITHUB_SHA" \
             --git.dirty-files=0 \

@@ -407,10 +407,10 @@ expensive-to-add-later guards. The line is: avoid building
 **scaffolding for features**, but keep using **escape hatches for
 evolution**.
 
-## How code-split detects YAGNI violations
+## How code-ranker detects YAGNI violations
 
 YAGNI is the hardest to detect because the violation depends on
-**who uses what** in the future, which is unknowable. Code Split can
+**who uses what** in the future, which is unknowable. Code Ranker can
 flag *present-day signals*:
 
 | Signal | YAGNI interpretation |

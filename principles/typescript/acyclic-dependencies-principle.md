@@ -322,7 +322,7 @@ The real fix is the same as in the static case: extract a leaf.
 
 **Import cycle (module-level Uses cycle)**: module `A` imports a
 symbol from module `B` and vice versa. Loads, may TDZ at top level,
-will at minimum break tree-shaking. Code Split flags it. Often easy
+will at minimum break tree-shaking. Code Ranker flags it. Often easy
 to break by extracting types/constants into a leaf — no logic
 change.
 
@@ -332,7 +332,7 @@ cycle. Occasionally legitimate (mutually recursive parsers), usually
 a sign that two modules share a responsibility and should be merged
 or re-sliced.
 
-Code Split distinguishes the two: `module-call-cycle` is **Critical**;
+Code Ranker distinguishes the two: `module-call-cycle` is **Critical**;
 import-only cycles are Medium/Low depending on size.
 
 ## ADP at the package level
@@ -351,14 +351,14 @@ from a single-package cycle:
 A workspace passes ADP when:
 
 - No `dependencies`/`devDependencies` cycle exists between local
-  packages (Code Split's `package-cycle` rule detects this).
+  packages (Code Ranker's `package-cycle` rule detects this).
 - No version skew exists for shared dependencies (use `pnpm`'s
   `catalog:` or `overrides`).
 - The package-level DAG is **shallow** — flat layouts of one or two
   layers, not a deep tower of `@scope/utils` → `@scope/core` →
   `@scope/domain` → `@scope/api` → ....
 
-## How Code Split detects ADP violations
+## How Code Ranker detects ADP violations
 
 | Signal | Rule |
 |---|---|

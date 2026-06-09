@@ -1,6 +1,6 @@
 # How a line is counted (in Rust)
 
-**TL;DR**: Code Split classifies every physical line of a Rust file into exactly
+**TL;DR**: Code Ranker classifies every physical line of a Rust file into exactly
 one LOC bucket — `sloc`, `cloc`, `blank`, or `tloc`. Inline tests are split off
 *first* (`#[cfg(test)]` / `#[test]` / `#[bench]`), so they never inflate the
 production size, HK, or complexity of a file. The walk-through below counts a
@@ -296,7 +296,7 @@ simply has no `tloc` average rather than a misleading `0`.
 
 ## Where these formulas come from
 
-Each metric traces back to a published source; Code Split just implements them
+Each metric traces back to a published source; Code Ranker just implements them
 (via `rust-code-analysis`) over the production remainder.
 
 - **Halstead** (`vocabulary`, `length`, `volume`, `effort`, `time`, `bugs`) —

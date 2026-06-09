@@ -1,6 +1,6 @@
-# How `code-split` compares
+# How `code-ranker` compares
 
-A look at `code-split` next to the well-known structural / complexity analyzers it
+A look at `code-ranker` next to the well-known structural / complexity analyzers it
 overlaps with: **rust-code-analysis**, **Lizard**, **Radon**, **escomplex**,
 **cargo-modules**, and **knip**.
 
@@ -13,24 +13,24 @@ Most of these tools answer one of two questions:
 - **"How is the code wired together?"** — dependency / module structure
   (cargo-modules, knip).
 
-`code-split` is the only one that does **both at once, across Rust / Python / JS / TS,
+`code-ranker` is the only one that does **both at once, across Rust / Python / JS / TS,
 and then tracks the delta over time**: it builds a file-level dependency graph (with
 third-party libraries shown as depth-1 external nodes), attaches per-file complexity
 *and* coupling metrics to every file node, detects cycles, and diffs two snapshots
 into an `improved` / `degraded` / `neutral` verdict — all offline, behind a single
 plugin protocol.
 
-> **Note on rust-code-analysis:** `code-split` is not a rival to it — it is *built on
-> it*. The `code-split-complexity` crate uses the `rust-code-analysis` fork
+> **Note on rust-code-analysis:** `code-ranker` is not a rival to it — it is *built on
+> it*. The `code-ranker-complexity` crate uses the `rust-code-analysis` fork
 > (`rust-code-analysis-code-split`) for cyclomatic / cognitive / Halstead / MI / LOC.
-> code-split's contribution is the graph, coupling, cycles, diff, report, and CI
+> code-ranker's contribution is the graph, coupling, cycles, diff, report, and CI
 > layers wrapped around those metrics and unified across languages.
 
 ## Scope & workflow
 
 Legend: ✓ first-class · ~ partial / indirect / via companion · ✗ none
 
-| Capability | code-split | rust-code-analysis | Lizard | Radon | escomplex | cargo-modules | knip |
+| Capability | code-ranker | rust-code-analysis | Lizard | Radon | escomplex | cargo-modules | knip |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | Languages | Rust, Py, JS, TS | many (tree-sitter) | many | Python only | JS (+TS fork) | Rust only | JS / TS |
 | File dependency graph | ✓ | ✗ | ✗ | ✗ | ~ | ~ | ~ |
@@ -50,7 +50,7 @@ but need a separate runtime — see [Distribution footprint](#distribution-footp
 
 ## Per-unit code metrics
 
-| Metric | code-split | rust-code-analysis | Lizard | Radon | escomplex | cargo-modules | knip |
+| Metric | code-ranker | rust-code-analysis | Lizard | Radon | escomplex | cargo-modules | knip |
 |---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | Cyclomatic | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
 | Cognitive | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
@@ -68,11 +68,11 @@ A tree-sitter-based **metrics library + CLI** covering many languages. Computes
 cyclomatic, cognitive, Halstead, MI, LOC, NOM, NARGS, NEXITS per "space" (file /
 function / class), emitting JSON/YAML/TOML/CBOR.
 
-- **Overlap:** the entire per-unit metric set — because code-split *uses it* for exactly
+- **Overlap:** the entire per-unit metric set — because code-ranker *uses it* for exactly
   that.
 - **Gap:** no cross-file dependency graph, no coupling (fan-in/out), no cycles, no diff,
   no report, no CI gating. It hands you numbers per code unit and stops.
-- **Reach for it instead when:** you want raw metrics for a language code-split has no
+- **Reach for it instead when:** you want raw metrics for a language code-ranker has no
   plugin for, or you are building your own tooling on top of the metric engine.
 
 ### Lizard
@@ -134,9 +134,9 @@ files, exports, types, and dependencies, and exits non-zero on findings.
 - **Gap:** answers "what is unused", not "how is it structured / how complex is it". No
   complexity metrics, no coupling metrics, no visualization, no before/after verdict.
 - **Reach for it instead when:** your goal is pruning unused code/deps in a JS/TS repo —
-  it is excellent at that and complementary to code-split.
+  it is excellent at that and complementary to code-ranker.
 
-## Where `code-split` is unique
+## Where `code-ranker` is unique
 
 - **One artifact, both axes.** A single snapshot carries a file dependency graph with
   *both* complexity (cyclomatic, cognitive, Halstead, MI, LOC) and structural coupling
@@ -159,15 +159,15 @@ files, exports, types, and dependencies, and exits non-zero on findings.
 Being honest about the trade-offs:
 
 - **Language reach:** rust-code-analysis and Lizard cover far more languages out of the
-  box than code-split's four plugins.
+  box than code-ranker's four plugins.
 - **Maturity of gates:** Lizard, Radon+Xenon, and knip are mature, narrowly-focused CI
   gates with years of production use.
 - **Specialized depth:** knip's dead-code analysis and cargo-modules' Rust module
-  rendering go deeper in their niche than code-split aims to.
-- **Per-function granularity:** code-split aggregates metrics per **file** (the
+  rendering go deeper in their niche than code-ranker aims to.
+- **Per-function granularity:** code-ranker aggregates metrics per **file** (the
   files-only model — `args`, `exits`, `closures`, and `items` are whole-file rolls-up),
   whereas rust-code-analysis exposes them per function / class "space" and surfaces a
-  full method count (NOM) that code-split does not break out.
+  full method count (NOM) that code-ranker does not break out.
 
 These are complementary, not mutually exclusive: e.g. run **knip** to prune dead JS/TS,
-then **code-split** to measure and gate what remains.
+then **code-ranker** to measure and gate what remains.

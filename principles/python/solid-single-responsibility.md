@@ -342,9 +342,9 @@ src/
 Each package has one actor; cross-package dependencies are explicit
 imports (and, ideally, enforced by an import-linter contract).
 
-## How code-split detects SRP violations
+## How code-ranker detects SRP violations
 
-Code Split cannot read actors directly, but the graph signatures of an
+Code Ranker cannot read actors directly, but the graph signatures of an
 SRP violation are unambiguous in Python:
 
 | Signal | SRP interpretation |
@@ -356,7 +356,7 @@ SRP violation are unambiguous in Python:
 | Module with very high public-API count (`__all__` length or top-level public names) | Module is several modules pretending to be one |
 | Public function with very high fan-in (high-fan-in-public-api rule) | Single API surface used by many unrelated actors — every change is a coordination event |
 
-Cross-references in code-split's catalog:
+Cross-references in code-ranker's catalog:
 
 - `god-module-coupling` directly maps to "module-serving-many-actors"
 - `mega-file` maps to "file-with-too-many-reasons-to-change"
@@ -365,7 +365,7 @@ Cross-references in code-split's catalog:
 
 ## Suggested recommendation template
 
-When code-split detects a candidate SRP violation, the Finding should:
+When code-ranker detects a candidate SRP violation, the Finding should:
 
 1. Quote Martin's "one reason to change" / "one actor" and reference
    Parnas (1972) for the underlying decomposition criterion.

@@ -30,11 +30,17 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
-      - name: code-split check (dogfood)
+      - name: Warm cargo cache for offline dogfood (all targets)
+        # `code-ranker check` runs `cargo metadata --offline`, which resolves the
+        # graph for ALL targets — including platform-only transitive deps (e.g.
+        # android_system_properties) that the host-target build above never fetches.
+        # Populate them online once so the offline step below can read them.
+        run: cargo metadata --format-version=1 > /dev/null
+      - name: code-ranker check (dogfood)
         # Run our own gate on this repo: exits non-zero on a violation, and the
         # github format emits ::error annotations inline on the PR. Kept here (not
         # a separate job) so it reuses the warm build + cache from the steps above.
-        run: cargo run -q -p code-split -- check . --output-format github
+        run: cargo run -q -p code-ranker -- check . --output-format github
 
   coverage:
     name: Coverage

@@ -341,7 +341,7 @@ problem inside a single package: every consumer pulls the
 union of types, breaking tree-shaking and inflating type-check
 times.
 
-## How code-split detects ISP violations
+## How code-ranker detects ISP violations
 
 The structural signals:
 
@@ -354,7 +354,7 @@ The structural signals:
 | Re-exporting barrel imported by N modules, each using ≤ 2 symbols | "Kitchen sink" package. |
 | React component takes a wide prop type but renders only a few fields | Prop-drilling / ISP violation at the component boundary. |
 
-A concrete future rule code-split could add:
+A concrete future rule code-ranker could add:
 
 **`fat-interface`**: `interface` or `type` has ≥ 7 members AND has
 ≥ 2 implementations or consumers in the workspace AND the majority

@@ -1,7 +1,7 @@
 # Node JSON Schema
 
-Reference for the node objects emitted in code-split snapshot files
-(`.code-split/{ts}-{git-hash-3}.json`, `schema_version: "2"`), under
+Reference for the node objects emitted in code-ranker snapshot files
+(`.code-ranker/{ts}-{git-hash-3}.json`, `schema_version: "2"`), under
 `graphs.files.nodes`. There is a single graph level — `files` — so every node is
 either a source `file` or a third-party `external` library.
 
@@ -68,7 +68,7 @@ so they are portable across machines:
 | prefix | resolves to |
 |--------|-------------|
 | `{target}` | the analyzed project root |
-| `{workspace}` | the code-split workspace root (cwd) |
+| `{workspace}` | the code-ranker workspace root (cwd) |
 | `{registry}` | Cargo registry cache |
 | `{cargo}` | Cargo home (`$CARGO_HOME`, holds `git/checkouts/…`) |
 | `{rustup}` | rustup toolchain root |
@@ -158,8 +158,8 @@ All metrics are flat keys on the node — there is no `complexity` wrapper objec
 Present on `file` nodes only (external libraries are never read). Each is omitted
 when it rounds to zero; the LOC keys are gated on `sloc > 0` and the Halstead
 keys on `volume > 0`. Complexity / Halstead / LOC / maintainability metrics come
-from the central `code-split-complexity` pass (rust-code-analysis by file
-extension); coupling and `cycle` are added by `code-split-graph`.
+from the central `code-ranker-complexity` pass (rust-code-analysis by file
+extension); coupling and `cycle` are added by `code-ranker-graph`.
 
 ### Complexity — `cyclomatic`, `cognitive`, `exits`, `args`, `closures`
 
@@ -248,11 +248,11 @@ omitted for structural `contains` edges and for edges the plugin can't place
 (e.g. Rust bare-path references). When several imports collapse onto one
 deduplicated edge, the first one's line is kept. `check` uses it to point a cycle
 violation at a concrete spot to break (see the `github` / `sarif` annotations in
-[CLI.md](code-split-cli/CLI.md)).
+[CLI.md](code-ranker-cli/CLI.md)).
 
 ---
 
 **Related docs**: [PRD.md](PRD.md) §7.3 (the full Graph JSON Schema) ·
 [DESIGN.md](DESIGN.md) §3.1 Domain Model / §3.7 Snapshot File Format. The schema
-is defined by the `Node` / `Edge` structs in `crates/code-split-plugin-api/src/`
-and the `Snapshot` / `LevelGraph` structs in `crates/code-split-graph/src/`.
+is defined by the `Node` / `Edge` structs in `crates/code-ranker-plugin-api/src/`
+and the `Snapshot` / `LevelGraph` structs in `crates/code-ranker-graph/src/`.

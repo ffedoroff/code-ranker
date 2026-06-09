@@ -41,14 +41,14 @@ jobs:
           else
             v="${GITHUB_REF_NAME#v}"
           fi
-          base="https://github.com/ffedoroff/code-split/releases/download/v${v}"
+          base="https://github.com/ffedoroff/code-ranker/releases/download/v${v}"
           # The Docker build downloads BOTH linux targets (amd64→x86_64,
           # arm64→aarch64), so wait until both are present — otherwise a
           # multi-arch build races the release upload and 404s on one of them.
           for i in $(seq 1 60); do
             ok=1
             for arch in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-              curl -fsI "${base}/code-split-${arch}.tar.xz" > /dev/null 2>&1 || ok=0
+              curl -fsI "${base}/code-ranker-${arch}.tar.xz" > /dev/null 2>&1 || ok=0
             done
             if [ "$ok" = 1 ]; then
               echo "both linux binaries present at $base"; exit 0
@@ -68,8 +68,8 @@ jobs:
           fi
           owner_lc="${GITHUB_REPOSITORY_OWNER,,}"
 
-          hub="fedoroff/code-split"
-          ghcr="ghcr.io/${owner_lc}/code-split"
+          hub="fedoroff/code-ranker"
+          ghcr="ghcr.io/${owner_lc}/code-ranker"
 
           tags="${hub}:${v},${ghcr}:${v}"
           if echo "$v" | grep -qE "(alpha|beta|rc)"; then

@@ -349,10 +349,10 @@ Cross-crate DRY shows up as:
 - A dependency version pinned in multiple `Cargo.toml`s. Fix:
   `[workspace.dependencies]` declares once.
 
-## How code-split detects DRY violations
+## How code-ranker detects DRY violations
 
 DRY is the hardest principle to detect automatically — knowledge
-duplication does not have a graph signature. Code Split can flag
+duplication does not have a graph signature. Code Ranker can flag
 *candidates*:
 
 | Signal | DRY interpretation |
@@ -362,10 +362,10 @@ duplication does not have a graph signature. Code Split can flag
 | Multiple crates with similar Cargo.toml dependency lists | Possibly the same domain repeated. |
 | Repeated string-literal regex patterns | Regex literals appearing in N source files is a textbook DRY violation. |
 
-Code Split's static graph cannot tell you whether two functions
+Code Ranker's static graph cannot tell you whether two functions
 *encode the same knowledge* — that requires understanding the
 function bodies. A future rule could flag literal duplication and
-let the LLM-verification step (see `cpt-code-split-fr-prompt-composer`)
+let the LLM-verification step (see `cpt-code-ranker-fr-prompt-composer`)
 decide.
 
 ## Suggested recommendation template
@@ -379,7 +379,7 @@ decide.
 > column width, an email subject limit, a UI hint), keep them
 > separate.
 >
-> Code Split cannot tell which case applies. See *Pragmatic Programmer*
+> Code Ranker cannot tell which case applies. See *Pragmatic Programmer*
 > Topic 9 and matklad's "Three Levels of Repetition" for guidance
 > on the call.
 

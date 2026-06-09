@@ -346,7 +346,7 @@ id_newtype!(TransactionId);
   `Uuid::new_v4()`, which is the entire point — explicit at every
   call site.
 
-## How code-split detects composition issues
+## How code-ranker detects composition issues
 
 The graph signals:
 
@@ -358,7 +358,7 @@ The graph signals:
 | Multiple `String`-typed identifiers passed around | Newtype candidates |
 | `pub struct X(String)` without `pub fn parse` constructor | Newtype with broken encapsulation |
 
-Code Split's `god-module-coupling` and `high-fan-in-public-api` rules
+Code Ranker's `god-module-coupling` and `high-fan-in-public-api` rules
 indirectly capture the "fat trait" issue. A future rule could flag:
 
 - Traits with > N methods AND multiple impls → ISP candidate.

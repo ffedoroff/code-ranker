@@ -1,4 +1,4 @@
-# Technical Design — Code Split
+# Technical Design — Code Ranker
 
 <!-- toc -->
 
@@ -26,15 +26,15 @@
 > **Component designs.** This is the product technical design — architecture,
 > principles, domain model, the plugin/extraction crates and the plugin system.
 > The two consumer components have their own design docs: the orchestrator
-> binary in [`code-split-cli/DESIGN.md`](code-split-cli/DESIGN.md) and the
+> binary in [`code-ranker-cli/DESIGN.md`](code-ranker-cli/DESIGN.md) and the
 > offline HTML viewer in
-> [`code-split-viewer/DESIGN.md`](code-split-viewer/DESIGN.md).
+> [`code-ranker-viewer/DESIGN.md`](code-ranker-viewer/DESIGN.md).
 
 ## 1. Architecture Overview
 
 ### 1.1 Architectural Vision
 
-Code Split is a pipeline: **extract → evaluate / visualize → (user
+Code Ranker is a pipeline: **extract → evaluate / visualize → (user
 modifies) → compare**. The platform is built around a single portable
 JSON artifact format that decouples the extraction layer (plugins) from
 the consumption layer (the `check` linter and `report` artifact writer).
@@ -43,16 +43,16 @@ respected.
 
 At P1 the platform ships three components:
 
-- **Rust Plugin** (`code-split-rust`): a Cargo workspace analyzer built
+- **Rust Plugin** (`code-ranker-rust`): a Cargo workspace analyzer built
   on `syn` (syntactic analysis). It builds the Rust module graph and
   collapses it to a single **file graph**; produces a single snapshot
   per run
-- **Check** (`code-split check`): built into `code-split-cli`; analyzes (or
+- **Check** (`code-ranker check`): built into `code-ranker-cli`; analyzes (or
   reads) the input, evaluates cycle rules and thresholds, prints diagnostics,
   and exits non-zero on violation. With `--baseline <snapshot>` it switches
   to a **relative gate** — failing only on *new* violations vs the baseline —
   and emits a verdict (`improved` / `degraded` / `neutral`). Writes no files
-- **Report** (`code-split report`): built into `code-split-cli`; analyzes (or
+- **Report** (`code-ranker report`): built into `code-ranker-cli`; analyzes (or
   reads) the input and writes artifacts — a snapshot `.json` and/or a single
   self-contained offline HTML viewer; all JS/CSS assets embedded in the binary
   via `include_str!`. With `--baseline <snapshot>` the HTML becomes a
@@ -80,36 +80,36 @@ The three pillars of the design are:
 
 | Requirement | Design Response |
 |-------------|-----------------|
-| `cpt-code-split-fr-rust-plugin` | Implemented by the `code-split-plugin-rust` crate (cargo metadata + `syn`), which collapses the module graph to a file graph. Dispatched in-process by `code-split-cli`'s `plugin` registry. Outputs a single snapshot `.json`. |
-| `cpt-code-split-fr-lang-plugins` (Python, JS/TS) | Python: `code-split-plugin-python` using `tree-sitter-python`. JS/TS: `code-split-plugin-javascript` using `tree-sitter-javascript` / `tree-sitter-typescript`, supporting both ESM and CommonJS. Both emit `File` nodes + file→file `uses` edges + `External` library nodes, and annotate per-file complexity via the shared `code-split-plugin` crate. |
-| `cpt-code-split-fr-file-graph` | All plugins emit a single file graph: `File` nodes with `uses` / `reexports` edges between files, plus `External` library nodes at depth 1 reached by `uses` edges flagged `external: true`. The Rust plugin derives it by collapsing its module graph; Python/JS/TS build it directly from import resolution. |
-| `cpt-code-split-fr-html-report` | Built-in Rust renderer in `code-split-cli`: `report` analyzes (or reads) the input, then renders an HTML template with inline assets alongside the JSON snapshot. |
-| `cpt-code-split-fr-node-sorting` | Node weight (fan-in + fan-out) is computed at render time and embedded in the HTML; client-side JavaScript sorts the table on user interaction. |
-| `cpt-code-split-fr-ai-prompts` | HTML: the viewer's Prompt Generator (`export-popup.js`). CLI: the `recommend` module (`code-split-cli/src/recommend.rs`) drives the `report --output.prompt` (LLM Markdown for one principle) and `--output.scorecard` (console triage) formats from the snapshot's calibrated thresholds — advisory, no exit code. |
-| `cpt-code-split-fr-graph-diff` | Browser-side diff in the HTML viewer (`diff.js` `computeDiff`/`computeCycles`): node/edge set difference on the file graph and `affected` propagation, from the two embedded snapshots. The `check --baseline` regression gate is rule-based (re-evaluates rules on the baseline), not a structured graph diff. |
-| `cpt-code-split-fr-diff-html-report` | With `report --baseline <snapshot>` the viewer becomes a self-contained diff with color-coded baseline/current views and a verdict; all assets inlined; the file is named `…-diff.html`. |
-| `cpt-code-split-fr-diff-text-report` | `check --baseline <snapshot> --output-format json` emits the machine-readable verdict (`improved` / `degraded` / `neutral`) and the list of new violations for CI parsing. |
+| `cpt-code-ranker-fr-rust-plugin` | Implemented by the `code-ranker-plugin-rust` crate (cargo metadata + `syn`), which collapses the module graph to a file graph. Dispatched in-process by `code-ranker-cli`'s `plugin` registry. Outputs a single snapshot `.json`. |
+| `cpt-code-ranker-fr-lang-plugins` (Python, JS/TS) | Python: `code-ranker-plugin-python` using `tree-sitter-python`. JS/TS: `code-ranker-plugin-javascript` using `tree-sitter-javascript` / `tree-sitter-typescript`, supporting both ESM and CommonJS. Both emit `File` nodes + file→file `uses` edges + `External` library nodes, and annotate per-file complexity via the shared `code-ranker-plugin` crate. |
+| `cpt-code-ranker-fr-file-graph` | All plugins emit a single file graph: `File` nodes with `uses` / `reexports` edges between files, plus `External` library nodes at depth 1 reached by `uses` edges flagged `external: true`. The Rust plugin derives it by collapsing its module graph; Python/JS/TS build it directly from import resolution. |
+| `cpt-code-ranker-fr-html-report` | Built-in Rust renderer in `code-ranker-cli`: `report` analyzes (or reads) the input, then renders an HTML template with inline assets alongside the JSON snapshot. |
+| `cpt-code-ranker-fr-node-sorting` | Node weight (fan-in + fan-out) is computed at render time and embedded in the HTML; client-side JavaScript sorts the table on user interaction. |
+| `cpt-code-ranker-fr-ai-prompts` | HTML: the viewer's Prompt Generator (`export-popup.js`). CLI: the `recommend` module (`code-ranker-cli/src/recommend.rs`) drives the `report --output.prompt` (LLM Markdown for one principle) and `--output.scorecard` (console triage) formats from the snapshot's calibrated thresholds — advisory, no exit code. |
+| `cpt-code-ranker-fr-graph-diff` | Browser-side diff in the HTML viewer (`diff.js` `computeDiff`/`computeCycles`): node/edge set difference on the file graph and `affected` propagation, from the two embedded snapshots. The `check --baseline` regression gate is rule-based (re-evaluates rules on the baseline), not a structured graph diff. |
+| `cpt-code-ranker-fr-diff-html-report` | With `report --baseline <snapshot>` the viewer becomes a self-contained diff with color-coded baseline/current views and a verdict; all assets inlined; the file is named `…-diff.html`. |
+| `cpt-code-ranker-fr-diff-text-report` | `check --baseline <snapshot> --output-format json` emits the machine-readable verdict (`improved` / `degraded` / `neutral`) and the list of new violations for CI parsing. |
 
 #### NFR Allocation
 
 | NFR ID | Summary | Allocated To | Design Response |
 |--------|---------|--------------|-----------------|
-| `cpt-code-split-nfr-offline` | Zero outbound network calls | All components | Rust plugin: no HTTP; `code-split check` / `code-split report`: HTML assets embedded in binary, no CDN references in generated output. |
-| `cpt-code-split-nfr-performance` | ≤ 30 s @ 50k LOC (plugin); ≤ 5 s @ 10k nodes (check/report) | `code-split-plugin-rust`, `code-split-plugin`, `code-split-cli` | Syntactic analysis + the module→file collapse run in seconds (no rust-analyzer); `check` / `report` process a snapshot in a single pass. |
-| `cpt-code-split-nfr-portability` | JSON artifacts stable within a major version | All components | Schema version field in `meta`; consumers abort on mismatch; additive-only changes within a major version. |
+| `cpt-code-ranker-nfr-offline` | Zero outbound network calls | All components | Rust plugin: no HTTP; `code-ranker check` / `code-ranker report`: HTML assets embedded in binary, no CDN references in generated output. |
+| `cpt-code-ranker-nfr-performance` | ≤ 30 s @ 50k LOC (plugin); ≤ 5 s @ 10k nodes (check/report) | `code-ranker-plugin-rust`, `code-ranker-plugin`, `code-ranker-cli` | Syntactic analysis + the module→file collapse run in seconds (no rust-analyzer); `check` / `report` process a snapshot in a single pass. |
+| `cpt-code-ranker-nfr-portability` | JSON artifacts stable within a major version | All components | Schema version field in `meta`; consumers abort on mismatch; additive-only changes within a major version. |
 
 ### 1.3 Architecture Layers
 
 ```mermaid
 flowchart TD
     subgraph step1["Language plugins (Rust binary)"]
-        cli["code-split-cli<br/>(registry + dispatch via trait)"]
-        api["code-split-plugin-api<br/>(LanguagePlugin trait)"]
-        pr["code-split-plugin-rust<br/>(cargo metadata + syn, module→file collapse)"]
-        pp["code-split-plugin-python<br/>(tree-sitter)"]
-        pj["code-split-plugin-javascript<br/>(tree-sitter)"]
-        plug["code-split-plugin<br/>(complexity, finalize, logging)"]
-        core["code-split-graph<br/>(graph types + JSON schema)"]
+        cli["code-ranker-cli<br/>(registry + dispatch via trait)"]
+        api["code-ranker-plugin-api<br/>(LanguagePlugin trait)"]
+        pr["code-ranker-plugin-rust<br/>(cargo metadata + syn, module→file collapse)"]
+        pp["code-ranker-plugin-python<br/>(tree-sitter)"]
+        pj["code-ranker-plugin-javascript<br/>(tree-sitter)"]
+        plug["code-ranker-plugin<br/>(complexity, finalize, logging)"]
+        core["code-ranker-graph<br/>(graph types + JSON schema)"]
         cli -->|"dyn LanguagePlugin"| api
         pr -.implements.-> api
         pp -.implements.-> api
@@ -127,8 +127,8 @@ flowchart TD
     core -->|"snapshot (one `files` graph)"| artifacts["In-memory or JSON snapshot"]
 
     subgraph consume["Consumers (built-in Rust)"]
-        check["code-split check<br/>(code-split-cli)"]
-        report["code-split report<br/>(code-split-cli + code-split-viewer)"]
+        check["code-ranker check<br/>(code-ranker-cli)"]
+        report["code-ranker report<br/>(code-ranker-cli + code-ranker-viewer)"]
     end
 
     artifacts --> check
@@ -140,12 +140,12 @@ flowchart TD
 | Layer | Responsibility | Technology |
 |-------|---------------|------------|
 | Plugin — Presentation | Argument parsing, output routing, artifact writing | `clap`, `anyhow` (Rust) |
-| Plugin — Application | Dispatch language plugins, assemble the snapshot | `code-split-cli` (Rust) |
-| Plugin — Domain | Generic graph model + operations (cycles/hk/stats/snapshot) | `code-split-plugin-api`, `code-split-graph`, `serde` (Rust) |
-| Plugin — Contract | The `LanguagePlugin` trait every language plugin implements; the CLI works only against it | `code-split-plugin-api` (Rust) |
-| Plugin — Infrastructure | Per-language analysis (one crate each, behind the trait) on a shared utility layer (complexity, finalize, logging) | `code-split-plugin-rust`/`-python`/`-javascript`, `code-split-plugin`, `syn`, `tree-sitter`, `rust-code-analysis` (Rust) |
-| Check | Analyze (or read) input, evaluate rules and (with `--baseline`) regressions, print diagnostics, exit non-zero on violation | `code-split-cli` (Rust) |
-| Report | Analyze (or read) input, write snapshot JSON + offline HTML viewer (a diff with `--baseline`) | `code-split-cli` + `code-split-viewer` (Rust), Graphviz WASM bundled in binary, assets embedded via `include_str!` |
+| Plugin — Application | Dispatch language plugins, assemble the snapshot | `code-ranker-cli` (Rust) |
+| Plugin — Domain | Generic graph model + operations (cycles/hk/stats/snapshot) | `code-ranker-plugin-api`, `code-ranker-graph`, `serde` (Rust) |
+| Plugin — Contract | The `LanguagePlugin` trait every language plugin implements; the CLI works only against it | `code-ranker-plugin-api` (Rust) |
+| Plugin — Infrastructure | Per-language analysis (one crate each, behind the trait) on a shared utility layer (complexity, finalize, logging) | `code-ranker-plugin-rust`/`-python`/`-javascript`, `code-ranker-plugin`, `syn`, `tree-sitter`, `rust-code-analysis` (Rust) |
+| Check | Analyze (or read) input, evaluate rules and (with `--baseline`) regressions, print diagnostics, exit non-zero on violation | `code-ranker-cli` (Rust) |
+| Report | Analyze (or read) input, write snapshot JSON + offline HTML viewer (a diff with `--baseline`) | `code-ranker-cli` + `code-ranker-viewer` (Rust), Graphviz WASM bundled in binary, assets embedded via `include_str!` |
 
 ## 2. Principles & Constraints
 
@@ -153,7 +153,7 @@ flowchart TD
 
 #### JSON Artifact Contract as the Sole Integration Surface
 
-- [x] `p1` - **ID**: `cpt-code-split-principle-json-contract`
+- [x] `p1` - **ID**: `cpt-code-ranker-principle-json-contract`
 
 The single JSON snapshot (one `files` graph plus metadata) is the
 ONLY handoff between the plugin layer and the consumer layer. No
@@ -163,7 +163,7 @@ rendering code is permitted. This contract is versioned via
 
 #### Offline-First
 
-- [x] `p1` - **ID**: `cpt-code-split-principle-offline-first`
+- [x] `p1` - **ID**: `cpt-code-ranker-principle-offline-first`
 
 Every P1 component must work without network access. Generated HTML
 files must contain no external resource references. This is a design
@@ -171,7 +171,7 @@ constraint, not a preference — it must be verified in CI.
 
 #### Files-Only Graph Model
 
-- [x] `p1` - **ID**: `cpt-code-split-principle-files-only`
+- [x] `p1` - **ID**: `cpt-code-ranker-principle-files-only`
 
 The model is a **generic property graph** (free-form node/edge `kind` +
 attribute maps), but today the snapshot carries exactly one level: **files**.
@@ -189,7 +189,7 @@ levels later with no model change.
 
 #### Internal Coupling Excludes External Libraries
 
-- [x] `p1` - **ID**: `cpt-code-split-principle-internal-coupling`
+- [x] `p1` - **ID**: `cpt-code-ranker-principle-internal-coupling`
 
 `fan_in`, `fan_out`, and Henry-Kafura (`HK = sloc × (fan_in × fan_out)²`)
 are computed from **internal** file→file edges only. Edges to `External`
@@ -200,7 +200,7 @@ library usage, which would otherwise drown out real structural signal.
 
 #### Pluggable Extraction, Stable Consumers
 
-- [x] `p1` - **ID**: `cpt-code-split-principle-pluggable`
+- [x] `p1` - **ID**: `cpt-code-ranker-principle-pluggable`
 
 The `check` linter and `report` artifact writer are schema consumers, not
 language-aware tools. Adding a new language plugin MUST NOT require
@@ -211,17 +211,17 @@ exclusively in the plugin.
 
 #### Stable Rust Toolchain
 
-- [x] `p1` - **ID**: `cpt-code-split-constraint-stable-rust`
+- [x] `p1` - **ID**: `cpt-code-ranker-constraint-stable-rust`
 
 The Rust plugin must build on stable Rust. `rustc_private` and
 nightly-only features are prohibited.
 
 #### Python 3.9+ Minimum
 
-- [x] `p3` - **ID**: `cpt-code-split-constraint-python`
+- [x] `p3` - **ID**: `cpt-code-ranker-constraint-python`
 
 The built-in Python language plugin targets Python 3.9+ as the minimum
-version to analyze. No Python runtime is required by the `code-split`
+version to analyze. No Python runtime is required by the `code-ranker`
 binary itself; the constraint applies to the target workspace being
 analyzed, not the execution environment.
 
@@ -230,8 +230,8 @@ analyzed, not the execution environment.
 ### 3.1 Domain Model
 
 **Technology**: a **generic property-graph** model. The contract types live in
-`code-split-plugin-api`; the serializable snapshot and computed-data types live
-in `code-split-graph`.
+`code-ranker-plugin-api`; the serializable snapshot and computed-data types live
+in `code-ranker-graph`.
 
 The model is deliberately language-agnostic: there are **no** `NodeKind` /
 `EdgeKind` / `Visibility` enums and no fixed metric field set. A node has a
@@ -241,23 +241,23 @@ keys it understands, described per level by the semantics dictionaries.
 
 | Entity | Description | Location |
 |--------|-------------|----------|
-| Graph | Pure structure: `nodes: Vec<Node>` + `edges: Vec<Edge>`. No computed data. What a plugin's `analyze` returns. | `crates/code-split-plugin-api/src/graph.rs` |
-| Node | `id: NodeId`, `kind: String` (`"file"` / `"external"` today), `name: String`, `parent: Option<NodeId>`, `attrs: Attributes` (flattened into the JSON object). | `crates/code-split-plugin-api/src/node.rs` |
-| Edge | `source: NodeId`, `target: NodeId`, `kind: String` (`"uses"` / `"contains"` / `"reexports"` / `"super"`), `attrs: Attributes` (usually empty; e.g. a Rust `reexports` edge carries `visibility`). An edge is **external iff its `target` node is external** — there is no `edge.external` flag. | `crates/code-split-plugin-api/src/edge.rs` |
-| Attributes | `BTreeMap<String, AttrValue>` (alphabetical → byte-stable). Plugins fill **structural** keys (`path`, `loc`, `visibility`, `version`, `items`, `external`, `crate` — the Rust plugin's per-target owning crate, e.g. `bat` / `bat (bin)`, …); the orchestrator adds **computed** keys (`cyclomatic`, `cognitive`, `sloc`, `lloc`, `cloc`, `blank`, `mi`, `mi_sei`, `length`, `vocabulary`, `volume`, `effort`, `time`, `bugs`, `fan_in`, `fan_out`, `fan_out_external`, `hk`, `cycle`) into the same map by node id. All flat — no nesting. Zero-valued metrics are omitted. | `crates/code-split-plugin-api/src/attrs.rs` |
-| AttrValue | Untagged scalar: `Bool` / `Int` / `Float` / `Str` (serialized to its natural JSON form). Metric producers round to 3 significant digits and store an integral value as `Int` so e.g. `1.0` serializes as `1`. | `crates/code-split-plugin-api/src/attrs.rs` |
-| NodeId | Stable string key. A **file node's id IS its relativized path** — `{target}/src/a.rs` (no `file:` prefix); an external node is `ext:{name}` (`ext:serde`). During analysis a file id is its absolute path; the orchestrator relativizes it against the named roots. | `crates/code-split-plugin-api/src/node.rs` |
-| Level | What a plugin can produce, with its semantics dictionaries: `name`, `edge_kinds`, `node_attributes` / `edge_attributes`, `attribute_groups`, plus `node_kinds: BTreeMap<String, NodeKindSpec>` and `cycle_kinds: BTreeMap<String, CycleKindSpec>` (seeded from `default_node_kinds()` / `default_cycle_kinds()`, overridable), plus an optional `grouping: Grouping` telling the viewer how to cluster nodes — `{ key }` (group by a node attribute's value, e.g. `crate`) or `{ function }` (a named viewer grouper, e.g. `dir`). The orchestrator merges the plugin's structural attribute specs with the central complexity + coupling specs, overlays the plugin's `thresholds()`, computes the `ui` block, then prunes everything to what is actually present. The `node_attributes` dictionary keeps every key carried by *any* node (external included, so the viewer can still label e.g. an external node's `path`), while the `ui` render lists are filtered more tightly to keys present on at least one **internal** (non-external) node — those surfaces (table, summary, sort) never show external rows. | `crates/code-split-plugin-api/src/level.rs` |
-| EdgeKindSpec | `flow: bool` (single source of truth — counted/drawn when `true`; structural like `contains` when `false`), plus optional `label` / `description`. | `crates/code-split-plugin-api/src/level.rs` |
-| AttributeSpec | Everything the UI needs to render a metric from data: `value_type`, `label`, `name` (tooltip title), `short` (table header), `description`, `formula` (display), `calc` (an `eval`-able JS expression over sibling attrs — the live derivation), `direction` (`higher_better`/`lower_better`, for delta colour; **absent → the Δ stays neutral / uncoloured** — used for raw sizes like `sloc`/`lloc`/`blank` and for `fan_in`, which have no agreed "good" way to move), `abbreviate` (K/M), `group`, `thresholds {info, warning}`. All optional but `value_type`. | `crates/code-split-plugin-api/src/level.rs` |
-| NodeKindSpec / CycleKindSpec | Per-kind UI semantics. `NodeKindSpec`: `label`/`plural`/`fill`/`stroke`/`external`. `CycleKindSpec`: `label`/`description`. Generic defaults from `default_node_kinds()` / `default_cycle_kinds()` in `code-split-plugin-api`. | `crates/code-split-plugin-api/src/level.rs` |
-| Thresholds | `{ info: f64, warning: f64 }` — two-tier per-metric thresholds; language-calibrated, returned by a plugin's `thresholds()` and overlaid onto the matching `AttributeSpec`. | `crates/code-split-plugin-api/src/level.rs` |
-| Preset | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-split-cli/src/presets.rs`) and a plugin's `presets(defaults, input)` hook may pass through / edit / extend it. Stored top-level in the snapshot. | `crates/code-split-plugin-api/src/plugin.rs` |
-| CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"mutual"` for a 2-node SCC, `"chain"` for 3+), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-split-graph/src/level_graph.rs` |
-| LevelUi | Computed UI hints: `default_sort`, `sort_metrics`, `size_metrics`, `card_metrics`, `columns`, `summary_metrics` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-split-graph/src/level_graph.rs` |
-| LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-split-graph/src/level_graph.rs` |
-| Snapshot | The `.json` artifact: `schema_version: "2"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, and top-level `presets: Vec<Preset>`. Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-split-graph/src/snapshot.rs` |
-| StageTime | Per-stage timing entry: `stage`, `ms`, `detail`. Stored in `Snapshot.timings` in execution order. | `crates/code-split-graph/src/snapshot.rs` |
+| Graph | Pure structure: `nodes: Vec<Node>` + `edges: Vec<Edge>`. No computed data. What a plugin's `analyze` returns. | `crates/code-ranker-plugin-api/src/graph.rs` |
+| Node | `id: NodeId`, `kind: String` (`"file"` / `"external"` today), `name: String`, `parent: Option<NodeId>`, `attrs: Attributes` (flattened into the JSON object). | `crates/code-ranker-plugin-api/src/node.rs` |
+| Edge | `source: NodeId`, `target: NodeId`, `kind: String` (`"uses"` / `"contains"` / `"reexports"` / `"super"`), `attrs: Attributes` (usually empty; e.g. a Rust `reexports` edge carries `visibility`). An edge is **external iff its `target` node is external** — there is no `edge.external` flag. | `crates/code-ranker-plugin-api/src/edge.rs` |
+| Attributes | `BTreeMap<String, AttrValue>` (alphabetical → byte-stable). Plugins fill **structural** keys (`path`, `loc`, `visibility`, `version`, `items`, `external`, `crate` — the Rust plugin's per-target owning crate, e.g. `bat` / `bat (bin)`, …); the orchestrator adds **computed** keys (`cyclomatic`, `cognitive`, `sloc`, `lloc`, `cloc`, `blank`, `mi`, `mi_sei`, `length`, `vocabulary`, `volume`, `effort`, `time`, `bugs`, `fan_in`, `fan_out`, `fan_out_external`, `hk`, `cycle`) into the same map by node id. All flat — no nesting. Zero-valued metrics are omitted. | `crates/code-ranker-plugin-api/src/attrs.rs` |
+| AttrValue | Untagged scalar: `Bool` / `Int` / `Float` / `Str` (serialized to its natural JSON form). Metric producers round to 3 significant digits and store an integral value as `Int` so e.g. `1.0` serializes as `1`. | `crates/code-ranker-plugin-api/src/attrs.rs` |
+| NodeId | Stable string key. A **file node's id IS its relativized path** — `{target}/src/a.rs` (no `file:` prefix); an external node is `ext:{name}` (`ext:serde`). During analysis a file id is its absolute path; the orchestrator relativizes it against the named roots. | `crates/code-ranker-plugin-api/src/node.rs` |
+| Level | What a plugin can produce, with its semantics dictionaries: `name`, `edge_kinds`, `node_attributes` / `edge_attributes`, `attribute_groups`, plus `node_kinds: BTreeMap<String, NodeKindSpec>` and `cycle_kinds: BTreeMap<String, CycleKindSpec>` (seeded from `default_node_kinds()` / `default_cycle_kinds()`, overridable), plus an optional `grouping: Grouping` telling the viewer how to cluster nodes — `{ key }` (group by a node attribute's value, e.g. `crate`) or `{ function }` (a named viewer grouper, e.g. `dir`). The orchestrator merges the plugin's structural attribute specs with the central complexity + coupling specs, overlays the plugin's `thresholds()`, computes the `ui` block, then prunes everything to what is actually present. The `node_attributes` dictionary keeps every key carried by *any* node (external included, so the viewer can still label e.g. an external node's `path`), while the `ui` render lists are filtered more tightly to keys present on at least one **internal** (non-external) node — those surfaces (table, summary, sort) never show external rows. | `crates/code-ranker-plugin-api/src/level.rs` |
+| EdgeKindSpec | `flow: bool` (single source of truth — counted/drawn when `true`; structural like `contains` when `false`), plus optional `label` / `description`. | `crates/code-ranker-plugin-api/src/level.rs` |
+| AttributeSpec | Everything the UI needs to render a metric from data: `value_type`, `label`, `name` (tooltip title), `short` (table header), `description`, `formula` (display), `calc` (an `eval`-able JS expression over sibling attrs — the live derivation), `direction` (`higher_better`/`lower_better`, for delta colour; **absent → the Δ stays neutral / uncoloured** — used for raw sizes like `sloc`/`lloc`/`blank` and for `fan_in`, which have no agreed "good" way to move), `abbreviate` (K/M), `group`, `thresholds {info, warning}`. All optional but `value_type`. | `crates/code-ranker-plugin-api/src/level.rs` |
+| NodeKindSpec / CycleKindSpec | Per-kind UI semantics. `NodeKindSpec`: `label`/`plural`/`fill`/`stroke`/`external`. `CycleKindSpec`: `label`/`description`. Generic defaults from `default_node_kinds()` / `default_cycle_kinds()` in `code-ranker-plugin-api`. | `crates/code-ranker-plugin-api/src/level.rs` |
+| Thresholds | `{ info: f64, warning: f64 }` — two-tier per-metric thresholds; language-calibrated, returned by a plugin's `thresholds()` and overlaid onto the matching `AttributeSpec`. | `crates/code-ranker-plugin-api/src/level.rs` |
+| Preset | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-ranker-cli/src/presets.rs`) and a plugin's `presets(defaults, input)` hook may pass through / edit / extend it. Stored top-level in the snapshot. | `crates/code-ranker-plugin-api/src/plugin.rs` |
+| CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"mutual"` for a 2-node SCC, `"chain"` for 3+), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-ranker-graph/src/level_graph.rs` |
+| LevelUi | Computed UI hints: `default_sort`, `sort_metrics`, `size_metrics`, `card_metrics`, `columns`, `summary_metrics` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-ranker-graph/src/level_graph.rs` |
+| LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-ranker-graph/src/level_graph.rs` |
+| Snapshot | The `.json` artifact: `schema_version: "2"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, and top-level `presets: Vec<Preset>`. Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-ranker-graph/src/snapshot.rs` |
+| StageTime | Per-stage timing entry: `stage`, `ms`, `detail`. Stored in `Snapshot.timings` in execution order. | `crates/code-ranker-graph/src/snapshot.rs` |
 
 **Relationships**:
 
@@ -272,14 +272,14 @@ keys it understands, described per level by the semantics dictionaries.
 
 ### 3.2 Component Model
 
-#### code-split-graph
+#### code-ranker-graph
 
-- [x] `p1` - **ID**: `cpt-code-split-component-core`
+- [x] `p1` - **ID**: `cpt-code-ranker-component-core`
 
-Operations **over** the generic model (defined in `code-split-plugin-api`):
+Operations **over** the generic model (defined in `code-ranker-plugin-api`):
 cycle detection, Henry-Kafura coupling, aggregate stats, id relativization, and
 the serializable `Snapshot` / `LevelGraph` types. Language-agnostic, zero I/O.
-Depends on `code-split-plugin-api`, `serde`, `chrono`, `anyhow` only — no
+Depends on `code-ranker-plugin-api`, `serde`, `chrono`, `anyhow` only — no
 `petgraph`, `cargo_metadata`, `syn`, or analyzers. Which edge kinds count as
 information flow is **not hardcoded** — every pass takes a `flow_kinds: HashSet<String>`
 the orchestrator derives from the level's `EdgeKindSpec.flow`.
@@ -329,7 +329,7 @@ Modules:
 - **`lib.rs`** — declares the submodules (`pub mod attrs; … pub mod stats;`),
   holds `coupling_specs()` (the coupling/cycle `AttributeSpec`s + the `coupling`
   group, merged in by the orchestrator), and re-exports the crate's main items
-  via a `pub use` prelude (`code_split_graph::Snapshot`, `…::annotate_cycles`,
+  via a `pub use` prelude (`code_ranker_graph::Snapshot`, `…::annotate_cycles`,
   …) for ergonomic imports. This is **metric-neutral**: `pub use` emits
   `reexports` edges, which are non-flow, so they do not count toward `fan_out` /
   HK / cycles — the root stays off the coupling metrics regardless of the
@@ -338,9 +338,9 @@ Modules:
   prelude is back.) (There is no server-side snapshot-diff module — `--baseline`
   diffing is done browser-side by the viewer's `diff.js`.)
 
-#### code-split-plugin-api
+#### code-ranker-plugin-api
 
-- [x] `p1` - **ID**: `cpt-code-split-component-plugin-api`
+- [x] `p1` - **ID**: `cpt-code-ranker-component-plugin-api`
 
 The **foundation** crate: it defines the generic model (`Node` / `Edge` /
 `Graph` / `Attributes` / `AttrValue` / `Level` + the `EdgeKindSpec` /
@@ -348,7 +348,7 @@ The **foundation** crate: it defines the generic model (`Node` / `Edge` /
 `LanguagePlugin`. It depends on **nothing** of ours (only `serde` + `anyhow`);
 every other crate depends on it. The model lives in topic submodules (`attrs` / `edge` / `graph` /
 `level` / `node` / `plugin`), re-exported from the crate root via a `pub use`
-prelude (`code_split_plugin_api::Node`, `…::Graph`, …) for ergonomic imports.
+prelude (`code_ranker_plugin_api::Node`, `…::Graph`, …) for ergonomic imports.
 This is metric-neutral — `pub use` emits non-flow `reexports` edges, so the
 prelude adds no `fan_out` / HK to the root.
 
@@ -363,24 +363,24 @@ plugin, not the CLI), and free-form `options`, so input can grow without trait
 changes.
 
 The CLI works **only** against `dyn LanguagePlugin`. The single place that names
-concrete plugins is `code-split-cli`'s `plugin::registry() -> Vec<Box<dyn
+concrete plugins is `code-ranker-cli`'s `plugin::registry() -> Vec<Box<dyn
 LanguagePlugin>>`; dispatch (`analyze`), `detect`, and `versions` all iterate
 that list. Adding a language is: implement the trait in a new crate, add one
 line to `registry()` — nothing else changes.
 
-#### code-split-plugin-rust
+#### code-ranker-plugin-rust
 
-- [x] `p1` - **ID**: `cpt-code-split-component-syn`
+- [x] `p1` - **ID**: `cpt-code-ranker-component-syn`
 
 The Rust language plugin (implements `LanguagePlugin`; analysis in `analyze`),
-dispatched by `code-split-cli`. It produces the Rust module graph via syntactic
+dispatched by `code-ranker-cli`. It produces the Rust module graph via syntactic
 analysis and collapses it to a file graph (see §3.7) before returning a generic
 `api::Graph` — **structure only, no metrics** (complexity is added centrally by
 the orchestrator). It builds with a crate-local typed model
 (`src/internal.rs` — `Node` / `Edge` / `Visibility`) for the syn/collapse passes
 and converts to the generic model at the boundary, so it depends on
-`code-split-plugin-api` only (not `code-split-graph`, not `rust-code-analysis`).
-Calls `cargo metadata` **with `--offline`** (code-split never hits the network —
+`code-ranker-plugin-api` only (not `code-ranker-graph`, not `rust-code-analysis`).
+Calls `cargo metadata` **with `--offline`** (code-ranker never hits the network —
 it resolves from the warm cargo cache, surfacing an actionable error otherwise);
 classifies crates as local vs. external; walks local source trees with `syn` to
 extract the module hierarchy and `use` / `pub use` statements, emitting internal
@@ -446,15 +446,15 @@ collapses onto the single `External` node. A file reached only via `Contains`
 (e.g. a module declared with `mod foo;` but never referenced by path or `use`)
 has `fan_in` 0 and can appear isolated on the map.
 
-#### code-split-complexity
+#### code-ranker-complexity
 
-- [x] `p1` - **ID**: `cpt-code-split-component-complexity`
+- [x] `p1` - **ID**: `cpt-code-ranker-component-complexity`
 
 The **central, language-agnostic** complexity pass — the single place that knows
 `rust-code-analysis` (Mozilla, via the `ffedoroff/rust-code-analysis` fork on
 branch `patch/update-tree-sitter-0.26.8`). Plugins emit structure only; this
-crate computes metrics. Depends on `code-split-plugin-api` (the model) and
-`code-split-graph` (for `num_attr`).
+crate computes metrics. Depends on `code-ranker-plugin-api` (the model) and
+`code-ranker-graph` (for `num_attr`).
 
 **Interface**: `annotate(graph: &mut Graph) -> usize`. It iterates every file
 node (`kind == "file"`, whose `id` is the file's absolute path at this stage),
@@ -486,13 +486,13 @@ zero; the LOC block is gated on `sloc > 0`, the Halstead block on `volume > 0`):
 | halstead | `length`, `vocabulary`, `volume`, `effort`, `time`, `bugs` |
 
 Coupling (`fan_in` / `fan_out` / `fan_out_external` / `hk`) and `cycle` are added
-later by `code-split-graph` (`annotate_hk` / `annotate_cycles`), not here.
+later by `code-ranker-graph` (`annotate_hk` / `annotate_cycles`), not here.
 
-#### code-split-plugin-python (built-in)
+#### code-ranker-plugin-python (built-in)
 
-- [x] `p3` - **ID**: `cpt-code-split-component-python-plugin`
+- [x] `p3` - **ID**: `cpt-code-ranker-component-python-plugin`
 
-In-process Python plugin implemented in `code-split-plugin-python/src/lib.rs`.
+In-process Python plugin implemented in `code-ranker-plugin-python/src/lib.rs`.
 Uses `tree-sitter-python` (already a transitive dep via `rust-code-analysis`)
 for AST traversal and `walkdir` for file discovery.
 
@@ -515,7 +515,7 @@ for AST traversal and `walkdir` for file discovery.
    `external: true`.
 
 It implements `LanguagePlugin` (`analyze` returns a generic `api::Graph`,
-structure only) and depends on `code-split-plugin-api` only. `detect` matches
+structure only) and depends on `code-ranker-plugin-api` only. `detect` matches
 `pyproject.toml` / `setup.py` / `setup.cfg`.
 
 **ID scheme**:
@@ -526,15 +526,15 @@ structure only) and depends on `code-split-plugin-api` only. `detect` matches
 **Visibility heuristic**: emitted as a `visibility` string attr — `__name`
 (no trailing dunder) → `private`; `_name` → `restricted`; otherwise → `public`.
 
-**Complexity** is added centrally by `code-split-complexity` (by `.py`
+**Complexity** is added centrally by `code-ranker-complexity` (by `.py`
 extension) — the plugin computes none.
 
-#### code-split-plugin-javascript (built-in)
+#### code-ranker-plugin-javascript (built-in)
 
-- [x] `p3` - **ID**: `cpt-code-split-component-js-plugin`
+- [x] `p3` - **ID**: `cpt-code-ranker-component-js-plugin`
 
 In-process JavaScript plugin implemented in
-`code-split-plugin-javascript/src/lib.rs` (`name = "javascript"`, scans
+`code-ranker-plugin-javascript/src/lib.rs` (`name = "javascript"`, scans
 `.js`/`.jsx`/`.mjs`/`.cjs` via `tree-sitter-javascript`, `detect` = a
 `package.json` marker). It implements `LanguagePlugin` (`analyze` returns a
 generic `api::Graph`, structure only) and **also exposes the shared ECMAScript
@@ -542,7 +542,7 @@ logic** the TypeScript plugin reuses by composition: `analyze_ecmascript(ws,
 exts, lang_for_ext, candidate_exts_order)` (the walker / import-specifier
 extractor / resolver — the tree-sitter node kinds are identical across the JS
 and TS grammars), `ecmascript_level(name)`, `detect_with_marker`, and
-`external_package`. Depends on `code-split-plugin-api` + `tree-sitter` +
+`external_package`. Depends on `code-ranker-plugin-api` + `tree-sitter` +
 `tree-sitter-javascript` (no `tree-sitter-typescript`). Uses `walkdir` for file
 discovery.
 
@@ -575,16 +575,16 @@ follow the `src/` layout convention.
 **Visibility**: JS/TS have no visibility; every file node gets `visibility:
 "public"`.
 
-**Complexity** is added centrally by `code-split-complexity` (by extension) —
+**Complexity** is added centrally by `code-ranker-complexity` (by extension) —
 the plugin computes none.
 
-#### code-split-plugin-typescript (built-in)
+#### code-ranker-plugin-typescript (built-in)
 
-- [x] `p3` - **ID**: `cpt-code-split-component-ts-plugin`
+- [x] `p3` - **ID**: `cpt-code-ranker-component-ts-plugin`
 
 In-process TypeScript plugin (`name = "typescript"`, scans
 `.ts`/`.tsx`/`.mts`/`.cts`, `detect` = a `tsconfig.json` marker). It does **not**
-duplicate parsing logic: it depends on `code-split-plugin-javascript` and drives
+duplicate parsing logic: it depends on `code-ranker-plugin-javascript` and drives
 the shared `analyze_ecmascript` helper, passing the `tree-sitter-typescript`
 grammars (`LANGUAGE_TYPESCRIPT` for `.ts`/`.mts`/`.cts`, `LANGUAGE_TSX` for
 `.tsx`) and a TS-first candidate-extension order, plus `ecmascript_level` /
@@ -592,54 +592,54 @@ grammars (`LANGUAGE_TYPESCRIPT` for `.ts`/`.mts`/`.cts`, `LANGUAGE_TSX` for
 (two crates; `-typescript` depends on `-javascript`). Same id scheme,
 visibility, and central-complexity rules as the JS plugin.
 
-#### code-split-cli · recommendation engine
+#### code-ranker-cli · recommendation engine
 
-> **Moved.** The orchestrator binary (`cpt-code-split-component-cli`) — plugin
+> **Moved.** The orchestrator binary (`cpt-code-ranker-component-cli`) — plugin
 > registry/dispatch, the shared analysis core, the `check` linter and `report`
 > artifact writer — and the recommendation engine
-> (`cpt-code-split-component-recommend`, the console counterpart of the viewer's
+> (`cpt-code-ranker-component-recommend`, the console counterpart of the viewer's
 > Prompt Generator) are documented in
-> [`code-split-cli/DESIGN.md`](code-split-cli/DESIGN.md).
+> [`code-ranker-cli/DESIGN.md`](code-ranker-cli/DESIGN.md).
 
-#### HTML assets (`crates/code-split-viewer/src/assets/`)
+#### HTML assets (`crates/code-ranker-viewer/src/assets/`)
 
-> **Moved.** The viewer assets (`cpt-code-split-component-html-assets`) — the
+> **Moved.** The viewer assets (`cpt-code-ranker-component-html-assets`) — the
 > data-driven `schema.js` layer, the `grouping.js` ladder, the browser-side diff
 > (`diff.js`), the map render/interaction/popup/table/export/shell files (split
 > out of the former `diagram.js` / `app.js` / `node-table.js`), the concern-split
 > stylesheet, plus the relative-dig / affected-status / cycle-detection /
 > offline-guarantee notes — are documented, layer by layer, in
-> [`code-split-viewer/DESIGN.md`](code-split-viewer/DESIGN.md).
+> [`code-ranker-viewer/DESIGN.md`](code-ranker-viewer/DESIGN.md).
 
 ### 3.3 API Contracts
 
 Interfaces are defined in PRD §7. This section notes the implementation
 binding.
 
-#### Unified CLI (`cpt-code-split-interface-cli`)
+#### Unified CLI (`cpt-code-ranker-interface-cli`)
 
 > **Moved.** The implementation binding for the unified CLI is in
-> [`code-split-cli/DESIGN.md`](code-split-cli/DESIGN.md#unified-cli).
+> [`code-ranker-cli/DESIGN.md`](code-ranker-cli/DESIGN.md#unified-cli).
 
 #### Plugins (built-in, in-process)
 
 Plugins are not external binaries. The three plugins — `rust`, `python`,
-`javascript` — are compiled into the `code-split` binary and invoked
+`javascript` — are compiled into the `code-ranker` binary and invoked
 in-process; each writes its graphs directly into the shared `GraphBuilder`.
 See [§3.7 Plugin System](#37-plugin-system).
 
-#### Report Generator (`cpt-code-split-interface-report-cli`) · Check / Regression Gate (`cpt-code-split-interface-check-cli`)
+#### Report Generator (`cpt-code-ranker-interface-report-cli`) · Check / Regression Gate (`cpt-code-ranker-interface-check-cli`)
 
 > **Moved.** The implementation bindings for the `report` generator and the
 > `check` / regression gate are in
-> [`code-split-cli/DESIGN.md`](code-split-cli/DESIGN.md#report-generator). The
+> [`code-ranker-cli/DESIGN.md`](code-ranker-cli/DESIGN.md#report-generator). The
 > HTML rendering side (`render_html_viewer` and the embedded assets) is in
-> [`code-split-viewer/DESIGN.md`](code-split-viewer/DESIGN.md).
+> [`code-ranker-viewer/DESIGN.md`](code-ranker-viewer/DESIGN.md).
 
-#### Graph JSON Schema (`cpt-code-split-interface-graph-schema`)
+#### Graph JSON Schema (`cpt-code-ranker-interface-graph-schema`)
 
 - **Location**: defined by `Snapshot`, `Node`, `Edge` structs in
-  `crates/code-split-graph/src/`
+  `crates/code-ranker-graph/src/`
 - **Versioning**: `schema_version: "2"`; additive fields are minor;
   breaking changes require a major-version bump
 
@@ -647,45 +647,45 @@ See [§3.7 Plugin System](#37-plugin-system).
 
 | Consumer | Dependency | Interface |
 |----------|------------|-----------|
-| `code-split-cli` | `code-split-plugin-api` | `LanguagePlugin` trait — the only contract the CLI uses to talk to plugins |
-| `code-split-cli` | `code-split-plugin-{rust,python,javascript,typescript}` | one `Box<dyn LanguagePlugin>` each, listed in `plugin::registry()` |
-| `code-split-cli` | `code-split-complexity` | `annotate()` (central metrics) + `metric_specs()` |
-| `code-split-cli` | `code-split-graph` | `Snapshot`/`LevelGraph`, `annotate_cycles`/`annotate_hk`/`compute_stats`, `relativize_graph`, `finalize_graph`, `coupling_specs`, canonical serialization |
-| `code-split-cli` | `code-split-viewer` | `render_html_viewer()`, `extract_embedded_snapshot()` |
-| `code-split-plugin-{rust,python,javascript,typescript}` | `code-split-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/is_test_path/versions) |
-| `code-split-plugin-typescript` | `code-split-plugin-javascript` | shared ECMAScript walker/resolver (`analyze_ecmascript`, `ecmascript_level`, …) |
-| `code-split-complexity` | `code-split-plugin-api`, `code-split-graph` | the model; `num_attr` |
-| `code-split-graph` | `code-split-plugin-api` | the generic model it operates on |
-| `code-split-viewer` | `code-split-graph` | `Snapshot`, `to_canonical_string` |
-| `code-split-cli` (`run_report`) | the analyzed snapshot (+ optional `--baseline`) | top-level metadata + `graphs` map; rendered via `code-split-viewer` |
-| `code-split-cli` (`run_check`) | the analyzed snapshot | `graphs` map; per-rule violation evaluation (relative gate re-evaluates the baseline's rules) |
+| `code-ranker-cli` | `code-ranker-plugin-api` | `LanguagePlugin` trait — the only contract the CLI uses to talk to plugins |
+| `code-ranker-cli` | `code-ranker-plugin-{rust,python,javascript,typescript}` | one `Box<dyn LanguagePlugin>` each, listed in `plugin::registry()` |
+| `code-ranker-cli` | `code-ranker-complexity` | `annotate()` (central metrics) + `metric_specs()` |
+| `code-ranker-cli` | `code-ranker-graph` | `Snapshot`/`LevelGraph`, `annotate_cycles`/`annotate_hk`/`compute_stats`, `relativize_graph`, `finalize_graph`, `coupling_specs`, canonical serialization |
+| `code-ranker-cli` | `code-ranker-viewer` | `render_html_viewer()`, `extract_embedded_snapshot()` |
+| `code-ranker-plugin-{rust,python,javascript,typescript}` | `code-ranker-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/is_test_path/versions) |
+| `code-ranker-plugin-typescript` | `code-ranker-plugin-javascript` | shared ECMAScript walker/resolver (`analyze_ecmascript`, `ecmascript_level`, …) |
+| `code-ranker-complexity` | `code-ranker-plugin-api`, `code-ranker-graph` | the model; `num_attr` |
+| `code-ranker-graph` | `code-ranker-plugin-api` | the generic model it operates on |
+| `code-ranker-viewer` | `code-ranker-graph` | `Snapshot`, `to_canonical_string` |
+| `code-ranker-cli` (`run_report`) | the analyzed snapshot (+ optional `--baseline`) | top-level metadata + `graphs` map; rendered via `code-ranker-viewer` |
+| `code-ranker-cli` (`run_check`) | the analyzed snapshot | `graphs` map; per-rule violation evaluation (relative gate re-evaluates the baseline's rules) |
 
 **Rules**:
 
 - No circular dependencies among the Rust crates; **everything depends on
-  `code-split-plugin-api`** (the bottom of the graph).
-- **The `LanguagePlugin` trait (in `code-split-plugin-api`) is the only contract
+  `code-ranker-plugin-api`** (the bottom of the graph).
+- **The `LanguagePlugin` trait (in `code-ranker-plugin-api`) is the only contract
   between the CLI and the language plugins.** The sole place that names concrete
-  plugins is `code-split-cli`'s `plugin::registry()` — a `Vec<Box<dyn LanguagePlugin>>`.
+  plugins is `code-ranker-cli`'s `plugin::registry()` — a `Vec<Box<dyn LanguagePlugin>>`.
   Everything else (dispatch, marker-based auto-detect, version metadata) iterates
   that list and never hardcodes a language. Adding a language = add a crate +
   one line in `registry()`.
-- Only `code-split-plugin-rust` may depend on `cargo_metadata` and `syn`.
-- Only `code-split-complexity` may depend on `rust-code-analysis` — it is the
+- Only `code-ranker-plugin-rust` may depend on `cargo_metadata` and `syn`.
+- Only `code-ranker-complexity` may depend on `rust-code-analysis` — it is the
   single, central, by-extension metrics pass; plugins emit structure only.
 - Language-specific code/names (markers, parsers, `rustc` version) live **only**
-  in the `code-split-plugin-*` crates; `code-split-complexity`,
-  `code-split-plugin-api` and `code-split-graph` are language-agnostic.
-- `code-split-graph` has zero I/O and zero analyzer dependencies.
-- The stderr progress/timing log (`code-split-plugin-api::log`) lives in the
+  in the `code-ranker-plugin-*` crates; `code-ranker-complexity`,
+  `code-ranker-plugin-api` and `code-ranker-graph` are language-agnostic.
+- `code-ranker-graph` has zero I/O and zero analyzer dependencies.
+- The stderr progress/timing log (`code-ranker-plugin-api::log`) lives in the
   foundation crate so both the CLI's stage timers and the plugins' sub-command
   shell-outs (`cargo metadata`, `rustc`) emit one consistent `[HH:MM:SS.mmm]`
   format. `log::timed(label, f)` wraps every external invocation and prints its
-  duration to millisecond precision; `code-split-cli`'s `logger` delegates its
+  duration to millisecond precision; `code-ranker-cli`'s `logger` delegates its
   formatting here.
-- The Rust plugin's module→file collapse lives in `code-split-plugin-rust/src/lib.rs`.
-- `code-split-cli` orchestrates: it dispatches the language plugins (through the
-  trait) and hands the snapshot to `code-split-viewer` for rendering.
+- The Rust plugin's module→file collapse lives in `code-ranker-plugin-rust/src/lib.rs`.
+- `code-ranker-cli` orchestrates: it dispatches the language plugins (through the
+  trait) and hands the snapshot to `code-ranker-viewer` for rendering.
 
 ### 3.5 External Dependencies
 
@@ -702,18 +702,18 @@ See [§3.7 Plugin System](#37-plugin-system).
 
 #### Step 1 — Plugin Dispatch and Artifact Write
 
-**ID**: `cpt-code-split-seq-extract`
+**ID**: `cpt-code-ranker-seq-extract`
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant CLI as code-split report (orchestrator)
-    participant Plugin as Rust plugin (code-split-plugin-rust)
-    participant Cx as code-split-complexity
-    participant G as code-split-graph
+    participant CLI as code-ranker report (orchestrator)
+    participant Plugin as Rust plugin (code-ranker-plugin-rust)
+    participant Cx as code-ranker-complexity
+    participant G as code-ranker-graph
     participant FS as Filesystem
 
-    User ->> CLI: code-split report . --plugin rust --output.json
+    User ->> CLI: code-ranker report . --plugin rust --output.json
     CLI ->> Plugin: analyze(ws, "files", input)  (input.ignore_tests → plugin drops test files)
     Note over Plugin: syn + cargo metadata → collapse to files (STRUCTURE ONLY)
     Plugin -->> CLI: api::Graph (abs-path file ids, ext:* nodes) + Level specs
@@ -729,7 +729,7 @@ sequenceDiagram
 
 #### Step 2 — Report Generation
 
-**ID**: `cpt-code-split-seq-report`
+**ID**: `cpt-code-ranker-seq-report`
 
 `report` re-analyzes the workspace (the same plugin pipeline as Step 1) and
 then writes artifacts.
@@ -737,10 +737,10 @@ then writes artifacts.
 ```mermaid
 sequenceDiagram
     participant User
-    participant Report as code-split report (built-in Rust)
+    participant Report as code-ranker report (built-in Rust)
     participant FS as Filesystem
 
-    User ->> Report: code-split report . (default: both json + html)
+    User ->> Report: code-ranker report . (default: both json + html)
     Report ->> Report: run analysis pipeline (syn → complexity → module-to-file collapse, see Step 1)
     Report ->> Report: compute node weights (fan-in + fan-out)
     Report ->> FS: write {ts}-{git-hash-3}.json snapshot (when json selected)
@@ -751,7 +751,7 @@ sequenceDiagram
 
 #### Step 4 — Compare against a baseline
 
-**ID**: `cpt-code-split-seq-baseline`
+**ID**: `cpt-code-ranker-seq-baseline`
 
 A comparison is `--baseline <snapshot>` on `report` (an HTML diff) or `check` (a
 machine verdict / regression gate). The current side is the positional `[input]`
@@ -761,10 +761,10 @@ two snapshot files without re-analyzing anything.
 ```mermaid
 sequenceDiagram
     participant User
-    participant Report as code-split report --baseline (built-in Rust)
+    participant Report as code-ranker report --baseline (built-in Rust)
     participant FS as Filesystem
 
-    User ->> Report: code-split report current.json --baseline baseline.json --output.html.path diff.html
+    User ->> Report: code-ranker report current.json --baseline baseline.json --output.html.path diff.html
     Report ->> FS: load_snapshot_any(baseline.json) and read current.json
     Report ->> Report: embed both snapshots inline as cs-baseline / cs-current JSON script tags
     Note over Report: diff (computeDiff/computeCycles, verdict) runs browser-side in diff.js
@@ -775,9 +775,9 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User
-    participant Check as code-split check --baseline (built-in Rust)
+    participant Check as code-ranker check --baseline (built-in Rust)
 
-    User ->> Check: code-split check . --baseline baseline.json --output-format json
+    User ->> Check: code-ranker check . --baseline baseline.json --output-format json
     Check ->> Check: analyze current input + recompute baseline violations under current rules
     Check ->> Check: new = current violations absent from baseline (same rule+location)
     Check ->> Check: verdict = degraded (new) / improved (resolved, none new) / neutral
@@ -788,7 +788,7 @@ sequenceDiagram
 
 #### Plugin Resolution
 
-All plugins are built into the `code-split` binary; there is no external
+All plugins are built into the `code-ranker` binary; there is no external
 or dynamic plugin loading. Resolution only selects which built-in plugin
 to run.
 
@@ -800,7 +800,7 @@ stopping at the first match:
 1. Explicit flag    --plugin <name> (≠ auto) on the command line
                     → use that built-in plugin
 
-2. Config           the `plugin` key in code-split.toml /
+2. Config           the `plugin` key in code-ranker.toml /
                     Cargo.toml metadata (if set and ≠ auto)
                     → use that built-in plugin
 
@@ -820,20 +820,20 @@ error.
 
 #### Snapshot File Format
 
-`code-split report` writes the snapshot to the path selected by
-`--output.json[.path]`, defaulting to `.code-split/{ts}-{git-hash-3}.json`
+`code-ranker report` writes the snapshot to the path selected by
+`--output.json[.path]`, defaulting to `.code-ranker/{ts}-{git-hash-3}.json`
 (timestamp + first 3 chars of the commit) in the current working directory:
 
 ```
-.code-split/<YYYYMMDD-HHMMSS>-<hash3>.json
+.code-ranker/<YYYYMMDD-HHMMSS>-<hash3>.json
 ```
 
 The name template is resolved as **`--output.json.path` flag › `[output.json]
 path` in config › built-in default**, with placeholders `{project-dir}`
 (slugified workspace name), `{ts}`, `{git-hash}` (12-char short commit) and
-`{git-hash-N}` (first N chars). Example: `code-split report /path/to/axum-api
---plugin rust --output.json.path=.code-split/{ts}-{git-hash-3}.json` →
-`.code-split/20260522-112233-a3f.json` (or `axum-api-20260522-112233.json` if
+`{git-hash-N}` (first N chars). Example: `code-ranker report /path/to/axum-api
+--plugin rust --output.json.path=.code-ranker/{ts}-{git-hash-3}.json` →
+`.code-ranker/20260522-112233-a3f.json` (or `axum-api-20260522-112233.json` if
 `[output.json] path = "{project-dir}-{ts}.json"`).
 
 The file combines metadata and the `graphs` map (one entry per analysis level;
@@ -844,11 +844,11 @@ dictionaries with the structural graph and the computed cycles/stats:
 {
   "schema_version": "2",
   "generated_at":   "2026-05-22T11:22:33Z",
-  "command":        "code-split report /path/to/axum-api --plugin rust",
-  "workspace":      "/Users/alice/projects/code-split",
+  "command":        "code-ranker report /path/to/axum-api --plugin rust",
+  "workspace":      "/Users/alice/projects/code-ranker",
   "target":         "/Users/alice/projects/axum-api",
   "plugin":         "rust",
-  "versions": { "code-split": "1.0.0-alpha.4", "rustc": "1.78.0" },
+  "versions": { "code-ranker": "1.0.0-alpha.4", "rustc": "1.78.0" },
   "roots": {
     "registry": "/Users/alice/.cargo/registry/src/index.crates.io-abc123",
     "target":   "/Users/alice/projects/axum-api"
@@ -885,7 +885,7 @@ kinds in `node_kinds`/`cycle_kinds`, column/sort ordering in `ui`, and the
 Prompt-Generator principles in top-level `presets` — so the viewer renders
 entirely from this data and hardcodes none of it.
 
-`workspace` is the directory where `code-split` was invoked (cwd). `target`
+`workspace` is the directory where `code-ranker` was invoked (cwd). `target`
 is the analyzed project path. `roots` are named prefixes for path
 resolution: `roots[name] + "/" + rest` → absolute path. All node `path`
 values and file node ids (which **are** the relativized path — no `file:`
@@ -914,11 +914,11 @@ cycles/hk/stats, assembles the `LevelGraph`, prepends all metadata, prunes roots
 to those actually used (so a JS/TS/Python snapshot carries only `target`, a Rust
 snapshot `target` + `registry`), and writes the final snapshot.
 
-`versions` records the `code-split` binary version plus any toolchain versions
+`versions` records the `code-ranker` binary version plus any toolchain versions
 the plugin reports (e.g. `rustc` for the Rust plugin).
 
-The `git` fields are collected by `code-split` before invoking the plugin
-(`crates/code-split-cli/src/git.rs`):
+The `git` fields are collected by `code-ranker` before invoking the plugin
+(`crates/code-ranker-cli/src/git.rs`):
 
 | Field | Source |
 |-------|--------|
@@ -940,14 +940,14 @@ If branch/commit fail (and are not overridden) the `git` key is omitted entirely
 or `https://…` is normalized to a web blob URL — GitLab `/-/blob/`, GitHub
 `/blob/` — at the commit).
 
-`code-split report` embeds this metadata in the generated HTML as a visible
+`code-ranker report` embeds this metadata in the generated HTML as a visible
 "Snapshot info" panel — for both snapshots when `--baseline` is given.
 
 #### Built-in Plugin: Rust
 
 At P1 the only built-in plugin is `rust`. It is compiled directly into
-the `code-split` binary and invoked in-process, so no sub-process overhead
-is incurred. Its internal structure is the `code-split-plugin-rust` crate
+the `code-ranker` binary and invoked in-process, so no sub-process overhead
+is incurred. Its internal structure is the `code-ranker-plugin-rust` crate
 (cargo metadata + `syn`), which also collapses the module graph to a file
 graph; it is not a separate binary on disk. There is no rust-analyzer
 dependency, so the run completes in seconds.
@@ -955,7 +955,7 @@ dependency, so the run completes in seconds.
 ##### Analysis Modes and Prerequisites
 
 The Rust plugin has two modes selected by flags on the analyzing commands
-(`code-split check` / `code-split report`):
+(`code-ranker check` / `code-ranker report`):
 
 | Mode | Flag | `cargo` required | Network / registry | External nodes |
 |------|------|------------------|--------------------|----------------|
@@ -964,21 +964,21 @@ The Rust plugin has two modes selected by flags on the analyzing commands
 The project does NOT need to compile — `syn` parses source syntactically and
 tolerates errors. Only dependency resolution (`cargo metadata`, run with
 `--offline`) is required; it reads from the already-warm cargo cache, so
-code-split makes no network calls. If the cache isn't populated, the plugin
+code-ranker makes no network calls. If the cache isn't populated, the plugin
 emits an actionable error telling you to warm it (e.g. `cargo fetch`).
 
 ##### Full Mode — Step-by-Step
 
 ```
-code-split report /path/to/my-crate --plugin rust
+code-ranker report /path/to/my-crate --plugin rust
 ```
 
-1. `code-split-cli` resolves the output path(s) from `--output.<fmt>[.path]` /
-   config / the built-in `.code-split/` default, creating parent directories
+1. `code-ranker-cli` resolves the output path(s) from `--output.<fmt>[.path]` /
+   config / the built-in `.code-ranker/` default, creating parent directories
    as needed when the artifacts are written.
 2. Collects git state (`branch`, `commit`, `dirty_files`) from
    `/path/to/my-crate`.
-3. Runs the syntactic stage (`code-split-plugin-rust`):
+3. Runs the syntactic stage (`code-ranker-plugin-rust`):
    a. Runs `cargo metadata --offline --format-version=1` inside the workspace.
    b. Identifies all local packages (those with a `path` source).
    c. For each local package, locates the crate root (`lib.rs` /
@@ -989,13 +989,13 @@ code-split report /path/to/my-crate --plugin rust
       `Reexports` edges into `GraphBuilder`.
    f. External crates are added as opaque `Crate` nodes with
       `external = true`; their source is never read.
-4. Annotates complexity (`code-split-plugin`, with a `RustParser`):
+4. Annotates complexity (`code-ranker-plugin`, with a `RustParser`):
    a. Walks all `.rs` files in the workspace with `walkdir`.
    b. For each file, parses it with `rust-code-analysis` to obtain a
       `FuncSpace` tree.
    c. Annotates each file-backed `Module` node with whole-file metrics
       from the root space (matched by canonical path).
-5. Collapses the module graph to a **file graph** (in `code-split-plugin-rust`):
+5. Collapses the module graph to a **file graph** (in `code-ranker-plugin-rust`):
    a. Every `.rs` file becomes one `File` node (its id is the file's
       path — no `file:` prefix); inline
       `mod {}` modules fold into their containing file.
@@ -1068,29 +1068,29 @@ extension, not part of the base flat-attribute schema.)
 
 > **Moved.** The CLI reference and worked examples (snapshots, visualization,
 > baseline comparison, the full end-to-end workflow) are in
-> [`code-split-cli/DESIGN.md`](code-split-cli/DESIGN.md). The full flag surface
-> is documented in [`code-split-cli/CLI.md`](code-split-cli/CLI.md).
+> [`code-ranker-cli/DESIGN.md`](code-ranker-cli/DESIGN.md). The full flag surface
+> is documented in [`code-ranker-cli/CLI.md`](code-ranker-cli/CLI.md).
 
 ## 4. Additional Context
 
 **Repository layout**:
 
 ```
-code-split/
+code-ranker/
   crates/
-    code-split-graph/             # Rust — graph types, JSON schema, StageTime, cycles/hk/diff
-    code-split-plugin-api/        # Rust — the LanguagePlugin trait (plugin contract)
-    code-split-plugin/            # Rust — shared plugin utils: complexity, finalize, logging
-    code-split-plugin-rust/       # Rust — Rust analysis: cargo metadata + syn, module→file collapse
-    code-split-plugin-python/     # Rust — Python analysis: tree-sitter
-    code-split-plugin-javascript/ # Rust — JS/TS analysis: tree-sitter
-    code-split-viewer/            # Rust — HTML viewer: assets + render_html_viewer
-    code-split-cli/               # Rust — orchestrator, plugin registry/dispatch, check linter, report
+    code-ranker-graph/             # Rust — graph types, JSON schema, StageTime, cycles/hk/diff
+    code-ranker-plugin-api/        # Rust — the LanguagePlugin trait (plugin contract)
+    code-ranker-plugin/            # Rust — shared plugin utils: complexity, finalize, logging
+    code-ranker-plugin-rust/       # Rust — Rust analysis: cargo metadata + syn, module→file collapse
+    code-ranker-plugin-python/     # Rust — Python analysis: tree-sitter
+    code-ranker-plugin-javascript/ # Rust — JS/TS analysis: tree-sitter
+    code-ranker-viewer/            # Rust — HTML viewer: assets + render_html_viewer
+    code-ranker-cli/               # Rust — orchestrator, plugin registry/dispatch, check linter, report
       src/
         plugin/            # Built-in plugins: rust.rs (incl. module→file collapse), python.rs, javascript.rs, finalize.rs (file-graph normalizer for Python/JS), mod.rs
         presets.rs         # Generic Prompt-Generator preset catalog (principles)
         recommend.rs       # Recommendation engine: scorecard + prompt formats (CLI counterpart of the viewer's Prompt Generator)
-        assets/            # HTML/CSS/JS assets embedded via include_str! (see code-split-viewer/DESIGN.md for the full layer breakdown)
+        assets/            # HTML/CSS/JS assets embedded via include_str! (see code-ranker-viewer/DESIGN.md for the full layer breakdown)
           index.html       # Shell template (single Files view); cs-baseline / cs-current JSON script tags embedded inline at render time
           base.css map.css modal.css tables.css export.css snap.css map-svg.css  # Concern-split stylesheet, concatenated in lib.rs in source order
           graphviz.umd.js  # Graphviz WASM (~802 KB, offline)
@@ -1119,8 +1119,8 @@ code-split/
   docs/
     PRD.md                 # Product PRD (overview, actors, plugin layer, schema, NFRs)
     DESIGN.md              # Product technical design (architecture, domain model, plugins)
-    code-split-cli/        # CLI component docs: PRD, DESIGN, CLI.md, config.md, ERRORS.md
-    code-split-viewer/     # HTML viewer component docs: PRD, DESIGN
+    code-ranker-cli/        # CLI component docs: PRD, DESIGN, CLI.md, config.md, ERRORS.md
+    code-ranker-viewer/     # HTML viewer component docs: PRD, DESIGN
   principles/              # Principle corpus (used at P3 for prompt generation)
     rust/                  # Rust-specific principle docs
     python/                # Python-specific principle docs
@@ -1143,22 +1143,22 @@ connections are fully preserved in the single graph model. There is no
 function-level call graph: resolving call sites semantically would
 require rust-analyzer (slow, volatile), which has been removed.
 
-**HTML asset bundling**: All JS/CSS assets for the `code-split report` viewer
+**HTML asset bundling**: All JS/CSS assets for the `code-ranker report` viewer
 (single-snapshot or `--baseline` diff) are embedded into the binary via
 `include_str!`. The
 Graphviz WASM bundle is committed under
-`crates/code-split-viewer/src/assets/` and never fetched at runtime.
+`crates/code-ranker-viewer/src/assets/` and never fetched at runtime.
 Generated HTML files work offline via `file://` with no network access.
 
 ## 5. Traceability
 
 - **PRD**: [PRD.md](PRD.md)
-- **CLI component**: [`code-split-cli/PRD.md`](code-split-cli/PRD.md) ·
-  [`code-split-cli/DESIGN.md`](code-split-cli/DESIGN.md)
-- **Viewer component**: [`code-split-viewer/PRD.md`](code-split-viewer/PRD.md) ·
-  [`code-split-viewer/DESIGN.md`](code-split-viewer/DESIGN.md)
+- **CLI component**: [`code-ranker-cli/PRD.md`](code-ranker-cli/PRD.md) ·
+  [`code-ranker-cli/DESIGN.md`](code-ranker-cli/DESIGN.md)
+- **Viewer component**: [`code-ranker-viewer/PRD.md`](code-ranker-viewer/PRD.md) ·
+  [`code-ranker-viewer/DESIGN.md`](code-ranker-viewer/DESIGN.md)
 - **Graph JSON Schema**: defined by the `Snapshot` / `LevelGraph` / `Node` /
-  `Edge` structs in `crates/code-split-graph/src/`; node/edge reference in
+  `Edge` structs in `crates/code-ranker-graph/src/`; node/edge reference in
   [node_schema.md](node_schema.md)
 - **ADRs**: pending — `docs/ADR/0001-files-only-graph.md` and
   `docs/ADR/0002-four-step-pipeline.md` to be authored after this

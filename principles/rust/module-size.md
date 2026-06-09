@@ -9,7 +9,7 @@ read, test, and review. Treat SLOC as a "look here first" lens, not a verdict.
 
 `sloc` counts the module's physical source lines that carry real code —
 blank lines and comment-only lines are excluded. It is the rawest measure of
-"how much is in this file". Code Split ranks modules largest-first.
+"how much is in this file". Code Ranker ranks modules largest-first.
 
 ## Why it matters
 
@@ -54,7 +54,7 @@ For each oversized module:
 Stop when each module has one reason to change — not when you hit an arbitrary
 line count. The goal is cohesion, not a smaller number.
 
-## How code-split surfaces it
+## How code-ranker surfaces it
 
 `sloc` is a first-class node metric, a sort option, and the `SLOC` preset in
 the Prompt Generator (largest-first, no connections pre-selected — the focus

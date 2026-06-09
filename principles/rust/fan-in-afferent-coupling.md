@@ -52,7 +52,7 @@ For each high-fan-in module:
   (see [ISP](solid-interface-segregation.md)). This lowers fan-in on each
   resulting piece and shrinks the blast radius of a change.
 
-## How code-split surfaces it
+## How code-ranker surfaces it
 
 `fan_in` is a first-class node metric, a sort option, and the `FANIN` preset
 in the Prompt Generator. The preset ranks modules by fan-in worst-first and

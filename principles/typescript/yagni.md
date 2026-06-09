@@ -445,10 +445,10 @@ expensive-to-add-later guards. The line is: avoid building
 **scaffolding for features**, but keep using **escape hatches for
 evolution**.
 
-## How code-split detects YAGNI violations
+## How code-ranker detects YAGNI violations
 
 YAGNI is the hardest to detect because the violation depends on
-**who uses what** in the future, which is unknowable. Code Split
+**who uses what** in the future, which is unknowable. Code Ranker
 flags *present-day signals* via static import-graph analysis:
 
 | Signal | YAGNI interpretation |
@@ -466,7 +466,7 @@ flags *present-day signals* via static import-graph analysis:
 A future rule **`unused-export`**: any `export`ed symbol that has no
 importer outside the defining file can be demoted to file-local.
 Severity low; confidence high. Tools like `knip` and `ts-prune`
-already cover much of this; Code Split adds the YAGNI framing —
+already cover much of this; Code Ranker adds the YAGNI framing —
 *why* it matters and *what* to do about it.
 
 ## Suggested recommendation template

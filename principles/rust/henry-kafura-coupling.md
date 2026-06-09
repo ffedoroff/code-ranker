@@ -13,7 +13,7 @@ Henry and Kafura's 1981 metric combines three signals into one number:
 - **fan_out** — how many modules this one depends on (outgoing edges).
 - **sloc** — the module's size in source lines of code.
 
-Code Split computes `HK = sloc × (fan_in × fan_out)²`. The `(fan_in × fan_out)`
+Code Ranker computes `HK = sloc × (fan_in × fan_out)²`. The `(fan_in × fan_out)`
 product is squared, so coupling dominates: a small file wired into many
 collaborators on both sides scores far higher than a large but isolated file.
 The intuition is that information flowing *through* a module — in from its
@@ -60,7 +60,7 @@ You lower HK by attacking whichever factor dominates:
 Because the coupling term is squared, even a modest reduction in fan_in or
 fan_out moves HK a lot — prefer those over chasing line count.
 
-## How code-split surfaces it
+## How code-ranker surfaces it
 
 HK is a first-class node metric (`hk`), the default sort, and the `HK` preset
 in the Prompt Generator. The preset ranks modules worst-first by HK and

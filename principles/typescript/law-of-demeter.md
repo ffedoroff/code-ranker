@@ -365,7 +365,7 @@ import { Pool } from "other-pkg";
 The package's `index.ts` re-exports `Pool`. Internals are free to
 evolve.
 
-## How code-split detects LoD violations
+## How code-ranker detects LoD violations
 
 | Signal | LoD interpretation |
 |---|---|

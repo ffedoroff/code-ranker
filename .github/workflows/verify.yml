@@ -64,11 +64,11 @@ jobs:
       # Only the TRUE leaf crate can be dry-run before release: every other
       # crate depends on a sibling at the new (unpublished) version, which cargo
       # can't resolve until it's actually on crates.io (the real publish does it
-      # bottom-up). code-split-plugin-api is the only crate with no workspace
-      # deps; code-split-graph depends on it, so dry-running graph fails to
+      # bottom-up). code-ranker-plugin-api is the only crate with no workspace
+      # deps; code-ranker-graph depends on it, so dry-running graph fails to
       # resolve plugin-api. The whole workspace is still compiled by the test job.
       - name: cargo publish --dry-run (leaf crate)
-        run: cargo publish -p code-split-plugin-api --dry-run --allow-dirty
+        run: cargo publish -p code-ranker-plugin-api --dry-run --allow-dirty
 
   wheels-dry-run:
     name: PyPI wheel build (no upload)

@@ -1,0 +1,24 @@
+[package]
+name = "code-ranker-plugin-typescript"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Code Ranker TypeScript plugin: tree-sitter over .ts/.tsx, sharing ECMAScript logic with the JavaScript plugin."
+# The e2e fixture project ships next to src/ but is not part of the published crate.
+exclude = ["sample"]
+
+[dependencies]
+code-ranker-plugin-api = { workspace = true }
+code-ranker-graph = { workspace = true }
+code-ranker-plugin-javascript = { workspace = true }
+anyhow = { workspace = true }
+walkdir = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-typescript = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

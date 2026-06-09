@@ -390,9 +390,9 @@ The KISS-friendly TypeScript monorepo:
 - Has a `README.md` per package that explains in three paragraphs
   what the package does and what its main exports are.
 
-## How code-split detects KISS violations
+## How code-ranker detects KISS violations
 
-KISS is qualitative; code-split detects its *quantitative shadows*:
+KISS is qualitative; code-ranker detects its *quantitative shadows*:
 
 | Signal | KISS interpretation |
 |---|---|

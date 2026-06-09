@@ -1,4 +1,4 @@
-# Posts a sticky code-split comment on every PR. If a baseline snapshot exists
+# Posts a sticky code-ranker comment on every PR. If a baseline snapshot exists
 # on the base branch (produced by this same workflow's push:main run), the
 # comment is a DIFF with a verdict (improved/degraded/neutral) + new violations.
 # Before any baseline exists (e.g. main hasn't run this yet), it falls back to a
@@ -42,23 +42,23 @@ jobs:
           H="$(git rev-parse --short=12 HEAD)"
           BR="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           echo "H=$H" >> "$GITHUB_ENV"
-          cargo run -q -p code-split -- report . \
+          cargo run -q -p code-ranker -- report . \
             --git.branch="$BR" \
             --git.commit="${PR_HEAD_SHA:-$GITHUB_SHA}" \
             --git.dirty-files=0 \
             --git.origin="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
-            --output.json.path="code-split-${H}.json" \
-            --output.html.path="code-split-${H}.html"
+            --output.json.path="code-ranker-${H}.json" \
+            --output.html.path="code-ranker-${H}.html"
 
       # Keep the snapshot as an artifact. On main this becomes the baseline that
       # future PRs download; on a PR it's the downloadable full HTML report.
       - name: Upload snapshot
         uses: actions/upload-artifact@v7
         with:
-          name: code-split-report
+          name: code-ranker-report
           path: |
-            code-split-*.json
-            code-split-*.html
+            code-ranker-*.json
+            code-ranker-*.html
           retention-days: 30
 
       - name: Fetch baseline from the base branch (best-effort)
@@ -72,9 +72,9 @@ jobs:
           RID="$(gh run list --branch "$GITHUB_BASE_REF" --workflow "$GITHUB_WORKFLOW" \
                    --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
           if [ -n "$RID" ]; then
-            gh run download "$RID" --name code-split-report --dir base
+            gh run download "$RID" --name code-ranker-report --dir base
           fi
-          BASE_JSON="$(ls base/code-split-*.json 2>/dev/null | head -n1)"
+          BASE_JSON="$(ls base/code-ranker-*.json 2>/dev/null | head -n1)"
           echo "BASE_JSON=$BASE_JSON" >> "$GITHUB_ENV"
 
       - name: Build comment (diff if baseline, else review)
@@ -83,21 +83,21 @@ jobs:
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ -n "${BASE_JSON:-}" ]; then
             # DIFF: relative gate → verdict + only the NEW violations vs baseline.
-            code-split check "code-split-${H}.json" --baseline "$BASE_JSON" \
+            code-ranker check "code-ranker-${H}.json" --baseline "$BASE_JSON" \
               --output-format json > check.json || true
             MODE=diff
           else
             # REVIEW: no baseline yet → absolute current-state violations.
-            code-split check "code-split-${H}.json" --output-format json > check.json || true
+            code-ranker check "code-ranker-${H}.json" --output-format json > check.json || true
             MODE=review
           fi
           MODE="$MODE" RUN_URL="$RUN_URL" BASE_REF="${GITHUB_BASE_REF}" \
-            python3 .github/scripts/code_split_comment.py > comment.md
+            python3 .github/scripts/code_ranker_comment.py > comment.md
           cat comment.md
 
       - name: Sticky comment
         if: github.event_name == 'pull_request'
         uses: marocchino/sticky-pull-request-comment@v3
         with:
-          header: code-split
+          header: code-ranker
           path: comment.md

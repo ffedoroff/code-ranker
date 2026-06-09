@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
-# code-split — DIFF mode (great for merge requests)
+# code-ranker — DIFF mode (great for merge requests)
 #
-# On an MR, this pulls the code-split JSON from the latest SUCCESSFUL pipeline
+# On an MR, this pulls the code-ranker JSON from the latest SUCCESSFUL pipeline
 # on the TARGET branch and renders the HTML as a baseline<->current diff with a
 # verdict (improved / degraded / neutral). On the default branch (no target),
 # or when no baseline exists yet, it gracefully produces a plain review report.
@@ -11,13 +11,13 @@
 # output to a review report — it NEVER fails the job.
 #
 # Prerequisites:
-#   1. `code-split` on PATH (see minimal.example.yml).
-#   2. A read_api token in the CODESPLIT_API_TOKEN CI/CD variable
+#   1. `code-ranker` on PATH (see minimal.example.yml).
+#   2. A read_api token in the CODERANKER_API_TOKEN CI/CD variable
 #      (Masked, NOT Protected). See README.md for why and how.
 #      Without it, the job still runs but only ever emits a review report.
 # ---------------------------------------------------------------------------
 
-code-split:
+code-ranker:
   # Rust note: the analysis runs `cargo metadata` under the hood — run this job
   # on the same base Rust image / cargo cache as your build/test jobs so deps
   # are already on disk. See README.md → "Rust: the cargo dependency cache".
@@ -32,34 +32,34 @@ code-split:
     # 1) Analyze the workspace -> JSON snapshot (named by commit hash).
     #    Inject clean git metadata mapped from CI variables: a detached CI checkout
     #    otherwise reports the branch as "HEAD" and counts the files this job writes
-    #    as "dirty". With branch+commit+dirty-files all set, code-split skips git
+    #    as "dirty". With branch+commit+dirty-files all set, code-ranker skips git
     #    entirely. The snapshot carries this block, so step 3's render reuses it.
-    #    See docs/code-split-cli/CLI.md → "Git metadata overrides".
+    #    See docs/code-ranker-cli/CLI.md → "Git metadata overrides".
     - BR="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}"
     - |
-      code-split report . \
+      code-ranker report . \
         --git.branch="$BR" \
         --git.commit="$CI_COMMIT_SHA" \
         --git.dirty-files=0 \
         --git.origin="$CI_PROJECT_URL" \
-        --output.json.path="code-split-${H}.json"
+        --output.json.path="code-ranker-${H}.json"
 
     # 2) Fetch the baseline from the target branch (best-effort).
     - |
       # The pipelines API is used (not jobs/artifacts/:ref/download) because it
       # sees detached MR pipelines (ref=refs/merge-requests/N/head) and only needs
-      # the code-split JOB to be green. CI_JOB_TOKEN can't reach this API, so a
-      # read_api token (CODESPLIT_API_TOKEN) is used when set; otherwise — or on
+      # the code-ranker JOB to be green. CI_JOB_TOKEN can't reach this API, so a
+      # read_api token (CODERANKER_API_TOKEN) is used when set; otherwise — or on
       # any error — this falls through to a review report and never fails the job.
       TARGET="${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-$CI_DEFAULT_BRANCH}"
       BASE_JSON=""
       api="${CI_API_V4_URL}/projects/${CI_PROJECT_ID}"
-      if [ -n "${CODESPLIT_API_TOKEN:-}" ]; then auth="PRIVATE-TOKEN: ${CODESPLIT_API_TOKEN}"; else auth="JOB-TOKEN: ${CI_JOB_TOKEN}"; fi
+      if [ -n "${CODERANKER_API_TOKEN:-}" ]; then auth="PRIVATE-TOKEN: ${CODERANKER_API_TOKEN}"; else auth="JOB-TOKEN: ${CI_JOB_TOKEN}"; fi
       PID=$(curl -sSL --header "$auth" "${api}/pipelines?ref=${TARGET}&status=success&per_page=1" | tr ',' '\n' | grep -o '"id":[0-9]*' | head -n1 | grep -o '[0-9]*' || true)
       if [ -n "$PID" ] && command -v unzip >/dev/null 2>&1; then
-        JID=$(curl -sSL --header "$auth" "${api}/pipelines/${PID}/jobs?per_page=100" | tr '{' '\n' | grep '"name":"code-split"' | grep -o '"id":[0-9]*' | head -n1 | grep -o '[0-9]*' || true)
+        JID=$(curl -sSL --header "$auth" "${api}/pipelines/${PID}/jobs?per_page=100" | tr '{' '\n' | grep '"name":"code-ranker"' | grep -o '"id":[0-9]*' | head -n1 | grep -o '[0-9]*' || true)
         if [ -n "$JID" ] && curl -fsSL --header "$auth" "${api}/jobs/${JID}/artifacts" -o base.zip 2>/dev/null && unzip -qo base.zip -d base 2>/dev/null; then
-          BASE_JSON="$(ls base/code-split-*.json 2>/dev/null | head -n1)"
+          BASE_JSON="$(ls base/code-ranker-*.json 2>/dev/null | head -n1)"
         fi
       fi
 
@@ -67,18 +67,18 @@ code-split:
     - |
       if [ -n "$BASE_JSON" ]; then
         echo "baseline from ${TARGET}: ${BASE_JSON}"
-        code-split report "code-split-${H}.json" --baseline "$BASE_JSON" --output.html.path="code-split-${H}.html"
+        code-ranker report "code-ranker-${H}.json" --baseline "$BASE_JSON" --output.html.path="code-ranker-${H}.html"
       else
         echo "no baseline on ${TARGET} yet -> review report"
-        code-split report "code-split-${H}.json" --output.html.path="code-split-${H}.html"
+        code-ranker report "code-ranker-${H}.json" --output.html.path="code-ranker-${H}.html"
       fi
 
   artifacts:
     when: always
     expire_in: 30 days
     paths:
-      - "code-split-*.json"
-      - "code-split-*.html"
+      - "code-ranker-*.json"
+      - "code-ranker-*.html"
 
   rules:
     - if: '$CI_COMMIT_TAG'

@@ -1,6 +1,6 @@
 # Unit testing guide
 
-Philosophy, conventions, and patterns for unit tests in `code-split`.
+Philosophy, conventions, and patterns for unit tests in `code-ranker`.
 
 ## Philosophy
 
@@ -41,12 +41,12 @@ Every test must pass all three:
 
 | Area | What to cover | Where |
 |---|---|---|
-| Config parsing | `--cycle-rule KIND=on\|off`, `--threshold SCOPE.METRIC=N`, defaults, rejection of bad input | `code-split-cli/src/config.rs` |
-| Rule evaluation | `check_violations` (cycles + thresholds); `apply_cycle_rules` strips disabled kinds | `code-split-cli/src/config.rs` |
-| Plugin resolution | `resolve_plugin` precedence; `detect_plugin` markers / ambiguity / none | `code-split-cli/src/main.rs` |
-| Name templating | `render_name` — `{project-dir}` slug, `{ts}` stamp, `{git-hash}` / `{git-hash-N}`; `[output]` name resolution | `code-split-cli/src/main.rs`, `config.rs` |
-| Snapshot & graph types | serde round-trip of the snapshot (the public artifact); builder / projection invariants; cycle and HK annotation | `code-split-core/src/*` |
-| Graph extraction | module / file graph shape on small in-source inputs | `code-split-syn/src/*` |
+| Config parsing | `--cycle-rule KIND=on\|off`, `--threshold SCOPE.METRIC=N`, defaults, rejection of bad input | `code-ranker-cli/src/config.rs` |
+| Rule evaluation | `check_violations` (cycles + thresholds); `apply_cycle_rules` strips disabled kinds | `code-ranker-cli/src/config.rs` |
+| Plugin resolution | `resolve_plugin` precedence; `detect_plugin` markers / ambiguity / none | `code-ranker-cli/src/main.rs` |
+| Name templating | `render_name` — `{project-dir}` slug, `{ts}` stamp, `{git-hash}` / `{git-hash-N}`; `[output]` name resolution | `code-ranker-cli/src/main.rs`, `config.rs` |
+| Snapshot & graph types | serde round-trip of the snapshot (the public artifact); builder / projection invariants; cycle and HK annotation | `code-ranker-core/src/*` |
+| Graph extraction | module / file graph shape on small in-source inputs | `code-ranker-syn/src/*` |
 
 ## What does NOT belong
 
@@ -135,17 +135,17 @@ resolve_plugin_precedence_explicit_then_config_then_auto
 Tests live in-source, next to the code they cover, in a `#[cfg(test)] mod tests` block:
 
 ```text
-crates/code-split-cli/src/config.rs             # parsing, rule evaluation
-crates/code-split-cli/src/main.rs               # plugin resolution, name templating
-crates/code-split-cli/src/plugin/python.rs      # Python extraction + import/call graph
-crates/code-split-cli/src/plugin/javascript.rs  # JS/TS extraction + import/call graph
-crates/code-split-core/src/builder.rs           # graph builder invariants
-crates/code-split-core/src/cycles.rs            # SCC detection / cycle classification
-crates/code-split-core/src/diff.rs              # snapshot comparison
-crates/code-split-core/src/graph.rs             # graph / projection / serde
-crates/code-split-core/src/snapshot.rs          # snapshot serde, path / id rewriting
-crates/code-split-core/src/stats.rs             # metric averaging
-crates/code-split-syn/src/module_graph.rs       # module / file extraction
+crates/code-ranker-cli/src/config.rs             # parsing, rule evaluation
+crates/code-ranker-cli/src/main.rs               # plugin resolution, name templating
+crates/code-ranker-cli/src/plugin/python.rs      # Python extraction + import/call graph
+crates/code-ranker-cli/src/plugin/javascript.rs  # JS/TS extraction + import/call graph
+crates/code-ranker-core/src/builder.rs           # graph builder invariants
+crates/code-ranker-core/src/cycles.rs            # SCC detection / cycle classification
+crates/code-ranker-core/src/diff.rs              # snapshot comparison
+crates/code-ranker-core/src/graph.rs             # graph / projection / serde
+crates/code-ranker-core/src/snapshot.rs          # snapshot serde, path / id rewriting
+crates/code-ranker-core/src/stats.rs             # metric averaging
+crates/code-ranker-syn/src/module_graph.rs       # module / file extraction
 ```
 
 ## Priority

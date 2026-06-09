@@ -317,9 +317,9 @@ The KISS-friendly Rust workspace:
 - Has a `README.md` per crate that explains in three paragraphs
   what the crate does and what its main types are.
 
-## How code-split detects KISS violations
+## How code-ranker detects KISS violations
 
-KISS is qualitative; code-split detects its *quantitative shadows*:
+KISS is qualitative; code-ranker detects its *quantitative shadows*:
 
 | Signal | KISS interpretation |
 |---|---|

@@ -392,9 +392,9 @@ A pragmatic heuristic: encode invariants that **multiple consumers**
 need. A single-use invariant ("this function takes a slice that must
 have an even number of elements") may be cheaper as a debug-assert.
 
-## How code-split detects representable-invalid-state risk
+## How code-ranker detects representable-invalid-state risk
 
-Code Split's static graph cannot directly read invariants. It can flag
+Code Ranker's static graph cannot directly read invariants. It can flag
 *structural risk*:
 
 | Signal | Interpretation |
@@ -404,9 +404,9 @@ Code Split's static graph cannot directly read invariants. It can flag
 | String-typed identifiers across many call sites | Newtype candidates. Detectable from AST. |
 | Functions taking same-type arguments without naming | Swapping risk. AST analysis. |
 
-Code Split's current rule set does not catch these directly. The
+Code Ranker's current rule set does not catch these directly. The
 **LLM-verification** prompt mode (see
-`cpt-code-split-fr-prompt-composer`) can ask an LLM reading the code
+`cpt-code-ranker-fr-prompt-composer`) can ask an LLM reading the code
 to flag these patterns.
 
 ## Suggested recommendation template

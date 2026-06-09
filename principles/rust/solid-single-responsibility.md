@@ -242,9 +242,9 @@ workspace/
 
 Each crate has one actor; cross-crate dependencies are explicit.
 
-## How code-split detects SRP violations
+## How code-ranker detects SRP violations
 
-Code Split cannot read actors directly, but the graph signatures of an
+Code Ranker cannot read actors directly, but the graph signatures of an
 SRP violation are unambiguous:
 
 | Signal | SRP interpretation |
@@ -254,7 +254,7 @@ SRP violation are unambiguous:
 | Module composed mostly of re-exports + entangled in an SCC (prelude-sibling-cycle rule) | Module acts as both a facade and a participant in unrelated subsystems |
 | Public function with very high fan-in (high-fan-in-public-api rule) | Single API surface used by many unrelated actors — every change is a coordination event |
 
-Cross-references in code-split's catalog:
+Cross-references in code-ranker's catalog:
 
 - `god-module-coupling` directly maps to "module-serving-many-actors"
 - `mega-file` maps to "file-with-too-many-reasons-to-change"
@@ -262,7 +262,7 @@ Cross-references in code-split's catalog:
 
 ## Suggested recommendation template
 
-When code-split detects a candidate SRP violation, the Finding should:
+When code-ranker detects a candidate SRP violation, the Finding should:
 
 1. Quote Martin's "one reason to change" / "one actor".
 2. Pin the violation to the offending node (module or file).

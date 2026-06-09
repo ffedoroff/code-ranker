@@ -1,0 +1,17 @@
+[package]
+name = "code-ranker-graph"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Operations over the Code Ranker property-graph model: cycles, coupling, stats, snapshot."
+
+[dependencies]
+code-ranker-plugin-api = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

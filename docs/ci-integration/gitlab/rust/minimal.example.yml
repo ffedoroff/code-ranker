@@ -1,19 +1,19 @@
 # ---------------------------------------------------------------------------
-# code-split — MINIMAL mode (advisory linter + artifacts)
+# code-ranker — MINIMAL mode (advisory linter + artifacts)
 #
-# Runs code-split on every MR and on the default branch, produces a JSON
+# Runs code-ranker on every MR and on the default branch, produces a JSON
 # snapshot and a self-contained HTML viewer, and keeps both as artifacts.
 # It does NOT compare against anything — no baseline, no token, no API calls.
 #
-# Prerequisite: `code-split` must be on PATH. Either bake it into your CI image
-# (`cargo install code-split`, or copy a prebuilt binary), or install it in a
+# Prerequisite: `code-ranker` must be on PATH. Either bake it into your CI image
+# (`cargo install code-ranker`, or copy a prebuilt binary), or install it in a
 # `before_script`.
 # ---------------------------------------------------------------------------
 
-code-split:
-  # Use an image that already has the code-split binary. If it doesn't, add:
+code-ranker:
+  # Use an image that already has the code-ranker binary. If it doesn't, add:
   #   before_script:
-  #     - cargo install code-split --locked
+  #     - cargo install code-ranker --locked
   #
   # Rust note: the analysis runs `cargo metadata` under the hood, which resolves
   # the full dependency graph. Run this job on the SAME base Rust image (and
@@ -33,24 +33,24 @@ code-split:
     # Inject clean git metadata into the snapshot. CI mangles the raw git view —
     # a detached checkout reports the branch as "HEAD", and files the job writes
     # before analysis would inflate the dirty count — so map CI variables onto the
-    # --git.* flags. With branch+commit+dirty-files all set, code-split never even
-    # shells out to git. See docs/code-split-cli/CLI.md → "Git metadata overrides".
+    # --git.* flags. With branch+commit+dirty-files all set, code-ranker never even
+    # shells out to git. See docs/code-ranker-cli/CLI.md → "Git metadata overrides".
     - BR="${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME:-$CI_COMMIT_REF_NAME}"
     - |
-      code-split report . \
+      code-ranker report . \
         --git.branch="$BR" \
         --git.commit="$CI_COMMIT_SHA" \
         --git.dirty-files=0 \
         --git.origin="$CI_PROJECT_URL" \
-        --output.json.path="code-split-${H}.json" \
-        --output.html.path="code-split-${H}.html"
+        --output.json.path="code-ranker-${H}.json" \
+        --output.html.path="code-ranker-${H}.html"
 
   artifacts:
     when: always
     expire_in: 30 days
     paths:
-      - "code-split-*.json"
-      - "code-split-*.html"
+      - "code-ranker-*.json"
+      - "code-ranker-*.html"
 
   rules:
     # Skip tag pipelines; run on MRs and on the default branch.
@@ -65,9 +65,9 @@ code-split:
 # `check` evaluates thresholds / cycle rules and EXITS NON-ZERO on violation,
 # so drop `allow_failure` to actually block the pipeline. It writes no files.
 #
-# code-split-gate:
+# code-ranker-gate:
 #   image: your-registry/your-rust-image:latest
 #   stage: test
 #   script:
-#     - code-split check .          # add threshold/cycle flags as needed
+#     - code-ranker check .          # add threshold/cycle flags as needed
 # ---------------------------------------------------------------------------

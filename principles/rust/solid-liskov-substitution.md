@@ -291,10 +291,10 @@ The mitigation: state the contract in the trait rustdoc, version
 it ("contract version 1.0"), and treat contract changes as semver
 events even when no signature changes.
 
-## How code-split detects LSP violations
+## How code-ranker detects LSP violations
 
 LSP violations are usually invisible to a graph analyzer — they live
-in implementation bodies and runtime behaviour. But code-split can flag
+in implementation bodies and runtime behaviour. But code-ranker can flag
 *structural risk*:
 
 | Signal | LSP interpretation |
@@ -305,7 +305,7 @@ in implementation bodies and runtime behaviour. But code-split can flag
 | `impl Hash` for a type also `impl PartialEq` with non-overlapping field sets | Direct `Hash`/`Eq` consistency check. Requires AST-level field analysis. |
 
 The honest answer is that LSP is mostly a documentation discipline —
-code-split's main contribution is to *flag traits that have no contract
+code-ranker's main contribution is to *flag traits that have no contract
 section* and to *recommend writing one*, not to verify behaviour.
 
 ## Suggested recommendation template

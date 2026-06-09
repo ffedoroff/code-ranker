@@ -419,9 +419,9 @@ The KISS-friendly Python package:
 - Has `__init__.py` files that re-export a small, deliberate
   public API — not "import everything for convenience".
 
-## How code-split detects KISS violations
+## How code-ranker detects KISS violations
 
-KISS is qualitative; code-split detects its *quantitative shadows*:
+KISS is qualitative; code-ranker detects its *quantitative shadows*:
 
 | Signal | KISS interpretation |
 |---|---|

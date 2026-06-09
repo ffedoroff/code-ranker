@@ -12,7 +12,7 @@ test:
 # and compare its JSON report against the committed golden. Refresh goldens with
 # `bash samples/regen.sh` after an intentional change.
 e2e:
-	cargo test -p code-split --test e2e
+	cargo test -p code-ranker --test e2e
 
 clippy:
 	cargo clippy --workspace -- -D warnings
@@ -86,14 +86,14 @@ release:
 	  git push origin v$$VERSION; \
 	  echo; \
 	  echo "  ✓ tag v$$VERSION pushed — Verify is running (nothing published yet)"; \
-	  echo "  → watch:   gh run list --repo ffedoroff/code-split --limit 6"; \
+	  echo "  → watch:   gh run list --repo ffedoroff/code-ranker --limit 6"; \
 	  echo "  → release: make publish   (only after Verify is green)"
 
 publish:
 	@VERSION=$$(grep -E '^version = "' Cargo.toml | head -1 | sed -E 's/version = "(.*)"/\1/'); \
 	  echo "dispatching Release for v$$VERSION (crates=$${CRATES:-false} pypi=$${PYPI:-false} docker=$${DOCKER:-false} github_release=$${GITHUB_RELEASE:-false})"; \
-	  gh workflow run publish.yml --repo ffedoroff/code-split \
+	  gh workflow run publish.yml --repo ffedoroff/code-ranker \
 	    -f version="$$VERSION" \
 	    -f crates="$${CRATES:-false}" -f pypi="$${PYPI:-false}" \
 	    -f docker="$${DOCKER:-false}" -f github_release="$${GITHUB_RELEASE:-false}"; \
-	  echo "  ✓ dispatched — watch: gh run list --repo ffedoroff/code-split --limit 6"
+	  echo "  ✓ dispatched — watch: gh run list --repo ffedoroff/code-ranker --limit 6"

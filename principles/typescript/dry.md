@@ -526,10 +526,10 @@ Cross-package DRY shows up as:
 - TS config repeated. Fix: a base `tsconfig.base.json` extended by
   each package.
 
-## How code-split detects DRY violations
+## How code-ranker detects DRY violations
 
 DRY is the hardest principle to detect automatically — knowledge
-duplication does not have a graph signature. Code Split can flag
+duplication does not have a graph signature. Code Ranker can flag
 *candidates*:
 
 | Signal | DRY interpretation |
@@ -540,7 +540,7 @@ duplication does not have a graph signature. Code Split can flag
 | Repeated regex string literals across files | Textbook DRY violation. |
 | Multiple packages with similar `dependencies` sets | Possibly the same domain repeated. |
 
-Code Split's static graph cannot tell you whether two functions
+Code Ranker's static graph cannot tell you whether two functions
 *encode the same knowledge* — that requires understanding the
 function bodies. A future rule could flag literal duplication and
 let the LLM-verification step decide.
@@ -557,7 +557,7 @@ let the LLM-verification step decide.
 > independent (a column width, an email subject limit, a UI hint),
 > keep them separate.
 >
-> Code Split cannot tell which case applies. See *Pragmatic Programmer*
+> Code Ranker cannot tell which case applies. See *Pragmatic Programmer*
 > Topic 9, matklad's "Three Levels of Repetition", and Abramov's
 > "WET Codebase" for guidance on the call.
 

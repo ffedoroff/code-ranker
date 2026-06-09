@@ -69,7 +69,7 @@ The structural shape becomes load-bearing. Refactoring it
 happens.
 
 Detecting cycles **early**, while they are 2-module or 3-module
-SCCs, makes them cheap to fix. Code Split's `module-call-cycle` and
+SCCs, makes them cheap to fix. Code Ranker's `module-call-cycle` and
 related rules exist exactly for this reason.
 
 ## In Python
@@ -335,7 +335,7 @@ called, by which time `sys.modules` holds a fully-initialised
 It is, however, a **smell, not a fix**:
 
 - The dependency arrow `a → b` still exists; you only hid it from
-  the import-time graph. Code Split's call-graph rules still see
+  the import-time graph. Code Ranker's call-graph rules still see
   it.
 - The cycle is now invisible to grep-based reviews and to most
   static analyzers that look only at module-level imports.
@@ -405,7 +405,7 @@ Caveats:
 **Import cycle (module-level Uses cycle)**: module `a` does
 `from b import ...` and vice versa at module top level. Often
 explodes at runtime with `ImportError`; even when it doesn't (due
-to import-order luck), Code Split flags it. Usually easy to break
+to import-order luck), Code Ranker flags it. Usually easy to break
 by extracting types into a leaf module — no actual logic change.
 
 **Call cycle (module-level Calls cycle)**: function in `a`
@@ -415,10 +415,10 @@ entangled. Sometimes legitimate (mutual recursion across modules),
 but usually means responsibilities are misaligned and should be
 re-cut.
 
-Code Split distinguishes the two: `module-call-cycle` is Critical;
+Code Ranker distinguishes the two: `module-call-cycle` is Critical;
 import-only cycles are Medium/Low depending on size. Deferred
 function-body imports collapse the import cycle into a call cycle,
-which Code Split still catches.
+which Code Ranker still catches.
 
 ## ADP at the package level
 
@@ -446,15 +446,15 @@ Bigger picture: a workspace passes ADP when:
 - The package-level DAG is **shallow**: prefer flat layouts (one
   or two layers of packages) over deep towers of micro-packages.
 
-## How code-split detects ADP violations
+## How code-ranker detects ADP violations
 
-Code Split's primary purpose includes ADP enforcement:
+Code Ranker's primary purpose includes ADP enforcement:
 
 | Signal | Rule |
 |---|---|
 | SCC of size > 1 on module-level `Imports`/`Reexports` edges | `prelude-sibling-cycle`, structural-cycle-report (general) |
 | SCC of size > 1 on module-level call graph | `module-call-cycle` (Critical) |
-| Package-level cycle | Reported by Code Split's cross-package analysis |
+| Package-level cycle | Reported by Code Ranker's cross-package analysis |
 | Layer violation (`libs/*` depends on `apps/*`) | Flagged in cross-package analysis report |
 
 Existing rule cross-references:

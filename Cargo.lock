@@ -213,20 +213,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
-name = "code-split"
+name = "code-ranker"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "code-split-complexity",
- "code-split-graph",
- "code-split-plugin-api",
- "code-split-plugin-javascript",
- "code-split-plugin-python",
- "code-split-plugin-rust",
- "code-split-plugin-typescript",
- "code-split-viewer",
+ "code-ranker-complexity",
+ "code-ranker-graph",
+ "code-ranker-plugin-api",
+ "code-ranker-plugin-javascript",
+ "code-ranker-plugin-python",
+ "code-ranker-plugin-rust",
+ "code-ranker-plugin-typescript",
+ "code-ranker-viewer",
  "globset",
  "serde",
  "serde_json",
@@ -237,11 +237,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "code-split-complexity"
+name = "code-ranker-complexity"
 version = "1.0.0-alpha.4"
 dependencies = [
- "code-split-graph",
- "code-split-plugin-api",
+ "code-ranker-graph",
+ "code-ranker-plugin-api",
  "proc-macro2",
  "rust-code-analysis-code-split",
  "syn",
@@ -249,18 +249,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "code-split-graph"
+name = "code-ranker-graph"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
  "chrono",
- "code-split-plugin-api",
+ "code-ranker-plugin-api",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "code-split-plugin-api"
+name = "code-ranker-plugin-api"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
@@ -269,12 +269,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "code-split-plugin-javascript"
+name = "code-ranker-plugin-javascript"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
- "code-split-graph",
- "code-split-plugin-api",
+ "code-ranker-graph",
+ "code-ranker-plugin-api",
  "tempfile",
  "tree-sitter",
  "tree-sitter-javascript",
@@ -282,11 +282,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "code-split-plugin-python"
+name = "code-ranker-plugin-python"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
- "code-split-plugin-api",
+ "code-ranker-plugin-api",
  "tempfile",
  "tree-sitter",
  "tree-sitter-python",
@@ -294,25 +294,25 @@ dependencies = [
 ]
 
 [[package]]
-name = "code-split-plugin-rust"
+name = "code-ranker-plugin-rust"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
  "cargo_metadata",
- "code-split-plugin-api",
+ "code-ranker-plugin-api",
  "proc-macro2",
  "syn",
  "which",
 ]
 
 [[package]]
-name = "code-split-plugin-typescript"
+name = "code-ranker-plugin-typescript"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
- "code-split-graph",
- "code-split-plugin-api",
- "code-split-plugin-javascript",
+ "code-ranker-graph",
+ "code-ranker-plugin-api",
+ "code-ranker-plugin-javascript",
  "tempfile",
  "tree-sitter",
  "tree-sitter-typescript",
@@ -320,11 +320,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "code-split-viewer"
+name = "code-ranker-viewer"
 version = "1.0.0-alpha.4"
 dependencies = [
  "anyhow",
- "code-split-graph",
+ "code-ranker-graph",
  "serde_json",
  "tempfile",
 ]

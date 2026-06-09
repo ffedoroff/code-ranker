@@ -363,7 +363,7 @@ one dot. But it is LoD violation in disguise:
 - Renames silently break: `FlatUser` doesn't know that `Contact.email`
   was renamed; the attribute simply ceases to resolve.
 - The dynamism hides the coupling from code review and from
-  code-split's static graph.
+  code-ranker's static graph.
 
 The fix is not to flatten dynamically. It is to expose **named
 operations** on the holder object — same as the non-dynamic case.
@@ -446,7 +446,7 @@ from other_pkg import Pool
 
 The path is one hop. Internals are free to evolve.
 
-## How code-split detects LoD violations
+## How code-ranker detects LoD violations
 
 Module-level LoD violations have a graph signature:
 

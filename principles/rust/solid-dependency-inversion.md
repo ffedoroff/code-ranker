@@ -279,9 +279,9 @@ heterogeneously (a `Vec<Box<dyn Renderer>>`) or when avoiding
 generics for compile time. There is no LSP-style penalty either way;
 DIP is honoured regardless.
 
-## How code-split detects DIP violations
+## How code-ranker detects DIP violations
 
-Code Split's crate-level graph is precisely the DIP arrow:
+Code Ranker's crate-level graph is precisely the DIP arrow:
 
 | Signal | DIP interpretation |
 |---|---|
@@ -289,9 +289,9 @@ Code Split's crate-level graph is precisely the DIP arrow:
 | `domain` crate's `Cargo.toml` lists I/O crates | Same. |
 | Trait defined in infra crate is `use`d from domain crate | Trait is in the wrong place. |
 | Crate-level cycle between `domain` and an infra crate | Bidirectional dependency — DIP is bilaterally violated. |
-| `lib`-categorized crate depends on `module`/`app`/`example`-categorized crate | Layer violation flag. Already covered by code-split's layer-violations report. |
+| `lib`-categorized crate depends on `module`/`app`/`example`-categorized crate | Layer violation flag. Already covered by code-ranker's layer-violations report. |
 
-Cross-references to existing code-split capabilities:
+Cross-references to existing code-ranker capabilities:
 
 - The **layer-violations** view in the analysis report directly maps:
   "no lib should depend on a module/app/example crate".

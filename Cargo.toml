@@ -7,19 +7,19 @@ version = "1.0.0-alpha.4"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0"
-repository = "https://github.com/ffedoroff/code-split"
+repository = "https://github.com/ffedoroff/code-ranker"
 keywords = ["dependency-graph", "coupling", "refactoring", "code-quality", "static-analysis"]
 categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
-code-split-graph = { path = "crates/code-split-graph", version = "1.0.0-alpha.4" }
-code-split-plugin-api = { path = "crates/code-split-plugin-api", version = "1.0.0-alpha.4" }
-code-split-complexity = { path = "crates/code-split-complexity", version = "1.0.0-alpha.4" }
-code-split-plugin-rust = { path = "crates/code-split-plugin-rust", version = "1.0.0-alpha.4" }
-code-split-plugin-python = { path = "crates/code-split-plugin-python", version = "1.0.0-alpha.4" }
-code-split-plugin-javascript = { path = "crates/code-split-plugin-javascript", version = "1.0.0-alpha.4" }
-code-split-plugin-typescript = { path = "crates/code-split-plugin-typescript", version = "1.0.0-alpha.4" }
-code-split-viewer = { path = "crates/code-split-viewer", version = "1.0.0-alpha.4" }
+code-ranker-graph = { path = "crates/code-ranker-graph", version = "1.0.0-alpha.4" }
+code-ranker-plugin-api = { path = "crates/code-ranker-plugin-api", version = "1.0.0-alpha.4" }
+code-ranker-complexity = { path = "crates/code-ranker-complexity", version = "1.0.0-alpha.4" }
+code-ranker-plugin-rust = { path = "crates/code-ranker-plugin-rust", version = "1.0.0-alpha.4" }
+code-ranker-plugin-python = { path = "crates/code-ranker-plugin-python", version = "1.0.0-alpha.4" }
+code-ranker-plugin-javascript = { path = "crates/code-ranker-plugin-javascript", version = "1.0.0-alpha.4" }
+code-ranker-plugin-typescript = { path = "crates/code-ranker-plugin-typescript", version = "1.0.0-alpha.4" }
+code-ranker-viewer = { path = "crates/code-ranker-viewer", version = "1.0.0-alpha.4" }
 
 anyhow = "1.0"
 globset = "0.4"

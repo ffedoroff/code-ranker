@@ -334,9 +334,9 @@ Reach for `abc.ABC` only when you need a partial base implementation
 or strict nominal subtyping. There is no LSP-style penalty either way;
 DIP is honoured regardless.
 
-## How code-split detects DIP violations
+## How code-ranker detects DIP violations
 
-Code Split's package-level import graph is precisely the DIP arrow:
+Code Ranker's package-level import graph is precisely the DIP arrow:
 
 | Signal | DIP interpretation |
 |---|---|
@@ -344,9 +344,9 @@ Code Split's package-level import graph is precisely the DIP arrow:
 | `domain` package's `pyproject.toml` / requirements list I/O libraries | Same. |
 | Protocol or ABC defined in an adapter package is imported from the domain package | Abstraction is in the wrong place. |
 | Import-graph cycle between `domain` and an adapter package | Bidirectional dependency — DIP is bilaterally violated. |
-| A `domain`-categorized package imports from an `adapters`/`app`/`script`-categorized package | Layer violation flag. Already covered by code-split's layer-violations report. |
+| A `domain`-categorized package imports from an `adapters`/`app`/`script`-categorized package | Layer violation flag. Already covered by code-ranker's layer-violations report. |
 
-Cross-references to existing code-split capabilities:
+Cross-references to existing code-ranker capabilities:
 
 - The **layer-violations** view in the analysis report directly maps:
   "no domain package should import from an adapters/app/script package".
@@ -408,7 +408,7 @@ src/myapp/
 
 The import-graph invariants are: `domain` imports nothing from
 `adapters` or `app`; `adapters` imports from `domain` only; `app`
-imports from both. Code Split can enforce these as layer rules.
+imports from both. Code Ranker can enforce these as layer rules.
 
 ## Related principles
 

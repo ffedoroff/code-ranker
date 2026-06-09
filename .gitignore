@@ -1,8 +1,9 @@
 .claude/
 .code-split
+.code-ranker
 /target/
 lcov.info
-crates/code-split-cli/src/assets/data.js
+crates/code-ranker-cli/src/assets/data.js
 .DS_Store
 node_modules/
 package.json

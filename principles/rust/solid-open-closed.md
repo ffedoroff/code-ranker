@@ -336,20 +336,20 @@ Downstream code on `old_crate` v1 can still interoperate with code on
 `new_crate` v3 because the type identity is preserved. The pattern
 opens a path for additive evolution across major-version boundaries.
 
-## How code-split detects OCP violations
+## How code-ranker detects OCP violations
 
 OCP violations are subtler than SRP — they often look like normal
-code until upstream-evolution time. Code Split can flag the structural
+code until upstream-evolution time. Code Ranker can flag the structural
 *precursors*:
 
 | Signal | OCP interpretation |
 |---|---|
 | Public trait with N implementations across multiple crates | If unsealed, every method addition is breaking. The `high-fan-in-public-api` rule already flags hotspots; OCP advice is to seal. |
-| Public enum without `#[non_exhaustive]` matched in many places | Same hazard for variant addition. Code Split's `node_visibility` on enums + cross-crate match-count would catch this in a future rule. |
+| Public enum without `#[non_exhaustive]` matched in many places | Same hazard for variant addition. Code Ranker's `node_visibility` on enums + cross-crate match-count would catch this in a future rule. |
 | Public struct with literal-construction sites across crates | Same hazard for field addition. |
 | `pub use foo::*` glob re-exports | Closes nothing — every public item of `foo` becomes part of *your* contract; you cannot rename them without breaking. |
 
-Cross-references in code-split's catalog:
+Cross-references in code-ranker's catalog:
 
 - `high-fan-in-public-api` already prescribes sealed traits +
   `#[non_exhaustive]`. Severity escalates when the API is unsealed.

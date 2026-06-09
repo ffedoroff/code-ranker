@@ -363,10 +363,10 @@ Avoid module augmentation when:
 - The upstream library does not document an augmentation contract —
   you are then back to coupling to internals.
 
-## How code-split detects OCP violations
+## How code-ranker detects OCP violations
 
 OCP violations are subtler than SRP — they often look like normal
-code until upstream-evolution time. Code Split can flag the structural
+code until upstream-evolution time. Code Ranker can flag the structural
 *precursors*:
 
 | Signal | OCP interpretation |
@@ -379,7 +379,7 @@ code until upstream-evolution time. Code Split can flag the structural
 | Glob re-exports (`export * from "./internal"`) | Closes nothing — every public name of `internal` becomes part of *your* contract. |
 | `Object.assign` / `Object.defineProperty` on imported objects | Monkey-patching; modification masquerading as extension. |
 
-Cross-references in code-split's catalog:
+Cross-references in code-ranker's catalog:
 
 - `high-fan-in-public-api` already prescribes interface stability +
   registry patterns. Severity escalates when the API is a bare union

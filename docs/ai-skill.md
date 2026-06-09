@@ -1,15 +1,15 @@
-# code-split — AI agent skill
+# code-ranker — AI agent skill
 
-A short playbook for an AI assistant driving `code-split`. Full flag reference:
-[CLI.md](code-split-cli/CLI.md); metrics and rules: [ERRORS.md](code-split-cli/ERRORS.md).
+A short playbook for an AI assistant driving `code-ranker`. Full flag reference:
+[CLI.md](code-ranker-cli/CLI.md); metrics and rules: [ERRORS.md](code-ranker-cli/ERRORS.md).
 
 ## Install
 
-If a `code-split` command errors with "command not found" (the binary isn't
+If a `code-ranker` command errors with "command not found" (the binary isn't
 installed) and you are working in a Rust project, install it with cargo:
 
 ```sh
-cargo install code-split --version 1.0.0-alpha.4
+cargo install code-ranker --version 1.0.0-alpha.4
 ```
 
 ## Two commands
@@ -20,7 +20,7 @@ cargo install code-split --version 1.0.0-alpha.4
   exits `0`.
 
 `[input]` is polymorphic: a directory is analyzed; a `.json` snapshot is read
-back with no re-analysis. Keep old `.code-split/` snapshots — they are baselines.
+back with no re-analysis. Keep old `.code-ranker/` snapshots — they are baselines.
 
 ## The two metrics that matter
 
@@ -41,25 +41,25 @@ with `--preset HK`. One violation per pass.
 
 ```sh
 # 1. Find the single worst warning
-code-split report . --output.scorecard --preset ADP --severity warning --top 1
+code-ranker report . --output.scorecard --preset ADP --severity warning --top 1
 
 # 2. Review it; propose the fix to the user and get agreement.
 
 # 3. Snapshot the BEFORE state
-code-split report . --output.json.path=.code-split/before.json
+code-ranker report . --output.json.path=.code-ranker/before.json
 
 # 4. Apply the fix.
 
 # 5. Run all tests.
 
 # 6. Re-check: the old #1 is gone, a new #1 surfaces (or none left)
-code-split report . --output.scorecard --preset ADP --severity warning --top 1
+code-ranker report . --output.scorecard --preset ADP --severity warning --top 1
 
 # 7. Render the before/after report and open it
-code-split report . --baseline .code-split/before.json \
-  --output.json.path=.code-split/after.json \
-  --output.html.path=.code-split/after.html
-open .code-split/after.html          # macOS; xdg-open on Linux
+code-ranker report . --baseline .code-ranker/before.json \
+  --output.json.path=.code-ranker/after.json \
+  --output.html.path=.code-ranker/after.html
+open .code-ranker/after.html          # macOS; xdg-open on Linux
 
 # 8. Repeat until no warnings remain.
 ```
@@ -77,9 +77,9 @@ Notes on ADP (cycles):
 ## Cheat sheet
 
 ```sh
-code-split report . --output.scorecard --top 5          # triage: what to fix first
-code-split report . --output.prompt.path=stdout         # LLM prompt for the worst principle
-code-split check  . --baseline base.json --output-format json   # CI regression verdict
+code-ranker report . --output.scorecard --top 5          # triage: what to fix first
+code-ranker report . --output.prompt.path=stdout         # LLM prompt for the worst principle
+code-ranker check  . --baseline base.json --output-format json   # CI regression verdict
 ```
 
 ## Gotchas
@@ -90,4 +90,4 @@ code-split check  . --baseline base.json --output-format json   # CI regression 
   `--output.prompt` or `--output.scorecard`, else the run errors.
 - `--top N` is a reporting limit (`--top 1` = the single worst); use it instead
   of a non-existent `--index`.
-- Don't delete `.code-split/` snapshots — they are your baselines for diffs.
+- Don't delete `.code-ranker/` snapshots — they are your baselines for diffs.

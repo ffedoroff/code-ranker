@@ -1,16 +1,16 @@
-# What code-split counts as a cycle (and what it doesn't)
+# What code-ranker counts as a cycle (and what it doesn't)
 
-**TL;DR**: A cycle is a loop in the **flow** sub-graph. Code-split runs Kosaraju
+**TL;DR**: A cycle is a loop in the **flow** sub-graph. Code Ranker runs Kosaraju
 SCC over edges whose kind is marked `flow`, keeps components of **2+ nodes**, and
 drops any component that **spans more than one crate**. Today only `uses` is
 flow, so `contains` / `reexports` / `super` edges are kept in the JSON but never
-close a loop. The Rust sample (`crates/code-split-plugin-rust/sample`) is wired
+close a loop. The Rust sample (`crates/code-ranker-plugin-rust/sample`) is wired
 to demonstrate every case — including loops that would only close *if*
 `reexports` / `super` were made flow.
 
 ## The rule
 
-Cycle detection lives in `crates/code-split-graph/src/cycles.rs`:
+Cycle detection lives in `crates/code-ranker-graph/src/cycles.rs`:
 
 - An edge participates only if its kind is in the flow set, derived from
   `EdgeKindSpec.flow` (`cycles.rs:29`). Structural kinds are skipped.
@@ -46,7 +46,7 @@ is flow.
 ### Named vs glob `super` — the dependency only the glob hides
 
 This distinction matters and is implemented in
-`crates/code-split-plugin-rust/src/module_graph.rs`: `is_super_glob` returns
+`crates/code-ranker-plugin-rust/src/module_graph.rs`: `is_super_glob` returns
 `false` for any non-glob import (`module_graph.rs:593`), and the edge kind is
 chosen as `Reexports` → `Super` → `Uses` in that order (`module_graph.rs:628`).
 So:
@@ -74,7 +74,7 @@ analyzer does not do.
 
 ## The sample, case by case
 
-All paths are under `crates/code-split-plugin-rust/sample/src/`.
+All paths are under `crates/code-ranker-plugin-rust/sample/src/`.
 
 | # | What | Edges (file:line) | Cycle **today**? | If `reexports`+`super` were flow? |
 |---|---|---|---|---|
@@ -145,7 +145,7 @@ is not real.
 This describes the **current** algorithm (`uses`-only flow). Treating `pub use`
 and glob `use super::*` as real dependencies (`reexports` / `super` → flow) is a
 **proposed** change, not yet applied — the algorithm in `cycles.rs` and the
-`EdgeKindSpec.flow` flags in `crates/code-split-plugin-rust/src/lib.rs` are
+`EdgeKindSpec.flow` flags in `crates/code-ranker-plugin-rust/src/lib.rs` are
 unchanged.
 
 If that flip landed: Cases 2 and 3b would surface as **real** `mutual` cycles

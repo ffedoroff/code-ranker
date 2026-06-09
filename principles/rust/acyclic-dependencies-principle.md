@@ -65,7 +65,7 @@ The structural shape becomes load-bearing. Refactoring it
 happens.
 
 Detecting cycles **early**, while they are 2-module or 3-module
-SCCs, makes them cheap to fix. Code Split's `module-call-cycle` and
+SCCs, makes them cheap to fix. Code Ranker's `module-call-cycle` and
 related rules exist exactly for this reason.
 
 ## In Rust
@@ -102,7 +102,7 @@ use crate::a::A;
 pub struct B { pub a: Option<A> }
 ```
 
-This compiles. The compiler does not flag it. Code Split does.
+This compiles. The compiler does not flag it. Code Ranker does.
 
 ## Common cycle shapes
 
@@ -278,7 +278,7 @@ Cycle broken. `trait` is the leaf both `metrics` and
 ## Cycles in import vs cycles in calls
 
 **Import cycle (module-level Uses cycle)**: module `A` `use`-s a
-type from module `B` and vice versa. Compiles fine, but Code Split
+type from module `B` and vice versa. Compiles fine, but Code Ranker
 flags it. Often easy to break by extracting types into a leaf
 module — no actual code change to logic.
 
@@ -288,7 +288,7 @@ runtime cycle. It is sometimes legitimate (recursion across modules),
 but usually means the modules' responsibilities are entangled and
 should be re-aligned.
 
-Code Split distinguishes the two: `module-call-cycle` is Critical;
+Code Ranker distinguishes the two: `module-call-cycle` is Critical;
 import-only cycles are Medium/Low depending on size.
 
 ## ADP at the crate level
@@ -315,15 +315,15 @@ Bigger picture: a workspace passes ADP when:
   Workspaces" advocates flat layouts: one or two layers of crates,
   not a deep tower).
 
-## How code-split detects ADP violations
+## How code-ranker detects ADP violations
 
-Code Split's primary purpose includes ADP enforcement:
+Code Ranker's primary purpose includes ADP enforcement:
 
 | Signal | Rule |
 |---|---|
 | SCC of size > 1 on module-level `Uses`/`Reexports` edges | `prelude-sibling-cycle`, `outbox-layering`, structural-cycle-report (general) |
 | SCC of size > 1 on module-level call graph | `module-call-cycle` (Critical) |
-| Crate-level cycle | Reported by Code Split's analysis (currently 0 on cyberfabric-core) |
+| Crate-level cycle | Reported by Code Ranker's analysis (currently 0 on cyberfabric-core) |
 | Layer violation (`libs/*` depends on `modules/*`) | Flagged in cross-crate analysis report |
 
 Existing rule cross-references:

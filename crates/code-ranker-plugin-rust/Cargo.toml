@@ -1,0 +1,20 @@
+[package]
+name = "code-ranker-plugin-rust"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Code Ranker Rust plugin: cargo metadata + syn module/crate graph."
+# The e2e fixture project ships next to src/ but is not part of the published crate.
+exclude = ["sample"]
+
+[dependencies]
+code-ranker-plugin-api = { workspace = true }
+anyhow = { workspace = true }
+cargo_metadata = { workspace = true }
+syn = { workspace = true }
+proc-macro2 = { workspace = true }
+which = { workspace = true }

@@ -415,10 +415,10 @@ The mitigation: state the contract in the interface's TSDoc, version
 it, and treat contract changes as semver-major events even when no
 type changes.
 
-## How code-split detects LSP risk
+## How code-ranker detects LSP risk
 
 LSP violations are usually invisible to a graph analyzer — they live
-in implementation bodies and runtime behaviour. But code-split can
+in implementation bodies and runtime behaviour. But code-ranker can
 flag *structural risk*:
 
 | Signal | LSP interpretation |
@@ -430,7 +430,7 @@ flag *structural risk*:
 | `equals` and `hashCode` over non-overlapping field sets | Direct consistency violation. |
 
 The honest answer is that LSP is mostly a documentation discipline —
-code-split's contribution is to *flag interfaces that have no
+code-ranker's contribution is to *flag interfaces that have no
 contract section* and to *recommend writing one*, not to verify
 behaviour.
 

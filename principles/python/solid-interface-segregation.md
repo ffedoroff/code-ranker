@@ -356,7 +356,7 @@ The narrowest signal is the **prefer `Iterable[T]` over `list[T]`**
 rule: if a function only iterates its argument, accepting `list[T]`
 (or `Sequence[T]`) over-constrains every caller.
 
-## How code-split detects ISP violations
+## How code-ranker detects ISP violations
 
 The structural signals:
 
@@ -368,7 +368,7 @@ The structural signals:
 | Module consumed by N modules where each only uses 1–2 of its M public names | "Kitchen sink" module. Detectable from existing import graph. |
 | Function parameter typed `list[T]` / concrete class while body only iterates | Over-narrow input. Could be widened to `Iterable[T]`. |
 
-A concrete future rule code-split could add:
+A concrete future rule code-ranker could add:
 
 **`fat-protocol`**: `Protocol` or ABC has ≥ 7 public methods AND
 has ≥ 2 implementations across the project AND no segregated

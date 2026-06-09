@@ -52,7 +52,7 @@ For each high-fan-out module:
   (see [LoD](law-of-demeter.md) — talk to immediate collaborators, not the
   whole graph).
 
-## How code-split surfaces it
+## How code-ranker surfaces it
 
 `fan_out` is a first-class node metric, a sort option, and the `FANOUT` preset
 in the Prompt Generator. The preset ranks modules by fan-out worst-first and

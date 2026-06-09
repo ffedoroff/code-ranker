@@ -461,7 +461,7 @@ Composition is the default, not the rule. Use inheritance when:
 
 If none of these apply, reach for `Protocol` + dataclass composition.
 
-## How code-split detects composition issues
+## How code-ranker detects composition issues
 
 The graph signals adapted for Python:
 
@@ -477,7 +477,7 @@ The graph signals adapted for Python:
 | High fan-in on a base class (many subclasses across packages) | Fragile base class; any change ripples |
 | `super().__init__(*args, **kwargs)` with opaque kwargs | Cooperative-multiple-inheritance smell |
 
-Code Split's `god-module-coupling` and `high-fan-in-public-api` rules
+Code Ranker's `god-module-coupling` and `high-fan-in-public-api` rules
 indirectly capture the "fat ABC" and "fragile base" issues. Future
 Python-specific rules could flag:
 

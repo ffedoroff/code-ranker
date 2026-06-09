@@ -400,21 +400,21 @@ match objects produced by code on `new_pkg` v3, because there is
 exactly one class. The pattern opens a path for additive evolution
 across major-version boundaries.
 
-## How code-split detects OCP violations
+## How code-ranker detects OCP violations
 
 OCP violations are subtler than SRP — they often look like normal
-code until upstream-evolution time. Code Split can flag the
+code until upstream-evolution time. Code Ranker can flag the
 structural *precursors*:
 
 | Signal | OCP interpretation |
 |---|---|
 | Public Protocol/ABC with N implementations across multiple packages | Every method addition risks breaking external subclasses. The `high-fan-in-public-api` rule already flags hotspots; OCP advice is to prefer `Protocol` over `ABC` and to ship new methods with defaults. |
-| Public `Enum` value used in many `match` statements without a `case _:` arm | Same hazard for variant addition. Code Split's `node_visibility` on enum members plus a cross-module match-arm count would catch this in a future rule. |
+| Public `Enum` value used in many `match` statements without a `case _:` arm | Same hazard for variant addition. Code Ranker's `node_visibility` on enum members plus a cross-module match-arm count would catch this in a future rule. |
 | Public class matched on `isinstance` in many call sites | Same hazard for class-hierarchy evolution: adding a sibling class means every `isinstance` chain is a modification point. Push the behaviour onto the class. |
 | `from foo import *` glob re-exports | Closes nothing — every public name in `foo` becomes part of *your* contract; you cannot rename them without breaking. |
 | Public dataclass without `kw_only=True` | Field addition becomes positional-coupling-breaking; flag for review. |
 
-Cross-references in code-split's catalog:
+Cross-references in code-ranker's catalog:
 
 - `high-fan-in-public-api` already prescribes Protocol-with-defaults
   patterns. Severity escalates when the API is an ABC with required
