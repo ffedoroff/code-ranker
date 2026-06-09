@@ -147,19 +147,21 @@ function buildDiagramSVG(node, level) {
   const mk = (items, dir, label, crate, color, fan) => ({ items, dir, label, crate, color, fan: !!fan, h: blockH(items), y: 0 });
   const crateIn  = crossByCrate(inConns.internal);    // desc by count
   const crateOut = crossByCrate(outConns.internal);   // desc by count
-  // The main node's own crate — labels the same-crate fan blocks too.
+  // The main node's own group value — labels the same-group fan blocks too.
   const ownCrate = _mainCrate != null && _mainCrate !== '' ? String(_mainCrate) : null;
+  // Group label is the grouping key (e.g. "crate", "module", "package") — never hardcoded.
+  const gLabel = _groupKey || 'group';
 
   const above = [];
   if (inConns.external.length) above.push(mk(inConns.external, 'in', 'external', null, BOX_EXT));
-  for (const [c, items] of [...crateIn].reverse()) above.push(mk(items, 'in', 'crate in: ', c, BOX_IN));
+  for (const [c, items] of [...crateIn].reverse()) above.push(mk(items, 'in', `${gLabel} in: `, c, BOX_IN));
   const fanInRecs = sameCrate(inConns.internal);
-  if (fanInRecs.length) above.push(mk(fanInRecs, 'in', ownCrate ? 'crate in: ' : 'fan in', ownCrate, BOX_FAN, true));
+  if (fanInRecs.length) above.push(mk(fanInRecs, 'in', ownCrate ? `${gLabel} in: ` : 'fan in', ownCrate, BOX_FAN, true));
 
   const below = [];
   const fanOutRecs = sameCrate(outConns.internal);
-  if (fanOutRecs.length) below.push(mk(fanOutRecs, 'out', ownCrate ? 'crate out: ' : 'fan out', ownCrate, BOX_FAN, true));
-  for (const [c, items] of crateOut) below.push(mk(items, 'out', 'crate out: ', c, BOX_OUT));
+  if (fanOutRecs.length) below.push(mk(fanOutRecs, 'out', ownCrate ? `${gLabel} out: ` : 'fan out', ownCrate, BOX_FAN, true));
+  for (const [c, items] of crateOut) below.push(mk(items, 'out', `${gLabel} out: `, c, BOX_OUT));
   if (outConns.external.length) below.push(mk(outConns.external, 'out', 'external', null, BOX_EXT));
 
   const fanInBlock  = above.find(b => b.fan) || null;
@@ -313,7 +315,7 @@ function buildDiagramSVG(node, level) {
     const crateVal = _groupKey != null ? nodeAttr(n, _groupKey) : null;
     const relPath  = String(n.path || n.id || '').replace(/^\{[^}]+\}/, '');
     const tipBody  = [
-      crateVal != null && crateVal !== '' ? `crate: ${crateVal}` : '',
+      crateVal != null && crateVal !== '' ? `${_groupKey}: ${crateVal}` : '',
       relPath ? `path: ${relPath}` : '',
     ].filter(Boolean).join('<br>');
 

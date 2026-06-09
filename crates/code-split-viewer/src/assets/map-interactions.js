@@ -71,21 +71,86 @@ window.kbdHintsHtml = kbdHintsHtml;
   window.addEventListener('blur', () => { setShift(false); setSrc(false); });
 })();
 
+// Focus breadcrumb: a clickable trail from the overview down to the current
+// group — e.g. "all crates › user-provisioning (bin) › domain". Each ancestor
+// segment drills to itself; the root returns to the overview. Replaces the old
+// static "← all" so the back target reflects the real hierarchy.
+function renderBreadcrumb(level) {
+  level = level || currentLevel();
+  const grp = window.drillGroup;
+  const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const escA = s => esc(s).replace(/"/g,'&quot;');
+  document.querySelectorAll(`.view[data-view="${level}"] .drill-breadcrumb`).forEach(bc => {
+    if (grp == null) { bc.style.display = 'none'; return; }
+    bc.style.display = '';
+    const grpKey = levelUi(level).grouping?.key || 'group';
+    // Focus collapse bounds: − collapses files into folders, + expands back.
+    const maxFocusD = window._FOCUS?.maxFocusD ?? 0;
+    const baseDig   = window.drillDig ?? 0;
+    const fz        = window.focusDig || 0;
+    const minFz     = -Math.max(0, maxFocusD - baseDig);
+    const canDown   = fz > minFz;   // can collapse further
+    const canUp     = fz < 0;       // can expand toward files
+
+    // Counts shown under each crumb (and each +/-), revealed on hover — the number
+    // of items in that crumb, or what +/- would yield, mirroring the dig control.
+    const uNodes     = (typeof unionGraph === 'function' ? unionGraph(level).nodes : []);
+    const filesUnder = (key, dg) => uNodes.reduce((c, n) => c + (groupKeyAtDig(level, n, dg) === key ? 1 : 0), 0);
+    const drillG     = grouperForDig(level, baseDig);
+    const focusNodes = uNodes.filter(n => drillG(n) === grp);
+    const renderCount = f => {
+      if (f >= 0) return focusNodes.length;   // files
+      const D = Math.min(maxFocusD, Math.max(baseDig + 1, maxFocusD + Math.max(minFz, f) + 1));
+      return new Set(focusNodes.map(n => groupKeyAtDig(level, n, D))).size;   // folder boxes
+    };
+    const col = (inner, count) =>
+      `<span class="crumb-col">${inner}<span class="crumb-count">${count == null ? '' : count}</span></span>`;
+
+    const segs = String(grp).split('/');
+    const parts = [col(`<button class="drill-crumb" data-crumb-root="1" type="button">all ${esc(grpKey)}s</button>`,
+                       window.groupCountAtDig?.(level, 0))];
+    for (let i = 0; i < segs.length; i++) {
+      const key  = segs.slice(0, i + 1).join('/');
+      const last = i === segs.length - 1;
+      parts.push('<span class="drill-sep">›</span>');
+      if (last) {
+        // Current group: the +/- collapse control flanks this last crumb; each
+        // column shows the resulting render count.
+        parts.push('<span class="crumb-dig">' +
+          col(`<button class="crumb-dig-btn" data-crumb-dig-step="-1" type="button"${canDown ? '' : ' disabled'} title="Collapse files into folders">−</button>`, canDown ? renderCount(fz - 1) : null) +
+          col(`<span class="drill-crumb-cur">${esc(segs[i])}</span>`, renderCount(fz)) +
+          col(`<button class="crumb-dig-btn" data-crumb-dig-step="1" type="button"${canUp ? '' : ' disabled'} title="Expand folders into files">+</button>`, canUp ? renderCount(fz + 1) : null) +
+          '</span>');
+      } else {
+        parts.push(col(`<button class="drill-crumb" data-crumb-key="${escA(key)}" data-crumb-dig="${i}" type="button">${esc(segs[i])}</button>`, filesUnder(key, i)));
+      }
+    }
+    bc.innerHTML = parts.join(' ');
+    if (!bc.dataset.crumbInit) {
+      bc.dataset.crumbInit = '1';
+      bc.addEventListener('click', e => {
+        const step = e.target.closest('.crumb-dig-btn');
+        if (step) { if (!step.disabled) setDig(Number(step.dataset.crumbDigStep), level); return; }
+        const btn = e.target.closest('.drill-crumb');
+        if (!btn) return;
+        if (btn.dataset.crumbRoot) { drillOutOfGroup(level); return; }
+        drillIntoGroup(btn.dataset.crumbKey, level, Number(btn.dataset.crumbDig) || 0);
+      });
+    }
+  });
+}
+window.renderBreadcrumb = renderBreadcrumb;
+
 function drillIntoGroup(groupId, level, dig) {
   window.drillGroup = groupId;
   // The drilled view filters by the grouper that produced this group key, so
   // remember the dig it came from — caller may override (a crate cluster drills
   // into the whole crate → crate-tier grouper, dig 0).
   window.drillDig  = (dig != null) ? dig : (window.dig || 0);
-  const frameWrap = document.querySelector(`.view[data-view="${level}"] .frame-wrap`);
-  const bc = frameWrap?.querySelector('.drill-breadcrumb');
-  if (bc) {
-    bc.style.display = '';
-    const grpKey = levelUi(level).grouping?.key || 'group';
-    bc.querySelector('.drill-group-name').textContent = `${grpKey}: ${groupId}`;
-  }
-  // The relative-zoom control applies to the overview only — hide it while focused.
-  frameWrap?.querySelector('.dig-lod')?.style.setProperty('display', 'none');
+  window.focusDig  = 0;   // start at individual files; +/- collapses into folders
+  // Focus uses the breadcrumb's inline +/- control, not the standalone dig box.
+  document.querySelector(`.view[data-view="${level}"] .frame-wrap .dig-lod`)?.style.setProperty('display', 'none');
+  renderBreadcrumb(level);
   window.navPushView?.();
   document.querySelectorAll('.view').forEach(sec => { sec.dataset.rendered = 'false'; });
   const active = document.querySelector('.view.active');
@@ -94,10 +159,10 @@ function drillIntoGroup(groupId, level, dig) {
 
 function drillOutOfGroup(level) {
   window.drillGroup = null;
+  window.focusDig   = 0;
   const frameWrap = document.querySelector(`.view[data-view="${level}"] .frame-wrap`);
-  const bc = frameWrap?.querySelector('.drill-breadcrumb');
-  if (bc) bc.style.display = 'none';
-  frameWrap?.querySelector('.dig-lod')?.style.removeProperty('display');
+  frameWrap?.querySelector('.drill-breadcrumb')?.style.setProperty('display', 'none');
+  frameWrap?.querySelector('.dig-lod')?.style.removeProperty('display');   // restore overview control
   updateDigLabel(level);
   window.navPushView?.();
   document.querySelectorAll('.view').forEach(sec => { sec.dataset.rendered = 'false'; });
@@ -105,20 +170,40 @@ function drillOutOfGroup(level) {
   if (active && window.gv) renderView(active, { preserve: false });
 }
 
-// Relative "dig" (level-of-detail) control for the overview. `delta` is +1 (dig
-// IN — descend into folders) or -1 (dig OUT — collapse the deepest crates into
-// folders). Dig acts on the whole overview; if currently focused into a group,
-// stepping dig leaves focus so the new LOD is visible across the map. See
-// grouping.js for the tier ladder.
+// Drill target (group key + dig) for the folder a node sits in directly — its
+// crate-relative directory depth. Lets a directory sub-cluster drill into itself.
+function focusFolderTarget(level, n) {
+  const dirs  = relPathOf(n.id).split('/').slice(0, -1);
+  const gk    = levelUi(level).grouping?.key;
+  const crate = gk ? n[gk] : null;
+  const dig = (crate == null || crate === '')
+    ? dirs.length
+    : Math.max(0, dirs.length - (crateRoots(level).get(String(crate)) || []).length);
+  return { key: groupKeyAtDig(level, n, dig), dig };
+}
+
+// Clamp a focus-dig (collapse level inside a focused group): 0 = individual files,
+// down to -(folder depth below the focus) where only top-level folders remain.
+function clampFocusDig(z) {
+  const maxFocusD = window._FOCUS?.maxFocusD ?? 0;
+  const baseDig   = window.drillDig ?? 0;
+  return Math.max(-Math.max(0, maxFocusD - baseDig), Math.min(0, z | 0));
+}
+
+// Relative "dig" (level-of-detail). In the overview `delta` (+1 IN / -1 OUT)
+// steps the crate/folder grouping (`window.dig`). While focused into a group it
+// instead steps `window.focusDig` — collapsing that group's files into folder
+// boxes (-) or expanding back to individual files (+). See grouping.js.
 function setDig(delta, level) {
   level = level || currentLevel();
-  const z = clampDig((window.dig || 0) + delta);
-  if (z === (window.dig || 0) && window.drillGroup === null) return;
-  window.dig = z;
   if (window.drillGroup !== null) {
-    window.drillGroup = null;
-    document.querySelectorAll('.drill-breadcrumb').forEach(bc => { bc.style.display = 'none'; });
-    document.querySelectorAll('.dig-lod').forEach(el => el.style.removeProperty('display'));
+    const fz = clampFocusDig((window.focusDig || 0) + delta);
+    if (fz === (window.focusDig || 0)) return;
+    window.focusDig = fz;
+  } else {
+    const z = clampDig((window.dig || 0) + delta);
+    if (z === (window.dig || 0)) return;
+    window.dig = z;
   }
   updateDigLabel(level);
   window.navReplaceView?.();
@@ -137,10 +222,14 @@ function updateDigLabel(level) {
   level = level || currentLevel();
   const root = document.querySelector(`.view[data-view="${level}"] .dig-lod`);
   if (!root) return;
+
+  // Focus mode: the collapse control lives in the breadcrumb, not here.
+  if (window.drillGroup !== null) { renderBreadcrumb(level); return; }
+
   const z   = window.dig || 0;
   const gk  = levelUi(level).grouping?.key || 'group';
   const val = root.querySelector('.dig-lod-val');
-  if (val) val.textContent = z === 0 ? gk : `/crate/folder${z > 0 ? '+' : ''}${z}`;
+  if (val) val.textContent = z === 0 ? gk : `/${gk}/folder${z > 0 ? '+' : ''}${z}`;
   // Group-box counts: current level under the label, and what one step out / in
   // would render under the − / + buttons.
   const curN = window.groupCountAtDig?.(level, z);
@@ -379,6 +468,18 @@ function setupEdgeHighlight(svgFrame, level) {
         for (const e of (edgeMap.get(id) ?? new Set())) edges.add(e);
       }
       nc = matchIds.length;
+      // Clicking the folder (its background, not a file box) drills into it.
+      const sampleId = clusterEl.querySelector('g.node title')?.textContent?.trim();
+      const sample   = sampleId ? nodeById.get(sampleId) : null;
+      if (sample) {
+        const tgt = focusFolderTarget(level, sample);
+        clusterEl.style.cursor = 'pointer';
+        clusterEl.addEventListener('click', e => {
+          if (e.target.closest('g.node')) return;   // a file handles its own click
+          e.stopPropagation();
+          drillIntoGroup(tgt.key, level, tgt.dig);
+        });
+      }
     }
 
     const ec = edges.size;
@@ -443,6 +544,10 @@ function setupTooltips(svgFrame, level) {
     // External neighbour boxes are keyed by the drill-time grouper (same as
     // layout.js) — aggregate their stats so a hover shows crate-style details.
     const neighbourStats = computeGroupStats(level, grouperForDig(level, window.drillDig ?? 0));
+    // Focus folder mode: the rendered boxes are folder groups (not files) keyed by
+    // the focus-dig grouper — stats + drill-in keyed by the same depth.
+    const focusFolder = window._FOCUS?.folderMode ? window._FOCUS : null;
+    const focusStats  = focusFolder ? computeGroupStats(level, grouperForDig(level, focusFolder.focusD)) : null;
 
     svgFrame.querySelectorAll('g.node').forEach(g => {
       const titleEl = g.querySelector('title');
@@ -465,6 +570,18 @@ function setupTooltips(svgFrame, level) {
             showStatus(st ? statusLineForGroup({ ...st, name: arrow + st.name })
                           : arrow + neighborGroup);
           },
+          e => { if (!e.relatedTarget?.closest?.('g.cluster')) hideStatus(); });
+        return;
+      }
+
+      // Focus folder box (collapsed files): clicking drills into that folder.
+      if (focusFolder && !nodeMap.has(nodeId)) {
+        g.addEventListener('click', e => {
+          e.stopPropagation();
+          drillIntoGroup(nodeId, level, focusFolder.focusD);
+        });
+        wireNodeHover(g,
+          () => { const st = focusStats?.get(nodeId); showStatus(st ? statusLineForGroup(st) : nodeId); },
           e => { if (!e.relatedTarget?.closest?.('g.cluster')) hideStatus(); });
         return;
       }

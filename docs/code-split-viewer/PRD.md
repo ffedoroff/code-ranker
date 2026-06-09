@@ -172,8 +172,14 @@ background) listing other groups whose files call into this group, and
 **dependencies** (right, orange background) listing groups this group calls
 out to; clicking a neighbor group navigates into it. When digging in (folder
 groups wrapped in crate clusters), clicking a folder box drills into that folder
-while clicking the crate cluster around it drills into the whole crate. A `← all` breadcrumb
-badge (top-left of the diagram) returns to the group overview. The drill
+while clicking the crate cluster around it drills into the whole crate. **Inside
+a focused group**, clicking a folder (a directory sub-cluster, or a collapsed
+folder box) drills into it, and a `−`/`+` control on the last breadcrumb crumb
+collapses that group's files into folder boxes / expands them back — the same
+level-of-detail idea as the overview's dig, scoped to the focus. A **breadcrumb
+trail** (top-left of the diagram, e.g. `all crates › user-provisioning (bin) ›
+domain`) shows the path; each segment is clickable and the root returns to the
+group overview (counts per segment appear on hover). The drill
 state is reflected in the `group=` URL parameter so browser Back / Forward /
 Refresh work correctly; mode changes update the URL via `replaceState`.
 The map is laid out **once** from the **union** of both snapshots; the

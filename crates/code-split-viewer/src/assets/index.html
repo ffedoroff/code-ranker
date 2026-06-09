@@ -40,10 +40,8 @@
   <div class="frame-wrap">
     <div class="svg-frame" id="frame-files"></div>
     <div class="loading-indicator" id="loading-files">Loading…</div>
-    <div class="drill-breadcrumb" id="drill-breadcrumb-files" style="display:none">
-      <button class="drill-back" type="button" data-drill="back">← all</button>
-      <span class="drill-group-name"></span>
-    </div>
+    <!-- Focus breadcrumb trail — populated by renderBreadcrumb() in map-interactions.js. -->
+    <div class="drill-breadcrumb" id="drill-breadcrumb-files" style="display:none"></div>
     <!-- Relative "dig" (level-of-detail) control: − dig out (collapse the deepest
          crates into folders) / + dig in (descend into folders within crates).
          Top-left next to the map; shown in the overview, hidden while drilled. -->

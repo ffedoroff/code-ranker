@@ -171,6 +171,26 @@ function buildDOT(nodes, edges, level, viewport) {
   const currentById  = new Map((window.CURRENT?.graphs?.[level]?.nodes  || []).map(n => [n.id, n]));
   const allNodesById = new Map(nodes.map(n => [n.id, n]));
 
+  // ── Focus level-of-detail (`window.focusDig`) ─────────────────────────────────
+  // 0 = individual files (default); a negative value collapses the focus's files
+  // into folder boxes, deepest folders first (mirrors the overview's dig out → in).
+  const gkey = levelUi(level).grouping?.key;
+  const underDepth = n => {
+    const dirs  = relPathOf(n.id).split('/').slice(0, -1);
+    const crate = gkey ? n[gkey] : null;
+    if (crate == null || crate === '') return dirs.length;
+    return Math.max(0, dirs.length - (crateRoots(level).get(String(crate)) || []).length);
+  };
+  const maxFocusD  = drillNodes.length ? Math.max(...drillNodes.map(underDepth)) : 0;
+  const fz         = window.focusDig || 0;
+  const folderMode = fz < 0 && maxFocusD > activeDig;
+  // Grouping dig for the folder boxes: −1 → deepest folders, down to one level
+  // under the focused group.
+  const focusD     = folderMode ? Math.min(maxFocusD, Math.max(activeDig + 1, maxFocusD + fz + 1)) : 0;
+  // File id (files mode) or the file's folder-box key (folder mode).
+  const renderId   = id => { const n = allNodesById.get(id); return (folderMode && n) ? groupKeyAtDig(level, n, focusD) : id; };
+  window._FOCUS = { folderMode, focusD, maxFocusD };
+
   const layoutDiam = n => {
     const db = baselineById.has(n.id) ? metricNodeDiam(baselineById.get(n.id), sizeMode) : 0;
     const da = currentById.has(n.id)  ? metricNodeDiam(currentById.get(n.id),  sizeMode) : 0;
@@ -213,14 +233,14 @@ function buildDOT(nodes, edges, level, viewport) {
       const g = gOf(src);
       if (g === drillGroup) continue;
       if (!inGrpFiles.has(g)) inGrpFiles.set(g, new Set());
-      inGrpFiles.get(g).add(e.target);
+      inGrpFiles.get(g).add(renderId(e.target));
     } else if (sIn && !tIn) {
       const tgt = allNodesById.get(e.target);
       if (!tgt || isExternalNode(tgt, level)) continue;
       const g = gOf(tgt);
       if (g === drillGroup) continue;
       if (!outGrpFiles.has(g)) outGrpFiles.set(g, new Set());
-      outGrpFiles.get(g).add(e.source);
+      outGrpFiles.get(g).add(renderId(e.source));
     }
   }
   // Groups in both → remove from outGrpFiles (they appear left only)
@@ -261,19 +281,31 @@ function buildDOT(nodes, edges, level, viewport) {
     dot += '  }\n';
   }
 
-  // Sub-clusters by directory within the drilled group. Labels are the full
-  // workspace-relative directory path with a leading slash (e.g.
-  // "/libs/modkit-odata-macros/src"), so the folder reads in full, not just its
-  // crate-relative tail.
-  const dirOf = n => nodeFullDir(n);
-  const subGroups = new Map();
-  drillNodes.forEach(n => { const d = dirOf(n); (subGroups.get(d) || subGroups.set(d, []).get(d)).push(n); });
-  let si = 0;
-  for (const [label, ns] of subGroups) {
-    dot += `  subgraph cluster_${si++} {\n`;
-    dot += `    label=${dotId(label)} color="#cccccc" fontcolor="#666666" fontname="Helvetica" fontsize=11\n`;
-    for (const n of ns) dot += `    ${dotId(n.id)} [${nAttr(n)}]\n`;
-    dot += '  }\n';
+  if (folderMode) {
+    // Folder mode: one box per folder group (collapsed files), shown flat and
+    // clickable (drilling in is wired in map-interactions via the group key).
+    const groups = new Map();
+    for (const n of drillNodes) { const k = groupKeyAtDig(level, n, focusD); (groups.get(k) || groups.set(k, []).get(k)).push(n); }
+    for (const [k, ns] of groups) {
+      const gCyc = aggCycleStatus(ns.map(n => cycleOf?.get(n.id) || 'none'));
+      const lbl  = `${groupLabel(level, k, focusD)} (${ns.length})`;
+      dot += `  ${dotId(k)} [label=${dotId(lbl)} fillcolor="${N_FILL}" color="${N_COLOR}" shape=box style=filled fontname="Helvetica" fontsize=11 class="cycle-status-${gCyc}"]\n`;
+    }
+  } else {
+    // Files mode: sub-clusters by directory within the drilled group. Labels are
+    // the full workspace-relative directory path with a leading slash (e.g.
+    // "/libs/modkit-odata-macros/src"), so the folder reads in full.
+    const dirOf = n => nodeFullDir(n);
+    const subGroups = new Map();
+    drillNodes.forEach(n => { const d = dirOf(n); (subGroups.get(d) || subGroups.set(d, []).get(d)).push(n); });
+    let si = 0;
+    for (const [label, ns] of subGroups) {
+      dot += `  subgraph cluster_${si++} {\n`;
+      // Faint fill so the whole folder area is hoverable/clickable (drills into it).
+      dot += `    label=${dotId(label)} style=filled fillcolor="#f7f7f7" color="#cccccc" fontcolor="#666666" fontname="Helvetica" fontsize=11\n`;
+      for (const n of ns) dot += `    ${dotId(n.id)} [${nAttr(n)}]\n`;
+      dot += '  }\n';
+    }
   }
 
   // Right cluster — dependencies of this group
@@ -303,10 +335,12 @@ function buildDOT(nodes, edges, level, viewport) {
   for (const e of edges) {
     if (!edgeIsFlow(level, e.kind)) continue;   // map shows only flow connections
     if (!drillIds.has(e.source) || !drillIds.has(e.target)) continue;
-    const key = e.source + '\x00' + e.target;
+    const s = renderId(e.source), t = renderId(e.target);
+    if (s === t) continue;   // collapsed into the same folder box
+    const key = s + '\x00' + t;
     if (seenEdge.has(key)) continue;
     seenEdge.add(key);
-    dot += `  ${dotId(e.source)} -> ${dotId(e.target)} [${eAttr(e)}]\n`;
+    dot += `  ${dotId(s)} -> ${dotId(t)} [${eAttr(e)}]\n`;
   }
 
   // Inbound group → our file (one edge per inGroup+file pair)

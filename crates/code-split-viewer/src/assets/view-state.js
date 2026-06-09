@@ -225,6 +225,9 @@ function renderView(section, opts = {}) {
     }
     section.dataset.rendered = 'true';
     section._refreshNodeTable?.();
+    // drawSVG just refreshed window._FOCUS — sync the dig control to it (its focus
+    // bounds depend on the rendered group's folder depth).
+    window.updateDigLabel?.(level);
     if (loading) loading.classList.remove('on');
   }, 30);
 }
@@ -240,15 +243,9 @@ function applyViewState(st, { rerender = false } = {}) {
   if (window.nodeSizeMode !== mode) { window.nodeSizeMode = mode; changed = true; }
   // Sync breadcrumb (focus) and the relative-zoom control (overview only).
   const lvl = st.level ?? currentLevel();
-  document.querySelectorAll('.drill-breadcrumb').forEach(bc => {
-    if (grp) {
-      bc.style.display = '';
-      const grpKey = levelUi(lvl).grouping?.key || 'group';
-      bc.querySelector('.drill-group-name').textContent = `${grpKey}: ${grp}`;
-    } else {
-      bc.style.display = 'none';
-    }
-  });
+  window.renderBreadcrumb?.(lvl);
+  // Overview: the standalone dig control. Focus: it is hidden — the +/- collapse
+  // control lives inside the breadcrumb instead (renderBreadcrumb).
   document.querySelectorAll('.dig-lod').forEach(el => { el.style.display = grp ? 'none' : ''; });
   window.updateDigLabel?.(lvl);
   // Sync metric buttons

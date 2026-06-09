@@ -94,14 +94,27 @@ text.sn-hint, tspan.sn-hint, g.sn-hint { cursor: inherit; }
 .size-mode-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .drill-breadcrumb { position: absolute; top: 12px; left: 12px; z-index: 10;
-                    display: flex; align-items: center; gap: 8px;
+                    display: flex; align-items: flex-start; gap: 5px; flex-wrap: wrap;
+                    max-width: calc(100% - 24px);
                     background: rgba(255,255,255,.95); border: 1px solid #ddd;
                     border-radius: 8px; padding: 6px 12px;
                     box-shadow: 0 1px 4px rgba(0,0,0,.12); }
-.drill-back { background: none; border: none; cursor: pointer; font-size: 13px;
-              font-weight: 600; color: #1abc9c; padding: 0; line-height: 1; }
-.drill-back:hover { text-decoration: underline; }
-.drill-group-name { font-size: 11px; font-weight: 600; color: #444; }
+.drill-crumb { background: none; border: none; cursor: pointer; font-size: 12px;
+               font-weight: 600; color: #1abc9c; padding: 0; line-height: 1; }
+.drill-crumb:hover { text-decoration: underline; }
+.drill-sep { font-size: 11px; color: #aaa; line-height: 1; }
+.drill-crumb-cur { font-size: 12px; font-weight: 600; color: #444; line-height: 1; }
+.crumb-col { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.crumb-count { font-size: 9px; line-height: 1; color: #999; min-height: 9px;
+               font-variant-numeric: tabular-nums; opacity: 0; transition: opacity .12s; }
+.drill-breadcrumb:hover .crumb-count { opacity: 1; }
+.crumb-dig { display: inline-flex; align-items: center; gap: 6px; }
+.crumb-dig-btn { background: none; border: 1px solid #d5d5d5; border-radius: 5px;
+                 cursor: pointer; font-size: 13px; font-weight: 700; color: #555;
+                 width: 18px; height: 18px; line-height: 1; padding: 0;
+                 display: inline-flex; align-items: center; justify-content: center; }
+.crumb-dig-btn:hover:not([disabled]) { background: #f0f0f0; border-color: #bbb; }
+.crumb-dig-btn[disabled] { opacity: .35; cursor: default; }
 
 /* Relative-zoom (level-of-detail) control: top-left next to the map, mirroring
    the drill breadcrumb. − coarser / + finer grouping, with the current tier in
