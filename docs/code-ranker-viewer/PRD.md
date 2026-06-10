@@ -183,8 +183,11 @@ group overview (counts per segment appear on hover). The drill
 state is reflected in the `group=` URL parameter so browser Back / Forward /
 Refresh work correctly; mode changes update the URL via `replaceState`.
 The map is laid out **once** from the **union** of both snapshots; the
-`[data-side]` Baseline/Current buttons are a pure CSS visibility flip. **Current
-is shown by default.** The display mode is controlled by **three buttons** —
+`[data-side]` Baseline/Current buttons are a pure CSS visibility flip. This
+extends to the **callers / dependencies** neighbour clusters of a drilled group:
+their boxes, connector arrows, and the cluster background each hide on the side
+where that caller/dependency does not exist, exactly like internal nodes/edges.
+**Current is shown by default.** The display mode is controlled by **three buttons** —
 `■` (box/label mode), `SLOC` (circles sized by source lines), `HK` (circles
 sized by Henry-Kafura) — reflected in the `mode=` URL parameter. In metric
 modes (SLOC/HK): in group view circles are sized by the aggregate value across

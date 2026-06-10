@@ -11,6 +11,11 @@ g.node polygon, g.node ellipse { stroke-width: 1; }
 .hide-edges-removed  g.edge.status-removed  { display: none; }
 .hide-edges-affected g.edge.status-affected { display: none; }
 .hide-edges-unchanged g.edge.status-unchanged { display: none; }
+/* Neighbour clusters (callers / dependencies): the whole cluster carries the OR
+   status of its boxes, so its background+label hides on the side where it holds no
+   connections (member boxes hide via their own status above). */
+.hide-nodes-added   g.cluster.status-added   { display: none; }
+.hide-nodes-removed g.cluster.status-removed { display: none; }
 /* ── Cycle visibility override (specificity 0,4,1 > hide rules 0,2,1) ──────── */
 /* When a cycle chip is active alongside any hide-* chip, cycle elements win */
 :is(.hide-nodes-added,.hide-nodes-removed,.hide-nodes-affected,.hide-nodes-unchanged).show-cycle-baseline
