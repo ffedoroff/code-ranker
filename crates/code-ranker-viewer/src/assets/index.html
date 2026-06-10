@@ -88,10 +88,6 @@
   <div id="summary-popup">
     <div id="summary-header">
       <span id="summary-title">Diff summary</span>
-      <span class="summary-actions">
-        <button class="summary-export-btn" id="summary-export-json" type="button" title="Download as JSON">JSON</button>
-        <button class="summary-export-btn" id="summary-export-md"   type="button" title="Download as Markdown">MD</button>
-      </span>
       <button id="summary-close" type="button" title="Close">✕</button>
     </div>
     <div id="summary-body">
@@ -101,6 +97,15 @@
           <tbody id="summary-tbody"></tbody>
         </table>
       </div>
+    </div>
+    <div id="summary-footer">
+      <span class="summary-fl">download:</span>
+      <button class="summary-fbtn" id="summary-dl-json" type="button">json</button>
+      <button class="summary-fbtn" id="summary-dl-md"   type="button">md</button>
+      <span class="summary-footer-spacer"></span>
+      <span class="summary-fl">copy:</span>
+      <button class="summary-fbtn" id="summary-copy-json" type="button">json</button>
+      <button class="summary-fbtn" id="summary-copy-md"   type="button">md</button>
     </div>
   </div>
 </div>

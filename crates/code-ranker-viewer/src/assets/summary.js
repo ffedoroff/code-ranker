@@ -225,10 +225,13 @@ function buildSummary() {
   // ── LAYOUT — the table as a tree of titled sections, each holding its row ids in
   // order. EDIT THIS to rearrange: move a section, reorder its `rows`, or retitle
   // it. Row ids: 'nodes'/'groups'/'edges'/'cycles' (structural counts) and
-  // 'metric:<key>' (per-file stat rows, driven by the header radio). A metric the
-  // snapshot lacks renders nothing; a section left with no rows drops its header. ──
+  // 'metric:<key>' (per-file stat rows, driven by the radio). `{ radio: true }` is
+  // the in-table aggregation control — placed where the rows stop being plain
+  // counts and start following the radio. A metric the snapshot lacks renders
+  // nothing; a section left with no rows drops its header. ──
   const LAYOUT = [
     { title: 'sum always', rows: ['nodes', 'folders', 'groups', 'edges', 'cycles'] },
+    { radio: true },
     { title: 'Coupling',   rows: ['metric:fan_in', 'metric:fan_out', 'metric:hk'] },
     { title: 'Lines',      rows: ['metric:loc', 'metric:sloc', 'metric:lloc', 'metric:cloc', 'metric:blank', 'metric:tloc'] },
     { title: 'Complexity', rows: ['metric:cyclomatic', 'metric:cognitive', 'metric:mi', 'metric:mi_sei'] },
@@ -237,7 +240,7 @@ function buildSummary() {
 
   // One metric builder per key referenced (LAYOUT ∪ summary_metrics); metricRow
   // itself returns '' for keys absent from this snapshot.
-  const laidOutRows = LAYOUT.flatMap(s => s.rows);
+  const laidOutRows = LAYOUT.flatMap(s => s.rows || []);
   const metricKeys  = new Set([
     ...summaryKeys,
     ...laidOutRows.filter(id => id.startsWith('metric:')).map(id => id.slice('metric:'.length)),
@@ -248,6 +251,15 @@ function buildSummary() {
   const headSpan  = 1 + levels.length * (isReview ? 1 : 3);
   const headerRow = title =>
     `<tr class="summary-subhead"><td colspan="${headSpan}">${escHtml(title)}</td></tr>`;
+  // The aggregation radio rendered as a full-width divider row inside the table
+  // (change is handled by a delegated listener on the tbody — see setupSummaryStatControl).
+  const statRow = () => {
+    const cur = window._summaryStat || 'avg';
+    const opts = SUMMARY_STATS.map(s =>
+      `<label class="summary-stat-opt"><input type="radio" name="summary-stat" value="${s}"` +
+      `${s === cur ? ' checked' : ''}>${s}</label>`).join('');
+    return `<tr class="summary-stat-row"><td colspan="${headSpan}"><span class="summary-stat">${opts}</span></td></tr>`;
+  };
 
   // Any metric builder not placed in LAYOUT lands in a trailing "Other" section, so
   // a newly-added metric never silently vanishes.
@@ -259,6 +271,7 @@ function buildSummary() {
   // when at least one row survives. Each section also feeds the export model.
   const out = [], model = [];
   for (const sec of sections) {
+    if (sec.radio) { out.push(statRow()); continue; }   // in-table aggregation control
     const recs = sec.rows.map(id => (builders[id] ? builders[id]() : null)).filter(Boolean);
     if (!recs.length) continue;
     if (sec.title) out.push(headerRow(sec.title));
@@ -283,26 +296,20 @@ function buildSummary() {
 // (Files/Folders/groups/Edges/cycles) ignore this and always show their count.
 const SUMMARY_STATS = ['avg', 'min', 'p50', 'p90', 'max', 'sum'];
 
-// Build the per-stat radio control in the popup header (once). Changing it
-// re-renders the table to the chosen stat.
+// Wire the in-table aggregation radio (once). The radio row is re-rendered by
+// every buildSummary, so the handler is delegated on the persistent tbody. The
+// choice re-renders the table and round-trips through the URL (`stat=` — nav.js).
 function setupSummaryStatControl() {
-  const header = document.getElementById('summary-header');
-  if (!header || header.querySelector('.summary-stat')) return;
+  const tbody = document.getElementById('summary-tbody');
+  if (!tbody || tbody._statWired) return;
+  tbody._statWired = true;
   if (!window._summaryStat) window._summaryStat = 'avg';
-  const wrap = document.createElement('span');
-  wrap.className = 'summary-stat';
-  wrap.innerHTML = SUMMARY_STATS.map(s =>
-    `<label class="summary-stat-opt"><input type="radio" name="summary-stat" value="${s}"` +
-    `${s === window._summaryStat ? ' checked' : ''}>${s}</label>`
-  ).join('');
-  // (The chosen aggregation round-trips through the URL `stat=` param — see nav.js.)
-  wrap.addEventListener('change', e => {
+  tbody.addEventListener('change', e => {
     if (e.target.name !== 'summary-stat') return;
     window._summaryStat = e.target.value;
     buildSummary();
-    window.navReplaceView?.();   // reflect the chosen aggregation in the URL
+    window.navReplaceView?.();
   });
-  header.appendChild(wrap);
 }
 window.setupSummaryStatControl = setupSummaryStatControl;
 // Whether `s` is a valid aggregation id (guards URL-restored values).
@@ -335,17 +342,16 @@ function summaryFileBase() {
   return `${slug}-summary-${m.stat || 'avg'}`;
 }
 
-function exportSummaryJSON() {
+// The export TEXT builders (shared by download + copy-to-clipboard).
+function summaryJSONText() {
   const m = window._summaryModel;
-  if (!m) return;
-  downloadFile(`${summaryFileBase()}.json`, JSON.stringify(m, null, 2), 'application/json');
+  return m ? JSON.stringify(m, null, 2) : '';
 }
-
 // Markdown: a title + provenance line, then one table per section. In a diff each
 // table is | Metric | Baseline | Current | Δ |; in review just | Metric | Value |.
-function exportSummaryMarkdown() {
+function summaryMarkdownText() {
   const m = window._summaryModel;
-  if (!m) return;
+  if (!m) return '';
   const review = m.mode === 'review';
   const fmt = v => (v == null ? '' : fmtNum(v));
   const dlt = v => {
@@ -370,26 +376,47 @@ function exportSummaryMarkdown() {
         : `| ${r.label} | ${fmt(r.baseline)} | ${fmt(r.current)} | ${dlt(r.delta)} |`);
     lines.push('');
   }
-  downloadFile(`${summaryFileBase()}.md`, lines.join('\n'), 'text/markdown');
+  return lines.join('\n');
+}
+
+function exportSummaryJSON()     { const t = summaryJSONText();     if (t) downloadFile(`${summaryFileBase()}.json`, t, 'application/json'); }
+function exportSummaryMarkdown() { const t = summaryMarkdownText(); if (t) downloadFile(`${summaryFileBase()}.md`,   t, 'text/markdown'); }
+
+// Copy to the clipboard with a brief "copied ✓" confirmation on the button.
+function copySummaryText(text, btn) {
+  if (!text) return;
+  navigator.clipboard?.writeText(text).then(() => {
+    if (!btn) return;
+    const prev = btn.textContent;
+    btn.textContent = 'copied ✓';
+    setTimeout(() => { btn.textContent = prev; }, 1200);
+  });
 }
 window.exportSummaryJSON = exportSummaryJSON;
 window.exportSummaryMarkdown = exportSummaryMarkdown;
 
 // ── Popup open/close + export wiring (once) ─────────────────────────────────────
-function openSummaryPopup() {
+// `syncUrl` writes the open/closed state to the URL (`panel=stats`) so a refresh
+// reopens the popup; it is passed false when restoring FROM the URL/history.
+// (Event handlers pass the Event object, which is truthy → syncUrl on by default.)
+function openSummaryPopup(syncUrl = true) {
   const ov = document.getElementById('summary-overlay');
   if (!ov) return;
+  window._statsOpen = true;
   buildSummary();                 // refresh to the active side/stat before showing
   // Keep the page header visible: start the white fill just below it.
   const hdr = document.querySelector('header');
   ov.style.top = (hdr ? hdr.offsetHeight : 0) + 'px';
   ov.style.display = 'flex';
   document.body.style.overflow = 'hidden';
+  if (syncUrl) window.navReplaceView?.();
 }
-function closeSummaryPopup() {
+function closeSummaryPopup(syncUrl = true) {
   const ov = document.getElementById('summary-overlay');
+  window._statsOpen = false;
   if (ov) ov.style.display = 'none';
   document.body.style.overflow = '';
+  if (syncUrl) window.navReplaceView?.();
 }
 window.openSummaryPopup = openSummaryPopup;
 window.closeSummaryPopup = closeSummaryPopup;
@@ -400,8 +427,11 @@ function setupSummaryPopup() {
   ov._wired = true;
   document.getElementById('stats-btn')?.addEventListener('click', openSummaryPopup);
   document.getElementById('summary-close')?.addEventListener('click', closeSummaryPopup);
-  document.getElementById('summary-export-json')?.addEventListener('click', exportSummaryJSON);
-  document.getElementById('summary-export-md')?.addEventListener('click', exportSummaryMarkdown);
+  // Footer: download links (.json / .md) + copy-to-clipboard buttons.
+  document.getElementById('summary-dl-json')?.addEventListener('click', e => { e.preventDefault(); exportSummaryJSON(); });
+  document.getElementById('summary-dl-md')?.addEventListener('click', e => { e.preventDefault(); exportSummaryMarkdown(); });
+  document.getElementById('summary-copy-json')?.addEventListener('click', e => copySummaryText(summaryJSONText(), e.currentTarget));
+  document.getElementById('summary-copy-md')?.addEventListener('click', e => copySummaryText(summaryMarkdownText(), e.currentTarget));
   ov.addEventListener('mousedown', e => { if (e.target === ov) closeSummaryPopup(); });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && ov.style.display !== 'none') closeSummaryPopup();

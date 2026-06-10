@@ -24,6 +24,11 @@
   text-align: left; border-bottom: 1px solid #d0d8e4;
 }
 .node-table.summary-table tbody tr.summary-subhead:first-child td { padding-top: 2px; }
+/* In-table aggregation radio row (a tinted band between counts and metric rows). */
+.node-table.summary-table tbody tr.summary-stat-row td {
+  padding: 9px 6px; text-align: center; background: #eef6f3;
+  border-top: 1px solid #cfe3da; border-bottom: 1px solid #cfe3da;
+}
 .cycle-badge { display: inline-block; padding: 1px 9px; border-radius: 10px;
                background: #fff0f0; border: 1px solid #f5a0a0;
                color: #c00; font-weight: 600; font-size: 13px; }

@@ -176,20 +176,25 @@
                   border-bottom: 2px solid #1abc9c; font-size: 1.4rem; font-weight: 700;
                   color: #2c3e50; }
 #summary-title { order: 0; }
-#summary-close { order: 4; margin-left: 8px; background: none; border: none;
+#summary-close { order: 4; margin-left: auto; background: none; border: none;
                  font-size: 22px; color: #aaa; cursor: pointer; line-height: 1; padding: 0; }
 #summary-close:hover { color: #333; }
 #summary-body { flex: 1; overflow: auto; padding: 16px 28px 28px; }
 
-.summary-actions { order: 3; margin-left: auto; display: inline-flex; gap: 8px; }
-.summary-export-btn { font: inherit; font-size: 12px; font-weight: 600; color: #2c3e50;
-                      background: #eef2f6; border: 1px solid #c8d4e0; border-radius: 4px;
-                      padding: 4px 12px; cursor: pointer; transition: background .15s; }
-.summary-export-btn:hover { background: #dfe7ef; }
+/* Footer: download links on the left, copy buttons on the right. */
+#summary-footer { flex-shrink: 0; display: flex; align-items: center; gap: 10px;
+                  padding: 12px 28px; border-top: 1px solid #e3e9ef; background: #fafbfc;
+                  font-size: 13px; color: #5c7a96; }
+.summary-footer-spacer { flex: 1; }
+.summary-fl { font-weight: 600; color: #5c7a96; }
+.summary-fbtn { font: inherit; font-size: 12px; font-weight: 600; color: #2c3e50;
+                background: #eef2f6; border: 1px solid #c8d4e0; border-radius: 4px;
+                padding: 5px 14px; cursor: pointer; transition: background .15s; }
+.summary-fbtn:hover { background: #dfe7ef; }
 
-/* Per-stat radio control: between the title and the export actions. */
-.summary-stat { order: 1; display: inline-flex; gap: 10px; align-items: center;
-                margin-left: 14px; font-size: 12px; font-weight: 400; }
+/* Per-stat radio control — rendered as a full-width divider row in the table,
+   between the "sum always" counts and the metric sections it drives. */
+.summary-stat { display: inline-flex; gap: 16px; align-items: center; font-size: 12px; font-weight: 400; }
 .summary-stat-opt { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; color: #5c7a96; }
 .summary-stat-opt input { cursor: pointer; margin: 0; }
 

@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // so the table and the radio come up on the chosen stat.
   const urlStat = getNavParams().stat;
   if (urlStat && window.isSummaryStat?.(urlStat)) window._summaryStat = urlStat;
+  // Was the Statistics popup open? (`panel=stats`) — reopen it after setup.
+  window._statsOpen = getNavParams().panel === 'stats';
   // If the Prompt Generator was open (state in the URL), restore its selected
   // nodes before the tables render so those rows come up already selected.
   const epState = (typeof epReadUrl === 'function') ? epReadUrl() : null;
@@ -41,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupSummaryPopup();
   updateFilesTab();
   updateHeader();
+  if (window._statsOpen) openSummaryPopup(false);   // restore the popup from the URL
 
 
   const active = document.querySelector('.view.active');
@@ -59,7 +62,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (urlNode) openModalForNode(urlNode, urlLevel ?? currentLevel());
   // Replace initial history state so popstate can restore it
   history.replaceState(
-    { level: currentLevel(), node: urlNode ?? null, group: urlGroup ?? null, mode: urlMode ?? null, dig: window.dig || 0, side: window.viewSide, stat: window.navStat?.() ?? null },
+    { level: currentLevel(), node: urlNode ?? null, group: urlGroup ?? null, mode: urlMode ?? null, dig: window.dig || 0, side: window.viewSide, stat: window.navStat?.() ?? null, panel: window._statsOpen ? 'stats' : null },
     '', location.href
   );
 
@@ -82,5 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
       closeModalSilent();
     }
+    // Restore the Statistics popup open/closed state without re-touching the URL.
+    if (st.panel === 'stats') openSummaryPopup(false); else closeSummaryPopup(false);
   });
 });

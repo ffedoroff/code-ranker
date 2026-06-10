@@ -8,6 +8,7 @@ function getNavParams() {
     mode:  p.get('mode'),
     dig:   p.get('dig'),
     stat:  p.get('stat'),
+    panel: p.get('panel'),
   };
 }
 // The active diff side carried in the URL — only in diff mode (a current snapshot
@@ -31,6 +32,7 @@ function navViewState() {
     mode:  window.nodeSizeMode || null,
     dig:   window.dig || 0,
     stat:  navStat(),
+    panel: window._statsOpen ? 'stats' : null,
   };
 }
 function navViewUrl(st) {
@@ -41,6 +43,7 @@ function navViewUrl(st) {
   if (st.mode)  p.set('mode',  st.mode);
   if (st.dig)   p.set('dig',   st.dig);
   if (st.stat)  p.set('stat',  st.stat);
+  if (st.panel) p.set('panel', st.panel);
   return p.toString() ? '?' + p : location.pathname;
 }
 // Drill navigation (in/out of a group) — adds a history entry so Back works.
@@ -68,9 +71,11 @@ window.navPush = function(level, nodeId) {
   if (dig)    p.set('dig',   dig);
   const stat = navStat();
   if (stat)   p.set('stat',  stat);
+  const panel = window._statsOpen ? 'stats' : null;
+  if (panel)  p.set('panel', panel);
   if (nodeId) p.set('node',  nodeId);
   const url = p.toString() ? '?' + p : location.pathname;
-  history.pushState({ level: level ?? null, node: nodeId ?? null, side, group: grp, mode, dig, stat }, '', url);
+  history.pushState({ level: level ?? null, node: nodeId ?? null, side, group: grp, mode, dig, stat, panel }, '', url);
 };
 // Update only the `side` param in place (Baseline/Current toggle).
 window.navSetSide = function() {
