@@ -199,7 +199,6 @@
         },
         "fan_out": {
           "description": "Number of nodes this one depends on. High fan-out means many dependencies. External-library edges are counted separately.",
-          "direction": "lower_better",
           "group": "coupling",
           "label": "Fan-out",
           "name": "Fan-out",
@@ -238,7 +237,7 @@
           "description": "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "group": "loc",
           "label": "Logical",
-          "name": "Logical LOC",
+          "name": "Logical lines",
           "short": "Logical",
           "value_type": "int"
         },

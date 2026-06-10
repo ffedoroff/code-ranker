@@ -149,8 +149,15 @@ function buildSummary() {
   const metricRow = key => {
     if (!hasAttrKey(level0, key)) return null;   // metric not present in this snapshot
     const dirRaw = attrDirection(level0, key);   // 'lower_better' | 'higher_better' | null
-    const dir    = dirRaw === 'lower_better' ? true : dirRaw === 'higher_better' ? false : null;
     const stat   = window._summaryStat || 'avg';
+    // `sum` aggregates over files, so its delta tracks the change in file COUNT
+    // (Files ±N) far more than any per-file quality shift — colouring it would
+    // read a growing project as "everything got worse". Every other stat is
+    // count-normalised, so the metric's own direction applies. (min/max included:
+    // a distribution edge moving the good/bad way is still genuinely good/bad.)
+    const dir    = stat === 'sum' ? null
+                 : dirRaw === 'lower_better' ? true
+                 : dirRaw === 'higher_better' ? false : null;
     const opts   = { dir, tip: attrDesc(level0, key) || undefined, formula: attrFormula(level0, key) || undefined };
     // Label: the metric key (abbreviation) followed by its human name/explanation
     // from the spec — e.g. `loc - Lines`, `hk - Henry–Kafura (HK)`. Falls back to

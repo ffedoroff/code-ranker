@@ -11,7 +11,7 @@ use code_ranker_graph::attrs::num_attr;
 use code_ranker_plugin_api::{
     attrs::ValueType,
     graph::Graph,
-    level::{AttributeGroup, AttributeSpec},
+    level::{AttributeGroup, AttributeSpec, Direction, SpecRow, attr_dict, group},
 };
 use rust_code_analysis::{
     FuncSpace, JavascriptParser, ParserTrait, PythonParser, RustParser, TsxParser,
@@ -228,28 +228,6 @@ fn write_metrics(node: &mut code_ranker_plugin_api::node::Node, s: &FuncSpace, t
     }
 }
 
-/// One metric row: (key, group, value_type, label, name, short, description,
-/// formula, calc, direction). Empty strings become `None`.
-type MetricRow = (
-    &'static str,
-    &'static str,
-    ValueType,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-    &'static str,
-);
-
-fn group(label: &str, description: &str) -> AttributeGroup {
-    AttributeGroup {
-        label: Some(label.to_string()),
-        description: Some(description.to_string()),
-    }
-}
-
 /// The complexity metric attribute dictionary and its groups, fully enriched
 /// (label/name/short/description/formula/calc/direction) so the UI hardcodes no
 /// metric. The orchestrator merges these into each level's `node_attributes` /
@@ -259,245 +237,241 @@ pub fn metric_specs() -> (
     BTreeMap<String, AttributeSpec>,
     BTreeMap<String, AttributeGroup>,
 ) {
-    use ValueType::{Float, Int};
-    let opt = |s: &str| {
-        if s.is_empty() {
-            None
-        } else {
-            Some(s.to_string())
-        }
-    };
-    // (key, group, value_type, label, name, short, description, formula, calc, direction)
-    let rows: &[MetricRow] = &[
+    use Direction::{HigherBetter, LowerBetter};
+    use ValueType::Float;
+    let specs = attr_dict(vec![
         (
             "cyclomatic",
-            "complexity",
-            Int,
-            "Cyclomatic",
-            "Cyclomatic complexity",
-            "Cyclomatic",
-            "Number of linearly independent paths through the code. Higher values indicate complex branching logic.",
-            "branches + 1",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "complexity",
+                label: "Cyclomatic",
+                name: "Cyclomatic complexity",
+                short: "Cyclomatic",
+                description: "Number of linearly independent paths through the code. Higher values indicate complex branching logic.",
+                formula: "branches + 1",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "cognitive",
-            "complexity",
-            Int,
-            "Cognitive",
-            "Cognitive complexity",
-            "Cognitive",
-            "Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow.",
-            "",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "complexity",
+                label: "Cognitive",
+                name: "Cognitive complexity",
+                short: "Cognitive",
+                description: "Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow.",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "exits",
-            "complexity",
-            Int,
-            "Exits",
-            "Exit points",
-            "Exits",
-            "Number of exit points (return/throw) in the unit.",
-            "",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "complexity",
+                label: "Exits",
+                name: "Exit points",
+                short: "Exits",
+                description: "Number of exit points (return/throw) in the unit.",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "args",
-            "complexity",
-            Int,
-            "Args",
-            "Arguments",
-            "Args",
-            "Number of function / closure arguments.",
-            "",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "complexity",
+                label: "Args",
+                name: "Arguments",
+                short: "Args",
+                description: "Number of function / closure arguments.",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "closures",
-            "complexity",
-            Int,
-            "Closures",
-            "Closures",
-            "Closures",
-            "Number of closures defined in the unit.",
-            "",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "complexity",
+                label: "Closures",
+                name: "Closures",
+                short: "Closures",
+                description: "Number of closures defined in the unit.",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "mi",
-            "maintainability",
-            Float,
-            "MI",
-            "Maintainability index",
-            "MI",
-            "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
-            "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)",
-            "",
-            "higher_better",
+            SpecRow {
+                group: "maintainability",
+                value_type: Float,
+                label: "MI",
+                name: "Maintainability index",
+                short: "MI",
+                description: "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
+                formula: "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)",
+                direction: HigherBetter,
+                ..Default::default()
+            },
         ),
         (
             "mi_sei",
-            "maintainability",
-            Float,
-            "MI (SEI)",
-            "Maintainability (SEI)",
-            "MI SEI",
-            "SEI variant of the Maintainability Index — adds a bonus for comment density.",
-            "MI + 50·sin(√(2.4 × comment-ratio))",
-            "",
-            "higher_better",
+            SpecRow {
+                group: "maintainability",
+                value_type: Float,
+                label: "MI (SEI)",
+                name: "Maintainability (SEI)",
+                short: "MI SEI",
+                description: "SEI variant of the Maintainability Index — adds a bonus for comment density.",
+                formula: "MI + 50·sin(√(2.4 × comment-ratio))",
+                direction: HigherBetter,
+                ..Default::default()
+            },
         ),
         (
             "sloc",
-            "loc",
-            Int,
-            "Source",
-            "Source lines",
-            "SLOC",
-            "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
-            "",
-            "",
-            "",
+            SpecRow {
+                group: "loc",
+                label: "Source",
+                name: "Source lines",
+                short: "SLOC",
+                description: "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
+                ..Default::default()
+            },
         ),
         (
             "lloc",
-            "loc",
-            Int,
-            "Logical",
-            "Logical LOC",
-            "Logical",
-            "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-            "",
-            "",
-            "",
+            SpecRow {
+                group: "loc",
+                label: "Logical",
+                name: "Logical lines",
+                short: "Logical",
+                description: "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
+                ..Default::default()
+            },
         ),
         (
             "cloc",
-            "loc",
-            Int,
-            "Comments",
-            "Comment lines",
-            "Comments",
-            "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-            "",
-            "",
-            "",
+            SpecRow {
+                group: "loc",
+                label: "Comments",
+                name: "Comment lines",
+                short: "Comments",
+                description: "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
+                ..Default::default()
+            },
         ),
         (
             "blank",
-            "loc",
-            Int,
-            "Blank",
-            "Blank lines",
-            "Blank",
-            "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-            "",
-            "",
-            "",
+            SpecRow {
+                group: "loc",
+                label: "Blank",
+                name: "Blank lines",
+                short: "Blank",
+                description: "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
+                ..Default::default()
+            },
         ),
         (
             "tloc",
-            "loc",
-            Int,
-            "Test",
-            "Test lines",
-            "TLOC",
-            "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
-            "",
-            "",
-            "",
+            SpecRow {
+                group: "loc",
+                label: "Test",
+                name: "Test lines",
+                short: "TLOC",
+                description: "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
+                ..Default::default()
+            },
         ),
         (
             "length",
-            "halstead",
-            Float,
-            "Length",
-            "Halstead length",
-            "H.len",
-            "Program length — total operator + operand occurrences.",
-            "N₁ + N₂",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "halstead",
+                value_type: Float,
+                label: "Length",
+                name: "Halstead length",
+                short: "H.len",
+                description: "Program length — total operator + operand occurrences.",
+                formula: "N₁ + N₂",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "vocabulary",
-            "halstead",
-            Float,
-            "Vocabulary",
-            "Halstead vocabulary",
-            "H.vocab",
-            "Vocabulary — distinct operators + operands.",
-            "η₁ + η₂",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "halstead",
+                value_type: Float,
+                label: "Vocabulary",
+                name: "Halstead vocabulary",
+                short: "H.vocab",
+                description: "Vocabulary — distinct operators + operands.",
+                formula: "η₁ + η₂",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "volume",
-            "halstead",
-            Float,
-            "Volume",
-            "Halstead volume",
-            "H.vol",
-            "Algorithm size in bits, from distinct operators and operands.",
-            "length × log₂(vocabulary)",
-            "length * Math.log2(vocabulary)",
-            "lower_better",
+            SpecRow {
+                group: "halstead",
+                value_type: Float,
+                label: "Volume",
+                name: "Halstead volume",
+                short: "H.vol",
+                description: "Algorithm size in bits, from distinct operators and operands.",
+                formula: "length × log₂(vocabulary)",
+                calc: "length * Math.log2(vocabulary)",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "effort",
-            "halstead",
-            Float,
-            "Effort",
-            "Halstead effort",
-            "H.effort",
-            "Mental effort to implement the algorithm.",
-            "volume × difficulty",
-            "",
-            "lower_better",
+            SpecRow {
+                group: "halstead",
+                value_type: Float,
+                label: "Effort",
+                name: "Halstead effort",
+                short: "H.effort",
+                description: "Mental effort to implement the algorithm.",
+                formula: "volume × difficulty",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "time",
-            "halstead",
-            Float,
-            "Time",
-            "Halstead time, s",
-            "H.time(s)",
-            "Estimated implementation time, in seconds.",
-            "effort ÷ 18",
-            "effort / 18",
-            "lower_better",
+            SpecRow {
+                group: "halstead",
+                value_type: Float,
+                label: "Time",
+                name: "Halstead time, s",
+                short: "H.time(s)",
+                description: "Estimated implementation time, in seconds.",
+                formula: "effort ÷ 18",
+                calc: "effort / 18",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
         (
             "bugs",
-            "halstead",
-            Float,
-            "Bugs",
-            "Halstead bugs",
-            "H.bugs",
-            "Estimated delivered bugs — a rough predictor of defect density.",
-            "effort^⅔ ÷ 3000",
-            "effort ** (2/3) / 3000",
-            "lower_better",
+            SpecRow {
+                group: "halstead",
+                value_type: Float,
+                label: "Bugs",
+                name: "Halstead bugs",
+                short: "H.bugs",
+                description: "Estimated delivered bugs — a rough predictor of defect density.",
+                formula: "effort^⅔ ÷ 3000",
+                calc: "effort ** (2/3) / 3000",
+                direction: LowerBetter,
+                ..Default::default()
+            },
         ),
-    ];
-    let mut specs = BTreeMap::new();
-    for (k, g, vt, label, name, short, desc, formula, calc, dir) in rows {
-        let mut s = AttributeSpec::new(*vt, label);
-        s.group = opt(g);
-        s.name = opt(name);
-        s.short = opt(short);
-        s.description = opt(desc);
-        s.formula = opt(formula);
-        s.calc = opt(calc);
-        s.direction = opt(dir);
-        specs.insert((*k).to_string(), s);
-    }
+    ]);
     let mut groups = BTreeMap::new();
     groups.insert(
         "complexity".to_string(),

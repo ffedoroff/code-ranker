@@ -45,6 +45,27 @@ pub struct Thresholds {
     pub warning: f64,
 }
 
+/// Whether a metric's delta is "good" when it moves up or down — drives the
+/// green/red colouring in the viewer. `Neutral` (the default) means the metric
+/// has no agreed-good direction (raw sizes, structural counts) and is left
+/// uncoloured. `Neutral` is skipped on the wire, so a neutral metric serializes
+/// exactly as the old `Option<String>` form did: the `direction` field absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    #[default]
+    Neutral,
+    LowerBetter,
+    HigherBetter,
+}
+
+impl Direction {
+    /// `true` for the default (no opinion) — used by serde to omit the field.
+    pub fn is_neutral(&self) -> bool {
+        matches!(self, Direction::Neutral)
+    }
+}
+
 /// Describes one attribute key (on a node or an edge). Everything the UI needs
 /// to label, explain, format, compute and threshold the metric — so the viewer
 /// hardcodes no metric by name.
@@ -70,9 +91,10 @@ pub struct AttributeSpec {
     /// `"sloc * (fan_in * fan_out) ** 2"`. Lets the UI show the live derivation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub calc: Option<String>,
-    /// `"higher_better"` / `"lower_better"` — drives delta colouring.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub direction: Option<String>,
+    /// Whether higher or lower is "better" — drives delta colouring. `Neutral`
+    /// (the default) is omitted from the wire.
+    #[serde(default, skip_serializing_if = "Direction::is_neutral")]
+    pub direction: Direction,
     /// Format large values with K/M suffixes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub abbreviate: Option<bool>,
@@ -95,11 +117,83 @@ impl AttributeSpec {
             description: None,
             formula: None,
             calc: None,
-            direction: None,
+            direction: Direction::Neutral,
             abbreviate: None,
             group: None,
             thresholds: None,
         }
+    }
+}
+
+/// One row of a declarative attribute table: a flat, named-field description of
+/// an [`AttributeSpec`]. Empty `&str` fields become `None`; `direction` defaults
+/// to [`Direction::Neutral`]. Build a whole dictionary with [`attr_dict`].
+///
+/// This replaces both the per-field `spec.x = Some(...)` boilerplate and the
+/// positional metric-row tuples that the metric/coupling crates used to carry
+/// separately, so every centrally-computed spec is declared the same way.
+#[derive(Clone)]
+pub struct SpecRow {
+    pub group: &'static str,
+    pub value_type: ValueType,
+    pub label: &'static str,
+    pub name: &'static str,
+    pub short: &'static str,
+    pub description: &'static str,
+    pub formula: &'static str,
+    pub calc: &'static str,
+    pub direction: Direction,
+    pub abbreviate: bool,
+}
+
+impl Default for SpecRow {
+    fn default() -> Self {
+        SpecRow {
+            group: "",
+            value_type: ValueType::Int,
+            label: "",
+            name: "",
+            short: "",
+            description: "",
+            formula: "",
+            calc: "",
+            direction: Direction::Neutral,
+            abbreviate: false,
+        }
+    }
+}
+
+impl SpecRow {
+    fn into_spec(self) -> AttributeSpec {
+        let opt = |s: &str| (!s.is_empty()).then(|| s.to_string());
+        AttributeSpec {
+            value_type: self.value_type,
+            label: opt(self.label),
+            name: opt(self.name),
+            short: opt(self.short),
+            description: opt(self.description),
+            formula: opt(self.formula),
+            calc: opt(self.calc),
+            direction: self.direction,
+            abbreviate: self.abbreviate.then_some(true),
+            group: opt(self.group),
+            thresholds: None,
+        }
+    }
+}
+
+/// Assemble a `key → AttributeSpec` dictionary from a declarative table.
+pub fn attr_dict(rows: Vec<(&'static str, SpecRow)>) -> BTreeMap<String, AttributeSpec> {
+    rows.into_iter()
+        .map(|(k, r)| (k.to_string(), r.into_spec()))
+        .collect()
+}
+
+/// Build an [`AttributeGroup`] from a label + description.
+pub fn group(label: &str, description: &str) -> AttributeGroup {
+    AttributeGroup {
+        label: Some(label.to_string()),
+        description: Some(description.to_string()),
     }
 }
 

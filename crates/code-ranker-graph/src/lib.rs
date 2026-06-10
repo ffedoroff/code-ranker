@@ -31,7 +31,7 @@ pub use stats::compute_stats;
 
 use code_ranker_plugin_api::{
     attrs::ValueType,
-    level::{AttributeGroup, AttributeSpec},
+    level::{AttributeGroup, AttributeSpec, Direction, SpecRow, attr_dict, group},
 };
 use std::collections::BTreeMap;
 
@@ -42,63 +42,77 @@ pub fn coupling_specs() -> (
     BTreeMap<String, AttributeSpec>,
     BTreeMap<String, AttributeGroup>,
 ) {
-    let mut specs = BTreeMap::new();
-
-    let mut fan_in = AttributeSpec::new(ValueType::Int, "Fan-in");
-    fan_in.group = Some("coupling".into());
-    fan_in.name = Some("Fan-in".into());
-    fan_in.short = Some("Fan-in".into());
-    fan_in.description =
-        Some("Number of nodes that depend on this one. High fan-in means broadly reused.".into());
-    // No direction: raw fan-in is neutral — broad reuse (good) and bottleneck risk
-    // (bad) pull opposite ways, so a growing/shrinking count carries no clear verdict.
-    specs.insert("fan_in".to_string(), fan_in);
-
-    let mut fan_out = AttributeSpec::new(ValueType::Int, "Fan-out");
-    fan_out.group = Some("coupling".into());
-    fan_out.name = Some("Fan-out".into());
-    fan_out.short = Some("Fan-out".into());
-    fan_out.description = Some(
-        "Number of nodes this one depends on. High fan-out means many dependencies. \
-         External-library edges are counted separately."
-            .into(),
-    );
-    // Lower is better: outgoing dependencies are efferent coupling — a node that
-    // depends on more things is harder to change in isolation (mirrors HK).
-    fan_out.direction = Some("lower_better".into());
-    specs.insert("fan_out".to_string(), fan_out);
-
-    let mut foe = AttributeSpec::new(ValueType::Int, "Fan-out (external)");
-    foe.group = Some("coupling".into());
-    foe.description = Some("Number of distinct external libraries this node depends on.".into());
-    specs.insert("fan_out_external".to_string(), foe);
-
-    let mut hk = AttributeSpec::new(ValueType::Float, "HK");
-    hk.group = Some("coupling".into());
-    hk.name = Some("Henry–Kafura".into());
-    hk.short = Some("HK".into());
-    hk.description = Some(
-        "Henry–Kafura — combines unit size with incoming/outgoing coupling (internal edges only)."
-            .into(),
-    );
-    hk.formula = Some("sloc × (fan_in × fan_out)²".into());
-    hk.calc = Some("sloc * (fan_in * fan_out) ** 2".into());
-    hk.direction = Some("lower_better".into());
-    hk.abbreviate = Some(true);
-    specs.insert("hk".to_string(), hk);
-
-    let mut cycle = AttributeSpec::new(ValueType::Str, "Cycle");
-    cycle.short = Some("Cycle".into());
-    cycle.description = Some("Cycle kind this node participates in.".into());
-    specs.insert("cycle".to_string(), cycle);
+    let specs = attr_dict(vec![
+        // No direction: raw fan-in is neutral — broad reuse (good) and bottleneck
+        // risk (bad) pull opposite ways, so a growing/shrinking count carries no
+        // clear verdict.
+        (
+            "fan_in",
+            SpecRow {
+                group: "coupling",
+                label: "Fan-in",
+                name: "Fan-in",
+                short: "Fan-in",
+                description: "Number of nodes that depend on this one. High fan-in means broadly reused.",
+                ..Default::default()
+            },
+        ),
+        // Also neutral: like fan-in, high fan-out is dual — a tangled unit (bad) or
+        // a legitimate coordinator/composition root (fine). The directional coupling
+        // signal lives in `hk`, which already folds in fan_out.
+        (
+            "fan_out",
+            SpecRow {
+                group: "coupling",
+                label: "Fan-out",
+                name: "Fan-out",
+                short: "Fan-out",
+                description: "Number of nodes this one depends on. High fan-out means many \
+                              dependencies. External-library edges are counted separately.",
+                ..Default::default()
+            },
+        ),
+        (
+            "fan_out_external",
+            SpecRow {
+                group: "coupling",
+                label: "Fan-out (external)",
+                description: "Number of distinct external libraries this node depends on.",
+                ..Default::default()
+            },
+        ),
+        (
+            "hk",
+            SpecRow {
+                group: "coupling",
+                value_type: ValueType::Float,
+                label: "HK",
+                name: "Henry–Kafura",
+                short: "HK",
+                description: "Henry–Kafura — combines unit size with incoming/outgoing coupling \
+                              (internal edges only).",
+                formula: "sloc × (fan_in × fan_out)²",
+                calc: "sloc * (fan_in * fan_out) ** 2",
+                direction: Direction::LowerBetter,
+                abbreviate: true,
+            },
+        ),
+        (
+            "cycle",
+            SpecRow {
+                value_type: ValueType::Str,
+                label: "Cycle",
+                short: "Cycle",
+                description: "Cycle kind this node participates in.",
+                ..Default::default()
+            },
+        ),
+    ]);
 
     let mut groups = BTreeMap::new();
     groups.insert(
         "coupling".to_string(),
-        AttributeGroup {
-            label: Some("Coupling".to_string()),
-            description: Some("Internal coupling (Henry-Kafura)".to_string()),
-        },
+        group("Coupling", "Internal coupling (Henry-Kafura)"),
     );
     (specs, groups)
 }
