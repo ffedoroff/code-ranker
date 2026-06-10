@@ -7,13 +7,16 @@ function renderTooltip(label, data) {
   const d = typeof data === 'string' ? JSON.parse(data) : data;
   return `<div class="tt-title">${label}<span class="tt-count">${d.count} nodes</span></div>
 <table class="tt-tbl">
-<thead><tr><th>pct</th><th>value</th></tr></thead>
+<thead><tr><th>stat</th><th>value</th></tr></thead>
 <tbody>
+${d.avg != null ? `<tr class="tt-avg"><td>avg</td><td>${fmtNum(d.avg)}</td></tr>` : ''}
+${d.min != null ? `<tr><td>min</td><td>${fmtNum(d.min)}</td></tr>` : ''}
 <tr><td>p1</td><td>${fmtNum(d.p1)}</td></tr>
 <tr><td>p10</td><td>${fmtNum(d.p10)}</td></tr>
 <tr><td>p50</td><td>${fmtNum(d.p50)}</td></tr>
 <tr><td>p90</td><td>${fmtNum(d.p90)}</td></tr>
 <tr><td>p99</td><td>${fmtNum(d.p99)}</td></tr>
+${d.max != null ? `<tr><td>max</td><td>${fmtNum(d.max)}</td></tr>` : ''}
 </tbody></table>`;
 }
 

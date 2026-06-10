@@ -38,6 +38,10 @@
              font-family: ui-monospace, 'SF Mono', monospace; font-size: 12px; }
 .tt-tbl td:first-child { color: #8ba6c0; font-weight: 400; text-align: left; font-family: inherit; }
 .tt-tbl tr:first-child td { padding-top: 0; }
+/* The avg row is the value the summary cell actually shows — accent it apart from
+   the percentile rows below. */
+.tt-tbl tr.tt-avg td { color: #7ec8e3; border-bottom: 1px solid rgba(126,200,227,.25); }
+.tt-tbl tr.tt-avg td:first-child { color: #7ec8e3; font-weight: 600; }
 [data-tt] { cursor: help; border-bottom: 1px dashed rgba(100,120,140,.35); }
 [data-tip] { cursor: help; }
 .tt-desc { color: #c8d8e8; font-size: 12px; line-height: 1.55; margin-top: 2px; }
