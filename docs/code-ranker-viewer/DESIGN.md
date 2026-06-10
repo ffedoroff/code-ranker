@@ -97,14 +97,14 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 
 | File | Purpose |
 |------|---------|
-| `tooltip.js` | The shared `#tt` engine: `renderTooltip` (percentile table), `renderDescTooltip` (title + formula + filled-calc + description with `<br>`/`` `code` `` markup), `renderNodeTooltip`/`renderGroupTooltip`, and `setupTooltip` — one delegated hover controller with a 300 ms delay; derives metric tooltips lazily on hover. Used by the table, map, popup and summary. |
+| `tooltip.js` | The shared `#tt` engine: `renderTooltip` (distribution table — `avg`, `min`, `max` + p1/p10/p50/p90/p99 percentiles), `renderDescTooltip` (title + formula + filled-calc + description with `<br>`/`` `code` `` markup), `renderNodeTooltip`/`renderGroupTooltip`, and `setupTooltip` — one delegated hover controller with a 300 ms delay; derives metric tooltips lazily on hover. Used by the table, map, popup and summary. |
 
 ### Tables & summary
 
 | File | Purpose |
 |------|---------|
 | `node-table.js` | Sortable per-file **Details** table (collapsed by default, re-titled per active side, search when expanded, selection checkboxes, average/count footer with percentile tooltips). Hosts the **Prompt Generator** button. `attachModalCheckbox`/`setupNodeTable`. |
-| `summary.js` | Review/diff **summary** table: structural aggregate rows (Nodes/Edges/Source-lines/Nodes-in-cycles) then per-metric medians from `ui.summary_metrics`, with `direction`-driven Δ colouring (neutral = uncoloured). |
+| `summary.js` | Review/diff **summary** table. Each row is a **named builder** in a registry (`nodes-sum`, `edges-sum`, `loc-sum`, `sloc-sum`, `cycles-sum`, and one `metric:<key>` per `ui.summary_metrics` entry); the display sequence is the **explicit `ROW_ORDER` list** — reorder that to move rows. A builder that returns `''` (attribute/metric absent in this snapshot) is skipped, and any builder id missing from `ROW_ORDER` is appended at the end so a newly-added metric never silently vanishes. `*-sum` rows are project-wide aggregates (node/edge **counts**, `loc`/`sloc` **totals** summed over internal files, nodes-in-cycles); `metric:<key>` rows are the per-file **average** (mean over internal nodes — `nodePercentiles.avg`). The hover tooltip shows `avg`, `min`, `max` plus the p1/p10/p50/p90/p99 distribution. `direction`-driven Δ colouring (neutral = uncoloured); a delta whose **rounded** magnitude is 0 renders as a plain uncoloured `0` (never a coloured `+0`/`−0`), and the Δ header column is labelled `Δ delta`. |
 
 ### Export
 
