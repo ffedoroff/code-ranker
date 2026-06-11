@@ -3,7 +3,7 @@ members = ["crates/*"]
 resolver = "3"
 
 [workspace.package]
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0"
@@ -12,14 +12,14 @@ keywords = ["dependency-graph", "coupling", "refactoring", "code-quality", "stat
 categories = ["development-tools", "command-line-utilities"]
 
 [workspace.dependencies]
-code-ranker-graph = { path = "crates/code-ranker-graph", version = "1.0.0" }
-code-ranker-plugin-api = { path = "crates/code-ranker-plugin-api", version = "1.0.0" }
-code-ranker-complexity = { path = "crates/code-ranker-complexity", version = "1.0.0" }
-code-ranker-plugin-rust = { path = "crates/code-ranker-plugin-rust", version = "1.0.0" }
-code-ranker-plugin-python = { path = "crates/code-ranker-plugin-python", version = "1.0.0" }
-code-ranker-plugin-javascript = { path = "crates/code-ranker-plugin-javascript", version = "1.0.0" }
-code-ranker-plugin-typescript = { path = "crates/code-ranker-plugin-typescript", version = "1.0.0" }
-code-ranker-viewer = { path = "crates/code-ranker-viewer", version = "1.0.0" }
+code-ranker-graph = { path = "crates/code-ranker-graph", version = "1.1.0" }
+code-ranker-plugin-api = { path = "crates/code-ranker-plugin-api", version = "1.1.0" }
+code-ranker-complexity = { path = "crates/code-ranker-complexity", version = "1.1.0" }
+code-ranker-plugin-rust = { path = "crates/code-ranker-plugin-rust", version = "1.1.0" }
+code-ranker-plugin-python = { path = "crates/code-ranker-plugin-python", version = "1.1.0" }
+code-ranker-plugin-javascript = { path = "crates/code-ranker-plugin-javascript", version = "1.1.0" }
+code-ranker-plugin-typescript = { path = "crates/code-ranker-plugin-typescript", version = "1.1.0" }
+code-ranker-viewer = { path = "crates/code-ranker-viewer", version = "1.1.0" }
 
 anyhow = "1.0"
 globset = "0.4"
