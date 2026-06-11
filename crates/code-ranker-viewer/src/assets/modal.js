@@ -101,6 +101,31 @@ function getModal() {
     document.body.appendChild(overlay);
     document.getElementById('node-modal-close').addEventListener('click', closeModal);
     overlay.addEventListener('mousedown', e => { if (e.target === overlay) closeModal(); });
+    // Header breadcrumb chips: drill the map to that crate/folder and close the modal.
+    document.getElementById('node-modal-hdr-title').addEventListener('click', e => {
+      const level = window._modalNode?.level ?? document.querySelector('.view.active')?.dataset.view;
+      // Tier dropdown: toggle the menu in place; picking a tier switches the map.
+      if (window.handleTierToggle?.(e)) return;
+      const opt = e.target.closest('[data-tier]');
+      if (opt) {
+        // Switch the dimension WITHOUT closing the modal: flip the tier (and the map
+        // behind, for consistency) but keep the same file open — just re-render its
+        // breadcrumb in the new representation.
+        if (opt.dataset.tier !== window.viewTier?.(level)) window.switchTier?.(opt.dataset.tier, level);
+        const m = window._modalNode;
+        const node = m && ((typeof activeGraph === 'function' ? activeGraph(m.level).nodes : []).find(n => n.id === m.id)
+                           ?? window.DIFF?.[m.level]?.nodes?.find(n => n.id === m.id));
+        if (node) document.getElementById('node-modal-hdr-title').innerHTML = window.nodeHeaderHtml(node, m.level);
+        document.querySelectorAll('.tier-menu:not([hidden])').forEach(mn => mn.setAttribute('hidden', ''));
+        return;
+      }
+      const root = e.target.closest('[data-mc-root]');
+      const btn  = e.target.closest('[data-mc-key]');
+      if (!root && !btn) return;
+      closeModalSilent();
+      if (root) window.drillOutOfGroup?.(level);
+      else      window.drillIntoGroup?.(btn.dataset.mcKey, level, Number(btn.dataset.mcDig) || 0);
+    });
     document.addEventListener('keydown', e => {
       if (overlay.style.display === 'none') return;   // only while the modal is open
       if (e.key === 'Escape') { closeModal(); return; }

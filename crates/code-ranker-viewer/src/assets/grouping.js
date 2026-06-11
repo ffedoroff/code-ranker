@@ -29,6 +29,46 @@ function viewTier(level) {
 }
 window.viewTier = viewTier;
 
+// A node's crate id (the `grouping.key` attribute) as a non-empty string, or null.
+function crateIdOf(level, n) {
+  const gk = levelUi(level).grouping?.key;
+  const c  = gk ? n[gk] : null;
+  return (c != null && c !== '') ? String(c) : null;
+}
+window.crateIdOf = crateIdOf;
+
+// A node id's directory segments (path minus the `{token}` root marker and the
+// filename). The unit most path math here starts from.
+function nodeDirSegs(id) { return relPathOf(id).split('/').slice(0, -1); }
+window.nodeDirSegs = nodeDirSegs;
+
+// The default-focus directory: descend from the root through any chain of folders
+// that hold exactly ONE subfolder and NO direct files, stopping at the first
+// folder that branches (>1 subfolder) or holds a file. Returns the dir segments
+// ([] = the root itself already branches → no auto-drill).
+function autoFocusSegs(level) {
+  const dirs = (unionGraph(level).nodes || [])
+    .filter(n => !isExternalNode(n, level))
+    .map(n => nodeDirSegs(n.id));
+  const prefix = [];
+  for (;;) {
+    let hasDirectFile = false;
+    const subdirs = new Set();
+    for (const segs of dirs) {
+      if (segs.length < prefix.length) continue;
+      let under = true;
+      for (let i = 0; i < prefix.length; i++) if (segs[i] !== prefix[i]) { under = false; break; }
+      if (!under) continue;
+      if (segs.length === prefix.length) hasDirectFile = true;
+      else subdirs.add(segs[prefix.length]);
+    }
+    if (!hasDirectFile && subdirs.size === 1) { prefix.push([...subdirs][0]); continue; }
+    break;
+  }
+  return prefix;
+}
+window.autoFocusSegs = autoFocusSegs;
+
 // Strip the leading `{token}/` root marker from an id/path.
 function relPathOf(id) { return String(id || '').replace(/^\{[^}]+\}\//, ''); }
 
@@ -45,7 +85,7 @@ function crateRoots(level) {
       if (isExternalNode(n, level)) continue;
       const crate = n[gk];
       if (crate == null || crate === '') continue;
-      const dirs = relPathOf(n.id).split('/').slice(0, -1);   // drop the filename
+      const dirs = nodeDirSegs(n.id);   // drop the filename
       const arr  = byCrate.get(String(crate));
       if (arr) arr.push(dirs); else byCrate.set(String(crate), [dirs]);
     }
@@ -137,7 +177,7 @@ function groupKeyAtDig(level, n, dig) {
   const gk    = levelUi(level).grouping?.key;
   // File tier ignores the crate attribute → plain directory tiers for every node.
   const crate = (viewTier(level) === 'crate' && gk) ? n[gk] : null;
-  const dirs  = relPathOf(n.id).split('/').slice(0, -1);
+  const dirs  = nodeDirSegs(n.id);
 
   // No crate attribute (file tier, or a crate-less level): plain directory tiers
   // on an ABSOLUTE ladder — dig 0 keeps the file's full directory (finest folder
@@ -225,7 +265,7 @@ function focusDirPath(level) {
   let common = null;
   for (const n of (unionGraph(level).nodes || [])) {
     if (gOf(n) !== grp) continue;
-    const segs = relPathOf(n.id).split('/').slice(0, -1);
+    const segs = nodeDirSegs(n.id);
     if (common === null) common = segs.slice();
     else { let i = 0; while (i < common.length && i < segs.length && common[i] === segs[i]) i++; common.length = i; }
   }
@@ -259,7 +299,7 @@ window.stripDirPrefix = stripDirPrefix;
 // when the node has no crate.
 function crateRelDir(level, n) {
   const gk    = levelUi(level).grouping?.key;
-  const segs  = relPathOf(n.id).split('/').slice(0, -1);   // dir segments
+  const segs  = nodeDirSegs(n.id);   // dir segments
   const crate = gk ? n[gk] : null;
   if (crate == null || crate === '') return segs.length ? '/' + segs.join('/') : '/';
   const cdir = crateDirs(level).dirOf.get(String(crate)) || [];
@@ -273,7 +313,7 @@ window.crateRelDir = crateRelDir;
 // Used for the drilled-view directory sub-cluster labels so they read in full
 // rather than just the crate-relative tail.
 function nodeFullDir(n) {
-  const segs = relPathOf(n.id).split('/').slice(0, -1);   // drop the filename
+  const segs = nodeDirSegs(n.id);   // drop the filename
   return segs.length ? '/' + segs.join('/') : '/';
 }
 window.nodeFullDir = nodeFullDir;

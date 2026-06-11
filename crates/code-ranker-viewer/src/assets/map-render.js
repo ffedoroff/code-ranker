@@ -12,8 +12,12 @@ function drawSVG(svgFrame, nodes, edges, level) {
   // Group view (drillGroup=null) is always fast — just one node per group.
   // Only warn when drilled into a very large group.
   if (drillGroup !== null) {
-    const gOf = grouperForDig(level, window.drillDig ?? 0);
-    const drillCount = nodes.filter(n => gOf(n) === drillGroup).length;
+    // Count what the hybrid view will actually render — files + collapsed folder
+    // boxes at the current reveal depth — not the raw file count under the focus
+    // (a deep focus collapses to a handful of boxes, so the raw count over-warns).
+    const drillCount = (typeof focusRenderCount === 'function')
+      ? focusRenderCount(level, window.focusDig || 0)
+      : nodes.filter(n => grouperForDig(level, window.drillDig ?? 0)(n) === drillGroup).length;
     if (drillCount > SVG_NODE_LIMIT && svgFrame.dataset.bigConfirmed !== '1') {
       svgFrame.innerHTML =
         `<div class="too-many">` +

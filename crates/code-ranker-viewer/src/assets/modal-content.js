@@ -2,6 +2,36 @@
 // (buildModalContent). Consumes source-links.js and node-popup.js. Split out of
 // diagram.js.
 
+// Breadcrumb trail for a node's location, in the same chip style as the map's
+// navigation breadcrumb (`.drill-crumb`/`.drill-sep`/`.crumb-tier`): the tier
+// anchor, the `all`/`root` element, the crate/folder path chips, then the file
+// itself (current). Folder/root chips are clickable (`data-mc-*`) — the modal's
+// header click handler drills the map there and closes the modal.
+function nodeCrumbsHtml(node, level) {
+  if (isExternalNode(node, level)) return `<span class="nm-title">${escHtml(node.name)}</span>`;
+  const tier      = window.viewTier(level);
+  const rootLabel = tier === 'file' ? 'root' : 'all';
+  // Tier dropdown — identical to the map breadcrumb (shared helper).
+  const parts = [
+    `<span class="crumb-tier">${window.tierAnchorHtml(level, tier)}</span>`,
+    `<span class="drill-sep">›</span>`,
+    `<button class="drill-crumb" data-mc-root="1" type="button" title="Show the whole overview">${rootLabel}</button>`,
+  ];
+  const tgt = focusFolderTarget(level, node);   // the file's containing-folder key + dig
+  if (tgt.key && tgt.key !== '_root') {
+    const segs = String(tgt.key).split('/');
+    for (let i = 0; i < segs.length; i++) {
+      const key = segs.slice(0, i + 1).join('/');
+      const dg  = chipDig(level, i, tier);
+      parts.push('<span class="drill-sep">›</span>');
+      parts.push(`<button class="drill-crumb" data-mc-key="${escAttr(key)}" data-mc-dig="${dg}" type="button">${escHtml(segs[i])}</button>`);
+    }
+  }
+  parts.push('<span class="drill-sep">›</span>');
+  parts.push(`<span class="drill-crumb-cur nm-crumb-file">${escHtml(node.name)}</span>`);
+  return `<span class="nm-crumbs">${parts.join(' ')}</span>`;
+}
+
 function buildModalContent(node, level) {
   const cycles  = window.CYCLES?.[level];
   const cs      = cycles?.nodeCycleStatus?.get(node.id);
@@ -20,7 +50,7 @@ function buildModalContent(node, level) {
   const sections = [];
   let cur = { label: null, rows: [] };
 
-  const tipAttr = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const tipAttr = escAttr;
 
   // Build a field row. `key` is the attribute key; `v` is the formatted value
   // string; optional `calc` is the live derivation line.
@@ -49,7 +79,7 @@ function buildModalContent(node, level) {
 
   const sect = label => { sections.push(cur); cur = { label, rows: [] }; };
 
-  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const esc = escAttr;
 
   // The node popup is roomy, so it shows every value VERBATIM (`fmtFull` in
   // utils.js — no rounding or abbreviation, just thousands separators).
@@ -150,11 +180,19 @@ function buildModalContent(node, level) {
 
   const body = sections.filter(s => s.rows.length > 0).map(renderSect).join('');
 
-  const sideSuffix = (typeof viewModeSuffix === 'function') ? viewModeSuffix().trim() : '';
   return {
-    hdr:      `<span class="nm-title">${node.name}</span><span class="nm-badge">${node.kind}</span>` +
-              (sideSuffix ? `<span class="nm-side">${sideSuffix}</span>` : ''),
+    hdr:      nodeHeaderHtml(node, level),
     body,
     diagram:  buildDiagramSVG(node, level),
   };
 }
+
+// The modal header markup: the file breadcrumb + kind badge + active-side badge.
+// Reused to re-render the header in place when the tier dropdown switches the
+// representation (without rebuilding the whole modal / losing the open file).
+function nodeHeaderHtml(node, level) {
+  const sideSuffix = (typeof viewModeSuffix === 'function') ? viewModeSuffix().trim() : '';
+  return nodeCrumbsHtml(node, level) + `<span class="nm-badge">${escHtml(node.kind)}</span>` +
+         (sideSuffix ? `<span class="nm-side">${escHtml(sideSuffix)}</span>` : '');
+}
+window.nodeHeaderHtml = nodeHeaderHtml;

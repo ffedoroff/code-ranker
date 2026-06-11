@@ -187,18 +187,7 @@ function buildDOT(nodes, edges, level, viewport) {
   // ── Focus level-of-detail (`window.focusDig`) ─────────────────────────────────
   // 0 = individual files (default); a negative value collapses the focus's files
   // into folder boxes, deepest folders first (mirrors the overview's dig out → in).
-  const gkey = levelUi(level).grouping?.key;
-  const fileTier = window.viewTier(level) === 'file';
-  const underDepth = n => {
-    const dirs  = relPathOf(n.id).split('/').slice(0, -1);
-    const crate = (!fileTier && gkey) ? n[gkey] : null;
-    // File tier (or crate-less): the file's position on the ABSOLUTE file-dig
-    // ladder (`dirs.length - maxFileDepth`), the same units `drillDig` uses there —
-    // so the focus collapse math compares like with like. Crate tier: depth under
-    // the crate root.
-    if (crate == null || crate === '') return dirs.length - maxFileDepth(level);
-    return Math.max(0, dirs.length - (crateRoots(level).get(String(crate)) || []).length);
-  };
+  const underDepth = n => underDepthOf(level, n);   // shared (see map-interactions.js)
   const maxFocusD  = drillNodes.length ? Math.max(...drillNodes.map(underDepth)) : 0;
   const fz         = window.focusDig || 0;
   // Reveal depth D (0 = the most-collapsed landing, up to maxRel = all files). A
@@ -263,7 +252,7 @@ function buildDOT(nodes, edges, level, viewport) {
   //     presence (Baseline/Current toggle) and `flow` = does ANY edge to that file
   //     flow (flow wins → solid connector; else dashed).
   // A crate that is both a caller and a dependency appears on the left only.
-  const crateOf = n => { const c = gkey ? n[gkey] : null; return (c != null && c !== '') ? String(c) : gOf(n); };
+  const crateOf = n => crateIdOf(level, n) ?? gOf(n);
   const inGrp  = new Map();   // crate → { their:Set<flow-their-file>, our:Map<our-id,{b,c,flow}> }
   const outGrp = new Map();
   const touch = (m, crate, theirFile, ourId, e, flow) => {

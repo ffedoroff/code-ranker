@@ -53,17 +53,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   window.gv = await window['@hpcc-js/wasm/graphviz'].Graphviz.load();
 
+  // Default view on a fresh load (no nav state in the URL): the files tier, drilled
+  // through any single-folder chain from the root to the first branching folder,
+  // opened at the node-budget reveal depth (landingFocusDig).
+  const np = getNavParams();
+  const freshLoad = !np.group && !np.tier && !np.node && !np.mode && !np.depth && !np.level;
+  if (freshLoad) {
+    const lvl = currentLevel();
+    window.tier = 'file';
+    const segs = window.autoFocusSegs?.(lvl) ?? [];
+    if (segs.length) {
+      window.drillGroup = segs.join('/');
+      window.drillDig   = window.digOfKeyForTier(lvl, window.drillGroup, 'file');
+      window.focusDig   = window.landingFocusDig(lvl);
+    } else {
+      window.dig = window.overviewBaseDig(lvl);
+    }
+  }
+
   renderView(active);
 
 
-  // Restore state from URL, then set initial history entry
-  const { level: urlLevel, node: urlNode, group: urlGroup, mode: urlMode, depth: urlDepth, tier: urlTier, stat: urlStat2 } = getNavParams();
+  // Restore state from URL (skipped on a fresh load — the default above stands),
+  // then set the initial history entry.
+  const { level: urlLevel, node: urlNode, group: urlGroup, mode: urlMode, depth: urlDepth, tier: urlTier, stat: urlStat2 } = np;
   if (urlLevel && urlLevel !== currentLevel()) switchToLevel(urlLevel);
-  applyViewState({ level: urlLevel, group: urlGroup, mode: urlMode, depth: urlDepth, tier: urlTier, stat: urlStat2 }, { rerender: !!(urlGroup || urlMode || urlDepth || urlTier) });
+  if (!freshLoad) applyViewState({ level: urlLevel, group: urlGroup, mode: urlMode, depth: urlDepth, tier: urlTier, stat: urlStat2 }, { rerender: !!(urlGroup || urlMode || urlDepth || urlTier) });
   if (urlNode) openModalForNode(urlNode, urlLevel ?? currentLevel());
-  // Replace initial history state so popstate can restore it
+  // Replace initial history state so popstate can restore it.
   history.replaceState(
-    { level: currentLevel(), node: urlNode ?? null, group: urlGroup ?? null, mode: urlMode ?? null, depth: window.navDepth?.() ?? 0, tier: window.tier || null, side: window.viewSide, stat: window.navStat?.() ?? null, panel: window._statsOpen ? 'stats' : null },
+    { level: currentLevel(), node: urlNode ?? null, group: window.drillGroup ?? null, mode: window.nodeSizeMode ?? null, depth: window.navDepth?.() ?? 0, tier: window.tier || null, side: window.viewSide, stat: window.navStat?.() ?? null, panel: window._statsOpen ? 'stats' : null },
     '', location.href
   );
 

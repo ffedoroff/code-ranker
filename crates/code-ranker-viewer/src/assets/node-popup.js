@@ -21,7 +21,7 @@ function buildDiagramSVG(node, level) {
   // connection-direction logic (NOT from edge flags).
   const extIds    = externalIdSet(rawGraph, level);
 
-  const esc      = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const esc      = escHtml;
   const trunc    = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
   const nameOf   = n => trunc(n.name || n.id.split('::').pop() || n.id, 18);
 
@@ -213,7 +213,7 @@ function buildDiagramSVG(node, level) {
   // row of connection-kind slots split into thirds.
   let _snIdx = 0;
   // Escape a string for use inside a double-quoted SVG/HTML attribute.
-  const escA = s => esc(s).replace(/"/g, '&quot;');
+  const escA = escAttr;
 
   // Build the edge-kind slot row for a side card. Shows every edge kind that
   // connects this neighbour (uses / reexport / contains) as a labelled,

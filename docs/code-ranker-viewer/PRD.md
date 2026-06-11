@@ -187,10 +187,13 @@ diff between the baseline snapshot and the current `[input]`: nodes and
 edges added, removed, or affected. The diff includes an overall
 verdict: `improved`, `degraded`, or `neutral`. The interactive
 diff HTML uses Graphviz WASM (bundled in the binary) for client-side
-DOT→SVG layout; there is a single Files view (no level switcher). The map
-opens in **group view** — one node per group (e.g. per-crate, from
-`ui.grouping.key`), with deduped inter-group edges. **Clicking a group node
-drills into it**: the map re-renders showing only that group's files in
+DOT→SVG layout; there is a single Files view (no level switcher). On a fresh load
+the map opens a **default view**: the files tier, drilled through any single-folder
+chain from the root to the first branching folder, at the node-budget reveal depth
+(so it comes up usefully expanded rather than at a bare overview). The underlying
+**group view** — one node per group (e.g. per-crate, from `ui.grouping.key`), with
+deduped inter-group edges — is what the crate tier / overview shows. **Clicking a
+group node drills into it**: the map re-renders showing only that group's files in
 directory sub-clusters, plus two neighbor clusters — **callers** (left, green
 background) and **dependencies** (right, orange background), each a list of
 **crates** labelled `crate (N)` where N is the count of that crate's files coupled
@@ -252,7 +255,12 @@ right-side controls (zoom and node-size) and a bottom-left shortcut legend are
 revealed; the legend spells out the active keys for the platform (⌘ on macOS,
 Ctrl elsewhere).
 The modal popup opened by clicking a row or an SVG node is fullscreen
-(locks body scroll); it includes a synced selection checkbox, fields in
+(locks body scroll). Its **header is a breadcrumb** of the file's location in the
+same style as the map (tier dropdown → `all`/`root` → crate/folder chips → the
+file): clicking a path chip drills the map there and closes the popup, while the
+tier dropdown switches crates⇄files representation **without** closing — the same
+file stays open and only its breadcrumb re-renders. The popup
+includes a synced selection checkbox, fields in
 order id (⎘ copy) → path (⎘ copy, filename bold) → source (a link to the
 file on the project's git host, built from `git.origin`; project files
 only) → kind → visibility → items/methods → cycle info → status → metric

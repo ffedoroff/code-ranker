@@ -117,12 +117,12 @@ function lensInfo(level) {
 // underDepth): crate tier → depth under the crate root; file tier (or crate-less)
 // → the absolute file-dig position (`dirs.length - maxFileDepth`, negative).
 function underDepthOf(level, n) {
-  const dirs  = relPathOf(n.id).split('/').slice(0, -1);
-  const gkey  = levelUi(level).grouping?.key;
-  const crate = (window.viewTier(level) !== 'file' && gkey) ? n[gkey] : null;
-  return (crate == null || crate === '')
+  const dirs  = nodeDirSegs(n.id);
+  // File tier ignores the crate; crate tier measures depth under the crate root.
+  const crate = window.viewTier(level) === 'file' ? null : crateIdOf(level, n);
+  return crate == null
     ? dirs.length - maxFileDepth(level)
-    : Math.max(0, dirs.length - (crateRoots(level).get(String(crate)) || []).length);
+    : Math.max(0, dirs.length - (crateRoots(level).get(crate) || []).length);
 }
 
 // The deepest folder nesting under the current focus (mirrors layout.js's
@@ -195,14 +195,34 @@ function chipDig(level, i, tier) {
   return tier === 'file' ? (i + 1) - maxFileDepth(level) : i;
 }
 
-const esc  = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-const escA = s => esc(s).replace(/"/g,'&quot;');
+// The tier-dropdown anchor (crates ⇄ files) — shared by the map breadcrumb and the
+// file-modal header so both render identically. A plain label when no crates.
+function tierAnchorHtml(level, tier) {
+  const tierLabel = tier === 'file' ? 'files' : (levelUi(level).grouping?.key || 'crate') + 's';
+  if (!levelUi(level).grouping?.key) return `<span class="drill-crumb-cur tier-label">${escHtml(tierLabel)}</span>`;
+  return `<button class="drill-crumb tier-label" data-tier-toggle type="button" title="Switch dimension (crates ⇄ files)">${escHtml(tierLabel)} ▾</button>` +
+    `<span class="tier-menu" hidden>` +
+    `<button class="tier-opt${tier === 'crate' ? ' on' : ''}" data-tier="crate" type="button">crates</button>` +
+    `<button class="tier-opt${tier === 'file' ? ' on' : ''}" data-tier="file" type="button">files</button>` +
+    `</span>`;
+}
+window.tierAnchorHtml = tierAnchorHtml;
+
+// Tier-menu toggle on a breadcrumb click; returns true when it handled the event.
+// Shared by the map breadcrumb and the modal header click handlers.
+function handleTierToggle(e) {
+  const tg = e.target.closest('[data-tier-toggle]');
+  if (!tg) return false;
+  tg.parentElement.querySelector('.tier-menu')?.toggleAttribute('hidden');
+  e.stopPropagation();
+  return true;
+}
+window.handleTierToggle = handleTierToggle;
 
 function renderBreadcrumb(level) {
   level = level || currentLevel();
   const grp  = window.drillGroup;
   const tier = window.viewTier(level);
-  const hasCrates = !!(levelUi(level).grouping?.key);
   const uNodes = (typeof unionGraph === 'function' ? unionGraph(level).nodes : []);
   const filesUnder = (key, dg) => uNodes.reduce((c, n) => c + (groupKeyAtDig(level, n, dg) === key ? 1 : 0), 0);
   const col = (inner, count) =>
@@ -211,25 +231,11 @@ function renderBreadcrumb(level) {
   document.querySelectorAll(`.view[data-view="${level}"] .drill-breadcrumb`).forEach(bc => {
     bc.style.display = '';
 
-    // ── Anchor: the tier dropdown (label drills out; ▾ switches dimension) ──────
-    const tierLabel = tier === 'file' ? 'files' : (levelUi(level).grouping?.key || 'crate') + 's';
-    // The whole-tree root element: "all" of the crates / the directory "root".
+    // ── Anchor: the tier dropdown (▾ switches dimension; the root chip drills out) ──
     const rootLabel = tier === 'file' ? 'root' : 'all';
     const rootCount = tier === 'crate' ? window.groupCountAtDig?.(level, 0)
                                        : uNodes.filter(n => !isExternalNode(n, level)).length;
-    // Anchor: the tier dropdown (crates ⇄ files) — just the dimension switcher; the
-    // adjacent root element handles "go to the overview".
-    let anchor;
-    if (hasCrates) {
-      anchor = `<button class="drill-crumb tier-label" data-tier-toggle type="button" title="Switch dimension (crates ⇄ files)">${esc(tierLabel)} ▾</button>` +
-        `<span class="tier-menu" hidden>` +
-        `<button class="tier-opt${tier === 'crate' ? ' on' : ''}" data-tier="crate" type="button">crates</button>` +
-        `<button class="tier-opt${tier === 'file' ? ' on' : ''}" data-tier="file" type="button">files</button>` +
-        `</span>`;
-    } else {
-      anchor = `<span class="drill-crumb-cur tier-label">${esc(tierLabel)}</span>`;
-    }
-    const parts = [col(`<span class="crumb-tier">${anchor}</span>`, null)];
+    const parts = [col(`<span class="crumb-tier">${tierAnchorHtml(level, tier)}</span>`, null)];
 
     // ── Root element: "all" (crates) / "root" (files) — the whole-tree overview ──
     parts.push('<span class="drill-sep">›</span>');
@@ -245,8 +251,8 @@ function renderBreadcrumb(level) {
         const dg   = chipDig(level, i, tier);
         const last = i === segs.length - 1;
         parts.push('<span class="drill-sep">›</span>');
-        if (last) parts.push(col(`<span class="drill-crumb-cur">${esc(segs[i])}</span>`, filesUnder(key, dg)));
-        else      parts.push(col(`<button class="drill-crumb" data-crumb-key="${escA(key)}" data-crumb-dig="${dg}" type="button">${esc(segs[i])}</button>`, filesUnder(key, dg)));
+        if (last) parts.push(col(`<span class="drill-crumb-cur">${escHtml(segs[i])}</span>`, filesUnder(key, dg)));
+        else      parts.push(col(`<button class="drill-crumb" data-crumb-key="${escAttr(key)}" data-crumb-dig="${dg}" type="button">${escHtml(segs[i])}</button>`, filesUnder(key, dg)));
       }
     }
 
@@ -264,8 +270,7 @@ function renderBreadcrumb(level) {
     if (!bc.dataset.crumbInit) {
       bc.dataset.crumbInit = '1';
       bc.addEventListener('click', e => {
-        const tg = e.target.closest('[data-tier-toggle]');
-        if (tg) { tg.parentElement.querySelector('.tier-menu')?.toggleAttribute('hidden'); e.stopPropagation(); return; }
+        if (handleTierToggle(e)) return;
         const opt = e.target.closest('[data-tier]');
         if (opt) { switchTier(opt.dataset.tier, level); return; }
         const step = e.target.closest('.lens-btn');
@@ -353,20 +358,11 @@ function drillOutOfGroup(level) {
   if (active && window.gv) renderView(active, { preserve: false });
 }
 
-// Drill target (group key + dig) for the folder a node sits in directly. Crate
-// tier: the crate-relative directory depth. File tier (or a crate-less node): the
-// absolute directory depth on the file ladder.
+// Drill target (group key + dig) for the folder a node sits in directly — its
+// depth on the active tier's ladder (`underDepthOf`), so a folder/dir-cluster
+// drills into itself.
 function focusFolderTarget(level, n) {
-  const dirs = relPathOf(n.id).split('/').slice(0, -1);
-  if (window.viewTier(level) === 'file') {
-    const dig = dirs.length - maxFileDepth(level);   // absolute → key = full dir
-    return { key: groupKeyAtDig(level, n, dig), dig };
-  }
-  const gk    = levelUi(level).grouping?.key;
-  const crate = gk ? n[gk] : null;
-  const dig = (crate == null || crate === '')
-    ? dirs.length - maxFileDepth(level)
-    : Math.max(0, dirs.length - (crateRoots(level).get(String(crate)) || []).length);
+  const dig = underDepthOf(level, n);
   return { key: groupKeyAtDig(level, n, dig), dig };
 }
 
@@ -455,7 +451,7 @@ function computeGroupStats(level, grouper) {
     if (cs && cs !== 'none') s.cycle++;
     // Track the members' directories → the group's distinct-folder count and the
     // common directory (its full path).
-    const dir = relPathOf(n.id).split('/').slice(0, -1);
+    const dir = nodeDirSegs(n.id);
     s._dirs.add(dir.join('/'));
     if (s._common === null) s._common = dir.slice();
     else { let i = 0; while (i < s._common.length && i < dir.length && s._common[i] === dir[i]) i++; s._common.length = i; }
@@ -725,9 +721,8 @@ function setupTooltips(svgFrame, level) {
     const nodeMap = new Map(unionGraph(level).nodes.map(n => [n.id, n]));
     // Neighbour boxes are keyed by the OTHER end's crate (same as layout.js) —
     // aggregate per-crate stats so a hover shows crate-style details.
-    const ngk = levelUi(level).grouping?.key;
-    const neighbourCrateOf = n => { const c = ngk ? n[ngk] : null; return (c != null && c !== '') ? String(c) : grouperForDig(level, window.drillDig ?? 0)(n); };
-    const neighbourStats = computeGroupStats(level, neighbourCrateOf);
+    const drillG = grouperForDig(level, window.drillDig ?? 0);
+    const neighbourStats = computeGroupStats(level, n => crateIdOf(level, n) ?? drillG(n));
     // Focus folder mode: the rendered boxes are folder groups (not files) keyed by
     // the focus-dig grouper — stats + drill-in keyed by the same depth.
     const focusFolder = window._FOCUS?.folderMode ? window._FOCUS : null;
