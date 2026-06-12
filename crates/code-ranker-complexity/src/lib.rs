@@ -181,8 +181,16 @@ fn write_metrics(node: &mut code_ranker_plugin_api::node::Node, s: &FuncSpace, t
         }
     };
 
-    put("cyclomatic", m.cyclomatic.cyclomatic());
-    put("cognitive", m.cognitive.cognitive());
+    // `cyclomatic()` / `cognitive()` return only the ROOT space's own value —
+    // for a file that is 1 (no top-level branching) and 0 respectively, so every
+    // file would read a constant. The real complexity lives in the child function
+    // spaces, exposed via the aggregated `*_sum` / `*_max`. `sum` is the file's
+    // total complexity (correlates with size, flags monster files); `max` is the
+    // single worst function (independent of size).
+    put("cyclomatic", m.cyclomatic.cyclomatic_sum());
+    put("cyclomatic_max", m.cyclomatic.cyclomatic_max());
+    put("cognitive", m.cognitive.cognitive_sum());
+    put("cognitive_max", m.cognitive.cognitive_max());
     put("exits", m.nexits.exit());
     let args = if m.nargs.fn_args() > 0.0 {
         m.nargs.fn_args()
@@ -247,8 +255,21 @@ pub fn metric_specs() -> (
                 label: "Cyclomatic",
                 name: "Cyclomatic complexity",
                 short: "Cyclomatic",
-                description: "Number of linearly independent paths through the code. Higher values indicate complex branching logic.",
-                formula: "branches + 1",
+                description: "Number of linearly independent paths through the code (branches + 1). Summed across every function in the file, so it reflects the file's total branching burden. See `cyclomatic_max` for the single most complex function.",
+                formula: "Σ (branches + 1) over functions",
+                direction: LowerBetter,
+                ..Default::default()
+            },
+        ),
+        (
+            "cyclomatic_max",
+            SpecRow {
+                group: "complexity",
+                label: "Cyclomatic (max)",
+                name: "Cyclomatic complexity (max function)",
+                short: "Cyclo max",
+                description: "Cyclomatic complexity of the single most complex function in the file. Unlike the summed `cyclomatic`, this is independent of file size — it pinpoints one hard-to-test function.",
+                formula: "max (branches + 1) over functions",
                 direction: LowerBetter,
                 ..Default::default()
             },
@@ -260,7 +281,19 @@ pub fn metric_specs() -> (
                 label: "Cognitive",
                 name: "Cognitive complexity",
                 short: "Cognitive",
-                description: "Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow.",
+                description: "Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow. Summed across every function in the file. See `cognitive_max` for the single hardest function.",
+                direction: LowerBetter,
+                ..Default::default()
+            },
+        ),
+        (
+            "cognitive_max",
+            SpecRow {
+                group: "complexity",
+                label: "Cognitive (max)",
+                name: "Cognitive complexity (max function)",
+                short: "Cog max",
+                description: "Cognitive complexity of the single hardest-to-understand function in the file. Unlike the summed `cognitive`, this is independent of file size.",
                 direction: LowerBetter,
                 ..Default::default()
             },
@@ -565,5 +598,54 @@ mod tests {
         let src = "pub fn p() {}\n#[cfg(test)]\nmod tests {\n    fn t() {}\n}\n";
         let (_prod, tloc) = strip_cfg_test(src.as_bytes());
         assert_eq!(tloc, 4);
+    }
+
+    fn metric(node: &code_ranker_plugin_api::node::Node, key: &str) -> Option<f64> {
+        match node.attrs.get(key) {
+            Some(code_ranker_plugin_api::attrs::AttrValue::Int(v)) => Some(*v as f64),
+            Some(code_ranker_plugin_api::attrs::AttrValue::Float(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn cyclomatic_and_cognitive_aggregate_over_child_functions() {
+        // Regression: `write_metrics` once read the ROOT space value, which for a
+        // file is a constant 1 (cyclomatic) / 0 (cognitive) — every file looked
+        // identical. The real signal lives in the child function spaces, so we
+        // must sum (and max) over them.
+        //
+        // Two functions: `a` has two nested `if`s (cyclomatic 3, cognitive > 0),
+        // `b` has one `if` (cyclomatic 2). File-level cyclomatic must therefore be
+        // the SUM (strictly above the single worst function), not the root's 1.
+        let src = "fn a(x: i32) -> i32 { if x > 0 { if x > 1 { 1 } else { 2 } } else { 3 } }\n\
+                   fn b(x: i32) -> i32 { if x > 0 { 1 } else { 2 } }\n";
+        let (space, tloc) =
+            parse_metrics(Path::new("t.rs"), src.as_bytes().to_vec()).expect("parses");
+        let mut node = code_ranker_plugin_api::node::Node {
+            id: "t.rs".into(),
+            kind: "file".into(),
+            name: "t.rs".into(),
+            parent: None,
+            attrs: Default::default(),
+        };
+        write_metrics(&mut node, &space, tloc);
+
+        let cyc = metric(&node, "cyclomatic").expect("cyclomatic present");
+        let cyc_max = metric(&node, "cyclomatic_max").expect("cyclomatic_max present");
+        // Summed over both functions → well above the old constant 1, and strictly
+        // greater than the worst single function (proves aggregation, not root).
+        assert!(cyc > 1.0, "cyclomatic should be summed, got {cyc}");
+        assert!(
+            cyc > cyc_max,
+            "summed cyclomatic {cyc} must exceed the worst function {cyc_max}"
+        );
+        assert!(cyc_max >= 3.0, "worst function is `a` (>=3), got {cyc_max}");
+
+        // Cognitive used to be absent entirely (root structural is 0, dropped by
+        // `put`). The nested `if` in `a` must now surface a non-zero value.
+        let cog = metric(&node, "cognitive").expect("cognitive present");
+        assert!(cog > 0.0, "cognitive should be summed, got {cog}");
+        assert!(metric(&node, "cognitive_max").is_some(), "cognitive_max present");
     }
 }

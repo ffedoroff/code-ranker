@@ -151,12 +151,21 @@
           "value_type": "int"
         },
         "cognitive": {
-          "description": "Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow.",
+          "description": "Measures how difficult the code is to understand, accounting for nesting depth and non-structural control flow. Summed across every function in the file. See `cognitive_max` for the single hardest function.",
           "direction": "lower_better",
           "group": "complexity",
           "label": "Cognitive",
           "name": "Cognitive complexity",
           "short": "Cognitive",
+          "value_type": "int"
+        },
+        "cognitive_max": {
+          "description": "Cognitive complexity of the single hardest-to-understand function in the file. Unlike the summed `cognitive`, this is independent of file size.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Cognitive (max)",
+          "name": "Cognitive complexity (max function)",
+          "short": "Cog max",
           "value_type": "int"
         },
         "cycle": {
@@ -166,13 +175,23 @@
           "value_type": "str"
         },
         "cyclomatic": {
-          "description": "Number of linearly independent paths through the code. Higher values indicate complex branching logic.",
+          "description": "Number of linearly independent paths through the code (branches + 1). Summed across every function in the file, so it reflects the file's total branching burden. See `cyclomatic_max` for the single most complex function.",
           "direction": "lower_better",
-          "formula": "branches + 1",
+          "formula": "Σ (branches + 1) over functions",
           "group": "complexity",
           "label": "Cyclomatic",
           "name": "Cyclomatic complexity",
           "short": "Cyclomatic",
+          "value_type": "int"
+        },
+        "cyclomatic_max": {
+          "description": "Cyclomatic complexity of the single most complex function in the file. Unlike the summed `cyclomatic`, this is independent of file size — it pinpoints one hard-to-test function.",
+          "direction": "lower_better",
+          "formula": "max (branches + 1) over functions",
+          "group": "complexity",
+          "label": "Cyclomatic (max)",
+          "name": "Cyclomatic complexity (max function)",
+          "short": "Cyclo max",
           "value_type": "int"
         },
         "effort": {
@@ -343,9 +362,11 @@
           "blank": -6,
           "bugs": 0.0354,
           "closures": 1,
-          "cognitive": 1,
+          "cognitive": 3,
+          "cognitive_max": 1,
           "cycle": "chain",
-          "cyclomatic": 1,
+          "cyclomatic": 4,
+          "cyclomatic_max": 2,
           "effort": 1095.257,
           "fan_in": 2,
           "fan_out": 2,
@@ -378,9 +399,11 @@
           "blank": -3,
           "bugs": 0.0095,
           "closures": 1,
-          "cognitive": 1,
+          "cognitive": 3,
+          "cognitive_max": 1,
           "cycle": "chain",
-          "cyclomatic": 1,
+          "cyclomatic": 3,
+          "cyclomatic_max": 1,
           "effort": 152.156,
           "fan_in": 2,
           "fan_out": 2,
@@ -404,9 +427,11 @@
           "blank": -6,
           "bugs": 0.0325,
           "closures": 1,
-          "cognitive": 1,
+          "cognitive": 3,
+          "cognitive_max": 1,
           "cycle": "chain",
-          "cyclomatic": 2,
+          "cyclomatic": 4,
+          "cyclomatic_max": 2,
           "effort": 964.295,
           "fan_in": 2,
           "fan_out": 1,
@@ -436,8 +461,8 @@
       ],
       "stats": {
         "bugs": 0.0258,
-        "cognitive": 1,
-        "cyclomatic": 1.333,
+        "cognitive": 3,
+        "cyclomatic": 3.666,
         "effort": 737.236,
         "fan_in": 2,
         "fan_out": 1.5,
@@ -664,7 +689,7 @@
     }
   ],
   "versions": {
-    "code-ranker": "1.0.0-alpha.4"
+    "code-ranker": "1.1.0"
   },
   "workspace": "/home/user/code-ranker"
 }

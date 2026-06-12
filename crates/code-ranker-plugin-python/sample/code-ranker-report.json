@@ -176,13 +176,23 @@
           "value_type": "str"
         },
         "cyclomatic": {
-          "description": "Number of linearly independent paths through the code. Higher values indicate complex branching logic.",
+          "description": "Number of linearly independent paths through the code (branches + 1). Summed across every function in the file, so it reflects the file's total branching burden. See `cyclomatic_max` for the single most complex function.",
           "direction": "lower_better",
-          "formula": "branches + 1",
+          "formula": "Σ (branches + 1) over functions",
           "group": "complexity",
           "label": "Cyclomatic",
           "name": "Cyclomatic complexity",
           "short": "Cyclomatic",
+          "value_type": "int"
+        },
+        "cyclomatic_max": {
+          "description": "Cyclomatic complexity of the single most complex function in the file. Unlike the summed `cyclomatic`, this is independent of file size — it pinpoints one hard-to-test function.",
+          "direction": "lower_better",
+          "formula": "max (branches + 1) over functions",
+          "group": "complexity",
+          "label": "Cyclomatic (max)",
+          "name": "Cyclomatic complexity (max function)",
+          "short": "Cyclo max",
           "value_type": "int"
         },
         "effort": {
@@ -380,6 +390,7 @@
           "bugs": 0.00223,
           "cloc": 2,
           "cyclomatic": 1,
+          "cyclomatic_max": 1,
           "effort": 17.414,
           "fan_in": 3,
           "id": "{target}/pkg/__init__.py",
@@ -401,7 +412,8 @@
           "bugs": 0.0611,
           "cloc": 9,
           "cycle": "mutual",
-          "cyclomatic": 1,
+          "cyclomatic": 4,
+          "cyclomatic_max": 1,
           "effort": 2482.727,
           "exits": 3,
           "fan_in": 2,
@@ -427,7 +439,8 @@
           "bugs": 0.053,
           "cloc": 6,
           "cycle": "mutual",
-          "cyclomatic": 2,
+          "cyclomatic": 4,
+          "cyclomatic_max": 2,
           "effort": 2009.868,
           "exits": 2,
           "fan_in": 2,
@@ -452,7 +465,8 @@
           "blank": 7,
           "bugs": 0.0135,
           "cloc": 1,
-          "cyclomatic": 1,
+          "cyclomatic": 3,
+          "cyclomatic_max": 1,
           "effort": 260.459,
           "exits": 2,
           "fan_in": 2,
@@ -475,7 +489,8 @@
           "blank": 4,
           "bugs": 0.0175,
           "cloc": 1,
-          "cyclomatic": 2,
+          "cyclomatic": 3,
+          "cyclomatic_max": 2,
           "effort": 381.759,
           "fan_out": 3,
           "id": "{target}/tests/test_pkg.py",
@@ -497,7 +512,7 @@
         "blank": 6.8,
         "bugs": 0.0294,
         "cloc": 3.8,
-        "cyclomatic": 1.4,
+        "cyclomatic": 3,
         "effort": 1030.445,
         "fan_in": 2.25,
         "fan_out": 3,
@@ -723,7 +738,7 @@
     }
   ],
   "versions": {
-    "code-ranker": "1.0.0-alpha.4"
+    "code-ranker": "1.1.0"
   },
   "workspace": "/home/user/code-ranker"
 }
