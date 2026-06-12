@@ -4,7 +4,7 @@ use code_ranker_plugin_api::{
     default_cycle_kinds, default_node_kinds,
     edge::Edge,
     graph::Graph,
-    level::{AttributeSpec, EdgeKindSpec, Grouping, Level, Thresholds},
+    level::{AttributeSpec, Direction, EdgeKindSpec, Grouping, Level, Thresholds},
     log,
     node::Node,
     plugin::{LanguagePlugin, PluginInput, Preset},
@@ -192,6 +192,17 @@ impl LanguagePlugin for RustPlugin {
         node_attributes.insert("external".into(), aspec(ValueType::Bool, "External"));
         node_attributes.insert("version".into(), aspec(ValueType::Str, "Version"));
         node_attributes.insert("items".into(), aspec(ValueType::Int, "Items"));
+        let mut unsafe_spec = aspec(ValueType::Int, "Unsafe");
+        unsafe_spec.short = Some("Unsafe".into());
+        unsafe_spec.description = Some(
+            "Count of `unsafe` blocks and `unsafe fn`/`impl`/`trait` declarations \
+             in production code (test items are excluded). Syntactic count: \
+             `unsafe` inside a macro body is not seen, and the figure is not \
+             type-checked."
+                .into(),
+        );
+        unsafe_spec.direction = Direction::LowerBetter;
+        node_attributes.insert("unsafe".into(), unsafe_spec);
 
         let mut edge_attributes: BTreeMap<String, AttributeSpec> = BTreeMap::new();
         edge_attributes.insert("visibility".into(), aspec(ValueType::Str, "Visibility"));
@@ -426,6 +437,13 @@ fn collapse_to_files(full: InternalGraph) -> Graph {
                         if let Some(items) = node.item_count {
                             attrs.insert("items".to_string(), AttrValue::Int(items as i64));
                         }
+                        // Omit when zero, like other metrics — files with no
+                        // `unsafe` simply carry no key.
+                        if let Some(u) = node.unsafe_count
+                            && u > 0
+                        {
+                            attrs.insert("unsafe".to_string(), AttrValue::Int(u as i64));
+                        }
                         if let Some(krate) = &node.crate_label {
                             attrs.insert("crate".to_string(), AttrValue::Str(krate.clone()));
                         }
@@ -455,6 +473,12 @@ fn collapse_to_files(full: InternalGraph) -> Graph {
                             if let Some(items) = node.item_count {
                                 n.attrs
                                     .insert("items".to_string(), AttrValue::Int(items as i64));
+                            }
+                            if let Some(u) = node.unsafe_count
+                                && u > 0
+                            {
+                                n.attrs
+                                    .insert("unsafe".to_string(), AttrValue::Int(u as i64));
                             }
                             if let Some(krate) = &node.crate_label {
                                 n.attrs

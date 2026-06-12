@@ -14,7 +14,8 @@ hardcoding it — see the main [DESIGN](DESIGN.md) §3.1/§3.7 and [PRD](PRD.md)
 
 ## Full example
 
-A `file` node (Rust — carries the per-target `crate` and `items`):
+A `file` node (Rust — carries the per-target `crate`, `items`, and, when the
+file uses `unsafe`, an `unsafe` count):
 
 ```json
 {
@@ -24,6 +25,7 @@ A `file` node (Rust — carries the per-target `crate` and `items`):
   "visibility": "public",
   "crate": "rust-sample",
   "items": 2,
+  "unsafe": 1,
   "cyclomatic": 1,
   "loc": 30, "sloc": 14, "lloc": 1, "cloc": 11, "blank": 5,
   "length": 69, "vocabulary": 32, "volume": 345, "effort": 4413.97,
@@ -44,7 +46,7 @@ An `external` node (Rust — carries `version` + the cargo-cache `path`):
 All attributes are **flat**, and a metric is **omitted when it rounds to zero**.
 Numeric values use 3-significant-digit rounding; an integral value serializes
 without a decimal point (`1.0` → `1`). Python / JS / TS file nodes carry the same
-keys minus `crate` / `items` (Rust-only); their `external` nodes carry neither
+keys minus `crate` / `items` / `unsafe` (Rust-only); their `external` nodes carry neither
 `version` nor `path` (no on-disk package is resolved).
 
 ---
@@ -122,6 +124,16 @@ diagram clustering via the level's `ui.grouping` (see DESIGN §3.2).
 
 Count of top-level items the file declares. Used for tie-breaking in the
 worst-first rankings. Rust-only.
+
+### `unsafe` — number, optional (Rust file nodes)
+
+Count of `unsafe` usages in the file's **production** code: `unsafe { }`
+expression blocks plus `unsafe fn` / `unsafe impl` / `unsafe trait` declarations.
+Test items (`#[cfg(test)]` / `#[test]` / `#[bench]`) are excluded, consistent
+with `sloc` and the complexity metrics. **Omitted when zero**, so files with no
+`unsafe` carry no key. Rust-only and **syntactic**: `unsafe` produced inside a
+macro body is not seen (macros are not expanded), and the count is not
+type-checked. `direction: lower_better`.
 
 ### `visibility` — string, optional
 

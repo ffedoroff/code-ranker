@@ -409,6 +409,11 @@ workspaces. The plugin MUST:
   through a derive still gets an edge, and honour **`#[path = "…"]`** on a
   `mod` (resolved relative to the declaring file's directory) so a module whose
   backing file sits at a non-default location is walked and its edges captured
+- Emit a per-file **`unsafe`** count as a structural node attribute: the number
+  of `unsafe { }` blocks plus `unsafe fn` / `impl` / `trait` declarations in the
+  file's production code (test items excluded, like `sloc`). It is a syntactic
+  count (`unsafe` inside a macro body is not seen; not type-checked) and is
+  omitted when zero
 - NOT emit a function-level call graph (no `Calls` edges, no
   rust-analyzer / `ra_ap_*` dependency); analysis runs in seconds
 - Emit **structure only** (file + external nodes, `uses`/`contains`/`reexports`/`super`
@@ -723,7 +728,7 @@ Optional `AttributeSpec` fields are omitted when absent.
 ```json
 { "id": "{target}/src/foo.rs", "kind": "file", "name": "foo.rs",
   "visibility": "public", "loc": 48, "sloc": 36, "lloc": 12, "cloc": 4, "blank": 6, "tloc": 2,
-  "cyclomatic": 3, "cognitive": 2, "exits": 2, "args": 3,
+  "cyclomatic": 3, "cognitive": 2, "exits": 2, "args": 3, "unsafe": 1,
   "mi": 78.4, "mi_sei": 52.1, "length": 87, "vocabulary": 23, "volume": 312.5,
   "effort": 4820, "time": 267.8, "bugs": 0.104,
   "fan_in": 4, "fan_out": 2, "fan_out_external": 1, "hk": 1344, "cycle": "mutual" }
@@ -742,7 +747,8 @@ attributes are **flat** and a metric is **omitted when it rounds to zero**.
 Numeric values use 3-significant-digit rounding; integral values serialize
 without a decimal point. `fan_in` / `fan_out` / `hk` count internal flow edges
 only; edges whose target is external are counted in `fan_out_external`. `cycle`
-(`"mutual"` / `"chain"`) is present only on nodes in a cycle.
+(`"mutual"` / `"chain"`) is present only on nodes in a cycle. `unsafe` (Rust-only)
+is a per-file count of `unsafe` usages, present only when non-zero.
 
 **Edge shape**:
 

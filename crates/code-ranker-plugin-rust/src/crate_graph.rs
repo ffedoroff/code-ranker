@@ -20,6 +20,7 @@ pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) {
             loc: None,
             line: None,
             item_count: None,
+            unsafe_count: None,
             crate_label: None,
         });
     }

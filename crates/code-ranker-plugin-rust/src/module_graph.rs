@@ -53,6 +53,7 @@ pub(crate) fn contribute(
                 loc: None,
                 line: None,
                 item_count: None,
+                unsafe_count: None,
                 crate_label: Some(crate_label(pkg, target)),
             });
             builder.add_edge(Edge {
@@ -269,6 +270,58 @@ impl<'ast> syn::visit::Visit<'ast> for CratePathCollector {
     }
 }
 
+/// Counts `unsafe` usages in a parsed file: `unsafe { }` expression blocks plus
+/// `unsafe fn` / `unsafe impl` / `unsafe trait` declarations. Purely syntactic —
+/// it does not (and cannot, without type info) tell an `unsafe` block doing real
+/// work from a trivially-justified one, and `unsafe` produced inside a macro body
+/// is invisible (macros are never expanded).
+#[derive(Default)]
+struct UnsafeCounter {
+    count: u32,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for UnsafeCounter {
+    fn visit_expr_unsafe(&mut self, node: &'ast syn::ExprUnsafe) {
+        self.count += 1;
+        syn::visit::visit_expr_unsafe(self, node);
+    }
+
+    fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        if node.sig.unsafety.is_some() {
+            self.count += 1;
+        }
+        syn::visit::visit_item_fn(self, node);
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        if node.sig.unsafety.is_some() {
+            self.count += 1;
+        }
+        syn::visit::visit_impl_item_fn(self, node);
+    }
+
+    fn visit_trait_item_fn(&mut self, node: &'ast syn::TraitItemFn) {
+        if node.sig.unsafety.is_some() {
+            self.count += 1;
+        }
+        syn::visit::visit_trait_item_fn(self, node);
+    }
+
+    fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
+        if node.unsafety.is_some() {
+            self.count += 1;
+        }
+        syn::visit::visit_item_impl(self, node);
+    }
+
+    fn visit_item_trait(&mut self, node: &'ast syn::ItemTrait) {
+        if node.unsafety.is_some() {
+            self.count += 1;
+        }
+        syn::visit::visit_item_trait(self, node);
+    }
+}
+
 fn convert_visibility(v: &SynVis) -> Visibility {
     match v {
         SynVis::Public(_) => Visibility::Public,
@@ -318,7 +371,23 @@ fn walk_file(
 
     let loc = content.lines().count() as u32;
     let item_count = count_items(&parsed.items) as u32;
-    // Annotate the parent module node with LOC and item_count from this file.
+
+    // Walk the non-test items once, driving two visitors: the bare-path
+    // collector and the `unsafe` counter. When skipping tests, visit only
+    // non-test items so neither do references made solely by `#[cfg(test)]` code
+    // become edges, nor does test-only `unsafe` inflate the count (consistent
+    // with how `sloc`/complexity exclude tests).
+    let mut collector = CratePathCollector::default();
+    let mut unsafe_counter = UnsafeCounter::default();
+    for item in &parsed.items {
+        if ignore_tests && is_test_item(item) {
+            continue;
+        }
+        syn::visit::Visit::visit_item(&mut collector, item);
+        syn::visit::Visit::visit_item(&mut unsafe_counter, item);
+    }
+
+    // Annotate the parent module node with LOC, item_count and unsafe count.
     if let Some(node) = builder
         .nodes_mut()
         .iter_mut()
@@ -326,19 +395,10 @@ fn walk_file(
     {
         node.loc = Some(loc);
         node.item_count = Some(item_count);
+        node.unsafe_count = Some(unsafe_counter.count);
         node.path = file_path.display().to_string();
     }
 
-    // Capture bare-path references used in expressions/types without a `use`.
-    // When skipping tests, visit only non-test items so references made solely
-    // by `#[cfg(test)]` code never become edges.
-    let mut collector = CratePathCollector::default();
-    for item in &parsed.items {
-        if ignore_tests && is_test_item(item) {
-            continue;
-        }
-        syn::visit::Visit::visit_item(&mut collector, item);
-    }
     for path in collector.paths {
         pending_uses.push(PendingUse {
             from_mod_id: parent_mod_id.clone(),
@@ -469,6 +529,7 @@ fn process_mod(
         loc,
         line,
         item_count: None,
+        unsafe_count: None,
         crate_label: Some(crate_label(pkg, target)),
     });
     builder.add_edge(Edge {
@@ -1116,6 +1177,59 @@ mod tests {
             &["assets"],
             true
         )));
+    }
+
+    /// Count `unsafe` over non-test items, mirroring the loop in `walk_file`
+    /// (which always skips test items for this count).
+    fn count_unsafe(src: &str) -> u32 {
+        let f = syn::parse_file(src).unwrap();
+        let mut counter = UnsafeCounter::default();
+        for item in &f.items {
+            if is_test_item(item) {
+                continue;
+            }
+            syn::visit::Visit::visit_item(&mut counter, item);
+        }
+        counter.count
+    }
+
+    #[test]
+    fn counts_unsafe_blocks_fns_impls_and_traits() {
+        let src = r#"
+            fn uses_block() {
+                unsafe { core::ptr::null::<u8>(); }
+            }
+            unsafe fn raw() {}
+            unsafe trait Marker {}
+            unsafe impl Marker for u8 {}
+        "#;
+        // unsafe block (1) + unsafe fn (1) + unsafe trait (1) + unsafe impl (1).
+        assert_eq!(count_unsafe(src), 4);
+    }
+
+    #[test]
+    fn unsafe_in_production_is_counted_but_tests_are_excluded() {
+        let src = r#"
+            fn prod() {
+                unsafe { core::ptr::null::<u8>(); }
+            }
+
+            #[cfg(test)]
+            mod tests {
+                #[test]
+                fn t() {
+                    unsafe { core::ptr::null::<u8>(); }
+                    unsafe { core::ptr::null::<u8>(); }
+                }
+            }
+        "#;
+        // Only the one production block counts; the two in `#[cfg(test)]` do not.
+        assert_eq!(count_unsafe(src), 1);
+    }
+
+    #[test]
+    fn no_unsafe_is_zero() {
+        assert_eq!(count_unsafe("fn safe() { let _ = 1 + 1; }"), 0);
     }
 
     fn use_paths(src: &str) -> Vec<Vec<String>> {
