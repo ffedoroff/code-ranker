@@ -1623,6 +1623,39 @@ mod tests {
     }
 
     #[test]
+    fn collector_scales_with_real_paths_not_text() {
+        // Layer-2 generative (docs/metric-correctness.md): generate a body with
+        // `reals` real qualified-path calls and `noise` path-like strings, and
+        // assert the collector picks up exactly `reals` — ground truth by
+        // construction, swept over a grid. Deterministic, no random dependency.
+        for reals in 0..6 {
+            for noise in 0..4 {
+                let mut body = String::new();
+                for i in 0..noise {
+                    body.push_str(&format!("let _c{i} = \"mod{i}::go() once::Lazy\"; "));
+                }
+                for i in 0..reals {
+                    body.push_str(&format!("mod{i}::go(); "));
+                }
+                let src = format!("fn run() {{ {body} }}");
+                let f = syn::parse_file(&src).unwrap();
+                let mut c = CratePathCollector::default();
+                syn::visit::Visit::visit_file(&mut c, &f);
+                let got = c
+                    .paths
+                    .iter()
+                    .filter(|p| p.len() == 2 && p[0].starts_with("mod") && p[1] == "go")
+                    .count();
+                assert_eq!(
+                    got, reals,
+                    "expected exactly {reals} real paths (noise={noise}), got {:?}",
+                    c.paths
+                );
+            }
+        }
+    }
+
+    #[test]
     fn collector_captures_qualified_derive_paths() {
         // A crate referenced only through a qualified derive (no `use`) must
         // still produce a path — the derive arguments are otherwise opaque tokens.

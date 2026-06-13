@@ -23,6 +23,14 @@ Three rules hold for **every** metric:
   not an import statement, and is *not* analyzed — a deliberate blind spot, not a
   missed count.
 
+**Keyword look-alike guard set.** The construct keywords / operators a complexity
+metric can key on; the FP tests inject each only as a look-alike (comment /
+string / template literal / identifier) and assert no metric moves. A superset of
+the analyzer's exact triggers is fine — guarding extra is harmless, missing one
+is not: `if`, `else`, `while`, `for`, `do`, `switch`, `case`, `catch`, `return`,
+`throw`, `&&`, `||`, `??`, `?`. (The FP matrix iterates this exact list and a test
+asserts it is documented here, so the two cannot drift.)
+
 ## Per-language metric scope
 
 Within the central catalog the TypeScript analyzer emits **every** metric except

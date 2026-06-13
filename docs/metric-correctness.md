@@ -171,22 +171,43 @@ actually present, so no further wiring is needed.
 
 Goldens **freeze** values; they do not **verify** them (the root-vs-sum value was
 frozen as "expected" for years). Real verification needs an independent source of
-truth. Five layers, each catching a **distinct** error class:
+truth. Five layers, each catching a **distinct** error class. **Layers 1–3 are
+the implemented per-PR strategy; layers 4–5 are NOT planned** — they are recorded
+below only as escalation options (see "Escalation").
 
-| layer | catches uniquely | type | where | cadence |
+| layer | catches uniquely | type | where | status |
 |---|---|---|---|---|
-| 1 metamorphic | FP / FN / magnitude vs our spec | unit | metric's home crate | per-PR |
-| 2 generative | same + parser edge cases (nesting, raw strings, unicode) | unit / property | home crate (capped per-PR) | per-PR; deep nightly |
-| 3 asserted anchors | absolute scale (uniform offset / scale bug) | unit + e2e | home crate + `cli` | per-PR |
-| 4 differential vs external tools / compiler | **our spec itself is wrong** + unknown-unknowns | e2e / integration | `cli` / `xtask` | **nightly / manual** |
-| 5 detector mutation (`cargo-mutants`) | the tests have teeth | tooling job | over the crates' suites | **nightly** |
+| 1 metamorphic | FP / FN / magnitude vs our spec | unit | metric's home crate | **implemented**, per-PR |
+| 2 generative | same + parser edge cases (nesting, raw strings, unicode) | unit (deterministic generator) | home crate | **implemented**, per-PR |
+| 3 asserted anchors | absolute scale (uniform offset / scale bug) | unit + e2e | home crate + `cli` | **implemented** (generator relative anchors + e2e golden absolute pins) |
+| 4 differential vs external tools / compiler | **our spec itself is wrong** + unknown-unknowns | e2e / integration | `cli` / `xtask` | **not planned** (escalation) |
+| 5 detector mutation (`cargo-mutants`) | the tests have teeth | tooling job | over the crates' suites | **not planned** (escalation) |
 
-Layers 1 / 2 / 3 / 5 all verify "matches **our** spec" — if the spec is wrong they
-happily confirm the wrong thing. **Only layer 4** (compare against an independent
-definition / the compiler, e.g. `unsafe` ↔ `cargo-geiger`, LOC ↔ `tokei` / `scc`,
-edges ↔ `rustc` / `rust-analyzer`) can catch a wrong spec — at the cost of
-external dependencies and definitional drift, which is why it is nightly, not
-per-PR.
+Layers 1 / 2 / 3 all verify "matches **our** spec" — if the spec itself is wrong
+they would happily confirm the wrong thing. That residual risk is what layers 4
+and 5 would address, and it is why they are kept on record — but they are **not on
+the roadmap** (see below).
+
+### Escalation — layers 4 & 5 (documented, not planned)
+
+These are deliberately **not implemented**. Reach for them only if a
+metric-correctness problem surfaces that layers 1–3 do **not** catch — i.e. the
+implemented suite is green but a metric is still wrong:
+
+- **Layer 4 — differential vs an independent oracle.** If our *spec itself* is
+  wrong (we defined "correct" incorrectly and 1–3 dutifully confirm it), compare
+  against an outside definition: `unsafe` ↔ `cargo-geiger`, LOC ↔ `tokei` / `scc`,
+  cyclomatic ↔ `lizard`, edges ↔ `rustc` / `rust-analyzer`. Cost: external tool
+  dependencies and definitional drift (each tool defines metrics slightly
+  differently) — and it conflicts with the offline-first NFR, so it could only be
+  a manual / nightly job, never per-PR. Justified only if a real wrong-spec bug
+  is found.
+- **Layer 5 — detector mutation (`cargo-mutants`).** If a regression slips through
+  green tests, mutation testing proves whether the suite actually has teeth (would
+  a broken detector fail a test?). Cost: per-mutant recompiles (minutes–hours) and
+  a dedicated CI job. Justified only if the suite is suspected of being toothless.
+
+If neither failure mode shows up in practice, layers 1–3 are the whole strategy.
 
 Metamorphic invariance is the backbone: for every metric, injecting its keyword
 into each lexical position — identifier, line / block / doc comment, string / raw
@@ -227,18 +248,20 @@ The home crate is always the one that **computes** the metric.
 
 | home | test location | layers | covers | status |
 |---|---|---|---|---|
-| `code-ranker-complexity` | `src/lib.rs` `#[cfg(test)]` (move to `tests/` if it grows) | 1, 2, 3 | `cyclomatic` `cognitive` `exits` `args` `closures`, Halstead, LOC, `mi`/`mi_sei` — driven via `parse_metrics` on per-language snippets: keyword-injection invariance (FP), +1-construct increment (FN / magnitude), hand-labelled exact-count anchors | 1 ✅ (FP matrix over 9 positions × 5 metrics, branch-form FN, cross-language); 2 / 3 ⏳ |
-| `code-ranker-plugin-rust` | `src/module_graph.rs` `#[cfg(test)]` | 1, 3 | `unsafe` `items` `loc` + edge detection: a keyword in an identifier / comment / string / macro body → no count / edge; a real construct or `use` → exact | 1 ✅ (`unsafe` + bare-path FP); broader positions ⏳ |
-| `code-ranker-plugin-python` / `-javascript` / `-typescript` | each plugin's `#[cfg(test)]` | 1, 3 | per-language edge detection + FP invariance (a path inside a string / comment → no edge) | 1 ✅ (import-path FP); 3 ⏳ |
+| `code-ranker-complexity` | `src/lib.rs` `#[cfg(test)]` (move to `tests/` if it grows) | 1, 2, 3 | `cyclomatic` `cognitive` `exits` `args` `closures`, Halstead, LOC, `mi`/`mi_sei` — driven via `parse_metrics` on per-language snippets: keyword-injection invariance (FP), +1-construct increment (FN / magnitude), hand-labelled exact-count anchors | 1 ✅ (FP matrix 9 positions × the per-language **trigger set** from the spec, branch-form FN, cross-language); 2 ✅ (deterministic generator: construct count = ground truth over a grid); 3 ⏳ |
+| `code-ranker-plugin-rust` | `src/module_graph.rs` `#[cfg(test)]` | 1, 3 | `unsafe` `items` `loc` + edge detection: a keyword in an identifier / comment / string / macro body → no count / edge; a real construct or `use` → exact | 1 ✅ (`unsafe` + bare-path FP); 2 ✅ (collector scaling: N real paths + noise → N); broader positions ⏳ |
+| `code-ranker-plugin-python` / `-javascript` / `-typescript` | each plugin's `#[cfg(test)]` | 1, 2, 3 | per-language edge detection + FP invariance (a path inside a string / comment → no edge); edge scaling (n imports → n edges) | 1 ✅ (import-path FP); 2 ✅ (edge scaling) |
 | `code-ranker-graph` | `src/hk.rs` / `src/cycles.rs` `#[cfg(test)]` | algorithmic | `fan_in` / `fan_out` / `hk` aggregation, `cycle` classification (mutual / chain) — graph maths, not a text-FP class | ✅ |
 | `code-ranker-cli` | `tests/e2e.rs` | 3 (realistic), golden, coverage | full-pipeline JSON pinned per language; the `every_central_metric_is_exercised_per_language` coverage invariant; one binary smoke test | ✅ |
-| `code-ranker-cli` or a new `xtask` | `tests/differential.rs`, feature-gated / `#[ignore]` | 4 | vs `cargo-geiger` (`unsafe`), `tokei` / `scc` (LOC), `rustc` / `rust-analyzer` (edges) over a small corpus | ⏳ nightly |
-| repo tooling | `cargo-mutants` config + CI job | 5 | mutate the `code-ranker-complexity` / plugin detectors, assert a test fails | ⏳ nightly |
+| `code-ranker-cli` or a new `xtask` | `tests/differential.rs`, feature-gated / `#[ignore]` | 4 | vs `cargo-geiger` (`unsafe`), `tokei` / `scc` (LOC), `rustc` / `rust-analyzer` (edges) over a small corpus | **not planned** (escalation only) |
+| repo tooling | `cargo-mutants` config + CI job | 5 | mutate the `code-ranker-complexity` / plugin detectors, assert a test fails | **not planned** (escalation only) |
 
-How to read it: the **top five rows are the per-PR suite** (in-process unit +
-lean e2e, ≤ 20 s); the **bottom two are nightly**. Adding a metric means adding
-layer-1/2 cases in its home crate (rows 1–4) — and the coverage invariant (row 5)
-will then *require* a new central metric to appear in every golden or fail.
+How to read it: the **top five rows are the implemented per-PR suite** (in-process
+unit + lean e2e, ≤ 20 s); the **bottom two are not planned** — escalation options
+only (see "Escalation"). Adding a metric means adding layer-1/2 cases in its home
+crate — and the `every_central_metric_is_exercised_per_language` coverage
+invariant will then *require* a new central metric to appear in every golden or
+fail.
 
 ## Zero-omission / `omit_at`
 

@@ -23,6 +23,14 @@ Three rules hold for **every** metric:
   `eval` take string arguments and are *not* analyzed — a deliberate blind spot,
   not a missed count (mirrors how Rust does not expand macros).
 
+**Keyword look-alike guard set.** The construct keywords a complexity metric can
+key on; the FP tests inject each only as a look-alike (comment / string /
+docstring / f-string / identifier) and assert no metric moves. A superset of the
+analyzer's exact triggers is fine — guarding extra is harmless, missing one is
+not: `if`, `elif`, `else`, `while`, `for`, `and`, `or`, `return`, `try`,
+`except`, `with`, `assert`, `raise`. (The FP matrix iterates this exact list and
+a test asserts it is documented here, so the two cannot drift.)
+
 ## Per-language metric scope
 
 `rust-code-analysis` does not compute every metric for Python. Within the central

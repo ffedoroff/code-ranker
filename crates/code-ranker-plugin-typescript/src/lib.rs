@@ -175,4 +175,40 @@ mod tests {
             "a path in a comment/string/template must not produce an edge"
         );
     }
+
+    #[test]
+    fn edges_scale_with_real_imports() {
+        // Layer-2 generative (docs/metric-correctness.md): `a` really imports `n`
+        // files; the edge count from `a` must equal `n`, swept over a grid.
+        for n in 0..5 {
+            let tmp = TempDir::new().unwrap();
+            let root = tmp.path();
+            let mut a = String::new();
+            for i in 0..n {
+                a.push_str(&format!("import {{ x{i} }} from \"./b{i}\";\n"));
+                write_file(
+                    root,
+                    &format!("src/b{i}.ts"),
+                    &format!("export const x{i}: number = {i};\n"),
+                );
+            }
+            a.push_str("export const y = 1;\n");
+            write_file(root, "src/a.ts", &a);
+
+            let graph = TypescriptPlugin
+                .analyze(root, "files", &PluginInput::default())
+                .expect("TypescriptPlugin.analyze should succeed");
+
+            let a_id = root.join("src/a.ts").to_string_lossy().into_owned();
+            let got = graph
+                .edges
+                .iter()
+                .filter(|e| e.source == a_id && e.kind == "uses")
+                .count();
+            assert_eq!(
+                got, n,
+                "expected exactly {n} import edges from a.ts, got {got}"
+            );
+        }
+    }
 }

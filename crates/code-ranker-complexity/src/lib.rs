@@ -638,12 +638,30 @@ mod tests {
         )
     }
 
+    // Per-language keyword look-alike guard sets — the construct keywords/operators
+    // a complexity (or `unsafe`) metric can key on. The FP matrix injects these
+    // *only* as look-alikes and asserts no metric moves. Each list mirrors the
+    // "Keyword look-alike guard set" in principles/<lang>/metrics.md, and
+    // `trigger_set_documented_in_spec` asserts the spec documents every entry — so
+    // the two cannot drift. A superset of the analyzer's real triggers is fine.
+    const RUST_TRIGGERS: &[&str] = &[
+        "if", "else", "match", "while", "for", "loop", "return", "unsafe", "&&", "||", "?",
+    ];
+    const PY_TRIGGERS: &[&str] = &[
+        "if", "elif", "else", "while", "for", "and", "or", "return", "try", "except", "with",
+        "assert", "raise",
+    ];
+    const TS_TRIGGERS: &[&str] = &[
+        "if", "else", "while", "for", "do", "switch", "case", "catch", "return", "throw", "&&",
+        "||", "??", "?",
+    ];
+
     #[test]
     fn rust_complexity_fp_matrix() {
         // Every lexical position that could smuggle a keyword in as text. None may
         // change cyclomatic / cognitive / exits / args / closures vs the base.
         let base = rs_src("", "");
-        let kw = "if match while for loop return unsafe and or";
+        let kw = RUST_TRIGGERS.join(" ");
         let positions: &[(&str, String)] = &[
             (
                 "line comment",
@@ -801,57 +819,181 @@ mod tests {
     #[test]
     fn cross_language_complexity_fp_matrix() {
         // FP invariance for cyclomatic / cognitive (computed for all four
-        // languages) across each language's own look-alike positions.
-        let cases: &[(&str, &str, &[&str])] = &[
-            (
-                "t.rs",
-                "fn f(a: i32) -> i32 { if a > 0 { 1 } else { 2 } }\n",
-                &[
-                    "// if while for return\nfn f(a: i32) -> i32 { if a > 0 { 1 } else { 2 } }\n",
-                    "fn f(a: i32) -> i32 { let _ = \"if while for return\"; if a > 0 { 1 } else { 2 } }\n",
-                    "fn f(a: i32) -> i32 { let if_while = 0; let _ = if_while; if a > 0 { 1 } else { 2 } }\n",
-                ],
-            ),
-            (
-                "t.py",
-                "def f(x):\n    if x > 0:\n        return 1\n    return 2\n",
-                &[
-                    "# if while for return\ndef f(x):\n    if x > 0:\n        return 1\n    return 2\n",
-                    "def f(x):\n    s = \"if while for return\"\n    if x > 0:\n        return 1\n    return 2\n",
-                    "def f(x):\n    \"\"\"if while for return\"\"\"\n    if x > 0:\n        return 1\n    return 2\n",
-                    "def f(x):\n    s = f\"if {x} while\"\n    if x > 0:\n        return 1\n    return 2\n",
-                ],
-            ),
-            (
-                "t.js",
-                "export function f(x) { if (x > 0) { return 1; } return 2; }\n",
-                &[
-                    "// if while for return\nexport function f(x) { if (x > 0) { return 1; } return 2; }\n",
-                    "export function f(x) { /* if while for */ if (x > 0) { return 1; } return 2; }\n",
-                    "export function f(x) { const s = \"if while for\"; void s; if (x > 0) { return 1; } return 2; }\n",
-                    "export function f(x) { const s = `if ${x} while`; void s; if (x > 0) { return 1; } return 2; }\n",
-                ],
-            ),
-            (
-                "t.ts",
-                "export function f(x: number): number { if (x > 0) { return 1; } return 2; }\n",
-                &[
-                    "// if while for return\nexport function f(x: number): number { if (x > 0) { return 1; } return 2; }\n",
-                    "export function f(x: number): number { const s: string = \"if while for\"; void s; if (x > 0) { return 1; } return 2; }\n",
-                    "export function f(x: number): number { const s = `if ${x} while`; void s; if (x > 0) { return 1; } return 2; }\n",
-                ],
-            ),
-        ];
-        for (path, base, traps) in cases {
+        // languages), driven by each language's documented trigger set injected
+        // into comment / string / template / docstring positions.
+        let check = |path: &str, base: &str, traps: &[String]| {
             for key in ["cyclomatic", "cognitive"] {
                 let want = metric_of(path, base, key);
-                for trap in *traps {
+                for trap in traps {
                     assert_eq!(
                         metric_of(path, trap, key),
                         want,
                         "{path} metric `{key}` moved on a keyword look-alike"
                     );
                 }
+            }
+        };
+
+        let kw = RUST_TRIGGERS.join(" ");
+        let base = "fn f(a: i32) -> i32 { if a > 0 { 1 } else { 2 } }\n";
+        check(
+            "t.rs",
+            base,
+            &[
+                format!("// {kw}\n{base}"),
+                format!(
+                    "fn f(a: i32) -> i32 {{ let _ = \"{kw}\"; if a > 0 {{ 1 }} else {{ 2 }} }}\n"
+                ),
+            ],
+        );
+
+        let kw = PY_TRIGGERS.join(" ");
+        let base = "def f(x):\n    if x > 0:\n        return 1\n    return 2\n";
+        check(
+            "t.py",
+            base,
+            &[
+                format!("# {kw}\n{base}"),
+                format!(
+                    "def f(x):\n    s = \"{kw}\"\n    if x > 0:\n        return 1\n    return 2\n"
+                ),
+                format!(
+                    "def f(x):\n    \"\"\"{kw}\"\"\"\n    if x > 0:\n        return 1\n    return 2\n"
+                ),
+            ],
+        );
+
+        let kw = TS_TRIGGERS.join(" ");
+        let ts_base =
+            "export function f(x: number): number { if (x > 0) { return 1; } return 2; }\n";
+        check(
+            "t.ts",
+            ts_base,
+            &[
+                format!("// {kw}\n{ts_base}"),
+                format!(
+                    "export function f(x: number): number {{ const s: string = \"{kw}\"; void s; if (x > 0) {{ return 1; }} return 2; }}\n"
+                ),
+                format!(
+                    "export function f(x: number): number {{ const s = `{kw}`; void s; if (x > 0) {{ return 1; }} return 2; }}\n"
+                ),
+            ],
+        );
+        let js_base = "export function f(x) { if (x > 0) { return 1; } return 2; }\n";
+        check(
+            "t.js",
+            js_base,
+            &[
+                format!("// {kw}\n{js_base}"),
+                format!(
+                    "export function f(x) {{ const s = \"{kw}\"; void s; if (x > 0) {{ return 1; }} return 2; }}\n"
+                ),
+                format!(
+                    "export function f(x) {{ const s = `{kw}`; void s; if (x > 0) {{ return 1; }} return 2; }}\n"
+                ),
+            ],
+        );
+    }
+
+    #[test]
+    fn trigger_set_documented_in_spec() {
+        // Lock-step guard: every keyword the FP matrix injects must be documented
+        // in that language's metrics spec, so the trigger list and the spec's
+        // "Keyword look-alike guard set" cannot drift apart.
+        let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+        let cases: &[(&str, &[&str])] = &[
+            ("principles/rust/metrics.md", RUST_TRIGGERS),
+            ("principles/python/metrics.md", PY_TRIGGERS),
+            ("principles/typescript/metrics.md", TS_TRIGGERS),
+        ];
+        for (rel, triggers) in cases {
+            let path = format!("{root}/{rel}");
+            let spec =
+                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+            for kw in *triggers {
+                assert!(
+                    spec.contains(&format!("`{kw}`")),
+                    "trigger `{kw}` is not documented in {rel} — spec and FP test drifted"
+                );
+            }
+        }
+    }
+
+    // ---- Layer 2: generative tests (see docs/metric-correctness.md) ------------
+    //
+    // Generate programs with a KNOWN construct count, then assert the metric
+    // equals ground truth across a combinatorial grid. Deterministic (no random
+    // dependency, no flakiness) — proptest-style randomized fuzz is a later
+    // nightly extension. Still pure in-process parses; the whole grid is ~ms.
+
+    /// A Rust function with `noise` keyword-laden look-alike lines (a comment plus
+    /// a string binding, neither a real construct) followed by `branches` real,
+    /// independent `if` statements (each adds exactly 1 to cyclomatic).
+    fn gen_rs(branches: usize, noise: usize) -> String {
+        let mut body = String::new();
+        for i in 0..noise {
+            body.push_str(&format!(
+                "    // if match while for loop return && || ? noise {i}\n"
+            ));
+            body.push_str(&format!(
+                "    let _n{i} = \"if match while return && ||\";\n"
+            ));
+        }
+        for i in 0..branches {
+            body.push_str(&format!("    if x > {i} {{ let _ = {i}; }}\n"));
+        }
+        format!("fn f(x: i32) -> i32 {{\n{body}    0\n}}\n")
+    }
+
+    #[test]
+    fn generative_cyclomatic_counts_branches_not_noise() {
+        // Ground truth by construction: cyclomatic = baseline + (real `if` count),
+        // independent of how many keyword look-alike lines surround it. Sweeps an
+        // 8×8 grid of (branches, noise) — 64 generated programs.
+        for noise in 0..8 {
+            let base =
+                metric_of("t.rs", &gen_rs(0, noise), "cyclomatic").expect("cyclomatic present");
+            for branches in 0..8 {
+                let cyc = metric_of("t.rs", &gen_rs(branches, noise), "cyclomatic")
+                    .expect("cyclomatic present");
+                assert_eq!(
+                    cyc,
+                    base + branches as f64,
+                    "cyclomatic must add exactly 1 per real `if` and 0 per noise line \
+                     (branches={branches}, noise={noise})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn generative_complexity_invariant_to_noise() {
+        // A fixed real structure (2 args, a closure, a branch, a `return`) with a
+        // growing pile of keyword look-alikes around it. Every per-function metric
+        // must stay exactly at its noise-free value — no false positive at any
+        // noise level.
+        let mk = |noise: usize| -> String {
+            let mut body = String::new();
+            for i in 0..noise {
+                body.push_str(&format!("    // if match return unsafe && || {i}\n"));
+                body.push_str(&format!("    let _n{i} = \"if match return && ||\";\n"));
+            }
+            format!(
+                "fn f(a: i32, b: i32) -> i32 {{\n\
+                 {body}    let g = |x: i32| x + 1;\n\
+                     if a > 0 {{ return g(b); }}\n\
+                     a + b\n\
+                 }}\n"
+            )
+        };
+        for key in ["cyclomatic", "cognitive", "exits", "args", "closures"] {
+            let want = metric_of("t.rs", &mk(0), key);
+            for noise in 1..10 {
+                assert_eq!(
+                    metric_of("t.rs", &mk(noise), key),
+                    want,
+                    "metric `{key}` moved at noise={noise} — keyword look-alikes leaked in"
+                );
             }
         }
     }

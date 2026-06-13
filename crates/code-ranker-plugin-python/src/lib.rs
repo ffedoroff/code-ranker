@@ -665,4 +665,50 @@ mod tests {
             "`import os` only in text must not produce an external node"
         );
     }
+
+    #[test]
+    fn edges_scale_with_real_imports() {
+        // Layer-2 generative (docs/metric-correctness.md): `a` really imports `n`
+        // sibling modules; the edge count from `a` must equal `n`, swept over a grid.
+        for n in 0..5 {
+            let tmp = TempDir::new().unwrap();
+            let root = tmp.path();
+            write(root, "pkg/__init__.py", "");
+            let mut a = String::new();
+            for i in 0..n {
+                a.push_str(&format!("from pkg import b{i}\n"));
+                write(
+                    root,
+                    &format!("pkg/b{i}.py"),
+                    &format!("def g{i}():\n    return {i}\n"),
+                );
+            }
+            a.push_str("def helper():\n    return 1\n");
+            write(root, "pkg/a.py", &a);
+
+            let g = PythonPlugin
+                .analyze(root, "files", &PluginInput::default())
+                .expect("python plugin runs");
+
+            let a_id = root.join("pkg/a.py").to_string_lossy().into_owned();
+            // Count edges to the `b{i}` submodules specifically — `from pkg import
+            // b{i}` also links the `pkg` package (`__init__.py`), which is correct
+            // and not what this scaling property is about.
+            let got = (0..n)
+                .filter(|i| {
+                    let b_id = root
+                        .join(format!("pkg/b{i}.py"))
+                        .to_string_lossy()
+                        .into_owned();
+                    g.edges
+                        .iter()
+                        .any(|e| e.source == a_id && e.target == b_id && e.kind == "uses")
+                })
+                .count();
+            assert_eq!(
+                got, n,
+                "expected an import edge to each of the {n} b-modules, got {got}"
+            );
+        }
+    }
 }

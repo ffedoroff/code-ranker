@@ -24,6 +24,15 @@ what *does* count:
 - **Macros are not expanded.** A construct generated *inside* a macro invocation
   is invisible — a deliberate non-goal, not a missed count.
 
+**Keyword look-alike guard set.** These are the construct keywords/operators a
+complexity or `unsafe` metric can key on; the FP tests inject each *only* as a
+look-alike (comment / string / identifier / …) and assert no metric moves. The
+set may be a superset of the analyzer's exact increment triggers — guarding a
+non-trigger keyword is harmless, missing a real one is not:
+`if`, `else`, `match`, `while`, `for`, `loop`, `return`, `unsafe`, `&&`, `||`,
+`?`. (The FP matrix in `code-ranker-complexity` iterates this exact list, and a
+test asserts the list it uses is documented here — so the two cannot drift.)
+
 Per-function metrics (`cyclomatic`, `cognitive`, `exits`, `args`, `closures`) are
 **summed over the file's functions** and **omitted at their no-signal value**
 (`omit_at` — `1` for `cyclomatic`, `0` for the rest; see `node_schema.md`). The
