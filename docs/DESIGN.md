@@ -207,6 +207,32 @@ language-aware tools. Adding a new language plugin MUST NOT require
 changes to any consumer tool. All language-specific knowledge lives
 exclusively in the plugin.
 
+#### Metric Accuracy from the Parsed AST
+
+- [x] `p1` - **ID**: `cpt-code-ranker-principle-metric-accuracy`
+
+Metrics and edges are derived from the **parsed syntax tree**, never from text
+matching: a detector keys on the actual AST node (an `unsafe` block, an `if`
+branch, a `use` path), so a metric keyword that appears only as a look-alike —
+an identifier such as `super_unsafe_fn`, a comment, a string/char literal, a
+doc-comment, an attribute, or an unexpanded macro body — does not register. This
+is what makes the **Metric Accuracy** NFR
+(`cpt-code-ranker-nfr-metric-accuracy`) attainable by construction: counting the
+real construct yields ground truth, with no false positives from text and no
+false negatives from missed nodes. Per-function metrics are summed over the
+file's child function spaces, not read from the vacuous file-root value.
+Deliberate non-goals — unexpanded macro bodies, `#[cfg(test)]` code, stdlib paths
+as external nodes — are defined scope, kept out by design rather than missed.
+
+**Changing a metric — adding one or fixing a bug — follow the runbook
+[`docs/metric-correctness.md`](metric-correctness.md):** it maps where
+each metric is computed (which crate), the per-task checklist, the normative spec
+to define "correct" against (`principles/<lang>/metrics.md`), and which tests
+prove it where (the metamorphic / generative / anchor / differential / mutation
+layers and the ≤ 20 s budget). Do not change a detector without going through it —
+that runbook is how this principle and the Metric Accuracy NFR stay enforced
+rather than aspirational.
+
 ### 2.2 Constraints
 
 #### Stable Rust Toolchain

@@ -616,6 +616,22 @@ installation.
 **Rationale**: Artifacts stored as CI artifacts must remain readable
 across plugin and tool version bumps within a major version.
 
+#### Metric Accuracy
+
+- [ ] `p1` - **ID**: `cpt-code-ranker-nfr-metric-accuracy`
+
+Every metric value MUST equal the true count of what it measures — no false
+positives and no false negatives — for every metric the tool reports. The number
+a consumer reads must mean exactly what the metric claims.
+
+**Threshold**: For every metric, the emitted value matches ground truth: zero
+false positives, zero false negatives, correct magnitude.
+
+**Rationale**: The product output is an anomaly shortlist a human or AI agent
+acts on, so a silently miscounted metric is a silently wrong ranking — and the
+failure hides because the number still looks plausible. Trustworthy triage
+requires every count to mean exactly what it claims.
+
 ### 6.2 NFR Exclusions
 
 - **Accessibility**: Out of scope for v1.0.
@@ -892,6 +908,8 @@ as a self-contained HTML report.
 - [x] JSON artifacts conform to the Graph JSON Schema (`schema_version: "2"`)
 - [x] A `--baseline` comparison exits non-zero with a structured error on
   schema version mismatch
+- [ ] Every metric value equals the true count of what it measures — no false
+  positives and no false negatives (`cpt-code-ranker-nfr-metric-accuracy`)
 
 ## 10. Dependencies
 
