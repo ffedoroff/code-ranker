@@ -456,7 +456,7 @@ fn py_visibility_str(name: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
+    use code_ranker_test_support::{has_edge, has_node, write_file as write};
     use tempfile::TempDir;
 
     // ── pure helpers ────────────────────────────────────────────────────────
@@ -564,16 +564,6 @@ mod tests {
     }
 
     // ── end-to-end: a tiny package through analyze() ────────────────────────
-
-    fn write(dir: &Path, rel: &str, contents: &str) {
-        let p = dir.join(rel);
-        fs::create_dir_all(p.parent().unwrap()).unwrap();
-        fs::write(p, contents).unwrap();
-    }
-
-    fn has_node(g: &Graph, id: &str) -> bool {
-        g.nodes.iter().any(|n| n.id == id)
-    }
 
     #[test]
     fn analyze_builds_a_file_graph_with_imports_and_externals() {
@@ -710,5 +700,38 @@ mod tests {
                 "expected an import edge to each of the {n} b-modules, got {got}"
             );
         }
+    }
+
+    #[test]
+    fn aliased_and_namespace_imports_produce_edges() {
+        // The walker resolves through `aliased_import` to the real module, so an
+        // `as` rename is transparent: `import pkg.b as bb` (namespace-style) and
+        // `from pkg import b as bb` (named alias) both yield the a.py → b.py edge.
+        let cases: &[(&str, &str)] = &[
+            ("module alias", "import pkg.b as bb\nbb\n"),
+            ("from-import alias", "from pkg import b as bb\nbb\n"),
+        ];
+        let mut fails = Vec::new();
+        for (label, a_src) in cases {
+            let tmp = TempDir::new().unwrap();
+            let root = tmp.path();
+            write(root, "pkg/__init__.py", "");
+            write(root, "pkg/b.py", "def greet():\n    return \"hi\"\n");
+            write(root, "pkg/a.py", a_src);
+
+            let g = PythonPlugin
+                .analyze(root, "files", &PluginInput::default())
+                .expect("python plugin runs");
+            let a_id = root.join("pkg/a.py").to_string_lossy().into_owned();
+            let b_id = root.join("pkg/b.py").to_string_lossy().into_owned();
+            if !has_edge(&g, &a_id, &b_id, "uses") {
+                fails.push(format!("{label}: expected edge a.py → b.py"));
+            }
+        }
+        assert!(
+            fails.is_empty(),
+            "aliased imports not resolved:\n{}",
+            fails.join("\n")
+        );
     }
 }

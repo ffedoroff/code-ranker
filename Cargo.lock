@@ -275,6 +275,7 @@ dependencies = [
  "anyhow",
  "code-ranker-graph",
  "code-ranker-plugin-api",
+ "code-ranker-test-support",
  "tempfile",
  "tree-sitter",
  "tree-sitter-javascript",
@@ -287,6 +288,7 @@ version = "1.1.0"
 dependencies = [
  "anyhow",
  "code-ranker-plugin-api",
+ "code-ranker-test-support",
  "tempfile",
  "tree-sitter",
  "tree-sitter-python",
@@ -313,10 +315,18 @@ dependencies = [
  "code-ranker-graph",
  "code-ranker-plugin-api",
  "code-ranker-plugin-javascript",
+ "code-ranker-test-support",
  "tempfile",
  "tree-sitter",
  "tree-sitter-typescript",
  "walkdir",
+]
+
+[[package]]
+name = "code-ranker-test-support"
+version = "1.1.0"
+dependencies = [
+ "code-ranker-plugin-api",
 ]
 
 [[package]]

@@ -530,6 +530,7 @@ impl LanguagePlugin for JavascriptPlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use code_ranker_test_support::{edge_count_from, write_file};
     use std::fs;
     use tempfile::TempDir;
 
@@ -577,12 +578,6 @@ mod tests {
         assert_eq!(find_source_root(tmp.path()), tmp.path());
         fs::create_dir(tmp.path().join("src")).unwrap();
         assert_eq!(find_source_root(tmp.path()), tmp.path().join("src"));
-    }
-
-    fn write_file(dir: &Path, rel: &str, contents: &str) {
-        let p = dir.join(rel);
-        fs::create_dir_all(p.parent().unwrap()).unwrap();
-        fs::write(p, contents).unwrap();
     }
 
     #[test]
@@ -752,6 +747,78 @@ mod tests {
         for p in ["src/a.ts", "src/latest.ts", "src/contest.js"] {
             assert!(!ecmascript_is_test_path(p), "should not be a test: {p}");
         }
+    }
+
+    /// Build a 2-file JS project (`a.js` importing from `./b`) and count the
+    /// `uses` edges leaving `a`.
+    fn js_uses_edges(a_src: &str) -> usize {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write_file(root, "src/a.js", a_src);
+        write_file(root, "src/b.js", "export const g = 1;\n");
+        let g = analyze_ecmascript(
+            root,
+            &["js"],
+            |ext| match ext {
+                "js" => Some(tree_sitter_javascript::LANGUAGE.into()),
+                _ => None,
+            },
+            &["js", "jsx", "ts"],
+            false,
+        )
+        .expect("analyze_ecmascript should succeed");
+        let a_id = root.join("src/a.js").to_string_lossy().into_owned();
+        edge_count_from(&g, &a_id, "uses")
+    }
+
+    #[test]
+    fn js_static_import_forms_produce_edges() {
+        // Namespace / aliased / default / re-export / require all resolve to one
+        // dependency edge — the resolver keys on the module specifier string, so
+        // the binding sugar is transparent.
+        let forms: &[(&str, &str)] = &[
+            (
+                "namespace",
+                "import * as ns from \"./b\";\nvoid ns;\nexport const x = 1;\n",
+            ),
+            (
+                "aliased named",
+                "import { g as h } from \"./b\";\nvoid h;\nexport const x = 1;\n",
+            ),
+            (
+                "default",
+                "import b from \"./b\";\nvoid b;\nexport const x = 1;\n",
+            ),
+            ("re-export", "export { g } from \"./b\";\n"),
+            (
+                "require",
+                "const b = require(\"./b\");\nvoid b;\nexport const x = 1;\n",
+            ),
+        ];
+        let mut fails = Vec::new();
+        for (label, src) in forms {
+            let n = js_uses_edges(src);
+            if n != 1 {
+                fails.push(format!("{label}: expected 1 edge, got {n}"));
+            }
+        }
+        assert!(
+            fails.is_empty(),
+            "import forms not resolved:\n{}",
+            fails.join("\n")
+        );
+    }
+
+    #[test]
+    fn js_dynamic_import_is_a_non_goal() {
+        // A *dynamic* `import("./b")` is not resolved into an edge (the specifier
+        // sits inside a call the walker does not descend into) — documented
+        // limitation, pinned so a future change is deliberate.
+        assert_eq!(
+            js_uses_edges("export async function f() { return import(\"./b\"); }\n"),
+            0,
+            "dynamic import() is a documented non-goal"
+        );
     }
 
     #[test]

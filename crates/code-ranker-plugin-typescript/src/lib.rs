@@ -60,14 +60,9 @@ impl LanguagePlugin for TypescriptPlugin {
 mod tests {
     use super::*;
     use code_ranker_plugin_api::plugin::LanguagePlugin;
+    use code_ranker_test_support::{edge_count_from, write_file};
     use std::fs;
     use tempfile::TempDir;
-
-    fn write_file(dir: &std::path::Path, rel: &str, contents: &str) {
-        let p = dir.join(rel);
-        fs::create_dir_all(p.parent().unwrap()).unwrap();
-        fs::write(p, contents).unwrap();
-    }
 
     #[test]
     fn plugin_name_is_typescript() {
@@ -173,6 +168,99 @@ mod tests {
                 .iter()
                 .any(|e| e.source == a_id && e.target == b_id),
             "a path in a comment/string/template must not produce an edge"
+        );
+    }
+
+    /// Build a 2-file TS/TSX project (`a` importing from `./b`) and return the
+    /// number of `uses` edges leaving `a`. Centralizes the per-form scaffold.
+    fn uses_edges_from_a(a_rel: &str, a_src: &str) -> usize {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write_file(root, a_rel, a_src);
+        write_file(root, "src/b.ts", "export const g: number = 1;\n");
+        let g = TypescriptPlugin
+            .analyze(root, "files", &PluginInput::default())
+            .expect("analyze should succeed");
+        let a_id = root.join(a_rel).to_string_lossy().into_owned();
+        edge_count_from(&g, &a_id, "uses")
+    }
+
+    #[test]
+    fn ts_static_import_forms_produce_edges() {
+        // Every static module-specifier form resolves to exactly one dependency
+        // edge — they are all `import_statement` nodes carrying a `from "./b"`
+        // string, so the type-only / namespace / alias sugar is transparent to
+        // the path-based resolver. `require("./b")` is also recognized.
+        let forms: &[(&str, &str)] = &[
+            (
+                "import type",
+                "import type { T } from \"./b\";\nexport const x = 1;\n",
+            ),
+            (
+                "namespace",
+                "import * as ns from \"./b\";\nvoid ns;\nexport const x = 1;\n",
+            ),
+            (
+                "aliased named",
+                "import { g as h } from \"./b\";\nvoid h;\nexport const x = 1;\n",
+            ),
+            (
+                "default",
+                "import b from \"./b\";\nvoid b;\nexport const x = 1;\n",
+            ),
+            ("re-export", "export { g } from \"./b\";\n"),
+            (
+                "require",
+                "const b = require(\"./b\");\nvoid b;\nexport const x = 1;\n",
+            ),
+        ];
+        let mut fails = Vec::new();
+        for (label, src) in forms {
+            let n = uses_edges_from_a("src/a.ts", src);
+            if n != 1 {
+                fails.push(format!("{label}: expected 1 edge, got {n}"));
+            }
+        }
+        assert!(
+            fails.is_empty(),
+            "import forms not resolved:\n{}",
+            fails.join("\n")
+        );
+    }
+
+    #[test]
+    fn tsx_file_is_analyzed() {
+        // The `.tsx` branch (LANGUAGE_TSX) is parsed like `.ts`: a real import in
+        // a .tsx file yields a dependency edge. Guards the tsx arm of `analyze`.
+        let n = uses_edges_from_a(
+            "src/a.tsx",
+            "import { g } from \"./b\";\nvoid g;\nexport const x = 1;\n",
+        );
+        assert_eq!(n, 1, "a real import in a .tsx file must produce an edge");
+    }
+
+    #[test]
+    fn dynamic_import_and_import_equals_are_non_goals() {
+        // Documented limitations (see principles/typescript/metrics.md): a
+        // *dynamic* `import("./b")` and the TS `import b = require("./b")` form
+        // are NOT resolved into edges — the specifier sits inside a call the
+        // import walker does not descend into. Purely syntactic scope, like
+        // un-expanded macros for Rust. Pinned so a future change is deliberate.
+        assert_eq!(
+            uses_edges_from_a(
+                "src/a.ts",
+                "export async function f() { return import(\"./b\"); }\n"
+            ),
+            0,
+            "dynamic import() is a documented non-goal"
+        );
+        assert_eq!(
+            uses_edges_from_a(
+                "src/a.ts",
+                "import b = require(\"./b\");\nvoid b;\nexport const x = 1;\n"
+            ),
+            0,
+            "import = require() is a documented non-goal"
         );
     }
 

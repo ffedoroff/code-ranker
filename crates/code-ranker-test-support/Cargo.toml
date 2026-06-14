@@ -1,0 +1,15 @@
+[package]
+name = "code-ranker-test-support"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Internal test helpers shared by code-ranker plugin crates."
+# Internal-only: never published. Consumers depend on it as a PATH-ONLY
+# dev-dependency (no version), which cargo strips from the published manifest,
+# so this crate's absence from crates.io does not affect plugin publishing.
+publish = false
+
+[dependencies]
+code-ranker-plugin-api = { workspace = true }
