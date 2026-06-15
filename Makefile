@@ -1,6 +1,6 @@
-.PHONY: all build test e2e clippy lint-md lint check fmt fmt-check clean bump tag release publish
+.PHONY: all build test e2e clippy lint-md lint check self-check fmt fmt-check clean bump tag release publish
 
-all: build test lint
+all: build test lint self-check
 
 build:
 	cargo build --workspace
@@ -29,6 +29,11 @@ lint-md:
 	npx --yes markdownlint-cli2
 
 lint: fmt-check clippy lint-md
+
+# Dogfood: run code-ranker's own gate on this repo (the thresholds + cycle rules
+# in code-ranker.toml). Part of `make all`, so a regression here fails the build.
+self-check:
+	cargo run -q -p code-ranker -- check .
 
 check: build test clippy lint-md
 

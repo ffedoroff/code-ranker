@@ -13,6 +13,12 @@ use code_ranker_graph::level_graph::{CycleGroup, LevelGraph};
 use code_ranker_plugin_api::{attrs::AttrValue, level::Thresholds, node::Node, plugin::Preset};
 use std::collections::HashMap;
 
+mod prompt;
+mod scorecard;
+
+pub use prompt::compose_prompt;
+pub use scorecard::render_scorecard;
+
 /// Which threshold tier drives an output. `Auto` resolves to `Warning` when any
 /// module breaches it, else `Info` (the viewer's headline rule).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -44,7 +50,7 @@ pub struct Reco<'a> {
 }
 
 /// Read a numeric node attribute (`Int`/`Float`) as `f64`, else `None`.
-fn num(node: &Node, key: &str) -> Option<f64> {
+pub(super) fn num(node: &Node, key: &str) -> Option<f64> {
     match node.attrs.get(key) {
         Some(AttrValue::Int(i)) => Some(*i as f64),
         Some(AttrValue::Float(f)) => Some(*f),
@@ -53,13 +59,13 @@ fn num(node: &Node, key: &str) -> Option<f64> {
 }
 
 /// A project source file (not a third-party library node).
-fn is_internal(node: &Node) -> bool {
+pub(super) fn is_internal(node: &Node) -> bool {
     node.kind != "external"
 }
 
 /// Is this file node in a dependency cycle? (the orchestrator writes a `cycle`
 /// string attribute on every cycle member).
-fn in_cycle(node: &Node) -> bool {
+pub(super) fn in_cycle(node: &Node) -> bool {
     matches!(node.attrs.get("cycle"), Some(AttrValue::Str(_)))
 }
 
@@ -78,7 +84,7 @@ fn thresholds_for(level: &LevelGraph, metric: &str) -> Thresholds {
 }
 
 /// The short header label for a metric (falls back to its label, then the key).
-fn attr_short<'a>(level: &'a LevelGraph, metric: &'a str) -> &'a str {
+pub(super) fn attr_short<'a>(level: &'a LevelGraph, metric: &'a str) -> &'a str {
     level
         .node_attributes
         .get(metric)
@@ -171,7 +177,10 @@ fn ranked_cycle_groups(level: &LevelGraph) -> Vec<&CycleGroup> {
 /// member nodes ordered by HK (worst first). A node id with no matching node is
 /// skipped. This is the unit the ADP preset recommends on: `--top` counts
 /// **cycles**, and every member of each selected cycle is listed.
-fn top_cycle_groups(level: &LevelGraph, n_groups: usize) -> Vec<(&CycleGroup, Vec<&Node>)> {
+pub(super) fn top_cycle_groups(
+    level: &LevelGraph,
+    n_groups: usize,
+) -> Vec<(&CycleGroup, Vec<&Node>)> {
     let by_id: HashMap<&str, &Node> = level.nodes.iter().map(|n| (n.id.as_str(), n)).collect();
     ranked_cycle_groups(level)
         .into_iter()
@@ -193,7 +202,7 @@ fn top_cycle_groups(level: &LevelGraph, n_groups: usize) -> Vec<(&CycleGroup, Ve
 }
 
 /// How many modules a tier selects for a metric's reco.
-fn tier_count(reco: &Reco, sev: Severity) -> usize {
+pub(super) fn tier_count(reco: &Reco, sev: Severity) -> usize {
     match sev {
         Severity::Warning => reco.warning_count,
         Severity::Info => reco.info_count,
@@ -228,13 +237,13 @@ pub fn worst_preset(level: &LevelGraph, presets: &[Preset]) -> Option<String> {
 }
 
 /// Count of project source files in the level.
-fn file_count(level: &LevelGraph) -> usize {
+pub(super) fn file_count(level: &LevelGraph) -> usize {
     level.nodes.iter().filter(|n| is_internal(n)).count()
 }
 
 /// Format a metric value: abbreviate large numbers to K/M/G when the attribute
 /// is flagged `abbreviate`, else a plain rounded integer.
-fn fmt_val(level: &LevelGraph, metric: &str, v: f64) -> String {
+pub(super) fn fmt_val(level: &LevelGraph, metric: &str, v: f64) -> String {
     let abbreviate = level
         .node_attributes
         .get(metric)
@@ -251,552 +260,6 @@ fn fmt_val(level: &LevelGraph, metric: &str, v: f64) -> String {
         }
     }
     format!("{}", v.round() as i64)
-}
-
-/// Compose the AI prompt for one principle — the same Markdown the HTML viewer's
-/// Prompt Generator produces: intent + summary + principle link + task checklist,
-/// then the ranked offending modules, then the preset's connection lists.
-pub fn compose_prompt(
-    level: &LevelGraph,
-    presets: &[Preset],
-    preset_id: &str,
-    sev: Severity,
-    top: Option<usize>,
-) -> Result<String> {
-    let Some(preset) = presets.iter().find(|p| p.id == preset_id) else {
-        let known: Vec<&str> = presets.iter().map(|p| p.id.as_str()).collect();
-        bail!(
-            "unknown --preset '{preset_id}'. Known presets: {}",
-            known.join(", ")
-        );
-    };
-
-    let reco = reco_for(level, &preset.sort_metric);
-    // For the cycle (ADP) preset the unit is a whole cycle group, not a node:
-    // `--top` counts CYCLES (default 1 — the single biggest chain), and every
-    // member of each selected cycle is listed. Other presets rank nodes, and
-    // the default count = the active tier's size (≥ 1).
-    let is_cycle = preset.sort_metric == "cycle";
-    let cycle_groups = if is_cycle {
-        top_cycle_groups(level, top.unwrap_or(1))
-    } else {
-        Vec::new()
-    };
-    let modules: Vec<&Node> = if is_cycle {
-        cycle_groups
-            .iter()
-            .flat_map(|(_, members)| members.iter().copied())
-            .collect()
-    } else {
-        let n = top.unwrap_or_else(|| tier_count(&reco, sev).max(1));
-        reco.sorted.iter().take(n).copied().collect()
-    };
-
-    let mut parts: Vec<String> = Vec::new();
-
-    // 1. Principle intent + summary + link + task protocol.
-    let mut head = String::new();
-    head.push_str(&format!("# {}\n\n", preset.title));
-    head.push_str("I want to apply this to some modules in my system.\n\n");
-    head.push_str("## Summary\n\n");
-    head.push_str(&preset.prompt);
-    head.push_str("\n\n");
-    if let Some(url) = &preset.doc_url {
-        head.push_str(&format!("**Full principle:** [{url}]({url})\n\n"));
-        head.push_str(
-            "Download and read the full principle to understand it in detail. \
-             If you cannot download it, **stop the task immediately**.\n\n",
-        );
-    }
-    head.push_str("## Task\n\n");
-    head.push_str(
-        "- Prepare a precise, detailed estimate and a report of where the modules below violate it.\n",
-    );
-    head.push_str(
-        "- If you find more serious violations elsewhere during research, mention them in the report too.\n",
-    );
-    head.push_str("- Show a summary of the report in chat.\n");
-    head.push_str(&format!(
-        "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{preset_id}.md`.\n\n",
-    ));
-    head.push_str("**Focus the research and report primarily on the modules below.**");
-    parts.push(head);
-
-    // 2. The offending modules, ordered by the preset's metric (or listed as a
-    //    cycle for cycle-based principles), each annotated with its value.
-    if !modules.is_empty() {
-        if is_cycle {
-            let mut s = String::new();
-            if cycle_groups.len() == 1 {
-                let (g, members) = &cycle_groups[0];
-                s.push_str(&format!(
-                    "## Modules in a dependency cycle ({}, {} modules)\n\n",
-                    g.kind,
-                    members.len()
-                ));
-                s.push_str(
-                    "This is **one** dependency cycle; every module in it is listed below so the \
-                     whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several \
-                     separate cycles at once and obscures how each one connects.\n\n",
-                );
-                for n in members {
-                    s.push_str(&format!("- `{}`\n", clean_path(&n.id)));
-                }
-            } else {
-                s.push_str(&format!(
-                    "## {} dependency cycles (every member listed)\n\n",
-                    cycle_groups.len()
-                ));
-                for (i, (g, members)) in cycle_groups.iter().enumerate() {
-                    s.push_str(&format!(
-                        "### Cycle {} — {}, {} modules\n\n",
-                        i + 1,
-                        g.kind,
-                        members.len()
-                    ));
-                    for n in members {
-                        s.push_str(&format!("- `{}`\n", clean_path(&n.id)));
-                    }
-                    s.push('\n');
-                }
-            }
-            parts.push(s.trim_end().to_string());
-        } else {
-            let m = &preset.sort_metric;
-            let label = attr_short(level, m);
-            let mut s = format!("## Modules ordered by {label}\n\n");
-            if let Some(spec) = level.node_attributes.get(m) {
-                if let Some(d) = &spec.description {
-                    s.push_str(d);
-                    s.push_str("\n\n");
-                }
-                if let Some(f) = &spec.formula {
-                    s.push_str(&format!("**Formula:** `{f}`\n\n"));
-                }
-            }
-            for n in &modules {
-                match num(n, m) {
-                    Some(v) if v != 0.0 => s.push_str(&format!(
-                        "- `{}` ({label}: {})\n",
-                        clean_path(&n.id),
-                        fmt_val(level, m, v)
-                    )),
-                    _ => s.push_str(&format!("- `{}`\n", clean_path(&n.id))),
-                }
-            }
-            parts.push(s.trim_end().to_string());
-        }
-    }
-
-    // 3. The preset's connection lists (only those with edges), endpoints as paths.
-    let module_ids: std::collections::HashSet<&str> =
-        modules.iter().map(|n| n.id.as_str()).collect();
-    let internal: std::collections::HashSet<&str> = level
-        .nodes
-        .iter()
-        .filter(|n| is_internal(n))
-        .map(|n| n.id.as_str())
-        .collect();
-    let local_edges: Vec<&code_ranker_plugin_api::edge::Edge> = level
-        .edges
-        .iter()
-        .filter(|e| internal.contains(e.source.as_str()) && internal.contains(e.target.as_str()))
-        .collect();
-
-    let edge_line = |e: &code_ranker_plugin_api::edge::Edge| {
-        format!(
-            "- `{}` → `{}` ({})",
-            clean_path(&e.source),
-            clean_path(&e.target),
-            e.kind
-        )
-    };
-    let push_conn =
-        |parts: &mut Vec<String>, title: &str, edges: Vec<&code_ranker_plugin_api::edge::Edge>| {
-            if edges.is_empty() {
-                return;
-            }
-            let mut s = format!("## Connections — {title}\n\n");
-            s.push_str(
-                &edges
-                    .iter()
-                    .map(|e| edge_line(e))
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            );
-            parts.push(s);
-        };
-
-    let wants = |c: &str| preset.connections.iter().any(|x| x == c);
-    if wants("common") {
-        let inner: Vec<_> = local_edges
-            .iter()
-            .copied()
-            .filter(|e| {
-                module_ids.contains(e.source.as_str()) && module_ids.contains(e.target.as_str())
-            })
-            .collect();
-        push_conn(&mut parts, "common", inner);
-    }
-    if wants("in") {
-        let ins: Vec<_> = local_edges
-            .iter()
-            .copied()
-            .filter(|e| {
-                module_ids.contains(e.target.as_str()) && !module_ids.contains(e.source.as_str())
-            })
-            .collect();
-        push_conn(&mut parts, "in", ins);
-    }
-    if wants("out") {
-        let outs: Vec<_> = local_edges
-            .iter()
-            .copied()
-            .filter(|e| {
-                module_ids.contains(e.source.as_str()) && !module_ids.contains(e.target.as_str())
-            })
-            .collect();
-        push_conn(&mut parts, "out", outs);
-    }
-
-    let mut out = parts.join("\n\n");
-    out.push('\n');
-    Ok(out)
-}
-
-/// One metric (or cycle) breach on a node, with its tier.
-struct Breach {
-    metric: String,
-    warning: bool,
-    /// `value / threshold` — how far over the line (for picking the worst metric).
-    ratio: f64,
-    value: f64,
-}
-
-/// Every selected-tier threshold a node breaches, plus cycle membership (treated
-/// as a warning-tier signal — a cycle is always a real problem).
-fn node_breaches(
-    level: &LevelGraph,
-    node: &Node,
-    want_warning: bool,
-    want_info: bool,
-) -> Vec<Breach> {
-    let mut out = Vec::new();
-    for (metric, spec) in &level.node_attributes {
-        let Some(th) = spec.thresholds else { continue };
-        let Some(v) = num(node, metric) else { continue };
-        if v > th.warning && want_warning {
-            out.push(Breach {
-                metric: metric.clone(),
-                warning: true,
-                ratio: if th.warning > 0.0 {
-                    v / th.warning
-                } else {
-                    f64::INFINITY
-                },
-                value: v,
-            });
-        } else if v > th.info && want_info {
-            out.push(Breach {
-                metric: metric.clone(),
-                warning: false,
-                ratio: if th.info > 0.0 {
-                    v / th.info
-                } else {
-                    f64::INFINITY
-                },
-                value: v,
-            });
-        }
-    }
-    if want_warning && in_cycle(node) {
-        out.push(Breach {
-            metric: "cycle".into(),
-            warning: true,
-            ratio: 1.0,
-            value: 0.0,
-        });
-    }
-    out
-}
-
-/// Render the console triage scorecard: a per-principle table (warning/info
-/// counts + the worst module) followed by the worst modules overall, then a hint
-/// pointing at the prompt for the worst principle.
-pub fn render_scorecard(
-    plugin: &str,
-    level: &LevelGraph,
-    presets: &[Preset],
-    severities: &[Severity],
-    top: Option<usize>,
-    narrow: Option<&str>,
-) -> Result<String> {
-    let want_warning = severities
-        .iter()
-        .any(|s| matches!(s, Severity::Warning | Severity::Auto));
-    let want_info = severities
-        .iter()
-        .any(|s| matches!(s, Severity::Info | Severity::Auto));
-
-    // Narrowing focuses the whole report on one principle.
-    let shown_presets: Vec<&Preset> = match narrow {
-        Some(id) => {
-            let p = presets.iter().find(|p| p.id == id).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unknown --preset '{id}'. Known presets: {}",
-                    presets
-                        .iter()
-                        .map(|p| p.id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            })?;
-            vec![p]
-        }
-        None => presets.iter().collect(),
-    };
-
-    let mut out = String::new();
-    out.push_str(&format!(
-        "scorecard  ({plugin}, {} files)\n\n",
-        file_count(level)
-    ));
-
-    // ── Per-principle table ──────────────────────────────────────────────────
-    struct Row {
-        id: String,
-        name: String,
-        warn: usize,
-        info: usize,
-        top: String,
-    }
-    let mut rows: Vec<Row> = Vec::new();
-    for p in &shown_presets {
-        let reco = reco_for(level, &p.sort_metric);
-        // Skip presets with nothing in the selected tiers (unless narrowed).
-        let in_scope =
-            (want_warning && reco.warning_count > 0) || (want_info && reco.info_count > 0);
-        if narrow.is_none() && !in_scope {
-            continue;
-        }
-        let top_module = match reco.sorted.first() {
-            Some(n) if p.sort_metric == "cycle" => format!("{} (cycle)", clean_path(&n.id)),
-            Some(n) => match num(n, &p.sort_metric) {
-                Some(v) if v != 0.0 => format!(
-                    "{} ({} {})",
-                    clean_path(&n.id),
-                    attr_short(level, &p.sort_metric),
-                    fmt_val(level, &p.sort_metric, v)
-                ),
-                _ => clean_path(&n.id),
-            },
-            None => "—".to_string(),
-        };
-        rows.push(Row {
-            id: p.id.clone(),
-            // Strip a leading "ID — " from the title to keep the column short.
-            name: p
-                .title
-                .split_once(" — ")
-                .map(|(_, rest)| rest)
-                .unwrap_or(&p.title)
-                .to_string(),
-            warn: reco.warning_count,
-            info: reco.info_count,
-            top: top_module,
-        });
-    }
-    rows.sort_by(|a, b| b.warn.cmp(&a.warn).then(b.info.cmp(&a.info)));
-
-    if rows.is_empty() {
-        out.push_str("No threshold breaches for the selected severity.\n");
-        return Ok(out);
-    }
-
-    let id_w = rows.iter().map(|r| r.id.len()).max().unwrap_or(6).max(6);
-    let name_w = rows
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(9)
-        .clamp(9, 34);
-    let clip = |s: &str, w: usize| -> String {
-        if s.len() > w {
-            format!("{}…", &s[..w.saturating_sub(1)])
-        } else {
-            s.to_string()
-        }
-    };
-    let mut header = format!("{:<id_w$}  {:<name_w$}", "PRESET", "PRINCIPLE");
-    if want_warning {
-        header.push_str("  ⚠");
-    }
-    if want_info {
-        header.push_str("  ⓘ");
-    }
-    header.push_str("  TOP MODULE");
-    out.push_str(&header);
-    out.push('\n');
-    for r in &rows {
-        let mut line = format!("{:<id_w$}  {:<name_w$}", r.id, clip(&r.name, name_w));
-        if want_warning {
-            line.push_str(&format!("  {:>1}", r.warn));
-        }
-        if want_info {
-            line.push_str(&format!("  {:>1}", r.info));
-        }
-        line.push_str(&format!("  {}", r.top));
-        out.push_str(&line);
-        out.push('\n');
-    }
-
-    // ── Worst modules ────────────────────────────────────────────────────────
-    out.push_str("\nWORST MODULES\n");
-    let limit = top.unwrap_or(15);
-
-    struct ModRow {
-        warning_icon: bool,
-        path: String,
-        head: String,
-        rest: Vec<String>,
-        n_warn: usize,
-        n_info: usize,
-        hk: f64,
-    }
-    let mut mod_rows: Vec<ModRow> = Vec::new();
-
-    if narrow.is_some() {
-        // Narrowed: the chosen principle's ranked modules.
-        let preset = shown_presets[0];
-        if preset.sort_metric == "cycle" {
-            // ADP: `--top` counts CYCLES (default 1 — the biggest chain). List
-            // every member of each selected cycle so the whole loop is visible.
-            let groups = top_cycle_groups(level, top.unwrap_or(1));
-            match groups.as_slice() {
-                [(g, members)] => out.push_str(&format!(
-                    "  one cycle ({}, {} modules) — all members listed; fix one cycle at a \
-                     time (avoid --top 2+):\n",
-                    g.kind,
-                    members.len()
-                )),
-                _ => out.push_str(&format!(
-                    "  {} cycles — all members listed:\n",
-                    groups.len()
-                )),
-            }
-            for (g, members) in &groups {
-                for n in members {
-                    mod_rows.push(ModRow {
-                        warning_icon: true,
-                        path: clean_path(&n.id),
-                        head: g.kind.clone(),
-                        rest: Vec::new(),
-                        n_warn: 0,
-                        n_info: 0,
-                        hk: num(n, "hk").unwrap_or(0.0),
-                    });
-                }
-            }
-        } else {
-            let reco = reco_for(level, &preset.sort_metric);
-            for n in reco.sorted.iter().take(limit) {
-                let head = match num(n, &preset.sort_metric) {
-                    Some(v) if v != 0.0 => format!(
-                        "{} {}",
-                        attr_short(level, &preset.sort_metric),
-                        fmt_val(level, &preset.sort_metric, v)
-                    ),
-                    _ => attr_short(level, &preset.sort_metric).to_string(),
-                };
-                mod_rows.push(ModRow {
-                    warning_icon: true,
-                    path: clean_path(&n.id),
-                    head,
-                    rest: Vec::new(),
-                    n_warn: 0,
-                    n_info: 0,
-                    hk: num(n, "hk").unwrap_or(0.0),
-                });
-            }
-        }
-    } else {
-        for n in level.nodes.iter().filter(|n| is_internal(n)) {
-            let breaches = node_breaches(level, n, want_warning, want_info);
-            if breaches.is_empty() {
-                continue;
-            }
-            let n_warn = breaches.iter().filter(|b| b.warning).count();
-            let n_info = breaches.iter().filter(|b| !b.warning).count();
-            // Worst metric = the largest over-threshold ratio.
-            let worst = breaches
-                .iter()
-                .max_by(|a, b| a.ratio.total_cmp(&b.ratio))
-                .unwrap();
-            let head = if worst.metric == "cycle" {
-                "cycle".to_string()
-            } else {
-                format!(
-                    "{} {}",
-                    attr_short(level, &worst.metric),
-                    fmt_val(level, &worst.metric, worst.value)
-                )
-            };
-            let rest: Vec<String> = breaches
-                .iter()
-                .filter(|b| b.metric != worst.metric)
-                .map(|b| {
-                    if b.metric == "cycle" {
-                        "cycle".to_string()
-                    } else {
-                        attr_short(level, &b.metric).to_string()
-                    }
-                })
-                .collect();
-            mod_rows.push(ModRow {
-                warning_icon: n_warn > 0,
-                path: clean_path(&n.id),
-                head,
-                rest,
-                n_warn,
-                n_info,
-                hk: num(n, "hk").unwrap_or(0.0),
-            });
-        }
-        mod_rows.sort_by(|a, b| {
-            b.n_warn
-                .cmp(&a.n_warn)
-                .then(b.n_info.cmp(&a.n_info))
-                .then(b.hk.total_cmp(&a.hk))
-        });
-        mod_rows.truncate(limit);
-    }
-
-    if mod_rows.is_empty() {
-        out.push_str("  (none)\n");
-    } else {
-        let path_w = mod_rows.iter().map(|r| r.path.len()).max().unwrap_or(0);
-        for (i, r) in mod_rows.iter().enumerate() {
-            let icon = if r.warning_icon { "⚠" } else { "ⓘ" };
-            let mut line = format!("{:>2} {} {:<path_w$}  {}", i + 1, icon, r.path, r.head);
-            if !r.rest.is_empty() {
-                line.push_str(&format!("  +{}", r.rest.join(", ")));
-            }
-            out.push_str(&line);
-            out.push('\n');
-        }
-    }
-
-    // ── Next-step hint ───────────────────────────────────────────────────────
-    let hint_preset = narrow
-        .map(str::to_string)
-        .or_else(|| worst_preset(level, presets));
-    if let Some(p) = hint_preset {
-        out.push_str(&format!(
-            "\n→ code-ranker report . --preset {p} --output.prompt.path=…\n"
-        ));
-    }
-
-    Ok(out)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
