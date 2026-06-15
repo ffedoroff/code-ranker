@@ -292,7 +292,10 @@ fn rust_sample_check_json_violations() {
     assert_eq!(first["graph"], "files");
 }
 
-/// `--output-format sarif` emits a SARIF 2.1.0 document.
+/// `--output-format sarif` emits a SARIF 2.1.0 document. Every result carries a
+/// stable `partialFingerprints` entry keyed on `(rule, location)` (no line number)
+/// so a consumer (GitHub code scanning, SARIF viewers) matches the same finding
+/// across runs even when code shifts.
 #[test]
 fn rust_sample_check_sarif() {
     let (_ok, stdout, _e) = run_check_capture("rust", &["--output-format", "sarif"]);
@@ -302,6 +305,31 @@ fn rust_sample_check_sarif() {
         "sarif schema present: {stdout}"
     );
     assert!(v["runs"].is_array(), "sarif runs array");
+
+    let results = v["runs"][0]["results"].as_array().expect("results array");
+    assert!(
+        !results.is_empty(),
+        "sample fires at least one violation: {stdout}"
+    );
+    for r in results {
+        let fp = r["partialFingerprints"]["codeRankerRuleLocation/v1"]
+            .as_str()
+            .unwrap_or_else(|| panic!("result has a versioned partial fingerprint: {r}"));
+        // The fingerprint is `rule:location` — it encodes the rule id and the
+        // file uri but never the line, so a shift does not reopen the finding.
+        let rule = r["ruleId"].as_str().expect("ruleId");
+        assert!(
+            fp.starts_with(&format!("{rule}:")),
+            "fingerprint encodes the rule id: {fp}"
+        );
+        if let Some(uri) = r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"].as_str()
+        {
+            assert!(
+                fp.ends_with(uri),
+                "fingerprint encodes the file location: {fp} / {uri}"
+            );
+        }
+    }
 }
 
 /// `--output-format github` emits `::error` workflow annotations with file/line.
@@ -521,6 +549,65 @@ fn javascript_sample_matches_golden() {
 #[test]
 fn typescript_sample_matches_golden() {
     assert_sample_matches("typescript");
+}
+
+/// Read a committed golden SARIF document for a language's `check` output.
+fn read_check_sarif_golden(lang: &str) -> Value {
+    let path = sample_dir(lang).join("code-ranker-check.sarif");
+    let text = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read golden {}: {e}", path.display()));
+    serde_json::from_str(&text).expect("parse golden sarif")
+}
+
+/// `check --output-format sarif` must match the committed golden for the language,
+/// char-for-char, after blanking the one volatile field — `tool.driver.version`
+/// (the crate version, which bumps every release). Everything else — the results,
+/// their `partialFingerprints`, and the fired-rules catalog — is deterministic and
+/// `{target}`-relative, so it is compared verbatim.
+fn assert_check_sarif_matches_golden(lang: &str) {
+    let (_ok, stdout, stderr) = run_check_capture(lang, &["--output-format", "sarif"]);
+    let mut fresh: Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|e| panic!("[{lang}] fresh sarif: {e}: {stderr}"));
+    let mut golden = read_check_sarif_golden(lang);
+
+    // The one volatile field must be present and carry the live crate version;
+    // it is then blanked on both sides so a release bump does not churn the golden.
+    assert_eq!(
+        fresh["runs"][0]["tool"]["driver"]["version"].as_str(),
+        Some(env!("CARGO_PKG_VERSION")),
+        "[{lang}] sarif tool.driver.version must be the live crate version"
+    );
+    for doc in [&mut fresh, &mut golden] {
+        doc["runs"][0]["tool"]["driver"]["version"] = Value::String("<ver>".into());
+    }
+
+    // serde_json sorts object keys, so both sides serialize identically.
+    let fresh_s = serde_json::to_string_pretty(&fresh).unwrap();
+    let golden_s = serde_json::to_string_pretty(&golden).unwrap();
+    assert_eq!(
+        fresh_s, golden_s,
+        "[{lang}] check SARIF differs from golden. If intentional, regenerate it (see docs/e2e.md)."
+    );
+}
+
+#[test]
+fn rust_sample_check_sarif_matches_golden() {
+    assert_check_sarif_matches_golden("rust");
+}
+
+#[test]
+fn python_sample_check_sarif_matches_golden() {
+    assert_check_sarif_matches_golden("python");
+}
+
+#[test]
+fn javascript_sample_check_sarif_matches_golden() {
+    assert_check_sarif_matches_golden("javascript");
+}
+
+#[test]
+fn typescript_sample_check_sarif_matches_golden() {
+    assert_check_sarif_matches_golden("typescript");
 }
 
 /// Every language whose golden is committed.

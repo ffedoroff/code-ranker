@@ -99,10 +99,25 @@ bumps; that is why a single shared version is safe.
   `{target}` placeholder (machine-independent). The header (`generated_at`,
   `command`, `git`, versions, absolute paths, `timings`) is kept frozen /
   anonymized in the committed file, and normalized only at comparison time.
+- `crates/code-ranker-plugin-<lang>/sample/code-ranker-check.sarif` — the **golden
+  SARIF** for `check --output-format sarif` on that sample: the fired-rules catalog
+  (`tool.driver.rules`), the results, and each result's stable `partialFingerprints`
+  (`codeRankerRuleLocation/v1` = `<rule>:<location>`, line-independent). Everything
+  is deterministic and `{target}`-relative; the only volatile field is
+  `tool.driver.version` (the crate version), blanked on both sides at comparison
+  time. The test asserts that field carries the live crate version, then compares
+  the rest **character-for-character**.
 - `crates/code-ranker-cli/tests/e2e.rs` — the test: runs the binary on each
   sample, asserts the volatile header fields changed, normalizes them to a
   canonical value on both sides, and compares the whole structure
-  **character-for-character** (100% match required).
+  **character-for-character** (100% match required). The same file also holds the
+  SARIF golden checks (`*_sample_check_sarif_matches_golden`).
+- `crates/code-ranker-cli/src/plugin/mod.rs` — `every_registered_plugin_has_committed_goldens`:
+  a guard unit test driven by the **plugin registry** (the single source of truth for
+  which languages exist). It asserts every registered plugin ships *both* goldens
+  (`code-ranker-report.json` and `code-ranker-check.sarif`), so adding a new language
+  fails the build until its fixtures are committed — the gap can't slip through by
+  simply lacking an e2e case.
 
 ```sh
 cargo test -p code-ranker --test e2e    # verify against the committed goldens
@@ -152,6 +167,27 @@ open(path, "w").write(json.dumps(d, indent=2, sort_keys=True, ensure_ascii=False
 PY
 done
 ```
+
+### Regenerating the SARIF goldens
+
+The `check --output-format sarif` goldens are fully deterministic (`{target}`-relative,
+no machine-specific paths), so they need no anonymization — `check` exits non-zero when
+the sample has violations, which is expected, so ignore the exit code:
+
+```sh
+cargo build -p code-ranker
+export CARGO_NET_OFFLINE=true
+bin=target/debug/code-ranker
+
+for lang in rust python javascript typescript; do
+  dir="crates/code-ranker-plugin-$lang/sample"
+  "$bin" check "$dir" --config "$dir/code-ranker.toml" \
+    --output-format sarif > "$dir/code-ranker-check.sarif" || true
+done
+```
+
+The committed file keeps the real `tool.driver.version`; the test blanks it on both
+sides, so a release bump never forces a regeneration here.
 
 ## Coverage matrix
 

@@ -102,7 +102,10 @@ the snapshot's `graphs` map under `"files"`.
   path (assumes `check` ran from the repo root); the line is the cycle's breaking
   edge `line`, or `1` for a whole-file metric breach (no single line). Findings
   with no file path (a cycle whose edge couldn't be placed) stay general
-  annotations / locationless results. With
+  annotations / locationless results. Each `sarif` result also carries a
+  `partialFingerprints` entry (`codeRankerRuleLocation/v1` = `<rule>:<location>`,
+  line-independent) — the same `(rule, location)` signature the `--baseline` gate
+  matches on — so a consumer dedupes the finding across runs when code shifts. With
   `--suggest-config`, `human` output then calls `print_current_values` — the
   current per-kind cycle counts and the per-file metric maxima
   as paste-ready `code-ranker.toml` blocks for baselining (off by default;

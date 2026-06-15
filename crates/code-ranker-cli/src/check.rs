@@ -336,6 +336,9 @@ fn group_digits(n: u64) -> String {
 /// Minimal SARIF 2.1.0 document. `ruleId` is the dotted rule id (e.g.
 /// `threshold.file.loc`); the rules that actually fired are described under
 /// `tool.driver.rules` (id, group, rationale, helpUri) so the report is self-documenting.
+/// Each result carries a `partialFingerprints` entry keyed on `(rule, location)` (no
+/// line number) so a consumer matches the same finding across runs even when code
+/// shifts — the same identity `check --baseline` uses internally.
 fn sarif_document(violations: &[config::Violation]) -> String {
     // Distinct fired rule ids, first-seen order, so each results.ruleId resolves.
     let mut seen: Vec<&config::Violation> = Vec::new();
@@ -367,6 +370,15 @@ fn sarif_document(violations: &[config::Violation]) -> String {
                 "ruleId": v.rule,
                 "level": "error",
                 "message": { "text": v.summary() },
+                // Stable cross-run identity for the consumer (GitHub code scanning,
+                // SARIF viewers): the same `(rule, location)` signature `check
+                // --baseline` matches on internally. The line number is deliberately
+                // excluded, so shifting a finding up/down the file does not reopen it
+                // as "new". The value is the readable composite key (no hashing) — a
+                // metric finding has at most one `(rule, location)`, so it is unique.
+                "partialFingerprints": {
+                    "codeRankerRuleLocation/v1": format!("{}:{}", v.rule, v.location),
+                },
                 "properties": { "group": v.group, "graph": v.graph, "weight": v.weight },
             });
             // A physical location lets GitHub code scanning render the result
@@ -453,5 +465,32 @@ mod tests {
         let doc = sarif_document(&[viol("", None)]);
         let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
         assert!(v["runs"][0]["results"][0].get("locations").is_none());
+    }
+
+    #[test]
+    fn sarif_partial_fingerprint_is_rule_and_location() {
+        let doc = sarif_document(&[viol("{target}/src/x.rs", Some(7))]);
+        let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
+        let fp = &v["runs"][0]["results"][0]["partialFingerprints"];
+        assert_eq!(
+            fp["codeRankerRuleLocation/v1"],
+            "threshold.file.loc:{target}/src/x.rs"
+        );
+    }
+
+    #[test]
+    fn sarif_partial_fingerprint_is_stable_across_line_shifts() {
+        // The same finding at a different line keeps the same fingerprint, so a
+        // code shift does not reopen it for the consumer.
+        let at_7 = sarif_document(&[viol("{target}/src/x.rs", Some(7))]);
+        let at_42 = sarif_document(&[viol("{target}/src/x.rs", Some(42))]);
+        let fp = |doc: &str| -> String {
+            let v: serde_json::Value = serde_json::from_str(doc).unwrap();
+            v["runs"][0]["results"][0]["partialFingerprints"]["codeRankerRuleLocation/v1"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        };
+        assert_eq!(fp(&at_7), fp(&at_42));
     }
 }

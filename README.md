@@ -18,7 +18,7 @@ Structural-analysis tool for **Rust, Python, JavaScript and TypeScript** codebas
 
 ```sh
 cargo install code-ranker --version 1.1.0   # install the CLI
-code-ranker report .                                # make html report in .code-ranker/ folder
+code-ranker report .                        # make html report in .code-ranker/ folder
 ```
 
 `report .` needs no flags: it writes a self-contained HTML report (plus a JSON

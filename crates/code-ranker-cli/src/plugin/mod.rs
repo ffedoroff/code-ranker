@@ -130,3 +130,44 @@ pub fn detect(workspace: &Path, input: &PluginInput) -> Result<String> {
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// The registry is the single source of truth for which languages exist. Every
+    /// registered plugin MUST ship both committed e2e goldens — the `report`
+    /// snapshot (`code-ranker-report.json`) and the `check` SARIF
+    /// (`code-ranker-check.sarif`) — under `crates/code-ranker-plugin-<name>/sample/`.
+    ///
+    /// This guard makes adding a language fail the build until its goldens are
+    /// committed, instead of the gap going unnoticed because no e2e case names it.
+    /// The plugin's `name()` maps directly to the crate-directory suffix.
+    #[test]
+    fn every_registered_plugin_has_committed_goldens() {
+        // CARGO_MANIFEST_DIR = <repo>/crates/code-ranker-cli → repo root is 2 up.
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(2)
+            .expect("repo root two levels above the crate manifest")
+            .to_path_buf();
+
+        for plugin in registry() {
+            let name = plugin.name();
+            let sample = repo
+                .join("crates")
+                .join(format!("code-ranker-plugin-{name}"))
+                .join("sample");
+            for golden in ["code-ranker-report.json", "code-ranker-check.sarif"] {
+                let path = sample.join(golden);
+                assert!(
+                    path.is_file(),
+                    "plugin `{name}` is registered but its e2e golden `{golden}` is missing at \
+                     {} — add a sample fixture and regenerate the goldens (see docs/e2e.md)",
+                    path.display()
+                );
+            }
+        }
+    }
+}

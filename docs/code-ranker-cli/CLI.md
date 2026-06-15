@@ -213,6 +213,13 @@ closes it (the breaking edge's `line`); a whole-file metric breach has no single
 line, so it pins to line 1. Run `check` from the repo root so the path resolves
 repo-relative.
 
+Each `sarif` result additionally carries a `partialFingerprints` entry
+(`codeRankerRuleLocation/v1` = `<rule>:<location>`) — the same `(rule, location)`
+signature `check --baseline` matches on internally, with the line number
+deliberately omitted. A SARIF consumer (GitHub code scanning, IDE viewers) uses it
+to recognise the *same* finding across runs even when surrounding edits shift it,
+instead of reopening it as new.
+
 ### Current-values config block (`--suggest-config`)
 
 With `--suggest-config`, the `human` output prints — after the findings — the

@@ -210,6 +210,15 @@ The rule id and group are carried in every `--output-format` (block header,
 `json` `rule`/`group` fields, `github` annotation title, `sarif` `ruleId` plus a
 fired-rules `tool.driver.rules` catalog).
 
+The `sarif` format additionally emits a `partialFingerprints` entry on every
+result, keyed `codeRankerRuleLocation/v1` and valued `<rule>:<location>` — the same
+`(rule, location)` signature `check --baseline` matches on internally. It
+deliberately omits the line number, so a SARIF consumer (e.g. GitHub code scanning,
+IDE SARIF viewers) keeps a finding identified as the *same* result across runs even
+when surrounding edits shift it up or down the file, instead of reopening it as new.
+The key is versioned (`/v1`) so the fingerprint basis can change later without
+colliding with history.
+
 **Current-values config block (`--suggest-config`)**: with `--suggest-config`,
 `human` output prints — after the findings — the project's current measured values
 as ready-to-paste `code-ranker.toml` blocks: the `[rules.cycles]` counts per kind,
