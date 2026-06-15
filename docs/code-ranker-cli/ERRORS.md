@@ -60,15 +60,24 @@ So `file.loc` caps any one file.
 code-ranker check --threshold file.loc=400 --threshold file.cognitive=25
 ```
 
-The **metric** is one of `cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`,
-`loc` (see the group tables below). Every form of one metric shares the same
-rationale and fix.
+The **metric** is **any per-file metric the engine emits**, not a fixed subset —
+size (`loc`, `sloc`, `lloc`, `cloc`, `blank`, `tloc`, `items`), complexity and
+quality (`cyclomatic`, `cognitive`, `exits`, `args`, `closures`, `mi`, `mi_sei`),
+Halstead (`length`, `vocabulary`, `volume`, `effort`, `time`, `bugs`, `unsafe`),
+and coupling (`fan_in`, `fan_out`, `fan_out_external`, `hk`). Each maps to one of
+the concern groups below (CPX / SIZ / CPL). A threshold is a `value > limit` gate,
+so it suits "lower is better" metrics; an unknown metric name is a config error.
+The most-used ones (`cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`, `loc`)
+carry a full why/fix rationale below; the rest report the breach with the same
+group and message shape.
 
 **Value syntax.** A threshold value accepts `_` digit separators and a `K` / `M` /
 `G` multiplier suffix (×10³ / ×10⁶ / ×10⁹, case-insensitive): `5K` = 5 000,
-`1.5M` = 1 500 000. On the CLI use it bare (`--threshold file.hk=5M`). In TOML a
-suffix must be quoted (`hk = "5M"`) since bare `5M` is not valid TOML; underscored
-integers are native (`hk = 5_000_000`).
+`1.5M` = 1 500 000. Use it bare everywhere — on the CLI (`--threshold file.hk=5M`)
+and in TOML (`hk = 5M`). Inside a `[rules.thresholds.*]` table a bare suffixed
+value is accepted even though raw TOML would reject it: code-ranker quotes it
+before parsing. A quoted `hk = "5M"` works too, and underscored integers are
+native (`hk = 5_000_000`).
 
 > **All built-in plugins (Rust, Python, JavaScript/TypeScript) build a single file
 > graph,** so the `file` scope applies to every language. `fan_in` / `fan_out` /

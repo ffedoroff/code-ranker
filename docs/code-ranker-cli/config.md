@@ -42,8 +42,9 @@ chain      = 7       # allow up to 7 chain cycles; pin today's count as a baseli
 
 [rules.thresholds.file]      # a single file (files graph)
 loc        = 800
+sloc       = 600             # any per-file metric the engine emits is accepted
 cognitive  = 25
-hk         = 500_000         # `_` separators; or a quoted suffix: hk = "5M"
+hk         = 500_000         # `_` separators; or a suffix: hk = 5M (bare or "5M")
 fan_out    = 50
 
 [output.json]                # `report` JSON snapshot artifact
@@ -52,18 +53,23 @@ path = "{project-dir}-{ts}.json"   # default if unset: .code-ranker/{ts}-{git-ha
 
 [output.html]                # `report` HTML viewer artifact
 path = "{project-dir}-{ts}.html"   # default if unset: .code-ranker/{ts}-{git-hash-3}.html
+
+[output.sarif]               # `report` SARIF 2.1.0 artifact (rule violations)
+path = "{project-dir}-{ts}.sarif"  # default if unset: .code-ranker/{ts}-{git-hash-3}.sarif
+# enabled = true             # write SARIF on every report run (opt-in; not in the default set)
 ```
 
 The threshold scope is always `file` — a single source file on the one graph
 code-ranker builds.
 
-### `[output.json]` / `[output.html]` — report artifacts
+### `[output.json]` / `[output.html]` / `[output.sarif]` — report artifacts
 
 Each table configures one `code-ranker report` artifact: `path` is the destination
 (a filename template, or `stdout`/`-`), and `enabled` (a bool) forces the format on
 or off. `--output.<fmt>.path` / `--output.<fmt>` on the CLI override these; when no
-artifact is selected anywhere, both are written to `.code-ranker/` under the built-in
-default `{ts}-{git-hash-3}`. `path` accepts these placeholders:
+artifact is selected anywhere, `json` + `html` are written to `.code-ranker/` under
+the built-in default `{ts}-{git-hash-3}` (`sarif` is opt-in — never in the default
+set). `path` accepts these placeholders:
 
 | Placeholder | Expands to |
 |---|---|
@@ -73,8 +79,10 @@ default `{ts}-{git-hash-3}`. `path` accepts these placeholders:
 | `{git-hash-N}` | first `N` chars of the commit hash |
 
 **Values** accept `_` digit separators and `K`/`M`/`G` suffixes (×10³/10⁶/10⁹):
-`5_123_000`, or a quoted `"5M"` in TOML (bare `5M` is invalid TOML), or bare on the
-CLI (`--threshold file.hk=5M`). See [ERRORS.md](ERRORS.md#threshold-scopes).
+`5_123_000`, a bare `5M`, or a quoted `"5M"`. The bare suffix works both on the
+CLI (`--threshold file.hk=5M`) and inside a `[rules.thresholds.*]` table
+(`hk = 5M`) — code-ranker quotes the value before parsing, since raw TOML would
+otherwise reject it. See [ERRORS.md](ERRORS.md#threshold-scopes).
 
 ---
 
@@ -144,12 +152,13 @@ code-ranker check . --cycle-rule chain=7
 ### `--threshold <file.METRIC=N>`
 
 Set a per-file threshold — a breach fails the check. The scope is always `file`
-(a single source file). `METRIC`: `hk`
-| `cyclomatic` | `cognitive` | `fan_in` | `fan_out` | `loc`. `N` accepts `_`
-separators and `K`/`M`/`G` suffixes (e.g. `5M`, `1_500`). Repeatable.
+(a single source file). `METRIC` is any per-file metric the engine emits —
+`loc` / `sloc` / `cyclomatic` / `cognitive` / `mi` / `volume` / `bugs` / `hk` /
+`fan_in` / `fan_out` / … (an unknown name errors). `N` accepts `_` separators and
+`K`/`M`/`G` suffixes (e.g. `5M`, `1_500`). Repeatable.
 
 ```bash
-code-ranker check . --threshold file.loc=800 --threshold file.cognitive=25 \
+code-ranker check . --threshold file.loc=800 --threshold file.sloc=600 \
   --threshold file.cyclomatic=10
 ```
 
@@ -163,17 +172,19 @@ pre-existing ones; on `report` it turns the HTML into a baseline↔current diff.
 code-ranker check . --baseline .code-ranker/main.json
 ```
 
-### `--output.json` / `--output.html` / `--output.<fmt>.path` (report)
+### `--output.json` / `--output.html` / `--output.sarif` / `--output.<fmt>.path` (report)
 
-Select which artifacts `report` writes and where. `--output.json` / `--output.html`
-select a format (path from config/default); `--output.json.path=…` /
-`--output.html.path=…` select it and set the destination (a template, or `stdout`/`-`).
-With none given, both are written to `.code-ranker/`.
+Select which artifacts `report` writes and where. `--output.json` / `--output.html` /
+`--output.sarif` select a format (path from config/default); `--output.<fmt>.path=…`
+selects it and sets the destination (a template, or `stdout`/`-`). With none given,
+`json` + `html` are written to `.code-ranker/` (`sarif` is opt-in).
 
 ```bash
-code-ranker report .                              # both, default names
+code-ranker report .                              # json + html, default names
 code-ranker report . --output.html                # only HTML, default path
 code-ranker report . --output.json.path=stdout    # JSON to stdout, no HTML
+code-ranker report . --output.sarif.path=stdout   # SARIF to stdout, nothing else
+code-ranker report . --output.sarif               # SARIF to .code-ranker/…sarif
 ```
 
 ### `--exit-zero`

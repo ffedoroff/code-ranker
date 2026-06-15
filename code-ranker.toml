@@ -41,8 +41,8 @@ chain = true
 # Per-file metric thresholds (the `file` scope is the only one). Values accept
 # `_` separators and K/M/G suffixes (e.g. 1_500, 5K, 1.5M). Unset = no limit.
 [rules.thresholds.file]
-# hk = 150_000
-# cyclomatic = 25
-# cognitive = 25
-# fan_out = 18
-# loc = 800
+hk = 300K
+cyclomatic = 200
+cognitive = 100
+#fan_out = 18
+sloc = 800

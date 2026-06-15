@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 /// a `--output.<fmt>.path`, nor the `[output.<fmt>]` config section sets one.
 const DEFAULT_JSON_PATH: &str = ".code-ranker/{ts}-{git-hash-3}.json";
 const DEFAULT_HTML_PATH: &str = ".code-ranker/{ts}-{git-hash-3}.html";
+const DEFAULT_SARIF_PATH: &str = ".code-ranker/{ts}-{git-hash-3}.sarif";
 /// The prompt defaults to a per-principle Markdown file; the scorecard is a
 /// console overview and defaults to the stdout stream.
 const DEFAULT_PROMPT_PATH: &str = ".code-ranker/{ts}-{git-hash-3}-{preset}.md";
@@ -22,10 +23,12 @@ const DEFAULT_SCORECARD_PATH: &str = "stdout";
 pub(crate) struct ReportOutputs {
     pub(crate) json: bool,
     pub(crate) html: bool,
+    pub(crate) sarif: bool,
     pub(crate) prompt: bool,
     pub(crate) scorecard: bool,
     pub(crate) json_path: Option<String>,
     pub(crate) html_path: Option<String>,
+    pub(crate) sarif_path: Option<String>,
     pub(crate) prompt_path: Option<String>,
     pub(crate) scorecard_path: Option<String>,
 }
@@ -49,6 +52,7 @@ pub(crate) fn run_report(
 ) -> Result<()> {
     let json_path = out.json_path.as_deref();
     let html_path = out.html_path.as_deref();
+    let sarif_path = out.sarif_path.as_deref();
     let prompt_path = out.prompt_path.as_deref();
     let scorecard_path = out.scorecard_path.as_deref();
 
@@ -76,12 +80,13 @@ pub(crate) fn run_report(
 
     let a = analyze_input(args, &[], &[])?;
 
-    // A json/html format is selected by a CLI flag (`--output.<fmt>` /
+    // A json/html/sarif format is selected by a CLI flag (`--output.<fmt>` /
     // `--output.<fmt>.path`) or by config (`enabled`, else a configured `path`).
     // If NOTHING is selected across all formats, write json + html by default.
     let mut want_json = want_format(out.json, json_path, &a.output.json);
     let mut want_html = want_format(out.html, html_path, &a.output.html);
-    if !want_json && !want_html && !want_prompt && !want_scorecard {
+    let want_sarif = want_format(out.sarif, sarif_path, &a.output.sarif);
+    if !want_json && !want_html && !want_sarif && !want_prompt && !want_scorecard {
         want_json = true;
         want_html = true;
     }
@@ -125,6 +130,19 @@ pub(crate) fn run_report(
         }
         let html = code_ranker_viewer::render_html_viewer(baseline_snap.as_ref(), Some(snap));
         write_artifact(&dest, &html, "html")?;
+    }
+
+    if want_sarif {
+        // Same SARIF 2.1.0 document `check --output-format sarif` emits, but
+        // written as an artifact: the current rule violations (absolute — a
+        // `--baseline` here only diffs the HTML, it does not filter SARIF).
+        let tpl = sarif_path
+            .or(a.output.sarif.path.as_deref())
+            .unwrap_or(DEFAULT_SARIF_PATH);
+        let dest = render_name(tpl, &target, commit, generated_at);
+        let mut sarif = crate::check::sarif_document(&a.violations);
+        sarif.push('\n');
+        write_artifact(&dest, &sarif, "sarif")?;
     }
 
     if want_prompt || want_scorecard {

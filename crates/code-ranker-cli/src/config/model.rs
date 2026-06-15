@@ -3,6 +3,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer};
+use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Debug, Deserialize, Default)]
@@ -15,13 +16,14 @@ pub struct Config {
     pub output: OutputConfig,
 }
 
-/// Per-format output config: `[output.json]` / `[output.html]`, each with a
-/// `path` template and an optional `enabled` flag.
+/// Per-format output config: `[output.json]` / `[output.html]` /
+/// `[output.sarif]`, each with a `path` template and an optional `enabled` flag.
 #[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct OutputConfig {
     pub json: OutputArtifact,
     pub html: OutputArtifact,
+    pub sarif: OutputArtifact,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -140,21 +142,83 @@ pub struct ThresholdRules {
     pub file: MetricThresholds,
 }
 
-#[derive(Debug, Clone, Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
+/// Per-file metric thresholds, keyed by metric name (`sloc`, `cyclomatic`, `hk`,
+/// …). **Any** per-file metric the engine emits is accepted — see
+/// [`super::metrics::THRESHOLD_METRICS`] — so this is an open map, not a fixed set
+/// of fields; an unknown key is a config error. A value is a number with optional
+/// `_` separators and a `K`/`M`/`G` suffix. Unset = no limit.
+#[derive(Debug, Clone, Default)]
 pub struct MetricThresholds {
-    #[serde(default, deserialize_with = "de_opt_number")]
-    pub hk: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_number")]
-    pub cyclomatic: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_number")]
-    pub cognitive: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_number")]
-    pub fan_in: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_number")]
-    pub fan_out: Option<f64>,
-    #[serde(default, deserialize_with = "de_opt_number")]
-    pub loc: Option<f64>,
+    pub limits: BTreeMap<String, f64>,
+}
+
+impl MetricThresholds {
+    /// The limit configured for `metric`, if any.
+    pub fn get(&self, metric: &str) -> Option<f64> {
+        self.limits.get(metric).copied()
+    }
+    /// Set (or override) the limit for `metric`.
+    pub fn set(&mut self, metric: String, limit: f64) {
+        self.limits.insert(metric, limit);
+    }
+}
+
+impl<'de> Deserialize<'de> for MetricThresholds {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct MapV;
+        impl<'de> serde::de::Visitor<'de> for MapV {
+            type Value = MetricThresholds;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a table of `metric = limit` entries")
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<MetricThresholds, M::Error> {
+                let mut limits = BTreeMap::new();
+                while let Some(key) = map.next_key::<String>()? {
+                    if !super::metrics::is_threshold_metric(&key) {
+                        return Err(serde::de::Error::custom(format!(
+                            "unknown threshold metric {key:?}; expected a per-file metric such as \
+                             sloc, loc, cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, bugs"
+                        )));
+                    }
+                    let ThresholdNumber(val) = map.next_value()?;
+                    limits.insert(key, val);
+                }
+                Ok(MetricThresholds { limits })
+            }
+        }
+        d.deserialize_map(MapV)
+    }
+}
+
+/// A single threshold value: a bare number or a string like `"5K"` / `"1.5M"`.
+struct ThresholdNumber(f64);
+
+impl<'de> Deserialize<'de> for ThresholdNumber {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl serde::de::Visitor<'_> for V {
+            type Value = f64;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a number, or a string like \"5K\" / \"1.5M\"")
+            }
+            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<f64, E> {
+                Ok(v as f64)
+            }
+            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<f64, E> {
+                Ok(v as f64)
+            }
+            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<f64, E> {
+                Ok(v)
+            }
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<f64, E> {
+                parse_number(v).map_err(E::custom)
+            }
+        }
+        d.deserialize_any(V).map(ThresholdNumber)
+    }
 }
 
 /// Parse a threshold value: a number with optional `_` separators and a
@@ -173,27 +237,90 @@ pub(crate) fn parse_number(s: &str) -> Result<f64> {
     Ok(n * mult)
 }
 
-fn de_opt_number<'de, D: Deserializer<'de>>(d: D) -> Result<Option<f64>, D::Error> {
-    struct V;
-    impl serde::de::Visitor<'_> for V {
-        type Value = f64;
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str("a number, or a string like \"5K\" / \"1.5M\"")
+/// TOML rejects a bare `300K` (a `K`/`M`/`G` suffix makes it neither a number nor
+/// a string), so without help a user must write `hk = "300K"`. This pre-pass lets
+/// them write `hk = 300K` by quoting bare suffixed numbers **only inside a
+/// `*thresholds*` table**, before the text reaches the TOML parser. Plain and
+/// underscored integers stay native; already-quoted values and everything outside
+/// a thresholds table are left untouched. The matching CLI form (`--threshold
+/// file.hk=300K`) needs no help — it goes straight through [`parse_number`].
+pub(crate) fn quote_suffixed_thresholds(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 16);
+    let mut in_thresholds = false;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('[') {
+            // Section header (`[t]` or `[[t]]`): a thresholds table enables quoting.
+            let name = trimmed.trim_start_matches('[');
+            in_thresholds = name
+                .split(']')
+                .next()
+                .is_some_and(|s| s.contains("thresholds"));
+        } else if in_thresholds && let Some(quoted) = quote_suffixed_value_line(line) {
+            out.push_str(&quoted);
+            out.push('\n');
+            continue;
         }
-        fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<f64, E> {
-            Ok(v as f64)
-        }
-        fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<f64, E> {
-            Ok(v as f64)
-        }
-        fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<f64, E> {
-            Ok(v)
-        }
-        fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<f64, E> {
-            parse_number(v).map_err(E::custom)
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// If `line` is a `key = <bare-suffixed-number>` assignment, return it with the
+/// value quoted (formatting and any trailing comment preserved); else `None`.
+fn quote_suffixed_value_line(line: &str) -> Option<String> {
+    let eq = line.find('=')?;
+    let key = line[..eq].trim();
+    if key.is_empty()
+        || !key
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return None;
+    }
+    let after = &line[eq + 1..];
+    let (val_seg, comment) = match after.find('#') {
+        Some(h) => after.split_at(h),
+        None => (after, ""),
+    };
+    if !is_bare_suffixed_number(val_seg.trim()) {
+        return None;
+    }
+    let lead: String = val_seg.chars().take_while(|c| c.is_whitespace()).collect();
+    let trail: String = val_seg
+        .chars()
+        .rev()
+        .take_while(|c| c.is_whitespace())
+        .collect();
+    Some(format!(
+        "{}={lead}\"{}\"{trail}{comment}",
+        &line[..eq],
+        val_seg.trim()
+    ))
+}
+
+/// Does `v` look like a bare `K`/`M`/`G`-suffixed number (`300K`, `1.5M`,
+/// `5_000K`)? Already-quoted values and plain numbers return `false`.
+fn is_bare_suffixed_number(v: &str) -> bool {
+    let Some(last) = v.chars().last() else {
+        return false;
+    };
+    if !matches!(last, 'k' | 'K' | 'm' | 'M' | 'g' | 'G') {
+        return false;
+    }
+    let body = &v[..v.len() - 1];
+    let mut seen_digit = false;
+    let mut seen_dot = false;
+    for c in body.chars() {
+        match c {
+            '0'..='9' => seen_digit = true,
+            '_' => {}
+            '.' if !seen_dot => seen_dot = true,
+            _ => return false,
         }
     }
-    d.deserialize_any(V).map(Some)
+    seen_digit
 }
 
 #[cfg(test)]
@@ -232,11 +359,60 @@ mutual = true
 chain = 7
 [rules.thresholds.file]
 loc = 800
+sloc = 1_200
+cyclomatic = 25
+mi = \"5K\"
 ";
         let cfg: Config = toml::from_str(src).unwrap();
         assert_eq!(cfg.rules.cycles.mutual, CycleRule::Max(0));
         assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(7));
-        assert_eq!(cfg.rules.thresholds.file.loc, Some(800.0));
+        assert_eq!(cfg.rules.thresholds.file.get("loc"), Some(800.0));
+        // `sloc` (and every other engine metric) is now accepted, not just `loc`.
+        assert_eq!(cfg.rules.thresholds.file.get("sloc"), Some(1_200.0));
+        assert_eq!(cfg.rules.thresholds.file.get("cyclomatic"), Some(25.0));
+        assert_eq!(cfg.rules.thresholds.file.get("mi"), Some(5_000.0));
+    }
+
+    #[test]
+    fn bare_suffixed_threshold_values_parse() {
+        // TOML rejects a bare `300K`; the pre-pass quotes it (only inside a
+        // thresholds table) so the config parses without the user adding quotes.
+        let src = "
+[rules.cycles]
+mutual = true
+[rules.thresholds.file]
+hk = 300K
+cyclomatic = 200      # plain int stays native
+sloc = 1.5M           # fractional + suffix
+";
+        let cfg: Config = toml::from_str(&quote_suffixed_thresholds(src)).unwrap();
+        assert_eq!(cfg.rules.thresholds.file.get("hk"), Some(300_000.0));
+        assert_eq!(cfg.rules.thresholds.file.get("cyclomatic"), Some(200.0));
+        assert_eq!(cfg.rules.thresholds.file.get("sloc"), Some(1_500_000.0));
+    }
+
+    #[test]
+    fn suffix_quoting_is_scoped_to_thresholds_tables() {
+        // A bare-suffixed value outside a thresholds table is NOT touched (it would
+        // still be invalid TOML there — we only help where suffixes are meaningful).
+        let outside = quote_suffixed_thresholds("[other]\nx = 300K\n");
+        assert!(outside.contains("x = 300K"), "untouched outside: {outside}");
+        let inside = quote_suffixed_thresholds("[rules.thresholds.file]\nhk = 300K\n");
+        assert!(inside.contains("hk = \"300K\""), "quoted inside: {inside}");
+        // Already-quoted and plain values are left as-is.
+        let q = quote_suffixed_thresholds("[rules.thresholds.file]\na = \"5M\"\nb = 200\n");
+        assert!(q.contains("a = \"5M\"") && q.contains("b = 200"), "{q}");
+    }
+
+    #[test]
+    fn config_rejects_unknown_threshold_metric() {
+        // A mistyped metric is a hard error (not silently ignored), and the
+        // message names the offending key.
+        let err = toml::from_str::<Config>("[rules.thresholds.file]\nslocc = 800\n")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown threshold metric"), "kind: {err}");
+        assert!(err.contains("slocc"), "names the bad key: {err}");
     }
 
     #[test]

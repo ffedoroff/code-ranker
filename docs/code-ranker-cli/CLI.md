@@ -143,7 +143,7 @@ code-ranker check [input] [options]
 
 | Flag | Meaning |
 |---|---|
-| `--threshold <file.METRIC=N>` | Hard limit on a per-file metric — a breach fails the check. Scope is always `file` (a single file). METRIC: `cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`, `loc`. Repeatable. See [ERRORS.md](ERRORS.md#threshold-scopes). |
+| `--threshold <file.METRIC=N>` | Hard limit on a per-file metric — a breach fails the check. Scope is always `file` (a single file). METRIC: any per-file metric the engine emits (`loc`, `sloc`, `cyclomatic`, `cognitive`, `mi`, `volume`, `bugs`, `hk`, `fan_in`, `fan_out`, …); an unknown name errors. Repeatable. See [ERRORS.md](ERRORS.md#threshold-scopes). |
 | `--cycle-rule <KIND=on\|off\|N>` | Configure a cycle check. KIND: `mutual`, `chain`. Value: `on` (any cycle fails), `off` (ignored), or `N` (allow up to N cycles of that kind — e.g. `chain=7` forbids an 8th). Defaults: `mutual`/`chain` on. |
 | `--baseline <snapshot>` | Compare `[input]` (current) against this baseline snapshot (`.json` or `.html`) and switch to a **relative gate**: fail only on *new* violations vs the baseline; pre-existing ones are tolerated. See [`--baseline`](#--baseline-comparison). |
 | `--output-format <fmt>` | Diagnostics format: `human` (default), `json`, `github`, `sarif`. Use `github` for PR annotations, `sarif`/`json` for tooling. |
@@ -283,9 +283,17 @@ opens straight from disk (no server, no extra files). See [HTML viewer](#html-vi
 ## Output paths
 
 `report` selects artifacts and their destinations through one flag family,
-`--output.<fmt>.path`, where `<fmt>` is `json`, `html`, `prompt`, or `scorecard`. The
-last two are the recommendation outputs — see
+`--output.<fmt>.path`, where `<fmt>` is `json`, `html`, `sarif`, `prompt`, or
+`scorecard`. The last two are the recommendation outputs — see
 [Recommendations](#recommendations-scorecard--prompt) for their flags and defaults.
+
+`sarif` writes the **same SARIF 2.1.0 document** as `check --output-format sarif`
+(the current rule violations, with `tool.driver.rules` and stable
+`partialFingerprints`), but as an artifact rather than to stdout — so a single
+`report` run can emit the JSON snapshot, the HTML viewer, *and* the SARIF for code
+scanning in one pass. Like `prompt` / `scorecard`, it is opt-in: never part of the
+default set, and a `--baseline` here only diffs the HTML — it does not filter the
+SARIF results.
 
 **Which formats are written:**
 
@@ -313,6 +321,8 @@ With `--baseline`, the HTML default gains a `-diff` marker:
 `.code-ranker/{ts}-{git-hash-3}-diff.html`. The JSON artifact is always the snapshot of
 the current input (reusable as a future baseline), never a diff.
 
+When selected, `sarif` defaults to `.code-ranker/{ts}-{git-hash-3}.sarif`.
+
 The recommendation formats have their own per-format defaults: `scorecard` defaults to
 **`stdout`** (it is a console overview), and `prompt` defaults to the file
 `.code-ranker/{ts}-{git-hash-3}-{preset}.md`.
@@ -326,6 +336,9 @@ path = "dist/{project-dir}-{ts}.json"
 
 [output.html]
 path = "dist/{project-dir}-{ts}.html"
+
+[output.sarif]
+path = "dist/{project-dir}-{ts}.sarif"
 ```
 
 ### Name templates

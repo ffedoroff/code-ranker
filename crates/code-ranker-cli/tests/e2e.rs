@@ -332,6 +332,33 @@ fn rust_sample_check_sarif() {
     }
 }
 
+/// `report --output.sarif` emits the same SARIF 2.1.0 document as
+/// `check --output-format sarif`: the linter's violations, written as an artifact.
+/// `--output.sarif.path=stdout` streams it so json/html are not also produced.
+#[test]
+fn rust_sample_report_sarif() {
+    let (ok, stdout, stderr) = run_report_capture("rust", &["--output.sarif.path=stdout"]);
+    assert!(ok, "report does not gate, so it succeeds: {stderr}");
+    let v: Value = serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("sarif: {e}: {stdout}"));
+    assert!(
+        v["$schema"].as_str().unwrap_or_default().contains("sarif"),
+        "sarif schema present: {stdout}"
+    );
+    let results = v["runs"][0]["results"].as_array().expect("results array");
+    assert!(
+        !results.is_empty(),
+        "the sample's violations are reported: {stdout}"
+    );
+    // Same finding identity as `check`: each result carries the versioned
+    // `(rule, location)` partial fingerprint.
+    for r in results {
+        assert!(
+            r["partialFingerprints"]["codeRankerRuleLocation/v1"].is_string(),
+            "result has a versioned partial fingerprint: {r}"
+        );
+    }
+}
+
 /// `--output-format github` emits `::error` workflow annotations with file/line.
 #[test]
 fn rust_sample_check_github_annotations() {

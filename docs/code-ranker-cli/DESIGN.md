@@ -76,20 +76,29 @@ the snapshot's `graphs` map under `"files"`.
   `Max(7)` forbids the 8th) and metric thresholds (`--threshold
   <file.METRIC=N>`). No severity tiers. There is a single threshold
   scope — `file` (the files graph) — metrics written directly under
-  `[rules.thresholds.file]`. `check_node_metrics` runs the per-file
-  thresholds on every file node — emitting `threshold.file.<metric>`.
-  Threshold values accept `_`
-  separators and `K`/`M`/`G` suffixes via `config::parse_number` (CLI flags and a
-  `deserialize_with` adaptor on `MetricThresholds` for quoted TOML strings); an
-  invalid configuration is a hard error, never a silent fallback to defaults —
-  the config structs are `#[serde(deny_unknown_fields)]`, so an unknown/stale key
-  (e.g. `json-name`) fails with a field-named error rather than being ignored.
-  Every `Violation` is identified
+  `[rules.thresholds.file]`. `MetricThresholds` is an **open map** keyed by metric
+  name, so **any** per-file metric the engine emits is thresholdable (not a fixed
+  set of fields); its custom `Deserialize` validates each key against
+  `config::metrics::THRESHOLD_METRICS` (the metric → concern-group vocabulary,
+  kept in sync with the engine specs by a guard test) and rejects an unknown metric
+  with a named error. That vocabulary lives in the **leaf** `config::metrics`
+  module so both `model` (validation) and `rules` (group lookup) can use it without
+  forming a `model ↔ rules` import cycle. `check_node_metrics` walks the vocabulary
+  and, for each configured limit, reads the matching node attribute and emits
+  `threshold.file.<metric>` on a breach. Threshold values accept `_` separators and
+  `K`/`M`/`G` suffixes via `config::parse_number` — bare on the CLI **and** in TOML:
+  `config::quote_suffixed_thresholds` quotes a bare `hk = 300K` inside any
+  `*thresholds*` table before parsing (raw TOML would reject it), then the per-value
+  `Deserialize` parses the suffix. An invalid configuration is a hard error, never a
+  silent fallback —
+  unknown metrics fail in `MetricThresholds`, and the other config structs are
+  `#[serde(deny_unknown_fields)]` so a stale key (e.g. `json-name`) fails with a
+  field-named error. Every `Violation` is identified
   by its dotted rule id (the config key / CLI flag, e.g. `threshold.file.loc`) and
-  tagged with a concern group from the `config::RULES` catalog
-  (`CYC`/`CPX`/`CPL`/`SIZ`; one entry per metric resolved by `rule_doc` — the
-  trailing metric segment — with `rule_tuning` deriving the flag/config knob,
-  documented in [ERRORS.md](ERRORS.md)). Prints diagnostics in the selected `--output-format`
+  tagged with a concern group via `config::rule_group`
+  (`CYC`/`CPX`/`CPL`/`SIZ`; from `THRESHOLD_METRICS` for thresholds, `RULES` for
+  cycles), with the curated `RULES` catalog supplying why/fix and `rule_tuning`
+  deriving the flag/config knob, documented in [ERRORS.md](ERRORS.md)). Prints diagnostics in the selected `--output-format`
   (`human` / `json` / `github` / `sarif`): `human` (`print_human_diagnostics`)
   renders each finding as a self-contained block (rule id, group, `where` = `id —
   path`, `issue`, `why`, `fix`, `tune`, `ref`) so it doubles as an AI prompt;
@@ -121,12 +130,15 @@ the snapshot's `graphs` map under `"files"`.
 - **`report`** (`run_report`): runs the shared analysis core (analyzing the
   directory or reading the snapshot), then writes artifacts. Which formats are
   written, and where, is decided by one flag family, `--output.<fmt>[.path]`
-  (`<fmt>` = `json` / `html` / `prompt` / `scorecard`), backed by `want_format`:
-  a `--output.<fmt>` presence flag or a `--output.<fmt>.path` selects that
-  format; for `json`/`html` the `[output.<fmt>]` config (`enabled`, else a
-  configured `path`) is consulted next; if **nothing** selects anything across
-  all formats, **both** `json` and `html` are written (`prompt`/`scorecard` are
-  flag-only and never default). Each `.path` is a name template, or `stdout`/`-`
+  (`<fmt>` = `json` / `html` / `sarif` / `prompt` / `scorecard`), backed by
+  `want_format`: a `--output.<fmt>` presence flag or a `--output.<fmt>.path`
+  selects that format; for `json`/`html`/`sarif` the `[output.<fmt>]` config
+  (`enabled`, else a configured `path`) is consulted next; if **nothing** selects
+  anything across all formats, **both** `json` and `html` are written
+  (`sarif`/`prompt`/`scorecard` are opt-in and never default). The `sarif`
+  artifact reuses `check::sarif_document` over the analysis's rule violations, so
+  `report` and `check --output-format sarif` produce the identical document (a
+  `--baseline` only affects the HTML diff, not the SARIF). Each `.path` is a name template, or `stdout`/`-`
   to write to the stdout stream (`is_stream` / `write_artifact`). The JSON
   snapshot records `config_file` when a config was found. Names are templates
   (`render_name`) with placeholders `{project-dir}`, `{ts}`, `{git-hash}`
@@ -137,7 +149,8 @@ the snapshot's `graphs` map under `"files"`.
   `generated_at` (for a snapshot input it is the original analysis time).
   Resolved as **`--output.<fmt>.path` flag
   › `[output.<fmt>] path` config › built-in default**
-  (`DEFAULT_JSON_PATH` / `DEFAULT_HTML_PATH` = `.code-ranker/{ts}-{git-hash-3}.{json,html}`;
+  (`DEFAULT_JSON_PATH` / `DEFAULT_HTML_PATH` / `DEFAULT_SARIF_PATH` =
+  `.code-ranker/{ts}-{git-hash-3}.{json,html,sarif}`;
   `DEFAULT_PROMPT_PATH` = `.code-ranker/{ts}-{git-hash-3}-{preset}.md`;
   `DEFAULT_SCORECARD_PATH` = `stdout`).
   The HTML viewer template and all assets (CSS, JS) are embedded in the binary

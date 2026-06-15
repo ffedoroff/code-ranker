@@ -14,8 +14,9 @@ on:
 
 permissions:
   contents: read
-  actions: read          # download the base-branch baseline artifact
-  pull-requests: write   # post/update the sticky comment
+  actions: read            # download the base-branch baseline artifact
+  pull-requests: write     # post/update the sticky comment
+  security-events: write   # upload the SARIF to code scanning
 
 concurrency:
   group: pr-report-${{ github.event.pull_request.number || github.ref }}
@@ -35,20 +36,34 @@ jobs:
         # crate like android_system_properties). Fetch fills the cache first.
         run: cargo fetch --locked
 
-      - name: Analyze -> JSON + HTML snapshot
+      - name: Analyze -> JSON + HTML + SARIF snapshot
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           H="$(git rev-parse --short=12 HEAD)"
           BR="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
           echo "H=$H" >> "$GITHUB_ENV"
+          # One analysis pass emits all three artifacts. The SARIF carries the
+          # current rule violations (with stable partialFingerprints) for code
+          # scanning; GitHub does its own cross-run dedup, so it is absolute, not a
+          # diff.
           cargo run -q -p code-ranker -- report . \
             --git.branch="$BR" \
             --git.commit="${PR_HEAD_SHA:-$GITHUB_SHA}" \
             --git.dirty-files=0 \
             --git.origin="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             --output.json.path="code-ranker-${H}.json" \
-            --output.html.path="code-ranker-${H}.html"
+            --output.html.path="code-ranker-${H}.html" \
+            --output.sarif.path="code-ranker-${H}.sarif"
+
+      # Inline alerts in the PR diff + the Security → Code scanning tab. Same-repo
+      # only: a fork PR gets a read-only token and cannot upload (the job is
+      # advisory, so a skip is fine).
+      - name: Upload SARIF to code scanning
+        if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: code-ranker-${{ env.H }}.sarif
 
       # Keep the snapshot as an artifact. On main this becomes the baseline that
       # future PRs download; on a PR it's the downloadable full HTML report.
@@ -59,6 +74,7 @@ jobs:
           path: |
             code-ranker-*.json
             code-ranker-*.html
+            code-ranker-*.sarif
           retention-days: 30
 
       - name: Fetch baseline from the base branch (best-effort)
@@ -77,18 +93,31 @@ jobs:
           BASE_JSON="$(ls base/code-ranker-*.json 2>/dev/null | head -n1)"
           echo "BASE_JSON=$BASE_JSON" >> "$GITHUB_ENV"
 
+      # `::error` workflow commands → inline annotations on the PR "Files changed".
+      # Same diff/review logic as the comment (only NEW violations once a baseline
+      # exists). `|| true`: check exits non-zero on a breach, but this is advisory.
+      - name: Annotate PR (inline, github format)
+        if: github.event_name == 'pull_request'
+        run: |
+          if [ -n "${BASE_JSON:-}" ]; then
+            cargo run -q -p code-ranker -- check "code-ranker-${H}.json" --baseline "$BASE_JSON" \
+              --output-format github || true
+          else
+            cargo run -q -p code-ranker -- check "code-ranker-${H}.json" --output-format github || true
+          fi
+
       - name: Build comment (diff if baseline, else review)
         if: github.event_name == 'pull_request'
         run: |
           RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           if [ -n "${BASE_JSON:-}" ]; then
             # DIFF: relative gate → verdict + only the NEW violations vs baseline.
-            code-ranker check "code-ranker-${H}.json" --baseline "$BASE_JSON" \
+            cargo run -q -p code-ranker -- check "code-ranker-${H}.json" --baseline "$BASE_JSON" \
               --output-format json > check.json || true
             MODE=diff
           else
             # REVIEW: no baseline yet → absolute current-state violations.
-            code-ranker check "code-ranker-${H}.json" --output-format json > check.json || true
+            cargo run -q -p code-ranker -- check "code-ranker-${H}.json" --output-format json > check.json || true
             MODE=review
           fi
           MODE="$MODE" RUN_URL="$RUN_URL" BASE_REF="${GITHUB_BASE_REF}" \

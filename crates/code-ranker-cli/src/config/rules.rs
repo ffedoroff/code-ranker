@@ -122,6 +122,20 @@ pub fn rule_doc(id: &str) -> Option<&'static RuleDoc> {
     }
 }
 
+/// The concern group for any rule id — a `cycle.*` kind or a
+/// `threshold.<scope>.<metric>` — falling back to `?` for an unknown id. The
+/// threshold vocabulary lives in the leaf [`super::metrics`] module.
+pub fn rule_group(id: &str) -> &'static str {
+    if id.starts_with("cycle.") {
+        return rule_doc(id).map(|d| d.group).unwrap_or("CYC");
+    }
+    let metric = id.rsplit('.').next().unwrap_or(id);
+    super::metrics::threshold_metric(metric)
+        .map(|m| m.group)
+        .or_else(|| rule_doc(id).map(|d| d.group))
+        .unwrap_or("?")
+}
+
 pub fn rule_tuning(id: &str) -> String {
     if let Some(kind) = id.strip_prefix("cycle.") {
         format!(
@@ -137,6 +151,15 @@ pub fn rule_tuning(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rule_group_resolves_threshold_and_cycle_ids() {
+        assert_eq!(rule_group("threshold.file.sloc"), "SIZ");
+        assert_eq!(rule_group("threshold.file.cyclomatic"), "CPX");
+        assert_eq!(rule_group("threshold.file.hk"), "CPL");
+        assert_eq!(rule_group("cycle.mutual"), "CYC");
+        assert_eq!(rule_group("threshold.file.bogus"), "?");
+    }
 
     #[test]
     fn apply_cycle_rules_strips_disabled_kind() {

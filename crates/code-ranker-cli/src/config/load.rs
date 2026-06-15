@@ -1,7 +1,7 @@
 //! Config loading: discover `code-ranker.toml` (or `Cargo.toml` metadata),
 //! apply inline `KEY=VALUE` and `--cycle-rule` / `--threshold` CLI overrides.
 
-use super::model::{Config, CycleRule, MetricThresholds, parse_number};
+use super::model::{Config, CycleRule, MetricThresholds, parse_number, quote_suffixed_thresholds};
 use anyhow::{Context, Result};
 use code_ranker_plugin_api::log;
 use std::path::Path;
@@ -46,7 +46,8 @@ fn load_file(workspace: &Path, explicit: Option<&Path>) -> Result<(Config, Optio
     if let Some(path) = explicit {
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let cfg = toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+        let cfg = toml::from_str(&quote_suffixed_thresholds(&text))
+            .with_context(|| format!("parsing {}", path.display()))?;
         return Ok((cfg, Some(path.display().to_string())));
     }
 
@@ -57,7 +58,8 @@ fn load_file(workspace: &Path, explicit: Option<&Path>) -> Result<(Config, Optio
         if p.exists() {
             let text =
                 std::fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?;
-            let cfg = toml::from_str(&text).with_context(|| format!("parsing {}", p.display()))?;
+            let cfg = toml::from_str(&quote_suffixed_thresholds(&text))
+                .with_context(|| format!("parsing {}", p.display()))?;
             let canonical = p.canonicalize().unwrap_or(p);
             return Ok((cfg, Some(canonical.display().to_string())));
         }
@@ -79,8 +81,8 @@ fn load_from_cargo_toml(dir: &Path) -> Result<Option<(Config, String)>> {
     }
     let text =
         std::fs::read_to_string(&cargo).with_context(|| format!("reading {}", cargo.display()))?;
-    let val: toml::Value =
-        toml::from_str(&text).with_context(|| format!("parsing {}", cargo.display()))?;
+    let val: toml::Value = toml::from_str(&quote_suffixed_thresholds(&text))
+        .with_context(|| format!("parsing {}", cargo.display()))?;
 
     let section = val
         .get("workspace")
@@ -202,17 +204,13 @@ fn set_threshold(cfg: &mut Config, scope: &str, metric: &str, val: f64) -> Resul
 }
 
 fn set_metric(bucket: &mut MetricThresholds, metric: &str, val: f64) -> Result<()> {
-    match metric {
-        "hk" => bucket.hk = Some(val),
-        "cyclomatic" => bucket.cyclomatic = Some(val),
-        "cognitive" => bucket.cognitive = Some(val),
-        "fan_in" => bucket.fan_in = Some(val),
-        "fan_out" => bucket.fan_out = Some(val),
-        "loc" => bucket.loc = Some(val),
-        other => anyhow::bail!(
-            "unknown metric {other:?}; expected hk|cyclomatic|cognitive|fan_in|fan_out|loc"
-        ),
+    if !super::metrics::is_threshold_metric(metric) {
+        anyhow::bail!(
+            "unknown threshold metric {metric:?}; expected a per-file metric such as \
+             sloc, loc, cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, bugs"
+        );
     }
+    bucket.set(metric.to_string(), val);
     Ok(())
 }
 
@@ -258,8 +256,8 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(0));
         assert_eq!(cfg.rules.cycles.mutual, CycleRule::Off);
-        assert_eq!(cfg.rules.thresholds.file.cognitive, Some(25.0));
-        assert_eq!(cfg.rules.thresholds.file.hk, Some(1000.0));
+        assert_eq!(cfg.rules.thresholds.file.get("cognitive"), Some(25.0));
+        assert_eq!(cfg.rules.thresholds.file.get("hk"), Some(1000.0));
     }
 
     #[test]
@@ -278,6 +276,7 @@ mod tests {
                 "output.html.enabled=true",
                 "rules.cycles.chain=7",
                 "rules.thresholds.file.loc=800",
+                "rules.thresholds.file.sloc=1200",
             ],
         )
         .unwrap();
@@ -289,7 +288,8 @@ mod tests {
         assert_eq!(cfg.output.json.enabled, Some(false));
         assert_eq!(cfg.output.html.enabled, Some(true));
         assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(7));
-        assert_eq!(cfg.rules.thresholds.file.loc, Some(800.0));
+        assert_eq!(cfg.rules.thresholds.file.get("loc"), Some(800.0));
+        assert_eq!(cfg.rules.thresholds.file.get("sloc"), Some(1200.0));
     }
 
     #[test]
@@ -320,8 +320,21 @@ mod tests {
     #[test]
     fn set_metric_each_then_unknown() {
         let mut b = MetricThresholds::default();
-        for m in ["hk", "cyclomatic", "cognitive", "fan_in", "fan_out", "loc"] {
+        // The full open vocabulary is accepted — not just the legacy six.
+        for m in [
+            "hk",
+            "cyclomatic",
+            "cognitive",
+            "fan_in",
+            "fan_out",
+            "loc",
+            "sloc",
+            "mi",
+            "bugs",
+            "volume",
+        ] {
             set_metric(&mut b, m, 1.0).unwrap();
+            assert_eq!(b.get(m), Some(1.0));
         }
         assert!(set_metric(&mut b, "bogus", 1.0).is_err());
     }
@@ -331,7 +344,7 @@ mod tests {
         let mut cfg = Config::default();
         assert!(set_threshold(&mut cfg, "function", "loc", 1.0).is_err());
         set_threshold(&mut cfg, "file", "hk", 5.0).unwrap();
-        assert_eq!(cfg.rules.thresholds.file.hk, Some(5.0));
+        assert_eq!(cfg.rules.thresholds.file.get("hk"), Some(5.0));
         assert!(set_cycle(&mut cfg, "weird", CycleRule::Off).is_err());
     }
 

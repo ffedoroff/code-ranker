@@ -3,7 +3,6 @@
 
 use super::ignore::is_external;
 use super::model::{MetricThresholds, RulesConfig};
-use super::rules::rule_doc;
 use code_ranker_graph::level_graph::LevelGraph;
 use code_ranker_plugin_api::{attrs::AttrValue, node::Node};
 use std::collections::{BTreeMap, HashMap};
@@ -102,42 +101,28 @@ fn check_node_metrics(
     t: &MetricThresholds,
     node: &Node,
 ) {
-    let loc_id = node.id.clone();
-    let check =
-        |vs: &mut Vec<Violation>, limit: Option<f64>, key: &str, label: &str, metric: &str| {
-            if let (Some(limit), Some(value)) = (limit, attr_num(node, key))
-                && value > limit
-            {
-                push_threshold(
-                    vs,
-                    graph,
-                    &format!("threshold.{scope}.{metric}"),
-                    loc_id.clone(),
-                    label,
-                    value,
-                    limit,
-                    0,
-                );
-            }
+    // Walk the canonical metric vocabulary in a stable order; for each one the
+    // user gave a limit, read its node attribute (the metric key doubles as the
+    // attribute key) and breach when it exceeds the limit. A new engine metric is
+    // thresholdable as soon as it is listed in `THRESHOLD_METRICS`.
+    for tm in super::metrics::THRESHOLD_METRICS {
+        let Some(limit) = t.get(tm.key) else {
+            continue;
         };
-    check(vs, t.hk, "hk", "Henry-Kafura hk", "hk");
-    check(
-        vs,
-        t.cyclomatic,
-        "cyclomatic",
-        "cyclomatic complexity",
-        "cyclomatic",
-    );
-    check(
-        vs,
-        t.cognitive,
-        "cognitive",
-        "cognitive complexity",
-        "cognitive",
-    );
-    check(vs, t.fan_in, "fan_in", "fan-in", "fan_in");
-    check(vs, t.fan_out, "fan_out", "fan-out", "fan_out");
-    check(vs, t.loc, "loc", "source loc", "loc");
+        if let Some(value) = attr_num(node, tm.key)
+            && value > limit
+        {
+            push_threshold(
+                vs,
+                graph,
+                &format!("threshold.{scope}.{}", tm.key),
+                node.id.clone(),
+                tm.label,
+                value,
+                limit,
+            );
+        }
+    }
 }
 
 /// Pick a concrete spot to break a cycle: the first edge (in the level's stable
@@ -190,7 +175,6 @@ fn cycle_rule_id(kind: &str) -> &'static str {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn push_threshold(
     vs: &mut Vec<Violation>,
     graph: &'static str,
@@ -199,12 +183,18 @@ fn push_threshold(
     metric: &str,
     value: f64,
     limit: f64,
-    decimals: usize,
 ) {
     let ratio = if limit > 0.0 {
         value / limit
     } else {
         f64::INFINITY
+    };
+    // Integer-valued metrics (loc, cyclomatic, …) print without decimals; metrics
+    // that can be fractional (mi, bugs, volume, …) keep two so the breach reads true.
+    let decimals = if value.fract() == 0.0 && limit.fract() == 0.0 {
+        0
+    } else {
+        2
     };
     let message = format!(
         "{metric} {value:.decimals$} exceeds limit {limit:.decimals$} ({ratio:.1}× over budget)"
@@ -222,7 +212,7 @@ fn push(
     message: String,
     weight: f64,
 ) {
-    let group = rule_doc(id).map(|d| d.group).unwrap_or("?");
+    let group = super::rules::rule_group(id);
     vs.push(Violation {
         rule: id.to_string(),
         group,
@@ -339,11 +329,28 @@ mod tests {
             vec![],
         );
         let mut rules = RulesConfig::default();
-        rules.thresholds.file.cognitive = Some(25.0);
+        rules.thresholds.file.set("cognitive".into(), 25.0);
         let vs = check_violations(&graphs, &rules);
         assert_eq!(vs.len(), 1);
         assert_eq!(vs[0].rule, "threshold.file.cognitive");
+        assert_eq!(vs[0].group, "CPX");
         assert!(vs[0].location.contains("hot.rs"));
+    }
+
+    #[test]
+    fn sloc_threshold_reads_sloc_attr() {
+        // `sloc` is a first-class threshold metric (the headline of the
+        // open-vocabulary change), distinct from the raw `loc` line count.
+        let graphs = level_with(
+            vec![file_node("big.rs", &[("sloc", AttrValue::Int(1200))])],
+            vec![],
+        );
+        let mut rules = RulesConfig::default();
+        rules.thresholds.file.set("sloc".into(), 800.0);
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 1);
+        assert_eq!(vs[0].rule, "threshold.file.sloc");
+        assert_eq!(vs[0].group, "SIZ");
     }
 
     #[test]
@@ -353,7 +360,7 @@ mod tests {
             vec![],
         );
         let mut rules = RulesConfig::default();
-        rules.thresholds.file.loc = Some(500.0);
+        rules.thresholds.file.set("loc".into(), 500.0);
         let vs = check_violations(&graphs, &rules);
         assert_eq!(vs.len(), 1);
         assert_eq!(vs[0].rule, "threshold.file.loc");

@@ -137,6 +137,16 @@ pub(crate) enum Command {
         #[arg(long = "output.html.path", value_name = "PATH")]
         output_html_path: Option<String>,
 
+        /// Emit a SARIF 2.1.0 report of rule violations (path from
+        /// --output.sarif.path / config / default).
+        #[arg(long = "output.sarif")]
+        output_sarif: bool,
+
+        /// SARIF destination: a path or name template, or `stdout`/`-`.
+        /// Placeholders: {project-dir}, {ts}, {git-hash}, {git-hash-N}. Selects SARIF.
+        #[arg(long = "output.sarif.path", value_name = "PATH")]
+        output_sarif_path: Option<String>,
+
         /// Emit the AI prompt for one principle (default to a `…-{preset}.md` file).
         #[arg(long = "output.prompt")]
         output_prompt: bool,

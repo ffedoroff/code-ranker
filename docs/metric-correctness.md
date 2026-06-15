@@ -54,6 +54,11 @@ So a complexity metric is added / fixed / tested in the per-language engines
 relevant plugin crate; coupling / cycle in `code-ranker-graph`. There is no
 single "metric tests" crate — tests follow the computation.
 
+For the machine-usable identifier catalog — every metric keyed by tier and source
+as a dotted id (`t1code.eta1`, `t2code.volume`, `t1graph.fan_in`, `t3.hk`,
+`t4.<metric>.mean`, `t5.ranker_score`), with an emitted/intermediate/planned
+status on each — see [`metric-tiers.md`](metric-tiers.md).
+
 ## Runbook A — add a new metric
 
 Two computation paths, depending on the home above.

@@ -339,7 +339,7 @@ fn group_digits(n: u64) -> String {
 /// Each result carries a `partialFingerprints` entry keyed on `(rule, location)` (no
 /// line number) so a consumer matches the same finding across runs even when code
 /// shifts — the same identity `check --baseline` uses internally.
-fn sarif_document(violations: &[config::Violation]) -> String {
+pub(crate) fn sarif_document(violations: &[config::Violation]) -> String {
     // Distinct fired rule ids, first-seen order, so each results.ruleId resolves.
     let mut seen: Vec<&config::Violation> = Vec::new();
     for v in violations {
