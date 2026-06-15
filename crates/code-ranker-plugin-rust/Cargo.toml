@@ -13,8 +13,12 @@ exclude = ["sample"]
 
 [dependencies]
 code-ranker-plugin-api = { workspace = true }
+code-ranker-graph = { workspace = true }
 anyhow = { workspace = true }
 cargo_metadata = { workspace = true }
 syn = { workspace = true }
 proc-macro2 = { workspace = true }
 which = { workspace = true }
+# Rust metric engine (rust_ts): parse with tree-sitter-rust, port of rca's rules.
+tree-sitter = { workspace = true }
+tree-sitter-rust = { workspace = true }

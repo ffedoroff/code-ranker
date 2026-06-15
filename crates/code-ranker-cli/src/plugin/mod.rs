@@ -6,7 +6,7 @@
 use anyhow::{Result, bail};
 use code_ranker_plugin_api::{
     graph::Graph,
-    level::{Level, Thresholds},
+    level::{AttributeSpec, Level, Thresholds},
     plugin::{LanguagePlugin, PluginInput, Preset},
 };
 use std::collections::BTreeMap;
@@ -43,12 +43,36 @@ pub fn analyze(name: &str, workspace: &Path, input: &PluginInput) -> Result<(Gra
     }
 }
 
+/// Let the matching plugin write its per-language complexity metrics onto the
+/// graph's file nodes, in place. Returns the number of nodes annotated. Metrics
+/// are a per-language concern owned by the plugin (no central by-extension
+/// dispatcher); the orchestrator only routes to the active plugin.
+pub fn annotate_metrics(name: &str, graph: &mut Graph) -> usize {
+    registry()
+        .iter()
+        .find(|p| p.name() == name)
+        .map(|p| p.metrics(graph))
+        .unwrap_or(0)
+}
+
 /// Tool/toolchain versions the matching plugin wants recorded in the snapshot.
 pub fn versions(name: &str, workspace: &Path, input: &PluginInput) -> Vec<(String, String)> {
     registry()
         .iter()
         .find(|p| p.name() == name)
         .map(|p| p.versions(workspace, input))
+        .unwrap_or_default()
+}
+
+/// Named external-path roots the matching plugin contributes for shortening node
+/// ids (e.g. Rust's `cargo` / `registry` / `rustup` / `rust-src`). Language
+/// knowledge lives in the plugin; the orchestrator only adds the generic
+/// `target` root on top.
+pub fn roots(name: &str, workspace: &Path) -> Vec<(String, String)> {
+    registry()
+        .iter()
+        .find(|p| p.name() == name)
+        .map(|p| p.roots(workspace))
         .unwrap_or_default()
 }
 
@@ -65,6 +89,20 @@ pub fn thresholds(name: &str) -> BTreeMap<String, Thresholds> {
 pub fn presets(name: &str, defaults: Vec<Preset>, input: &PluginInput) -> Vec<Preset> {
     match registry().iter().find(|p| p.name() == name) {
         Some(p) => p.presets(defaults, input),
+        None => defaults,
+    }
+}
+
+/// Let the matching plugin refine the language-neutral default metric specs
+/// (e.g. add Rust-specific `#[cfg(test)]` nuance to LOC descriptions). The
+/// neutral catalog comes from `code-ranker-graph`; the plugin overrides only
+/// what differs for its language.
+pub fn metric_specs(
+    name: &str,
+    defaults: BTreeMap<String, AttributeSpec>,
+) -> BTreeMap<String, AttributeSpec> {
+    match registry().iter().find(|p| p.name() == name) {
+        Some(p) => p.metric_specs(defaults),
         None => defaults,
     }
 }

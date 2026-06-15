@@ -12,6 +12,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+mod python_ts;
+
+#[cfg(test)]
+mod metrics_tests;
+
 /// The Python language plugin (registered by the CLI).
 pub struct PythonPlugin;
 
@@ -67,9 +72,33 @@ impl LanguagePlugin for PythonPlugin {
         analyze(workspace, input.ignore_tests)
     }
 
+    fn metrics(&self, graph: &mut Graph) -> usize {
+        annotate_metrics(graph)
+    }
+
     fn is_test_path(&self, rel_path: &str) -> bool {
         py_is_test_path(rel_path)
     }
+}
+
+/// Write Python complexity metrics onto every `file` node, parsing each file
+/// (by its absolute-path `id`) with our `tree-sitter-python` engine. Files that
+/// cannot be read or parsed are left untouched.
+fn annotate_metrics(graph: &mut Graph) -> usize {
+    let mut annotated = 0;
+    for node in &mut graph.nodes {
+        if node.kind != "file" {
+            continue;
+        }
+        let Ok(src) = std::fs::read(&node.id) else {
+            continue;
+        };
+        if let Some(m) = python_ts::compute(&src) {
+            code_ranker_graph::write_metrics(node, &m);
+            annotated += 1;
+        }
+    }
+    annotated
 }
 
 /// Python test conventions: pytest/unittest files (`test_*.py`, `*_test.py`,

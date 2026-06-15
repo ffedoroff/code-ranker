@@ -1,0 +1,28 @@
+[package]
+name = "code-ranker-ecmascript-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Code Ranker shared ECMAScript engine: tree-sitter import/module-graph walker, resolver and metric helper, grammar-agnostic (the grammar is injected by the JS/TS plugins)."
+
+[dependencies]
+code-ranker-plugin-api = { workspace = true }
+code-ranker-graph = { workspace = true }
+anyhow = { workspace = true }
+walkdir = { workspace = true }
+# Core tree-sitter only — the concrete grammar (javascript / typescript) is
+# passed in by the caller, so this crate stays language-neutral.
+tree-sitter = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# A concrete grammar to exercise the walker in tests (dev-only).
+tree-sitter-javascript = { workspace = true }
+# TS/TSX grammar to exercise the typescript metric arm in tests (dev-only).
+tree-sitter-typescript = { workspace = true }
+# Path-only (no version): cargo strips it from the published manifest.
+code-ranker-test-support = { path = "../code-ranker-test-support" }

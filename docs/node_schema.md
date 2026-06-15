@@ -90,8 +90,12 @@ so they are portable across machines:
 | `{rustup}` | rustup toolchain root |
 | `{rust-src}` | rustc sysroot `library/` (added only when present) |
 
-Roots that did not shorten any path are pruned, so a JS/TS/Python snapshot
-carries only `{target}` and a Rust snapshot `{target}` + `{registry}`.
+`{target}` is added by the orchestrator; the language/toolchain roots
+(`{cargo}` / `{registry}` / `{rustup}` / `{rust-src}`) are contributed by the
+active plugin via `LanguagePlugin::roots` — the Rust plugin returns the Cargo
+ones, and a Python/JS/TS plugin would return its own. Roots that did not shorten
+any path are pruned, so a JS/TS/Python snapshot carries only `{target}` and a
+Rust snapshot `{target}` + `{registry}`.
 
 ### `kind` — string, required
 
@@ -184,8 +188,9 @@ All metrics are flat keys on the node — there is no `complexity` wrapper objec
 Present on `file` nodes only (external libraries are never read). Each is omitted
 when it rounds to zero; the LOC keys are gated on `sloc > 0` and the Halstead
 keys on `volume > 0`. Complexity / Halstead / LOC / maintainability metrics come
-from the central `code-ranker-complexity` pass (rust-code-analysis by file
-extension); coupling and `cycle` are added by `code-ranker-graph`.
+from each plugin's `metrics()` step, which runs its in-tree `tree-sitter` engine
+for its language and writes them via `code_ranker_graph::write_metrics`; coupling
+and `cycle` are added by `code-ranker-graph`.
 
 ### Complexity — `cyclomatic`, `cognitive`, `exits`, `args`, `closures`
 

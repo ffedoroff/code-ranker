@@ -51,18 +51,15 @@ regression (or a re-introduction of the root-vs-sum read) changes nothing the te
 can see. Adding coverage means changing a sample's source so the value becomes
 non-trivial, then regenerating its golden (below).
 
-**Per-language metric scope.** `rust-code-analysis` does not compute every metric
-for every language, so "every metric" means *every metric the analyzer supports
-for that language* — and every metric is still guarded by **at least one** golden.
-Known gaps the fixtures cannot fill (the construct is present in each `complex.*`
-but the analyzer emits nothing):
+**Per-language metric scope.** The in-tree per-language metric engines (`rust_ts` /
+`python_ts` / `ecmascript_ts`, in their language crates) do not
+emit every metric for every language, so "every metric" means *every metric the
+engine emits for that language* — and every metric is still guarded by **at least
+one** golden. Known gaps the fixtures cannot fill (the construct is present in each
+`complex.*` but no value is emitted):
 
 | metric | not emitted for | why |
 |---|---|---|
-| `args` | Python | analyzer does not compute it for the language |
-| `closures` | Python | analyzer does not compute it for the language |
-| `exits` | JavaScript | analyzer does not compute it for the language |
-| `cloc` | JavaScript | analyzer does not count JS comment lines |
 | `tloc` | Python, JavaScript, TypeScript | only the Rust analysis strips `#[cfg(test)]` items |
 | `items`, `unsafe` | non-Rust | emitted only by the Rust plugin (not in the central catalog) |
 
@@ -77,6 +74,20 @@ others cover all minus the rows above). Verified by iterating each committed
 golden, not by spot-check.
 
 `cyclomatic` / `cognitive` are computed for all four languages.
+
+## One grammar version per language
+
+A plugin parses each file for structure and the metric engine measures the same
+file; both must use the **same** tree-sitter grammar, or one run could parse a
+file two different ways (the version-skew class of bug). The whole workspace
+therefore pins exactly **one** version of each grammar (`tree-sitter` core plus
+`tree-sitter-{rust,python,javascript,typescript}`), shared by the plugins and the
+in-tree metric engines. The `grammar_single_version` test
+(`crates/code-ranker-cli/tests/grammar_single_version.rs`) reads `Cargo.lock` and
+fails the build if any of those grammars resolves to more than one version — e.g.
+a stray `=x.y.z` pin, or a new dependency bundling its own copy. The metric
+engines resolve node kinds **by name**, so they stay correct across grammar
+bumps; that is why a single shared version is safe.
 
 ## How it works
 
@@ -182,7 +193,7 @@ item (`sup_parent` — a genuine but deprioritized cycle), and one where it does
 the full reasoning is in [what-is-cycle.md](../principles/rust/what-is-cycle.md).
 
 **Inline tests excluded from metrics** (`lib.rs`, `c.rs`, `derives.rs` carry
-`#[cfg(test)] mod tests`): the complexity pass strips test items first, so those
+`#[cfg(test)] mod tests`): the Rust metric step strips test items first, so those
 lines are excluded from `sloc` / `lloc` / `cloc` / `blank` (and HK) and counted
 as `tloc` instead — production metrics only. The test bodies reference items by
 their own `crate::<mod>::…` path, so they add no cross-file edges.

@@ -30,9 +30,13 @@ settled fact.
    cycles, code with high information-flow coupling, and large/complex modules
    *co-occur* with more defects and more change effort. The breadth and
    consistency of this finding matters more than any single number.
-2. **Cycles and coupling are the strongest foundation** for the product —
-   especially Henry-Kafura, whose original 1981 validation found the
-   `(fan_in × fan_out)` coupling term out-predicted raw module length.
+2. **Cycles and coupling *as a class* are the strongest foundation** for the
+   product. Note an important nuance (§2): the broad *idea* that information-flow
+   coupling tracks faults/effort is well supported, but the **specific
+   Henry-Kafura `length × (fan_in × fan_out)²` formula is *not* independently
+   validated** — independent tests criticized it (beaten by LOC; arbitrary
+   squaring; reads zero when fan-in or fan-out is zero). Treat HK as a cheap
+   ranking heuristic, not a validated law.
 3. **The size-confound is real and must be disclosed:** at the **file** level,
    cyclomatic complexity is largely redundant with lines of code. The
    independent signal lives in **cycles, coupling, and nesting-aware cognitive
@@ -52,6 +56,7 @@ The Acyclic Dependencies Principle is the highest-priority signal code-ranker
 surfaces. The evidence that cyclic code is worse is specific and quantified.
 
 ### Oyetoyan, Cruzes & Conradi (2013) — defect profile
+
 Components inside dependency cycles are markedly more defect-prone. At **package
 level**, the share of components that are defective (cyclic vs non-cyclic):
 ActiveMQ **45% vs 12%**, Camel **31% vs 11%**, openPDC **15% vs 1%**, Eclipse
@@ -70,6 +75,7 @@ in-cycle group."** Effect sizes (Hedges' g) range up to ~4.6; p-values mostly
   DOI: <https://doi.org/10.1016/j.jss.2013.07.039>
 
 ### Oyetoyan, Falleri, Dietrich & Jezek (2015) — change-proneness
+
 12 Java systems, 389 versions. The pure in-cycle effect was significant in only
 2/12 systems — **but** including a cycle's *direct neighbourhood*, 75% of systems
 showed significant change-proneness, and **"SCCs and their direct neighbours
@@ -84,6 +90,7 @@ strongly-connected components ranged from 10.3% to 80.7% of all classes
   pp. 241–250. DOI: <https://doi.org/10.1109/SANER.2015.7081834>
 
 ### Melton & Tempero (2007) — prevalence (context, not harm)
+
 78 Java applications: ~45% contained a cycle of ≥100 classes; ~10% a cycle of
 ≥1,000 classes. Establishes that large cycles are *common*; **does not** itself
 show harm.
@@ -92,6 +99,7 @@ show harm.
   DOI: <https://doi.org/10.1007/s10664-006-9033-1>
 
 ### Robert C. Martin — the principle (rationale, not statistics)
+
 The canonical statement of *why* cycles are bad: **"Allow no cycles in the
 component dependency graph."** Cycles cause the "morning-after syndrome" and
 force otherwise-independent components into a shared build / test / release
@@ -109,6 +117,7 @@ This is, almost verbatim, the Henry-Kafura information-flow metric — so the
 original validation of that metric is unusually direct evidence for the tool.
 
 ### Henry & Kafura (1981) — the original fan-in/fan-out paper
+
 Procedure complexity defined as `length × (fan_in × fan_out)²`, validated against
 the UNIX (V6) operating system cross-referenced with 80 changes:
 - complexity vs number of changes: **Spearman r = 0.94**;
@@ -127,7 +136,74 @@ the single best counter to "it's just size" for this exact metric.
   Information Flow." *IEEE TSE* SE-7(5):510–518, 1981.
   DOI: <https://doi.org/10.1109/TSE.1981.231113>
 
+### Independent research on the HK formula — a candid caveat
+
+The 1981 numbers above are the metric authors' **own** self-report on a single
+system. The honest state of the *independent* literature is uncomfortable: there
+is **essentially no independent study validating the exact
+`length × (fan_in × fan_out)²` formula**, and the studies that tested it most
+directly **criticized** it. Only the weaker underlying idea — that fan-in/fan-out
+coupling relates to faults and effort — gets qualified support, and usually via a
+*different* formula.
+
+- **Kitchenham, Pickard & Linkman (1990)** — the strongest direct independent
+  test, on a real communications system. From the abstract: informational
+  **fan-out** could identify change-/fault-prone and complex programs, **but code
+  metrics (lines of code and number of branches) were better**; **fan-in was not
+  related** to the quality characteristics. I.e. the HK-derived metric offered no
+  advantage over trivial size counts.
+  Citation: B. A. Kitchenham, L. M. Pickard, S. J. Linkman. "An evaluation of
+  some design metrics." *Software Engineering Journal* 5(1):50–58, 1990.
+  DOI: <https://doi.org/10.1049/sej.1990.0007>
+- **Shepperd & Ince (1994)** — subjected Halstead, McCabe, and Henry-Kafura to
+  in-depth critique; all "found wanting." For HK specifically: because the metric
+  is multiplicative, **any module with `fan_in = 0` OR `fan_out = 0` collapses to
+  complexity zero** regardless of size, and the squaring of `(fan_in × fan_out)`
+  is measurement-theoretically arbitrary. Shepperd's own refinement discards the
+  `length` factor — he did not accept the original formula. *(The verbatim
+  sentences inside the paper are [unverified] — paywalled; the zero-collapse flaw
+  is corroborated by S. H. Kan, *Metrics and Models in Software Quality
+  Engineering*.)*
+  Citation: M. Shepperd, D. C. Ince. "A critique of three metrics." *Journal of
+  Systems and Software* 26(3):197–210, 1994.
+  DOI: <https://doi.org/10.1016/0164-1212(94)90011-6> · also M. Shepperd, "Design
+  metrics: an empirical analysis." *Software Engineering Journal* 5(1):3–10, 1990.
+  DOI: <https://doi.org/10.1049/sej.1990.0002>
+- **Card & Agresti (1988) / Card & Glass (1990)** — independent NASA/SEL work
+  *does* support the broad idea, but with a **different model**: structural
+  complexity = `mean(fan_out²)` (**fan-out only, no fan-in, additive** with a
+  data-complexity term) — not HK's single multiplicative product. Card & Glass
+  report, for n = 8 projects, a correlation between system complexity and defect
+  rate of **r ≈ 0.83** (R² ≈ 0.69) *(figures secondary-sourced via Kan; small
+  sample)*. This validates fan-out-based design complexity, **not**
+  `(fan_in × fan_out)²`.
+  Citations: D. N. Card, W. W. Agresti. "Measuring software design complexity."
+  *Journal of Systems and Software* 8(3):185–197, 1988.
+  DOI: <https://doi.org/10.1016/0164-1212(88)90021-0> · D. N. Card, R. L. Glass.
+  *Measuring Software Design Quality.* Prentice Hall, 1990.
+- **Modern fault-prediction literature** — the HK information-flow metric is
+  effectively **absent**. The major systematic review, **Radjenović, Heričko,
+  Torkar & Radjenović (2013)** (106 studies), contains **zero** mentions of
+  Henry, Kafura, information flow, or fan-in/fan-out; the field is dominated by
+  CK object-oriented metrics, McCabe, and LOC.
+  Citation: D. Radjenović et al. "Software fault prediction metrics: A systematic
+  literature review." *Information and Software Technology* 55(8):1397–1418, 2013.
+  DOI: <https://doi.org/10.1016/j.infsof.2013.02.009>
+- **Not independent:** Kafura & Reddy (1987), *IEEE TSE* SE-13(3):335–343
+  (DOI: <https://doi.org/10.1109/TSE.1987.233164>) is co-authored by Kafura and is
+  a *qualitative* concurrence with expert judgment — not independent corroboration.
+
+**Net for HK:** the *direction* (high information-flow coupling ↔ more
+faults/effort) has decades of broad support; the **specific
+`length × (fan_in × fan_out)²` formula does not** — it is beaten by LOC/branch
+counts in the one strong independent test, its squaring is arbitrary, and it
+**reads zero whenever fan-in or fan-out is zero** (so it is silent on pure
+sources and sinks — a real limitation of the value code-ranker computes). Lean on
+cycles and on coupling *as a class* (CBO, propagation cost, DORA); treat HK as a
+useful, cheap ranking heuristic, not an independently validated law.
+
 ### Subramanyam & Krishnan (2003) — coupling survives a size control
+
 On a commercial e-commerce system (C++ and Java), the abstract states: **"even
 after controlling for the size of the software, these metrics [WMC, CBO] are
 significantly associated with defects."** This is the cleanest "not just size"
@@ -140,6 +216,7 @@ result for coupling.
   DOI: <https://doi.org/10.1109/TSE.2003.1191795>
 
 ### Basili, Briand & Melo (1996) — CK metrics predict faults
+
 Coupling (CBO) was a significant fault predictor (univariate p ≈ 0.0000); 5 of 6
 CK metrics useful; CK metrics outperformed traditional code metrics.
 - **Caveat:** 180 C++ classes built by **student teams**; small scale; **did not
@@ -150,6 +227,7 @@ CK metrics useful; CK metrics outperformed traditional code metrics.
   PDF: <http://www.cs.umd.edu/~basili/publications/journals/J62.pdf>
 
 ### Gyimóthy, Ferenc & Siket (2005) — CBO best on open source
+
 On Mozilla (7 versions, faults from Bugzilla): **"CBO seems to be the best in
 predicting the fault-proneness of classes,"** with LOC second-best.
 - **Caveat:** authors note "the precision of our models is not yet
@@ -160,6 +238,7 @@ predicting the fault-proneness of classes,"** with LOC second-best.
   TSE* 31(10):897–910, 2005. DOI: <https://doi.org/10.1109/TSE.2005.112>
 
 ### MacCormack, Rusnak & Baldwin (2006) — architecture-level coupling
+
 Defines **"propagation cost"** = average % of system files potentially affected
 by a change to a random file (via transitive dependency). **Mozilla 17.35% vs
 Linux 5.16%.** After Mozilla's modular redesign, propagation cost dropped **from
@@ -174,8 +253,9 @@ fewer source files."
   WP PDF: <https://www.hbs.edu/ris/Publication%20Files/05-016.pdf>
 
 ### Sturtevant (2013) — architectural complexity has business teeth
+
 Statistical study of a large commercial codebase (coupling via DSM "visibility"
-+ cyclomatic complexity): differences in architectural complexity **"could
+and cyclomatic complexity): differences in architectural complexity **"could
 account for 50% drops in productivity, three-fold increases in defect density,
 and order-of-magnitude increases in staff turnover."** Tightly-coupled "Core"
 files cost more defect-related activity than loosely-coupled "Peripheral" files.
@@ -190,6 +270,7 @@ files cost more defect-related activity than loosely-coupled "Peripheral" files.
   DOI: <https://doi.org/10.1016/j.jss.2016.06.007>
 
 ### Forsgren, Humble & Kim — *Accelerate* / DORA
+
 A **loosely coupled architecture** (teams can make large changes and deploy
 independently, without cross-team coordination) is among the strongest
 predictors of software-delivery performance. The DORA 2021 report found
@@ -203,6 +284,7 @@ architecture.
   reports. <https://dora.dev/capabilities/loosely-coupled-teams/>
 
 ### Zimmermann & Nagappan (2008) — dependency-network metrics (context)
+
 On Windows Server 2003, network-analysis measures on the dependency graph
 identified **60% of the binaries developers considered critical — twice as many**
 as complexity metrics alone, with recall ~10 points higher.
@@ -217,6 +299,7 @@ as complexity metrics alone, with recall ~10 points higher.
 ## 3. Complexity and size → defects (with the central caveat)
 
 ### Evidence that complexity predicts defects
+
 - **Basili, Briand & Melo (1996)** — see §2; complexity-family CK metrics
   outperformed traditional code metrics.
 - **Khoshgoftaar et al. (1996)** — discriminant analysis on static
@@ -237,6 +320,7 @@ as complexity metrics alone, with recall ~10 points higher.
   <https://www.st.cs.uni-saarland.de/publications/details/nagappan-icse-2006/>
 
 ### Metric definitions code-ranker relies on
+
 - **Cyclomatic complexity** — T. J. McCabe. "A Complexity Measure." *IEEE TSE*
   SE-2(4):308–320, 1976. DOI: <https://doi.org/10.1109/TSE.1976.233837>
   **Correction to common folklore:** the famous "the upper bound … is 10 which
@@ -305,6 +389,7 @@ code-ranker's own per-file numbers should be read.
   22(5):2585–2611, 2017. DOI: <https://doi.org/10.1007/s10664-017-9513-5>
 
 ### The counter to the counter — where complexity *does* add signal
+
 - **Landman et al. (2016)** — at **method / function** granularity (17.6M Java
   methods, 6.3M C functions), CC and LOC do **not** strongly correlate. The
   strong file-level correlation in Jay et al. is partly an **aggregation
@@ -327,6 +412,7 @@ added). The product should lean on those and be candid about the rest.
 ## 5. The business cost (for non-technical stakeholders)
 
 ### Tornhill & Borg (2022) — "Code Red" (the headline study)
+
 39 proprietary production codebases, 30,737 source files, 14 languages.
 Comparing low- vs high-quality code (by CodeScene's "Code Health" score):
 - **15× more defects** — avg Jira defects/file 3.70 (Alert) vs 0.25 (Healthy);
@@ -348,6 +434,7 @@ Comparing low- vs high-quality code (by CodeScene's "Code Health" score):
   <https://codescene.com/blog/measuring-the-business-impact-of-low-code-quality>
 
 ### Fault concentration / "hotspots"
+
 The idea that defects and effort concentrate in a small fraction of files is
 genuinely supported by independent academic research (Fenton & Ohlsson 2000;
 Ostrand/Weyuker/Bell) — though those studies tend to **reject a strict 80/20
@@ -358,6 +445,7 @@ law**. Tornhill popularized the *effort* framing in *Your Code as a Crime Scene*
 as illustrative.
 
 ### Martin Fowler — "Is High Quality Software Worth the Cost?" (2019)
+
 A reasoned essay (not data). Key claims, verbatim: users "cannot tell the
 difference between higher or lower internal quality"; "Cruft adds to the time it
 take[s] for me to understand how to make a change"; and the payoff is fast —
@@ -365,6 +453,7 @@ take[s] for me to understand how to make a change"; and the payoff is fast —
 weeks."** <https://martinfowler.com/articles/is-quality-worth-cost.html>
 
 ### Ward Cunningham — the original "technical debt" metaphor (1992)
+
 Verbatim: *"Shipping first time code is like going into debt. … Every minute
 spent on not-quite-right code counts as interest on that debt. Entire engineering
 organizations can be brought to a stand-still under the debt load of an
@@ -374,6 +463,7 @@ framing. Citation: W. Cunningham. "The WyCash Portfolio Management System."
 author's copy: <https://c2.com/doc/oopsla92.html>
 
 ### Industry surveys (directional, self-reported — caveat heavily)
+
 - **Stripe, "The Developer Coefficient" (2018):** developers report ~**13.5
   hrs/week** on technical debt and ~3.8 hrs on "bad code" specifically; "bad
   code" ≈ $85B/yr global opportunity cost. >1,000 developers + >1,000
@@ -387,6 +477,7 @@ author's copy: <https://c2.com/doc/oopsla92.html>
   caveats.
 
 ### The one to *not* lean on — "100× to fix later"
+
 The qualitative "later = costlier" idea is real (Boehm & Basili, "Software Defect
 Reduction Top 10 List," *IEEE Computer* 34(1), 2001 — but the authors themselves
 hedge it: "more like 5:1 than 100:1" for small systems). The **smooth
@@ -404,9 +495,12 @@ The evidence does not just justify the product — it *constrains* it, and
 code-ranker's design already reflects that:
 
 1. **Lead with cycles and coupling.** They are the best-supported signals and the
-   product's genuine differentiator. ADP is treated as the top-priority smell;
-   HK is the headline coupling metric — and it is, almost verbatim, the
-   metric Henry & Kafura validated in 1981.
+   product's genuine differentiator. ADP is treated as the top-priority smell.
+   HK is the headline coupling metric — but be precise about its standing (§2):
+   the *information-flow coupling idea* has broad support, while the exact
+   `length × (fan_in × fan_out)²` formula is **not** independently validated and
+   has documented flaws (it reads zero whenever fan-in or fan-out is zero). HK
+   earns its place as a fast, transparent ranking heuristic — not as a proven law.
 2. **Be candid about file-level complexity.** File-level `cyclomatic` ≈ `loc`
    (§4). The tool reports both, but the independent signal is in cognitive
    complexity, coupling, and cycles — not file cyclomatic "on its own."
@@ -433,7 +527,13 @@ code-ranker's design already reflects that:
 
 **Coupling / Henry-Kafura**
 - Henry & Kafura (1981), *IEEE TSE* SE-7(5). <https://doi.org/10.1109/TSE.1981.231113>
+- Kitchenham, Pickard & Linkman (1990), *Software Engineering Journal* 5(1). <https://doi.org/10.1049/sej.1990.0007>
+- Shepperd (1990), *Software Engineering Journal* 5(1). <https://doi.org/10.1049/sej.1990.0002>
 - Shepperd & Ince (1994), *JSS* 26(3). <https://doi.org/10.1016/0164-1212(94)90011-6>
+- Card & Agresti (1988), *JSS* 8(3). <https://doi.org/10.1016/0164-1212(88)90021-0>
+- Card & Glass (1990), *Measuring Software Design Quality*, Prentice Hall.
+- Kafura & Reddy (1987, not independent), *IEEE TSE* SE-13(3). <https://doi.org/10.1109/TSE.1987.233164>
+- Radjenović et al. (2013), *IST* 55(8). <https://doi.org/10.1016/j.infsof.2013.02.009>
 - Subramanyam & Krishnan (2003), *IEEE TSE* 29(4). <https://doi.org/10.1109/TSE.2003.1191795>
 - Basili, Briand & Melo (1996), *IEEE TSE* 22(10). <https://doi.org/10.1109/32.544352>
 - Gyimóthy, Ferenc & Siket (2005), *IEEE TSE* 31(10). <https://doi.org/10.1109/TSE.2005.112>

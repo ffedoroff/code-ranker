@@ -1,8 +1,11 @@
 # How metrics are counted (in Python)
 
-Python support is **beta**. The complexity metrics come from the same
-`rust-code-analysis` pass as Rust (a tree-sitter parse, not `syn`); this file is
-the Python-specific normative spec. For the shared conceptual definitions of each
+Python support is **beta**. The complexity metrics use the same in-tree
+`tree-sitter` engine approach as Rust (and the shared `code-ranker-graph` metric
+scaffolding) — here the in-tree `tree-sitter-python`
+engine (`python_ts`, in `code-ranker-plugin-python`, a port of `rust-code-analysis`'s rules), not `syn`, invoked
+by the Python plugin's `metrics()` step; this file is the Python-specific
+normative spec. For the shared conceptual definitions of each
 metric (what `cyclomatic` / `cognitive` / Halstead / `mi` mean) see
 [`../rust/metrics.md`](../rust/metrics.md); this file only states what differs
 for Python.
@@ -36,7 +39,7 @@ a test asserts it is documented here, so the two cannot drift.)
 
 ## Per-language metric scope
 
-`rust-code-analysis` does not compute every metric for Python. Within the central
+The `python_ts` engine does not emit every metric for Python. Within the central
 catalog, the Python analyzer emits:
 
 | metric | Python |

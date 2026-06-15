@@ -30,14 +30,15 @@ look-alike (comment / string / identifier / …) and assert no metric moves. The
 set may be a superset of the analyzer's exact increment triggers — guarding a
 non-trigger keyword is harmless, missing a real one is not:
 `if`, `else`, `match`, `while`, `for`, `loop`, `return`, `unsafe`, `&&`, `||`,
-`?`. (The FP matrix in `code-ranker-complexity` iterates this exact list, and a
+`?`. (The FP matrix in `code-ranker-plugin-rust`'s tests iterates this exact list, and a
 test asserts the list it uses is documented here — so the two cannot drift.)
 
 Per-function metrics (`cyclomatic`, `cognitive`, `exits`, `args`, `closures`) are
 **summed over the file's functions** and **omitted at their no-signal value**
 (`omit_at` — `1` for `cyclomatic`, `0` for the rest; see `node_schema.md`). The
-per-construct increment rules for these come from `rust-code-analysis` (our
-analyzer of record); the guarantees this spec adds on top are the three rules
+per-construct increment rules for these are ported from `rust-code-analysis` (the
+algorithm of record our in-tree engine replicates); the guarantees this spec adds
+on top are the three rules
 above plus summation and omission. Reconciling the analyzer's definitions against
 independent tools is the differential layer in `docs/metric-correctness.md`.
 
@@ -121,8 +122,9 @@ Two consequences worth remembering:
 `sloc` / `cloc` / `blank` / `tloc` map one-to-one onto physical lines. Every
 other metric is *derived* over the production remainder (lines 1–5 in our
 example) and belongs to the whole unit, not to a single line. They come from
-two sources: **`rust-code-analysis`** (complexity, Halstead, MI) and the
-**dependency graph** (`fan_in` / `fan_out` / `hk`).
+two sources: the **in-tree `rust_ts` engine** (complexity, Halstead, MI —
+ported from `rust-code-analysis`'s rules, in `code-ranker-plugin-rust`) and the **dependency graph** (`fan_in` /
+`fan_out` / `hk`).
 
 ### `lloc` — logical lines of code
 
@@ -153,8 +155,8 @@ A `cyclomatic` of N means you need at least N test cases to cover every path.
 The example above is one function; the **file-level** `cyclomatic` sums the
 per-function values **plus the file unit's own base path of 1**. McCabe's own
 multi-subroutine form is `V(G) = E − N + 2P` with `P` = number of functions,
-which equals `Σ` over functions of `(E − N + 2)`; `rust-code-analysis` (our
-analyzer of record) models the file itself as one more unit space with a base
+which equals `Σ` over functions of `(E − N + 2)`; `rust-code-analysis` (the
+algorithm our engine ports) models the file itself as one more unit space with a base
 path of `1` and reports `cyclomatic_sum()` = that file unit `+ Σ over functions`.
 We emit the analyzer's value verbatim — it is the analyzer's definition of the
 file's complexity, and it is the same value fed into `mi` (below), so the two stay
@@ -193,7 +195,7 @@ not read from the file root, which is why a function-less file omits them):
   value-returning exit** (a function that declares a return type `-> T` exits at
   least once with a value). "Number of exit points" is not a McCabe/Halstead
   metric and has no single canonical definition; this is the rule
-  `rust-code-analysis` (our analyzer of record) applies, and it is the source of
+  `rust-code-analysis` defines and our engine ports, and it is the source of
   truth here. Consequence: a one-line `fn f() -> i32 { return 1; }` reports
   `exits = 2` (the explicit `return` plus the value-returning exit), and a
   `-> ()` function with no `return` reports `0`. The `-> T`-gated normal exit is a
@@ -372,7 +374,8 @@ simply has no `tloc` average rather than a misleading `0`.
 ## Where these formulas come from
 
 Each metric traces back to a published source; Code Ranker just implements them
-(via `rust-code-analysis`) over the production remainder.
+(in its in-tree `tree-sitter` engines, porting `rust-code-analysis`'s rules) over
+the production remainder.
 
 - **Halstead** (`vocabulary`, `length`, `volume`, `effort`, `time`, `bugs`) —
   Maurice H. Halstead, *Elements of Software Science*, Elsevier, 1977. This is

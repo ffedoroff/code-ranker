@@ -417,9 +417,11 @@ workspaces. The plugin MUST:
 - NOT emit a function-level call graph (no `Calls` edges, no
   rust-analyzer / `ra_ap_*` dependency); analysis runs in seconds
 - Emit **structure only** (file + external nodes, `uses`/`contains`/`reexports`/`super`
-  edges). The downstream pipeline then enriches every file node centrally
-  (language-agnostically): per-file complexity metrics (cyclomatic, cognitive,
-  Halstead, maintainability index, LOC variants) via `code-ranker-complexity`;
+  edges). The downstream pipeline then enriches every file node: per-file
+  complexity metrics (cyclomatic, cognitive, Halstead, maintainability index, LOC
+  variants) are computed by each plugin's `metrics()` step with its in-tree
+  language engine and written through the neutral scaffolding in
+  `code-ranker-graph` (`FileMetrics` / `write_metrics`);
   dependency cycles (Kosaraju SCC over flow edges) annotated as a `cycle` node
   attribute (`mutual` | `chain`) with `CycleGroup` entries, with
   any SCC that spans more than one crate dropped (Rust forbids circular crate
@@ -516,8 +518,9 @@ at the package file), and imports that do not resolve to a project file
 become `External` library nodes (`ext:<top-level-package>`, e.g.
 `numpy`) reached by a `uses` edge flagged `external: true`. Per-file
 complexity metrics (cyclomatic, cognitive, Halstead, MI, LOC, functions,
-nexits, nargs) are annotated on each `File` node via the shared
-`code-ranker-plugin` complexity engine using `rust-code-analysis`'s `PythonParser`.
+nexits, nargs) are annotated on each `File` node by the plugin's `metrics()`
+step, which runs its in-tree `tree-sitter-python` engine (`python_ts`) and writes
+the result via `code_ranker_graph::write_metrics`.
 
 **JavaScript / TypeScript plugin** (`--plugin javascript`) is shipped as a
 built-in in `code-ranker-cli`; one plugin handles `.js`, `.jsx`, `.ts`, and
@@ -673,12 +676,15 @@ dictionaries. When `input.ignore_tests` is set (`[ignore] tests`, **on by
 default**), the plugin skips its own test files during the walk — what counts as
 a test is language-specific (Rust `#[cfg(test)]` modules, Python
 `test_*.py`/`tests/`, JS/TS `*.test.*`/`__tests__`), so the detection
-(`is_test_path`) lives in the plugin, not the CLI. The orchestrator computes all
-metrics centrally
-(`code-ranker-complexity` by file extension; cycles / Henry-Kafura / stats in
-`code-ranker-graph` over the level's flow edges), writing them into node
-attributes by id, and assembles the snapshot. Adding a language means adding a
-built-in plugin crate and one line in `plugin::registry()`.
+(`is_test_path`) lives in the plugin, not the CLI. Per-language complexity
+metrics are written by the plugin's `metrics()` step (running the matching
+in-tree language engine and writing via `code_ranker_graph::write_metrics` — no
+central by-extension dispatcher), while the
+language-agnostic derived data (cycles / Henry-Kafura / stats in
+`code-ranker-graph` over the level's flow edges) is computed centrally; all are
+written into node attributes by id, and the orchestrator assembles the snapshot.
+Adding a language means adding a built-in plugin crate (implementing `analyze` +
+`metrics`) and one line in `plugin::registry()`.
 
 ### 7.3 Graph JSON Schema
 
@@ -917,8 +923,7 @@ as a self-contained HTML report.
 |------------|-------------|----------|
 | `cargo_metadata` crate | Cargo workspace enumeration (local vs. external crates) | p1 |
 | `syn` crate | Rust source parsing for the module tree and `use` statements | p1 |
-| `rust-code-analysis` crate | Tree-sitter-based multi-language metrics library (cyclomatic, cognitive, Halstead, MI, LOC); the central `code-ranker-complexity` pass; via fork `ffedoroff/rust-code-analysis` | p1 |
-| `tree-sitter` (+ `-python` / `-javascript` / `-typescript`) | Source parsing in the Python / JavaScript / TypeScript plugins | p3 |
+| `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript`) | Source parsing for the in-tree per-language metric engines (`rust_ts` / `python_ts` / `ecmascript_ts`: cyclomatic, cognitive, Halstead, MI, LOC — faithful ports of `rust-code-analysis`'s rules) and for the Python / JavaScript / TypeScript plugins | p1 |
 | Python 3.9+ | Runtime for the built-in Python language plugin | p3 |
 
 ## 11. Assumptions

@@ -77,9 +77,11 @@ pub(crate) fn analyze_directory(
         detail: format!("{} nodes from {} files", graph.nodes.len(), file_count),
     });
 
-    // 2. Central complexity pass (reads files by their absolute id).
+    // 2. Complexity pass: the active plugin annotates its own file nodes with
+    //    per-language metrics (behind the `LanguagePlugin` trait — no central
+    //    by-extension dispatcher). Reads files by their absolute id.
     let t = logger::Timer::start("complexity");
-    let annotated = code_ranker_complexity::annotate(&mut graph);
+    let annotated = plugin::annotate_metrics(&plugin_name, &mut graph);
     timings.push(code_ranker_graph::snapshot::StageTime {
         stage: "complexity".into(),
         ms: t.finish_quiet(),
@@ -87,9 +89,13 @@ pub(crate) fn analyze_directory(
     });
 
     // 3. Canonicalize structure, then relativize ids against detected roots.
+    //    The active plugin contributes its own language/toolchain roots (e.g. the
+    //    Rust plugin's cargo/registry/rustup/rust-src); the orchestrator only owns
+    //    the generic `target` root — no language leaks into this central step.
     let t = logger::Timer::start("projection");
     code_ranker_graph::finalize::finalize_graph(&mut graph);
-    let mut roots = detect_roots();
+    let mut roots: BTreeMap<String, String> =
+        plugin::roots(&plugin_name, &target).into_iter().collect();
     roots.insert("target".to_string(), target.display().to_string());
     code_ranker_graph::relativize::relativize_graph(&mut graph, &target, &roots);
 
@@ -110,7 +116,7 @@ pub(crate) fn analyze_directory(
     let edge_count = graph.edges.len();
     let node_count = graph.nodes.len();
     let thresholds = plugin::thresholds(&plugin_name);
-    let level = assemble_level(level_spec, graph, cycles, stats, thresholds);
+    let level = assemble_level(level_spec, graph, cycles, stats, thresholds, &plugin_name);
     prune_unused_roots(&level, &mut roots);
     timings.push(code_ranker_graph::snapshot::StageTime {
         stage: "projection".into(),
@@ -192,6 +198,7 @@ fn assemble_level(
     cycles: Vec<code_ranker_graph::level_graph::CycleGroup>,
     stats: BTreeMap<String, code_ranker_plugin_api::attrs::AttrValue>,
     thresholds: BTreeMap<String, code_ranker_plugin_api::level::Thresholds>,
+    plugin_name: &str,
 ) -> LevelGraph {
     use std::collections::BTreeSet;
 
@@ -208,7 +215,10 @@ fn assemble_level(
 
     // Master node-attribute dictionary = structural (plugin) + computed.
     let mut node_attributes = spec.node_attributes;
-    let (metric_specs, metric_groups) = code_ranker_complexity::metric_specs();
+    // Language-neutral default metric specs, refined by the active plugin (e.g.
+    // Rust adds the `#[cfg(test)]` nuance to the LOC descriptions).
+    let (default_metric_specs, metric_groups) = code_ranker_graph::metric_specs();
+    let metric_specs = plugin::metric_specs(plugin_name, default_metric_specs);
     let (coupling_specs, coupling_groups) = code_ranker_graph::coupling_specs();
     node_attributes.extend(metric_specs);
     node_attributes.extend(coupling_specs);
@@ -416,47 +426,6 @@ fn resolve_plugin(arg: Option<&str>, cfg: Option<&str>, workspace: &Path) -> Res
         return Ok(p.to_string());
     }
     plugin::detect(workspace, &PluginInput::default())
-}
-
-fn detect_roots() -> BTreeMap<String, String> {
-    let mut roots = BTreeMap::new();
-    let home = std::env::var("HOME").unwrap_or_default();
-
-    let cargo = std::env::var("CARGO_HOME").unwrap_or_else(|_| format!("{home}/.cargo"));
-    let rustup = std::env::var("RUSTUP_HOME").unwrap_or_else(|_| format!("{home}/.rustup"));
-
-    if !cargo.is_empty() {
-        // Auto-detect crates.io registry hash dir (e.g. index.crates.io-<hash>).
-        let registry_src = format!("{cargo}/registry/src");
-        if let Ok(entries) = std::fs::read_dir(&registry_src) {
-            for entry in entries.flatten() {
-                let name = entry.file_name().to_string_lossy().to_string();
-                if name.starts_with("index.crates.io") {
-                    roots.insert("registry".to_string(), format!("{registry_src}/{name}"));
-                    break;
-                }
-            }
-        }
-        roots.insert("cargo".to_string(), cargo);
-    }
-    if !rustup.is_empty() {
-        // Add rust-src root: sysroot/lib/rustlib/src/rust/library
-        // This shortens stdlib paths from {rustup}/toolchains/.../library/... to {rust-src}/...
-        if let Ok(out) = logger::timed("rustc --print sysroot", || {
-            std::process::Command::new("rustc")
-                .args(["--print", "sysroot"])
-                .output()
-        }) && out.status.success()
-        {
-            let sysroot = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let rust_lib = format!("{sysroot}/lib/rustlib/src/rust/library");
-            if std::path::Path::new(&rust_lib).exists() {
-                roots.insert("rust-src".to_string(), rust_lib);
-            }
-        }
-        roots.insert("rustup".to_string(), rustup);
-    }
-    roots
 }
 
 /// Remove named roots whose `{name}` token does not appear in any node id or

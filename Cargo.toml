@@ -14,7 +14,7 @@ categories = ["development-tools", "command-line-utilities"]
 [workspace.dependencies]
 code-ranker-graph = { path = "crates/code-ranker-graph", version = "1.1.0" }
 code-ranker-plugin-api = { path = "crates/code-ranker-plugin-api", version = "1.1.0" }
-code-ranker-complexity = { path = "crates/code-ranker-complexity", version = "1.1.0" }
+code-ranker-ecmascript-core = { path = "crates/code-ranker-ecmascript-core", version = "1.1.0" }
 code-ranker-plugin-rust = { path = "crates/code-ranker-plugin-rust", version = "1.1.0" }
 code-ranker-plugin-python = { path = "crates/code-ranker-plugin-python", version = "1.1.0" }
 code-ranker-plugin-javascript = { path = "crates/code-ranker-plugin-javascript", version = "1.1.0" }
@@ -35,11 +35,14 @@ tempfile = "3"
 thiserror = "1"
 which = "8"
 
-rust-code-analysis = { package = "rust-code-analysis-code-split", version = "0.0.26-cs.0" }
+# One version of each tree-sitter grammar across the whole workspace (plugins +
+# metric engines), each at its latest. Enforced by the `grammar_single_version`
+# test. Engines resolve node kinds by name, so they are grammar-version-robust.
 tree-sitter = "0.26.9"
 tree-sitter-python = "0.25.0"
 tree-sitter-javascript = "0.25.0"
 tree-sitter-typescript = "0.23.2"
+tree-sitter-rust = "0.24.2"
 walkdir = "2"
 
 # The profile that 'dist' will build with

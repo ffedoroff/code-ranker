@@ -20,9 +20,14 @@ third-party libraries shown as depth-1 external nodes), attaches per-file comple
 into an `improved` / `degraded` / `neutral` verdict — all offline, behind a single
 plugin protocol.
 
-> **Note on rust-code-analysis:** `code-ranker` is not a rival to it — it is *built on
-> it*. The `code-ranker-complexity` crate uses the `rust-code-analysis` fork
-> (`rust-code-analysis-code-split`) for cyclomatic / cognitive / Halstead / MI / LOC.
+> **Note on rust-code-analysis:** `code-ranker` is not a rival to it — it is *derived
+> from it*. The per-language metric engines (`rust_ts` / `python_ts` /
+> `ecmascript_ts`, in their language crates) compute cyclomatic / cognitive /
+> Halstead / MI / LOC with their own in-tree `tree-sitter` engines that faithfully port
+> `rust-code-analysis`'s node-kind rules (the neutral scaffolding —
+> `FileMetrics` / `write_metrics` / `metric_specs` — lives in `code-ranker-graph`). `rust-code-analysis` is the **algorithm of
+> record** those ports follow; it is not a dependency of `code-ranker` (the engines
+> are guarded by golden + anchor + metamorphic tests instead).
 > code-ranker's contribution is the graph, coupling, cycles, diff, report, and CI
 > layers wrapped around those metrics and unified across languages.
 

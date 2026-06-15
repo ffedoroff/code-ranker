@@ -56,7 +56,7 @@ pub fn annotate_hk(graph: &mut Graph, flow_kinds: &HashSet<String>) {
         let fo = fan_out.get(&node.id).map(|s| s.len()).unwrap_or(0);
         let foe = fan_out_ext.get(&node.id).map(|s| s.len()).unwrap_or(0);
         // HK uses the source line count (`sloc`); fall back to the structural
-        // `loc` if rust-code-analysis produced no `sloc` for this file.
+        // `loc` if the complexity pass produced no `sloc` for this file.
         let loc = attr_f64(node, "sloc")
             .or_else(|| attr_f64(node, "loc"))
             .unwrap_or(0.0);

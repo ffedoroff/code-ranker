@@ -2,8 +2,8 @@
 //!
 //! Not published (`publish = false`); pulled in only as a path dev-dependency,
 //! so it is stripped from the published plugin manifests. Keeps the per-language
-//! plugin tests free of the duplicated `write_file` / graph-assertion boilerplate
-//! that each one previously redeclared.
+//! plugin tests free of duplicated `write_file` / graph-assertion boilerplate
+//! that each one would otherwise redeclare.
 
 use code_ranker_plugin_api::graph::Graph;
 use std::path::Path;

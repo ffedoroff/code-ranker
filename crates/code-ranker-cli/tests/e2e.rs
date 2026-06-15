@@ -533,10 +533,8 @@ const LANGS: &[&str] = &["rust", "python", "javascript", "typescript"];
 /// (the analyzer started emitting the metric) is itself a test failure, so this
 /// list cannot silently drift.
 const COVERAGE_EXCEPTIONS: &[(&str, &[&str])] = &[
-    ("args", &["python"]),
-    ("closures", &["python"]),
-    ("exits", &["javascript"]),
-    ("cloc", &["javascript"]),
+    // `tloc` is genuinely 0 for non-Rust: only the Rust pass strips `#[cfg(test)]`
+    // items, so there are no test lines to count elsewhere.
     ("tloc", &["python", "javascript", "typescript"]),
 ];
 
@@ -573,7 +571,7 @@ fn metric_present(golden: &Value, metric: &str) -> bool {
 /// cannot) a documented `COVERAGE_EXCEPTIONS` entry.
 #[test]
 fn every_central_metric_is_exercised_per_language() {
-    let (complexity, _) = code_ranker_complexity::metric_specs();
+    let (complexity, _) = code_ranker_graph::metric_specs();
     let (coupling, _) = code_ranker_graph::coupling_specs();
     // `cycle` is a string classification ("mutual"/"chain"), not a numeric metric;
     // its per-kind coverage is guarded by the verbatim golden match, so exclude it

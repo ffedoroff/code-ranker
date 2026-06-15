@@ -1,8 +1,11 @@
 # How metrics are counted (in TypeScript)
 
-TypeScript support is **beta**. The complexity metrics come from the same
-`rust-code-analysis` pass as Rust (a tree-sitter parse, not `syn`); this file is
-the TypeScript-specific normative spec. For the shared conceptual definitions of
+TypeScript support is **beta**. The complexity metrics use the same in-tree
+`tree-sitter` engine approach as Rust (and the shared `code-ranker-graph` metric
+scaffolding) — here the in-tree `tree-sitter` engine
+(`ecmascript_ts`, in `code-ranker-ecmascript-core`, shared with JavaScript/TSX, a port of `rust-code-analysis`'s
+rules), not `syn`, invoked by the TypeScript plugin's `metrics()` step; this file
+is the TypeScript-specific normative spec. For the shared conceptual definitions of
 each metric (what `cyclomatic` / `cognitive` / Halstead / `mi` mean) see
 [`../rust/metrics.md`](../rust/metrics.md); this file only states what differs
 for TypeScript.

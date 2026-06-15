@@ -1,10 +1,6 @@
 use code_ranker_plugin_api::log;
 use std::time::Instant;
 
-/// Re-export the shared timed sub-command helper so call sites in this crate
-/// (git / cargo / rustc shell-outs) log through the one common formatter.
-pub use code_ranker_plugin_api::log::timed;
-
 pub fn info(msg: &str) {
     log::line(msg);
 }

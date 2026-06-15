@@ -138,6 +138,7 @@ Built-in plugins: `rust` (cargo + syn), `python`, `javascript` (also handles Typ
 - [AI agent skill](docs/ai-skill.md) — a short playbook to attach to an AI agent's context (the ADP/HK fix loop)
 - [PRD](docs/PRD.md) — product requirements
 - [DESIGN](docs/DESIGN.md) — technical design
+- [Why structure matters](docs/why-structure-matters.md) — the empirical evidence (studies, books, statistics) behind the signals code-ranker measures
 - [Principles corpus](principles/) — Rust / Python / TypeScript principle catalogues used by the prompt generator
 
 ## Try it now

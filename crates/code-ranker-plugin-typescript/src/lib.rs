@@ -1,16 +1,17 @@
 //! TypeScript language plugin for Code Ranker.
 //!
 //! Handles `.ts` and `.tsx` files via `tree-sitter-typescript`, reusing the
-//! shared ECMAScript walker/resolver from `code-ranker-plugin-javascript`.
+//! shared ECMAScript walker/resolver from `code-ranker-ecmascript-core`. It
+//! depends on that shared core as a peer — never on the JavaScript plugin.
 
 use anyhow::Result;
+use code_ranker_ecmascript_core::{
+    analyze_ecmascript, annotate_ecmascript_metrics, ecmascript_is_test_path, ecmascript_level,
+};
 use code_ranker_plugin_api::{
     graph::Graph,
     level::Level,
-    plugin::{LanguagePlugin, PluginInput},
-};
-use code_ranker_plugin_javascript::{
-    analyze_ecmascript, detect_with_marker, ecmascript_is_test_path, ecmascript_level,
+    plugin::{LanguagePlugin, PluginInput, detect_with_marker},
 };
 use std::path::Path;
 
@@ -45,6 +46,18 @@ impl LanguagePlugin for TypescriptPlugin {
             &["ts", "tsx", "mts", "cts", "js", "jsx"],
             input.ignore_tests,
         )
+    }
+
+    fn metrics(&self, graph: &mut Graph) -> usize {
+        // `else_if_via_else_clause` is true for TypeScript proper, false for TSX
+        // (the only per-dialect difference in the cognitive `else-if` rule).
+        annotate_ecmascript_metrics(graph, |ext| match ext {
+            "ts" | "mts" | "cts" => {
+                Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), true))
+            }
+            "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), false)),
+            _ => None,
+        })
     }
 
     fn is_test_path(&self, rel_path: &str) -> bool {

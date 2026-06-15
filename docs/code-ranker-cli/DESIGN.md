@@ -54,7 +54,8 @@ auto-detect, all under `auto`); invokes the selected built-in plugin
 (`rust` / `python` / `javascript` / `typescript`) via `plugin::analyze`, getting
 a structural `api::Graph` + the plugin's `Level`s. It then runs the orchestrator
 pipeline (see [§3.6 in the main DESIGN](../DESIGN.md#36-interactions--sequences)):
-`code-ranker-complexity::annotate` (central metrics, while
+the plugin's `metrics()` step (per-language complexity metrics, computed by the
+plugin's in-tree engine and written via `code_ranker_graph::write_metrics`, while
 ids are still absolute paths), `finalize_graph`, `relativize_graph` against the
 detected roots, `config::apply_ignore` (language-agnostic path globs and
 `dev_only_crates` via `cargo metadata`; **test-file skipping is the plugin's
@@ -63,8 +64,8 @@ tests during the walk, since what counts as a test is language-specific), then
 `annotate_cycles` +
 `config::apply_cycle_rules`, `annotate_hk` and `compute_stats` over the level's
 flow edges. Finally it assembles the `LevelGraph` — merging the plugin's
-structural attribute specs with `code-ranker-complexity::metric_specs` and
-`code-ranker-graph::coupling_specs`, then **pruning** the node/edge attribute
+structural attribute specs with `code_ranker_graph::metric_specs` and
+`code_ranker_graph::coupling_specs`, then **pruning** the node/edge attribute
 dictionaries, edge kinds and groups to what is actually present — and wraps it in
 the snapshot's `graphs` map under `"files"`.
 
