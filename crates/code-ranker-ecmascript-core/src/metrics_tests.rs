@@ -144,3 +144,15 @@ fn typescript_trigger_set_documented_in_spec() {
         );
     }
 }
+
+#[test]
+fn js_generator_function_counts_as_closure() {
+    // A generator (`function* …`) is classified as a closure by the analyzer.
+    let js: tree_sitter::Language = tree_sitter_javascript::LANGUAGE.into();
+    let src = "export function* gen() { yield 1; yield 2; }\n";
+    let closures = metric_of(src, &js, false, "closures").expect("closures present");
+    assert!(
+        closures >= 1.0,
+        "a generator function must count as a closure, got {closures}"
+    );
+}

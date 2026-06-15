@@ -149,3 +149,69 @@ pub trait LanguagePlugin {
         BTreeMap::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graph::Graph;
+
+    /// A minimal plugin that implements only the required methods, so the trait's
+    /// default hooks (`is_test_path` / `versions` / `roots` / `presets` /
+    /// `metric_specs` / `thresholds` / `metrics`) are exercised as-is.
+    struct Dummy;
+    impl LanguagePlugin for Dummy {
+        fn name(&self) -> &str {
+            "dummy"
+        }
+        fn detect(&self, _w: &Path, _i: &PluginInput) -> bool {
+            false
+        }
+        fn levels(&self) -> Vec<crate::level::Level> {
+            Vec::new()
+        }
+        fn analyze(&self, _w: &Path, _l: &str, _i: &PluginInput) -> Result<Graph> {
+            Ok(Graph {
+                nodes: Vec::new(),
+                edges: Vec::new(),
+            })
+        }
+    }
+
+    #[test]
+    fn trait_default_hooks_are_noops() {
+        let p = Dummy;
+        let ws = Path::new("/tmp");
+        let input = PluginInput::default();
+
+        // Exercise the required methods too, so the dummy carries no dead code.
+        assert_eq!(p.name(), "dummy");
+        assert!(!p.detect(ws, &input));
+        assert!(p.levels().is_empty());
+        let g = p.analyze(ws, "files", &input).expect("dummy analyze ok");
+        assert!(g.nodes.is_empty() && g.edges.is_empty());
+
+        assert!(!p.is_test_path("anything"), "default: nothing is a test");
+        assert!(p.versions(ws, &input).is_empty(), "default: no versions");
+        assert!(p.roots(ws).is_empty(), "default: no roots");
+        assert!(p.thresholds().is_empty(), "default: no thresholds");
+
+        // presets / metric_specs default to pass-through (return input unchanged).
+        assert!(p.presets(Vec::new(), &input).is_empty());
+        let specs: BTreeMap<String, AttributeSpec> = BTreeMap::new();
+        assert!(p.metric_specs(specs).is_empty());
+
+        // metrics default: annotates nothing.
+        let mut g = Graph {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        };
+        assert_eq!(p.metrics(&mut g), 0);
+    }
+
+    #[test]
+    fn detect_with_marker_checks_file_presence() {
+        let dir = std::env::temp_dir();
+        // a marker that (almost certainly) does not exist
+        assert!(!detect_with_marker(&dir, "code-ranker-no-such-marker.xyz"));
+    }
+}

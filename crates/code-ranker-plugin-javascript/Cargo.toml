@@ -16,3 +16,8 @@ code-ranker-plugin-api = { workspace = true }
 code-ranker-ecmascript-core = { workspace = true }
 anyhow = { workspace = true }
 tree-sitter-javascript = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+# Path-only (no version): cargo strips it from the published manifest.
+code-ranker-test-support = { path = "../code-ranker-test-support" }
