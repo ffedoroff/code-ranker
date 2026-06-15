@@ -271,6 +271,8 @@ dependencies = [
  "anyhow",
  "code-ranker-ecmascript-core",
  "code-ranker-plugin-api",
+ "code-ranker-test-support",
+ "tempfile",
  "tree-sitter-javascript",
 ]
 

@@ -1405,4 +1405,30 @@ mod tests {
             "a declaration-only file must not emit cognitive"
         );
     }
+
+    #[test]
+    fn metric_specs_override_adds_rust_cfg_test_note() {
+        // The neutral default descriptions carry no language nuance; the Rust
+        // plugin re-adds the `#[cfg(test)]` LOC-exclusion note for sloc/lloc/
+        // cloc/blank — so it appears only in Rust snapshots, never in py/js/ts.
+        let defaults = code_ranker_graph::metric_specs().0;
+        // sanity: the shared default is language-neutral
+        assert!(
+            !defaults["blank"]
+                .description
+                .as_deref()
+                .unwrap_or("")
+                .contains("#[cfg(test)]"),
+            "the shared default must stay language-neutral"
+        );
+
+        let refined = RustPlugin.metric_specs(defaults);
+        for key in ["sloc", "lloc", "cloc", "blank"] {
+            let desc = refined[key].description.as_deref().unwrap_or("");
+            assert!(
+                desc.contains("#[cfg(test)]"),
+                "Rust `{key}` description should note the cfg(test) exclusion"
+            );
+        }
+    }
 }

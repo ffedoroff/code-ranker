@@ -108,3 +108,18 @@ fn python_args_counted() {
         "three parameters must count as >=3 args, got {args}"
     );
 }
+
+#[test]
+fn python_loop_else_counts_as_a_branch() {
+    // A `for`/`while` may carry an `else:` that runs when the loop completes
+    // without `break` — the analyzer counts it as a branch (unlike an `if`'s
+    // `else`). So the loop-else form has cyclomatic one above the plain loop.
+    let with_else = "def f(xs):\n    for x in xs:\n        return x\n    else:\n        return 0\n";
+    let without = "def f(xs):\n    for x in xs:\n        return x\n    return 0\n";
+    let c1 = metric_of(with_else, "cyclomatic").expect("cyclomatic present");
+    let c0 = metric_of(without, "cyclomatic").expect("cyclomatic present");
+    assert!(
+        c1 > c0,
+        "for…else must add a branch (got {c1} with else vs {c0} without)"
+    );
+}
