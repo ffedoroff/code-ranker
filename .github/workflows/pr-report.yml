@@ -61,7 +61,7 @@ jobs:
       # advisory, so a skip is fine).
       - name: Upload SARIF to code scanning
         if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: code-ranker-${{ env.H }}.sarif
 
