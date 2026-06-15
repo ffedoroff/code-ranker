@@ -123,3 +123,23 @@ fn python_loop_else_counts_as_a_branch() {
         "for…else must add a branch (got {c1} with else vs {c0} without)"
     );
 }
+
+#[test]
+fn python_cognitive_covers_nested_def_try_except_and_booleans() {
+    // Real constructs that each feed cognitive: a nested `def` (a depth level), a
+    // `try`/`except`, and a `not` + mixed `and`/`or` boolean sequence. Exact
+    // weights are the analyzer's rule; here we only assert the metric rises well
+    // above a flat baseline (so these branches are exercised, not just trapped).
+    let nested = "def outer(a, b, c):\n    \
+        def inner():\n        return 1\n    \
+        try:\n        \
+        if not a and b or c:\n            return inner()\n    \
+        except ValueError:\n        return 0\n    return 2\n";
+    let flat = "def f(a):\n    return a\n";
+    let cog = metric_of(nested, "cognitive").expect("cognitive present");
+    let base = metric_of(flat, "cognitive").unwrap_or(0.0);
+    assert!(
+        cog > base,
+        "nested def + try/except + boolean must raise cognitive ({cog} vs {base})"
+    );
+}

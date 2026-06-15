@@ -156,3 +156,28 @@ fn js_generator_function_counts_as_closure() {
         "a generator function must count as a closure, got {closures}"
     );
 }
+
+#[test]
+fn js_function_and_arrow_classification_branches() {
+    // Exercise the func-vs-closure classifier across the forms it special-cases:
+    // a named function declaration, a function EXPRESSION assigned to a binding
+    // (check_if_func via assign-ancestor), an anonymous function expression as a
+    // callback (a closure), an arrow assigned to a variable and one assigned to an
+    // object property (check_if_arrow_func via assign-ancestor / property sibling),
+    // and an object method shorthand. Running the engine over all of them covers
+    // is_func / is_closure / check_if_func / check_if_arrow_func / is_child /
+    // has_sibling; the anonymous callback + bare arrows make `closures` non-zero.
+    let js: tree_sitter::Language = tree_sitter_javascript::LANGUAGE.into();
+    let src = "function decl() { return 1; }\n\
+const fe = function named() { return 2; };\n\
+const arrow = (x) => x + 1;\n\
+const obj = { method() { return 3; }, prop: (y) => y * 2 };\n\
+export function run(xs) {\n  \
+return xs.map(function (x) { return x + 1; }).map((z) => z - 1);\n}\n\
+void [decl, fe, arrow, obj];\n";
+    let closures = metric_of(src, &js, false, "closures").expect("closures present");
+    assert!(
+        closures >= 1.0,
+        "anonymous callbacks / bare arrows must count as closures, got {closures}"
+    );
+}

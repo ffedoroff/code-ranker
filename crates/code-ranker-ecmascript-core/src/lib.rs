@@ -822,4 +822,73 @@ mod tests {
         assert!(level.edge_attributes.is_empty());
         assert!(level.attribute_groups.is_empty());
     }
+
+    // Helper: run the JS-grammar walker over a project rooted at `root`.
+    fn analyze_js(root: &std::path::Path, ignore_tests: bool) -> Graph {
+        analyze_ecmascript(
+            root,
+            &["js"],
+            |ext| match ext {
+                "js" => Some(tree_sitter_javascript::LANGUAGE.into()),
+                _ => None,
+            },
+            &["js", "jsx"],
+            ignore_tests,
+        )
+        .expect("analyze_ecmascript should succeed")
+    }
+
+    #[test]
+    fn resolve_index_and_parent_dir_imports() {
+        // `./pkg` resolves to `pkg/index.js` (index resolution); `../lib` from a
+        // nested dir resolves to `src/lib.js` (parent-dir `..` normalization).
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write_file(root, "src/lib.js", "export const v = 1;\n");
+        write_file(root, "src/pkg/index.js", "export const p = 2;\n");
+        write_file(
+            root,
+            "src/a.js",
+            "import { p } from \"./pkg\";\nvoid p;\nexport const x = 1;\n",
+        );
+        write_file(
+            root,
+            "src/sub/c.js",
+            "import { v } from \"../lib\";\nvoid v;\nexport const y = 1;\n",
+        );
+
+        let g = analyze_js(root, false);
+        let a = root.join("src/a.js").to_string_lossy().into_owned();
+        let c = root.join("src/sub/c.js").to_string_lossy().into_owned();
+        let idx = root.join("src/pkg/index.js").to_string_lossy().into_owned();
+        let lib = root.join("src/lib.js").to_string_lossy().into_owned();
+        assert!(
+            g.edges.iter().any(|e| e.source == a && e.target == idx),
+            "`./pkg` resolves to pkg/index.js"
+        );
+        assert!(
+            g.edges.iter().any(|e| e.source == c && e.target == lib),
+            "`../lib` resolves to src/lib.js"
+        );
+    }
+
+    #[test]
+    fn skips_node_modules_and_ignored_test_files() {
+        // Files under a `node_modules` dir are skipped entirely; with
+        // `ignore_tests` a `*.test.js` file is dropped from the walk.
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        write_file(root, "src/a.js", "export const x = 1;\n");
+        write_file(root, "src/node_modules/dep.js", "export const d = 1;\n");
+        write_file(root, "src/a.test.js", "export const t = 1;\n");
+
+        let g = analyze_js(root, true);
+        let has = |rel: &str| {
+            let id = root.join(rel).to_string_lossy().into_owned();
+            g.nodes.iter().any(|n| n.id == id)
+        };
+        assert!(has("src/a.js"), "the real source file is kept");
+        assert!(!has("src/node_modules/dep.js"), "node_modules is skipped");
+        assert!(!has("src/a.test.js"), "ignore_tests drops the test file");
+    }
 }
