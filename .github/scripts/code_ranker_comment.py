@@ -43,7 +43,7 @@ def fmt(v):
     return f"`{v.get('rule', '?')}` · {where} — {v.get('message', '')}"
 
 
-lines = ["## 🔪 code-ranker"]
+lines = ["## code-ranker"]
 
 if MODE == "diff":
     emoji = VERDICT_EMOJI.get(verdict, "❔")

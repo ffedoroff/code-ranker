@@ -405,6 +405,16 @@ sloc = 1.5M           # fractional + suffix
     }
 
     #[test]
+    fn threshold_value_accepts_int_and_float() {
+        // Exercises the per-value deserializer over both TOML scalar forms: an
+        // integer (`visit_i64`) and a bare float (`visit_f64`).
+        let cfg: Config =
+            toml::from_str("[rules.thresholds.file]\ncyclomatic = 30\nmi = 12.5\n").unwrap();
+        assert_eq!(cfg.rules.thresholds.file.get("cyclomatic"), Some(30.0));
+        assert_eq!(cfg.rules.thresholds.file.get("mi"), Some(12.5));
+    }
+
+    #[test]
     fn config_rejects_unknown_threshold_metric() {
         // A mistyped metric is a hard error (not silently ignored), and the
         // message names the offending key.

@@ -624,6 +624,297 @@ mod tests {
         );
     }
 
+    /// A cycle preset for the narrowed-scorecard tests.
+    fn adp_preset() -> Preset {
+        Preset {
+            id: "ADP".into(),
+            label: "ADP".into(),
+            title: "ADP — Acyclic Dependencies".into(),
+            prompt: "p".into(),
+            doc_url: None,
+            sort_metric: "cycle".into(),
+            connections: vec![],
+        }
+    }
+
+    fn srp_preset() -> Preset {
+        Preset {
+            id: "SRP".into(),
+            label: "SRP".into(),
+            title: "SRP — Single Responsibility".into(),
+            prompt: "p".into(),
+            doc_url: None,
+            sort_metric: "sloc".into(),
+            connections: vec![],
+        }
+    }
+
+    /// Narrowing on a metric preset lists that metric's ranked modules under
+    /// WORST MODULES (the `narrow.is_some()` non-cycle branch).
+    #[test]
+    fn scorecard_narrowed_metric_lists_ranked_modules() {
+        let level = level_with(vec![
+            file_node("{target}/big.rs", &[("sloc", AttrValue::Int(300))]),
+            file_node("{target}/small.rs", &[("sloc", AttrValue::Int(10))]),
+        ]);
+        let sc = render_scorecard(
+            "rust",
+            &level,
+            &[srp_preset()],
+            &[Severity::Warning],
+            Some(2),
+            Some("SRP"),
+        )
+        .unwrap();
+        assert!(sc.contains("WORST MODULES"), "modules section: {sc}");
+        assert!(
+            sc.contains("big.rs") && sc.contains("SLOC 300"),
+            "ranked module with metric head: {sc}"
+        );
+        // Worst-first: big.rs before small.rs.
+        assert!(
+            sc.find("big.rs") < sc.find("small.rs"),
+            "ranked worst-first: {sc}"
+        );
+    }
+
+    /// Narrowing on the cycle (ADP) preset lists every member of the top cycle
+    /// (the `narrow.is_some()` cycle branch), with the "one cycle" header.
+    #[test]
+    fn scorecard_narrowed_cycle_lists_all_members() {
+        let mut level = level_with(vec![
+            file_node(
+                "{target}/a.rs",
+                &[
+                    ("hk", AttrValue::Float(80.0)),
+                    ("cycle", AttrValue::Str("mutual".into())),
+                ],
+            ),
+            file_node(
+                "{target}/b.rs",
+                &[
+                    ("hk", AttrValue::Float(50.0)),
+                    ("cycle", AttrValue::Str("mutual".into())),
+                ],
+            ),
+        ]);
+        level.cycles.push(CycleGroup {
+            kind: "mutual".into(),
+            nodes: vec!["{target}/a.rs".into(), "{target}/b.rs".into()],
+        });
+        let sc = render_scorecard(
+            "rust",
+            &level,
+            &[adp_preset()],
+            &[Severity::Warning],
+            None,
+            Some("ADP"),
+        )
+        .unwrap();
+        assert!(
+            sc.contains("one cycle (mutual, 2 modules)"),
+            "single-cycle header: {sc}"
+        );
+        assert!(
+            sc.contains("a.rs") && sc.contains("b.rs"),
+            "all cycle members listed: {sc}"
+        );
+    }
+
+    /// An unknown `--preset` (narrow) is a hard error naming the known presets.
+    #[test]
+    fn scorecard_unknown_narrow_preset_errors() {
+        let level = level_with(vec![file_node("{target}/a.rs", &[])]);
+        let err = render_scorecard(
+            "rust",
+            &level,
+            &[srp_preset()],
+            &[Severity::Auto],
+            None,
+            Some("ZZZ"),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            err.contains("unknown --preset 'ZZZ'"),
+            "names bad id: {err}"
+        );
+        assert!(err.contains("SRP"), "lists known presets: {err}");
+    }
+
+    /// Info-tier breaches: a node over the info line (but under warning) is shown
+    /// with the ⓘ icon, and a worse metric pushes a co-occurring cycle into the
+    /// `+rest` list (the non-cycle-worst path).
+    #[test]
+    fn scorecard_info_tier_and_cycle_in_rest() {
+        let level = level_with(vec![
+            // info-only: sloc 80 > info 50, < warning 200.
+            file_node("{target}/info.rs", &[("sloc", AttrValue::Int(80))]),
+            // warning hk (ratio 2.0) beats the cycle (ratio 1.0) → cycle in +rest.
+            file_node(
+                "{target}/hot.rs",
+                &[
+                    ("hk", AttrValue::Float(2000.0)),
+                    ("cycle", AttrValue::Str("mutual".into())),
+                ],
+            ),
+        ]);
+        let sc = render_scorecard(
+            "rust",
+            &level,
+            &[srp_preset()],
+            &[Severity::Warning, Severity::Info],
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            sc.contains("info.rs") && sc.contains("ⓘ"),
+            "info icon: {sc}"
+        );
+        assert!(
+            sc.contains("hot.rs") && sc.contains("+cycle"),
+            "cycle shown as a secondary breach: {sc}"
+        );
+    }
+
+    /// With nothing over the selected tier, the scorecard says so and stops.
+    #[test]
+    fn scorecard_reports_no_breaches_when_clean() {
+        let level = level_with(vec![file_node(
+            "{target}/quiet.rs",
+            &[("hk", AttrValue::Float(10.0)), ("sloc", AttrValue::Int(5))],
+        )]);
+        let sc = render_scorecard(
+            "rust",
+            &level,
+            &[srp_preset()],
+            &[Severity::Warning],
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(
+            sc.contains("No threshold breaches for the selected severity."),
+            "clean report: {sc}"
+        );
+    }
+
+    /// A two-cycle level: builds nodes + two `CycleGroup`s, returned ready for the
+    /// ADP (cycle) preset.
+    fn two_cycle_level() -> LevelGraph {
+        let mut level = level_with(vec![
+            file_node(
+                "{target}/a.rs",
+                &[("cycle", AttrValue::Str("mutual".into()))],
+            ),
+            file_node(
+                "{target}/b.rs",
+                &[("cycle", AttrValue::Str("mutual".into()))],
+            ),
+            file_node(
+                "{target}/x.rs",
+                &[("cycle", AttrValue::Str("chain".into()))],
+            ),
+            file_node(
+                "{target}/y.rs",
+                &[("cycle", AttrValue::Str("chain".into()))],
+            ),
+            file_node(
+                "{target}/z.rs",
+                &[("cycle", AttrValue::Str("chain".into()))],
+            ),
+        ]);
+        level.cycles = vec![
+            CycleGroup {
+                kind: "chain".into(),
+                nodes: vec![
+                    "{target}/x.rs".into(),
+                    "{target}/y.rs".into(),
+                    "{target}/z.rs".into(),
+                ],
+            },
+            CycleGroup {
+                kind: "mutual".into(),
+                nodes: vec!["{target}/a.rs".into(), "{target}/b.rs".into()],
+            },
+        ];
+        level
+    }
+
+    /// `--top 2` on the ADP prompt lists each cycle under its own heading (the
+    /// multi-cycle branch of `compose_prompt`).
+    #[test]
+    fn compose_prompt_lists_multiple_cycles() {
+        let level = two_cycle_level();
+        let md = compose_prompt(&level, &[adp_preset()], "ADP", Severity::Auto, Some(2)).unwrap();
+        assert!(
+            md.contains("## 2 dependency cycles"),
+            "multi-cycle header: {md}"
+        );
+        assert!(
+            md.contains("### Cycle 1 — chain, 3 modules")
+                && md.contains("### Cycle 2 — mutual, 2 modules"),
+            "per-cycle headings: {md}"
+        );
+    }
+
+    /// Narrowed ADP scorecard with `--top 2` uses the plural "N cycles" header.
+    #[test]
+    fn scorecard_narrowed_cycle_top_n_header() {
+        let level = two_cycle_level();
+        let sc = render_scorecard(
+            "rust",
+            &level,
+            &[adp_preset()],
+            &[Severity::Warning],
+            Some(2),
+            Some("ADP"),
+        )
+        .unwrap();
+        assert!(
+            sc.contains("2 cycles — all members listed:"),
+            "header: {sc}"
+        );
+    }
+
+    /// Narrowed ADP scorecard when there are no cycles at all → "(none)".
+    #[test]
+    fn scorecard_narrowed_cycle_with_none_says_none() {
+        let level = level_with(vec![file_node("{target}/a.rs", &[])]);
+        let sc = render_scorecard(
+            "rust",
+            &level,
+            &[adp_preset()],
+            &[Severity::Warning],
+            None,
+            Some("ADP"),
+        )
+        .unwrap();
+        assert!(sc.contains("(none)"), "empty modules list: {sc}");
+    }
+
+    /// A principle name longer than the column width is clipped with an ellipsis.
+    #[test]
+    fn scorecard_clips_long_principle_name() {
+        let level = level_with(vec![file_node(
+            "{target}/a.rs",
+            &[("hk", AttrValue::Float(2000.0))],
+        )]);
+        let preset = Preset {
+            id: "LONG".into(),
+            label: "LONG".into(),
+            title: "LONG — A Very Long Principle Name That Exceeds The Column".into(),
+            prompt: "p".into(),
+            doc_url: None,
+            sort_metric: "hk".into(),
+            connections: vec![],
+        };
+        let sc =
+            render_scorecard("rust", &level, &[preset], &[Severity::Warning], None, None).unwrap();
+        assert!(sc.contains('…'), "long name clipped with ellipsis: {sc}");
+    }
+
     #[test]
     fn parse_severity_rejects_garbage() {
         assert_eq!(parse_severity("warning").unwrap(), Severity::Warning);

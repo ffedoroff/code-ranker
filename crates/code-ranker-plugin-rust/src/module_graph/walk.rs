@@ -658,4 +658,34 @@ mod tests {
             "single-segment derive ignored"
         );
     }
+
+    #[test]
+    fn counts_unsafe_methods_in_impl_and_trait() {
+        // `unsafe fn` declared inside an `impl` block and inside a `trait` body —
+        // distinct visitor hooks from a free `unsafe fn`.
+        let src = r#"
+            struct S;
+            impl S { unsafe fn m(&self) {} fn safe(&self) {} }
+            trait T { unsafe fn req(&self); fn ok(&self) {} }
+        "#;
+        // one impl method + one trait method = 2 (the safe ones and the
+        // non-unsafe impl/trait headers do not count).
+        assert_eq!(count_unsafe(src), 2);
+    }
+
+    #[test]
+    fn convert_visibility_maps_every_form() {
+        let conv = |s: &str| convert_visibility(&syn::parse_str::<SynVis>(s).unwrap());
+        assert_eq!(conv("pub"), Visibility::Public);
+        assert_eq!(conv("pub(crate)"), Visibility::Crate);
+        assert_eq!(conv("pub(super)"), Visibility::Super);
+        assert_eq!(conv("pub(self)"), Visibility::Private);
+        assert_eq!(conv(""), Visibility::Private); // inherited
+        assert_eq!(
+            conv("pub(in crate::module_graph)"),
+            Visibility::Restricted {
+                path: "crate::module_graph".into()
+            }
+        );
+    }
 }

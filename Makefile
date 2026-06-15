@@ -1,6 +1,6 @@
-.PHONY: all build test e2e clippy lint-md lint check self-check fmt fmt-check clean bump tag release publish
+.PHONY: all build test e2e clippy lint-md lint check self-check coverage diff-coverage fmt fmt-check clean bump tag release publish
 
-all: build test lint self-check
+all: build test lint self-check coverage
 
 build:
 	cargo build --workspace
@@ -34,6 +34,17 @@ lint: fmt-check clippy lint-md
 # in code-ranker.toml). Part of `make all`, so a regression here fails the build.
 self-check:
 	cargo run -q -p code-ranker -- check .
+
+# Coverage floor: fail if workspace line coverage drops below 90%. Part of
+# `make all`. Needs cargo-llvm-cov (`cargo install cargo-llvm-cov`).
+coverage:
+	cargo llvm-cov --workspace --summary-only --fail-under-lines 90
+
+# Surgical companion to `coverage`: list the lines this branch ADDED/CHANGED vs
+# the target branch that no test covers (a review aid — add a test where it's
+# organic, skip the genuinely hard-to-test ones). Not in `make all`.
+diff-coverage:
+	python3 .claude/scripts/diff-coverage.py
 
 check: build test clippy lint-md
 
