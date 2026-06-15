@@ -822,6 +822,102 @@ mod tests {
         String::from_utf8(strip_cfg_test(src.as_bytes()).0).unwrap()
     }
 
+    /// Build a `Module` internal node for one file, with structural attrs.
+    /// `line` distinguishes an inline module (`Some`) from a file-backed one
+    /// (`None`); `collapse_to_files` lets the file-backed node win.
+    #[allow(clippy::too_many_arguments)]
+    fn module_node(
+        id: &str,
+        path: &str,
+        line: Option<u32>,
+        visibility: internal::Visibility,
+        loc: u32,
+        items: u32,
+        unsafe_count: u32,
+        krate: &str,
+    ) -> internal::Node {
+        internal::Node {
+            id: id.into(),
+            kind: NodeKind::Module,
+            name: id.into(),
+            path: path.into(),
+            parent: None,
+            external: None,
+            version: None,
+            visibility: Some(visibility),
+            loc: Some(loc),
+            line,
+            item_count: Some(items),
+            unsafe_count: Some(unsafe_count),
+            crate_label: Some(krate.into()),
+        }
+    }
+
+    #[test]
+    fn collapse_lets_the_file_backed_module_overwrite_structural_attrs() {
+        // Two modules map to one file id (same `path`): an inline module
+        // (`line = Some`) is seen first and seeds the file node, then the
+        // file-backed module (`line = None`) is the source of truth and must
+        // overwrite every structural attr (visibility / loc / items / unsafe /
+        // crate). This exercises the Occupied-entry update branch of
+        // `collapse_to_files`.
+        let mut builder = GraphBuilder::new();
+        builder.add_node(module_node(
+            "inline",
+            "/x/foo.rs",
+            Some(5),
+            internal::Visibility::Private,
+            1,
+            1,
+            0,
+            "wrong-crate",
+        ));
+        builder.add_node(module_node(
+            "file",
+            "/x/foo.rs",
+            None,
+            internal::Visibility::Public,
+            42,
+            7,
+            3,
+            "mycrate",
+        ));
+
+        let graph = collapse_to_files(builder.build());
+
+        let file = graph
+            .nodes
+            .iter()
+            .find(|n| n.id == "/x/foo.rs")
+            .expect("the two modules collapsed into one file node");
+        assert_eq!(file.kind, "file");
+        assert_eq!(
+            file.attrs.get("visibility"),
+            Some(&AttrValue::Str("public".into())),
+            "file-backed visibility wins"
+        );
+        assert_eq!(
+            file.attrs.get("loc"),
+            Some(&AttrValue::Int(42)),
+            "file-backed loc wins"
+        );
+        assert_eq!(
+            file.attrs.get("items"),
+            Some(&AttrValue::Int(7)),
+            "file-backed item count wins"
+        );
+        assert_eq!(
+            file.attrs.get("unsafe"),
+            Some(&AttrValue::Int(3)),
+            "file-backed unsafe count wins (and is non-zero so it is kept)"
+        );
+        assert_eq!(
+            file.attrs.get("crate"),
+            Some(&AttrValue::Str("mycrate".into())),
+            "file-backed crate label wins"
+        );
+    }
+
     #[test]
     fn strips_cfg_test_module_with_its_attribute() {
         let out = strip(
