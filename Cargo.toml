@@ -22,6 +22,7 @@ code-ranker-plugin-typescript = { path = "crates/code-ranker-plugin-typescript",
 code-ranker-viewer = { path = "crates/code-ranker-viewer", version = "3.0.0-alpha.1" }
 
 anyhow = "1.0"
+cel = "0.13"
 globset = "0.4"
 toml = "1"
 cargo_metadata = "0.18"

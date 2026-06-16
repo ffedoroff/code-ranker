@@ -363,40 +363,37 @@ Modules:
   prelude is back.) (There is no server-side snapshot-diff module — `--baseline`
   diffing is done browser-side by the viewer's `diff.js`.)
 
-This crate also hosts the **language-neutral metric scaffolding** (module
-`metrics.rs`, re-exported at the crate root next to `coupling_specs`): the
-computed-value carrier `FileMetrics`, the writer `write_metrics` (omit-at +
-LOC/Halstead gating), the no-signal values `metric_omit_at`, and the metric
-attribute catalog `metric_specs()`. It names **no language** and pulls in **no
-grammar** — the per-language **engines** that produce a `FileMetrics` live in the
-language crates (`rust_ts` in `code-ranker-plugin-rust`, `python_ts` in
-`code-ranker-plugin-python`, `ecmascript_ts` in `code-ranker-ecmascript-core`),
-each a faithful port of `rust-code-analysis`'s node-kind rules (`rust-code-analysis`
-is **not a dependency** of any crate). Each plugin's `metrics()` runs its own
-engine's `compute()` and calls `write_metrics`, so metric computation is a
-**per-language concern owned by the plugin** — there is no central by-extension
-dispatcher.
+This crate also hosts the **language-neutral metric scaffolding** (modules
+`metrics.rs` + `registry.rs`). The split is **tier-1 is measured in Rust;
+tier-2 is data**:
 
-The metric block is whole-file aggregate (all functions, methods, arrow
-functions and closures roll up into the file's single node). Each metric is
-dropped at its **no-signal value**, declared per metric by `metric_omit_at(key)`
-and published on the spec as `AttributeSpec.omit_at` (so emission and the
-declared spec never drift). That value is `0` for almost everything; the one
-exception is `cyclomatic`, whose floor is `1` (McCabe's single straight-line
-path) — so a function-less file, whose `cyclomatic_sum` is a vacuous `1` (and
-`cognitive_sum` `0`), drops both rather than reporting a meaningless `1`. The LOC
-block is additionally gated on `sloc > 0` and the Halstead block on
-`volume > 0`. `metric_specs()` exposes the metric `AttributeSpec`s + their groups
-(complexity / halstead / loc / maintainability), which the orchestrator merges
-into each level's dictionaries and then prunes to the keys actually present.
+- The per-language **engines** measure tier-1 counts — `rust_ts` in
+  `code-ranker-plugin-rust`, `python_ts` in `code-ranker-plugin-python`,
+  `ecmascript_ts` in `code-ranker-ecmascript-core`, each a faithful port of
+  `rust-code-analysis`'s node-kind rules (`rust-code-analysis` is **not a
+  dependency**). Each engine's `compute()` returns a
+  `code_ranker_graph::MetricInputs` (η₁/η₂/N₁/N₂, `spaces`/`branches`, LOC,
+  `cognitive`/`exits`/`args`/`closures`, `span_sloc`).
+- **Tier-2 metrics are declarative**: a CEL `formula` + display spec per metric,
+  defined in `code-ranker-graph/metrics/builtin.toml` and evaluated by the
+  registry engine (`registry.rs`, built on the `cel` crate; `log2`/`ln`/`pow`/
+  `sqrt`/`sin` are host functions). `write_metrics(node, &MetricInputs)` writes
+  the tier-1 values (LOC block gated on `sloc > 0`) plus the registry-derived
+  tier-2 values; `metric_specs()` reads the spec catalog from the same file. No
+  derived-metric name is hardcoded in Rust.
 
-`metric_specs()` returns **language-neutral** descriptions; each plugin may refine
-them for its language via the `LanguagePlugin::metric_specs` hook (default:
-pass-through). The orchestrator calls `graph::metric_specs()` for the neutral
-defaults, then hands them to the active plugin's hook before merging — e.g. the
-Rust plugin appends the `#[cfg(test)]`/`#[test]`-exclusion note to `sloc` / `lloc`
-/ `cloc` / `blank`, so that nuance appears only in Rust snapshots and never leaks
-into a Python/JS/TS report:
+The registry runs per **unit**: the same `MetricInputs` → metrics path serves the
+file node and (with the `functions` level on) each function node. User metrics
+(`[metrics.<key>]`) run through the same registry — node-scope per-unit formulas,
+or graph-scope `agg(key, reducer, population)` aggregates emitted into `stats`.
+
+Each metric is dropped at its **no-signal value** (`AttributeSpec.omit_at`,
+published in the spec and read by the writer, so emission and spec never drift):
+`0` for almost everything, `1` for `cyclomatic` (McCabe's straight-line floor, so
+a function-less file drops it rather than reporting a vacuous `1`).
+`metric_specs()` exposes the `AttributeSpec`s + their groups (complexity /
+halstead / loc / maintainability), which the orchestrator merges into each level's
+dictionaries and prunes to the keys present. Built-in metric groups:
 
 | Group | Keys |
 |----------|------|
@@ -404,6 +401,11 @@ into a Python/JS/TS report:
 | maintainability | `mi`, `mi_sei` |
 | loc | `sloc`, `lloc`, `cloc`, `blank` |
 | halstead | `length`, `vocabulary`, `volume`, `effort`, `time`, `bugs` |
+
+A plugin may refine a spec's wording for its language via the
+`LanguagePlugin::metric_specs` hook (e.g. the Rust plugin appends the
+`#[cfg(test)]`/`#[test]`-exclusion note to `sloc` / `lloc` / `cloc` / `blank`, so
+that nuance appears only in Rust snapshots).
 
 Coupling (`fan_in` / `fan_out` / `fan_out_external` / `hk`) and `cycle` are added
 later by this crate's `annotate_hk` / `annotate_cycles` passes.

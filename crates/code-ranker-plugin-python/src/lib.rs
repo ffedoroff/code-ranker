@@ -4,7 +4,7 @@ use code_ranker_plugin_api::{
     default_cycle_kinds, default_node_kinds,
     edge::Edge,
     graph::Graph,
-    level::{AttributeSpec, EdgeKindSpec, Level},
+    level::{AttributeSpec, EdgeKindSpec, Level, NodeKindSpec},
     node::Node,
     plugin::{LanguagePlugin, PluginInput},
 };
@@ -56,16 +56,31 @@ impl LanguagePlugin for PythonPlugin {
             AttributeSpec::new(ValueType::Bool, "External"),
         );
 
-        vec![Level {
-            name: "files".into(),
-            edge_kinds,
-            node_attributes,
-            edge_attributes: BTreeMap::new(),
-            attribute_groups: BTreeMap::new(),
-            node_kinds: default_node_kinds(),
-            cycle_kinds: default_cycle_kinds(),
-            grouping: None,
-        }]
+        vec![
+            Level {
+                name: "files".into(),
+                edge_kinds,
+                node_attributes,
+                edge_attributes: BTreeMap::new(),
+                attribute_groups: BTreeMap::new(),
+                node_kinds: default_node_kinds(),
+                cycle_kinds: default_cycle_kinds(),
+                grouping: None,
+            },
+            // Optional sub-file level (off by default; see `[levels] functions`).
+            // Metric attribute specs are merged centrally; here we only declare
+            // the per-language unit kinds.
+            Level {
+                name: "functions".into(),
+                edge_kinds: BTreeMap::new(),
+                node_attributes: BTreeMap::new(),
+                edge_attributes: BTreeMap::new(),
+                attribute_groups: BTreeMap::new(),
+                node_kinds: function_node_kinds(),
+                cycle_kinds: default_cycle_kinds(),
+                grouping: None,
+            },
+        ]
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
@@ -74,6 +89,10 @@ impl LanguagePlugin for PythonPlugin {
 
     fn metrics(&self, graph: &mut Graph) -> usize {
         annotate_metrics(graph)
+    }
+
+    fn function_units(&self, graph: &Graph) -> Vec<Node> {
+        function_nodes(graph)
     }
 
     fn is_test_path(&self, rel_path: &str) -> bool {
@@ -99,6 +118,62 @@ fn annotate_metrics(graph: &mut Graph) -> usize {
         }
     }
     annotated
+}
+
+/// Per-language unit kinds for the `functions` level (free-form `kind` strings,
+/// rendered via this dictionary — the viewer hardcodes no kind by name).
+fn function_node_kinds() -> BTreeMap<String, NodeKindSpec> {
+    BTreeMap::from([
+        (
+            "function".to_string(),
+            NodeKindSpec {
+                label: Some("Function".into()),
+                plural: Some("Functions".into()),
+                fill: Some("#dbe9f4".into()),
+                stroke: Some("#4d6f9c".into()),
+                external: None,
+            },
+        ),
+        (
+            "method".to_string(),
+            NodeKindSpec {
+                label: Some("Method".into()),
+                plural: Some("Methods".into()),
+                fill: Some("#e2eccf".into()),
+                stroke: Some("#5d8a3a".into()),
+                external: None,
+            },
+        ),
+    ])
+}
+
+/// Build function-level nodes for every `file` node, parsing each file (by its
+/// absolute-path `id`) and running the per-function engine. Each node carries its
+/// metrics and `parent` = the file id; the id is `<file>#<name>@<start_line>`
+/// (stable for diff / SARIF). Called before relativization, so file ids are
+/// absolute and readable.
+fn function_nodes(graph: &Graph) -> Vec<Node> {
+    let mut out = Vec::new();
+    for node in &graph.nodes {
+        if node.kind != "file" {
+            continue;
+        }
+        let Ok(src) = std::fs::read(&node.id) else {
+            continue;
+        };
+        for u in python_ts::compute_functions(&src) {
+            let mut fnode = Node {
+                id: format!("{}#{}@{}", node.id, u.name, u.start_line),
+                kind: u.kind.clone(),
+                name: u.name.clone(),
+                parent: Some(node.id.clone()),
+                attrs: Default::default(),
+            };
+            code_ranker_graph::write_metrics(&mut fnode, &u.inputs);
+            out.push(fnode);
+        }
+    }
+    out
 }
 
 /// Python test conventions: pytest/unittest files (`test_*.py`, `*_test.py`,

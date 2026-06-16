@@ -103,6 +103,7 @@ Rust snapshot `{target}` + `{registry}`.
 |-------|-------------|
 | `file` | A source file in the analyzed project — carries all per-file metrics |
 | `external` | A third-party library the project depends on, recorded at depth 1 (one node per library, never expanded into its internals; carries no metrics) |
+| `fn` / `method` / `closure` / `function` / `arrow` / `generator` / `lambda` | A sub-file unit on the optional `functions` level (per-language `kind`), carrying the per-unit tier-1/tier-2 metrics; `parent` is its file node id. Present only when `[levels] functions` is enabled. |
 
 ### `name` — string, required
 
@@ -185,12 +186,18 @@ The matching SCC is also listed in the level's `cycles` array.
 ## Metric attributes (flat)
 
 All metrics are flat keys on the node — there is no `complexity` wrapper object.
-Present on `file` nodes only (external libraries are never read). Each is omitted
-when it rounds to zero; the LOC keys are gated on `sloc > 0` and the Halstead
-keys on `volume > 0`. Complexity / Halstead / LOC / maintainability metrics come
-from each plugin's `metrics()` step, which runs its in-tree `tree-sitter` engine
-for its language and writes them via `code_ranker_graph::write_metrics`; coupling
-and `cycle` are added by `code-ranker-graph`.
+Present on `file` nodes (and `functions`-level nodes when that level is enabled);
+external libraries are never read. Each is omitted when it rounds to its
+`omit_at`; the LOC keys are gated on `sloc > 0`.
+
+Tier-1 counts (`cognitive`, `exits`, `args`, `closures`, LOC, Halstead base
+counts) come from each plugin's `metrics()` step, which runs its in-tree
+`tree-sitter` engine and produces a `code_ranker_graph::MetricInputs`. The tier-2
+metrics below (`cyclomatic`, Halstead `volume`/`effort`/…, `mi`/`mi_sei`) are
+**declarative** — CEL `formula` + spec in `code-ranker-graph/metrics/builtin.toml`,
+evaluated by the registry engine and written via
+`code_ranker_graph::write_metrics`. User metrics (`[metrics.<key>]`) are emitted
+the same way. Coupling and `cycle` are added by `code-ranker-graph`.
 
 ### Complexity — `cyclomatic`, `cognitive`, `exits`, `args`, `closures`
 

@@ -34,29 +34,25 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Wait for binaries on GitHub Release
+      - name: Check the release binaries exist
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            v="${{ inputs.version }}"
-          else
-            v="${GITHUB_REF_NAME#v}"
-          fi
+          v="${{ inputs.version }}"
           base="https://github.com/ffedoroff/code-ranker/releases/download/v${v}"
-          # The Docker build downloads BOTH linux targets (amd64→x86_64,
-          # arm64→aarch64), so wait until both are present — otherwise a
-          # multi-arch build races the release upload and 404s on one of them.
-          for i in $(seq 1 60); do
-            ok=1
-            for arch in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
-              curl -fsI "${base}/code-ranker-${arch}.tar.xz" > /dev/null 2>&1 || ok=0
-            done
-            if [ "$ok" = 1 ]; then
-              echo "both linux binaries present at $base"; exit 0
-            fi
-            echo "still waiting for release binaries ($i/60)…"
-            sleep 20
+          # Ordering is handled upstream: publish.yml waits for the Release
+          # workflow to finish before it dispatches Docker, so the binaries the
+          # Dockerfile downloads are already uploaded. This is a fast one-shot
+          # existence check (no polling) — it just fails with a clear message if
+          # Docker is dispatched directly or out of order.
+          missing=0
+          for arch in x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu; do
+            curl -fsI "${base}/code-ranker-${arch}.tar.xz" > /dev/null 2>&1 \
+              || { echo "missing: code-ranker-${arch}.tar.xz"; missing=1; }
           done
-          echo "timeout waiting for release binaries"; exit 1
+          if [ "$missing" = 1 ]; then
+            echo "::error::Release binaries for v${v} are not present. Publish the GitHub Release first (run the release via publish.yml, which orders Docker after it)."
+            exit 1
+          fi
+          echo "both linux binaries present at $base"
 
       - name: Compute version and tags
         id: meta

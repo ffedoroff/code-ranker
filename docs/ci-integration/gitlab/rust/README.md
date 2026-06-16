@@ -7,16 +7,17 @@ other languages follow the same shape in their sibling folders under
 
 | Mode | What it does | Needs a token? | Reference file |
 |---|---|---|---|
-| **Minimal** | Generates a JSON snapshot + HTML viewer + a Code Quality report on every run. JSON/HTML are kept as artifacts; the Code Quality report is handed to GitLab (`reports:codequality`) so findings show inline in the MR. Advisory. | No | [`minimal.example.yml`](./minimal.example.yml) |
-| **Diff** | On an MR, compares the current code against the **target branch** and renders an HTML diff with a verdict. | Yes (read-only) | [`diff.example.yml`](./diff.example.yml) |
+| **Minimal** | JSON snapshot + HTML viewer (artifacts) on every run, then `check`s the snapshot — emitting a Code Quality report GitLab shows inline in the MR, and gating on any violation (absolute). | No | [`minimal.example.yml`](./minimal.example.yml) |
+| **Diff** | Same, but on an MR compares against the **target branch**: HTML diff + verdict, and the `check` gate is **relative** (only NEW violations count). | Yes (read-only) | [`diff.example.yml`](./diff.example.yml) |
 
 Both modes keep the same downloadable artifacts (`code-ranker-<hash>.json` and
-`code-ranker-<hash>.html`); Minimal additionally emits a Code Quality report for
-native GitLab findings (see [Native findings via Code Quality](#native-findings-via-code-quality)).
-Both run the job as **advisory**
-(`allow_failure: true`) so a failed analysis never blocks the pipeline. Pick
-Minimal to start; add the diff wiring once you want per-MR regression diffs. The
-two reference files are drop-in jobs — copy one into your `.gitlab-ci.yml` and
+`code-ranker-<hash>.html`) plus a Code Quality report for native GitLab findings
+(see [Native findings via Code Quality](#native-findings-via-code-quality)).
+Both ship as a **soft gate** (`allow_failure: true`) — a violation marks the job
+failed-but-allowed and the pipeline continues; delete `allow_failure` for a hard
+gate. Pick Minimal to start; add the diff wiring once you want per-MR regression
+diffs. The two reference files are drop-in jobs — copy one into your
+`.gitlab-ci.yml` and
 adjust the `image`.
 
 ---
@@ -85,52 +86,50 @@ code-ranker's, and it disappears once the cache is reused.
 
 ---
 
-## Mode 1 — Minimal (advisory linter + artifacts)
+## Mode 1 — Minimal (analyze + gate + native findings)
 
 **Reference:** [`minimal.example.yml`](./minimal.example.yml)
 
-The job does exactly two things:
+The job:
 
-1. `code-ranker report . --output.json.path=… --output.html.path=… --output.codequality.path=…`
-   — analyze the workspace and emit a JSON snapshot, a self-contained HTML viewer,
-   and a GitLab Code Quality report of the rule violations.
-2. Keep them as artifacts (`when: always`, so they survive even if a later step
-   fails), and hand the Code Quality report to GitLab as
-   `artifacts:reports:codequality`.
-
-The JSON/HTML are named by commit hash (`code-ranker-<hash>.json/.html`) so every
-run is identifiable and never collides. The job is `allow_failure: true` — it
-surfaces structure for reviewers but never blocks anything.
+1. `code-ranker report .` → a JSON snapshot + a self-contained HTML viewer (kept
+   as downloadable artifacts, named by commit hash).
+2. `code-ranker check "<snapshot>.json" --output-format codequality > gl-code-quality-report.json`
+   — re-read the snapshot (no second analysis), evaluate the rules, and write the
+   findings as a GitLab **Code Quality** report. This `check` is also the gate: it
+   **exits non-zero** on a violation.
+3. Hand the Code Quality report to GitLab as `artifacts:reports:codequality`
+   (`when: always`, so it's uploaded even when the gate fails).
 
 ### Native findings via Code Quality
 
 The JSON snapshot and HTML viewer are **downloadable** artifacts — a reviewer
 opens the HTML. To surface the findings **inside GitLab** — inline on the MR diff
-and in the pipeline **Code Quality** widget — the job also emits a Code Quality
-(CodeClimate) report and registers it as `artifacts:reports:codequality`. Each
+and in the pipeline **Code Quality** widget — the `check` step writes a Code
+Quality (CodeClimate) report registered as `artifacts:reports:codequality`. Each
 violation becomes an issue with a stable `fingerprint` (keyed on `rule:location`,
 no line) so GitLab tracks the same finding across pipelines and shows only what a
 merge request *adds*.
 
-> **This is GA — it works on current GitLab with no feature flag.** It is the
-> recommended native path. For a hard pass/fail gate use `code-ranker check`
-> (below); Code Quality is advisory (it annotates, never blocks).
+> **This is GA — it works on current GitLab with no feature flag.** Because the
+> report comes from `check`, the one step both highlights the findings and gates.
 
-**SARIF alternative.** code-ranker also emits SARIF
-(`--output.sarif.path=…` + `reports: sarif:`), which GitLab ingests into its
-*security* views — but only on **GitLab ≥ 18.11 with the `sarif_ingestion`
-feature flag enabled** (off by default; an admin turns it on). On older instances
-prefer Code Quality. Check your instance version with `echo "$CI_SERVER_VERSION"`
-in a job, or `glab api version`.
+**Soft vs hard gate.** The reference job sets `allow_failure: true`, so a
+violation marks the job failed-but-allowed (yellow) and the pipeline continues —
+findings still highlighted. **Delete `allow_failure`** to make a violation
+**block** the pipeline. Either way the report is written (`artifacts: when:
+always`). Tune what gates in `code-ranker.toml` (`[rules.thresholds.file]` /
+`[rules.cycles]`) or with flags on the `check` line.
+
+**SARIF alternative.** `check` also emits SARIF (`--output-format sarif`), which
+GitLab ingests into its *security* views — but only on **GitLab ≥ 18.11 with the
+`sarif_ingestion` feature flag enabled** (off by default; an admin turns it on).
+On older instances prefer Code Quality. Check your instance version with
+`echo "$CI_SERVER_VERSION"` in a job, or `glab api version`.
 
 The Code Quality report uses a **fixed** filename (`gl-code-quality-report.json`,
 not `-<hash>`-named) because `artifacts:reports:` is resolved when the pipeline
 config is parsed, before the script computes the hash.
-
-**Want a hard gate?** Use `code-ranker check .` instead — it evaluates thresholds
-and cycle rules and **exits non-zero** on violation (it writes no files). Drop
-`allow_failure` on that job to make it actually block. The minimal reference
-file includes a commented-out `code-ranker-gate` job showing this.
 
 ---
 
@@ -149,6 +148,12 @@ The flow inside the job:
 1. Analyze → `code-ranker-<hash>.json` (same as minimal mode).
 2. **Fetch the baseline** from the target branch (best-effort, see below).
 3. Render HTML: `--baseline <fetched.json>` if found, otherwise a review report.
+4. **Gate + Code Quality:** `check` the snapshot and write the
+   `gl-code-quality-report.json` GitLab shows inline. With a baseline the gate is
+   **relative** — only violations NEW vs the target branch count, so pre-existing
+   debt never fails the MR and the report lists just the new ones; without one it
+   falls back to an absolute check. Soft gate by default (`allow_failure: true`);
+   delete that line to block on a new violation.
 
 ### Why the baseline fetch looks the way it does
 

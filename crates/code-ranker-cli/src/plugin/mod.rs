@@ -55,6 +55,18 @@ pub fn annotate_metrics(name: &str, graph: &mut Graph) -> usize {
         .unwrap_or(0)
 }
 
+/// Ask the matching plugin for function-level metric nodes (one per sub-file
+/// unit), for the optional `functions` level. Called on the absolute-id graph;
+/// returns nodes whose `parent` is the file id. Empty when the plugin ships no
+/// function-level support.
+pub fn function_units(name: &str, graph: &Graph) -> Vec<code_ranker_plugin_api::node::Node> {
+    registry()
+        .iter()
+        .find(|p| p.name() == name)
+        .map(|p| p.function_units(graph))
+        .unwrap_or_default()
+}
+
 /// Tool/toolchain versions the matching plugin wants recorded in the snapshot.
 pub fn versions(name: &str, workspace: &Path, input: &PluginInput) -> Vec<(String, String)> {
     registry()

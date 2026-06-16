@@ -6,9 +6,12 @@
 # verdict (improved / degraded / neutral). On the default branch (no target),
 # or when no baseline exists yet, it gracefully produces a plain review report.
 #
-# The job is advisory (`allow_failure: true`) and the baseline fetch is strictly
-# best-effort: a missing baseline, a 404, or any parse miss only downgrades the
-# output to a review report — it NEVER fails the job.
+# It then `check`s the snapshot — gating on violations NEW vs the target branch
+# (relative) and emitting a GitLab Code Quality report shown inline on the MR.
+# The job is a SOFT gate (`allow_failure: true`): a new violation marks it failed
+# but does not block the pipeline (drop allow_failure for a hard gate). The
+# baseline fetch is strictly best-effort: a missing baseline, a 404, or any parse
+# miss only downgrades to a review report + an absolute check — it NEVER errors.
 #
 # Prerequisites:
 #   1. `code-ranker` on PATH (see minimal.example.yml).
@@ -25,6 +28,8 @@ code-ranker:
 
   stage: test
   interruptible: true
+  # Soft gate: step 4's `check` exits non-zero on a NEW violation, but
+  # allow_failure keeps it advisory. Remove this line for a hard gate that blocks.
   allow_failure: true
 
   script:
@@ -73,12 +78,32 @@ code-ranker:
         code-ranker report "code-ranker-${H}.json" --output.html.path="code-ranker-${H}.html"
       fi
 
+    # 4) Gate + native findings. `check` the snapshot (no re-analysis) and write a
+    #    GitLab Code Quality report — rendered inline on the MR diff. With a
+    #    baseline the gate is RELATIVE: only violations NEW vs the target branch
+    #    count, so pre-existing debt never fails the MR (and the report lists just
+    #    the new ones). `check` exits non-zero on a new violation — the gate;
+    #    `artifacts: when: always` still uploads the report so it's highlighted even
+    #    when the gate fails. Keep this LAST — a non-zero exit ends the script.
+    - |
+      if [ -n "$BASE_JSON" ]; then
+        code-ranker check "code-ranker-${H}.json" --baseline "$BASE_JSON" --output-format codequality > gl-code-quality-report.json
+      else
+        code-ranker check "code-ranker-${H}.json" --output-format codequality > gl-code-quality-report.json
+      fi
+
   artifacts:
     when: always
     expire_in: 30 days
     paths:
       - "code-ranker-*.json"
       - "code-ranker-*.html"
+      - "gl-code-quality-report.json"
+    # GitLab renders the Code Quality report `check` wrote inline on the MR diff +
+    # the pipeline widget (GA; no feature flag). Fixed path — `reports:` resolves
+    # at config-parse time, before the script runs.
+    reports:
+      codequality: gl-code-quality-report.json
 
   rules:
     - if: '$CI_COMMIT_TAG'

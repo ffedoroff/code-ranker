@@ -1,370 +1,255 @@
-//! Language-neutral complexity-metric scaffolding: the computed-value carrier
-//! [`FileMetrics`], the writer [`write_metrics`] (omit-at + LOC/Halstead gating),
-//! the no-signal values [`metric_omit_at`], and the metric attribute catalog
-//! [`metric_specs`]. The sibling [`coupling_specs`](crate::coupling_specs) lives
-//! alongside it; both are merged into the snapshot's node-attribute dictionary.
+//! Language-neutral metric scaffolding. Tier-1 counts ([`MetricInputs`]) are
+//! measured by the per-language engines; **every tier-2 metric (its formula AND
+//! its spec) is data**, defined in `metrics/builtin.toml` and computed by the
+//! CEL [`registry`](crate::registry) engine — no derived-metric name is hardcoded
+//! in Rust. [`write_metrics`] writes the tier-1 measured values plus the
+//! registry-derived tier-2 values onto a node; [`metric_specs`] / [`stat_keys`]
+//! expose the catalog read from the file.
 //!
-//! The per-language **engines** that produce a `FileMetrics` live in the language
-//! crates — `rust_ts` in `code-ranker-plugin-rust`, `python_ts` in
-//! `code-ranker-plugin-python`, `ecmascript_ts` in `code-ranker-ecmascript-core`.
-//! Each plugin computes a `FileMetrics` with its own engine and calls
-//! [`write_metrics`] here. This module names no language and pulls in no grammar.
+//! The per-language engines (`rust_ts` / `python_ts` / `ecmascript_ts`) live in
+//! the language crates; each produces a `MetricInputs` and calls [`write_metrics`].
 
 use crate::attrs::num_attr;
+use crate::registry::{Engine, MetricDef, Scope};
 use code_ranker_plugin_api::{
-    attrs::ValueType,
-    level::{AttributeGroup, AttributeSpec, Direction, SpecRow, attr_dict, group},
+    level::{AttributeGroup, AttributeSpec},
     node::Node,
 };
+use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
-/// The per-file complexity metric values a language engine computes, in the
-/// canonical key set this crate writes. Engines fill the fields they support and
-/// leave the rest at `0.0` (e.g. `tloc` is non-zero only for Rust, where inline
-/// `#[cfg(test)]` items are stripped). [`write_metrics`] turns this into node
-/// attributes, applying each key's `omit_at` and the LOC / Halstead gating.
+/// Raw tier-1 counts a per-language engine measures for one unit (a file or, for
+/// the `functions` level, a function). Every tier-2 metric is a pure function of
+/// these, evaluated by the built-in registry — see `metrics/builtin.toml`.
 #[derive(Debug, Clone, Default, PartialEq)]
-pub struct FileMetrics {
-    pub cyclomatic: f64,
+pub struct MetricInputs {
+    /// Halstead base counts (η₁/η₂/N₁/N₂), as floats (counts are small integers).
+    pub eta1: f64,
+    pub eta2: f64,
+    pub n1: f64,
+    pub n2: f64,
+    /// Structural counts.
+    pub spaces: f64,
+    pub branches: f64,
     pub cognitive: f64,
     pub exits: f64,
     pub args: f64,
     pub closures: f64,
-    pub mi: f64,
-    pub mi_sei: f64,
+    /// LOC breakdown.
     pub sloc: f64,
     pub lloc: f64,
     pub cloc: f64,
     pub blank: f64,
-    /// Test lines (Rust only: lines removed with `#[cfg(test)]`/`#[test]`/`#[bench]`).
     pub tloc: f64,
-    pub length: f64,
-    pub vocabulary: f64,
-    pub volume: f64,
-    pub effort: f64,
-    pub time: f64,
-    pub bugs: f64,
+    /// Unit span sloc (`end_row − start_row`) — an MI input, not emitted itself.
+    pub span_sloc: f64,
 }
 
-/// Write the metric attributes for one file node from a computed [`FileMetrics`].
-/// Each value is dropped at its `omit_at` ([`metric_omit_at`]); the LOC block is
-/// gated on `sloc > 0` and the Halstead block on `volume > 0`. The same omit
-/// values are published on the specs ([`metric_specs`]), so emission and the
-/// declared spec never drift. Called by each language plugin after its engine
-/// produces the values.
-pub fn write_metrics(node: &mut Node, m: &FileMetrics) {
-    let mut put = |key: &str, v: f64| {
-        let a = num_attr(v);
-        if a == num_attr(metric_omit_at(key)) {
-            node.attrs.remove(key);
-        } else {
-            node.attrs.insert(key.to_string(), a);
+/// One sub-file unit (a function / method / closure) with its tier-1 counts.
+/// Produced by a language engine's `compute_functions` and turned into a node on
+/// the optional `functions` level via [`write_metrics`]. `kind` is a free-form,
+/// per-language string (`fn` / `method` / `closure` / `lambda` / …).
+#[derive(Debug, Clone, PartialEq)]
+pub struct FunctionUnit {
+    pub kind: String,
+    pub name: String,
+    /// 1-based inclusive line span.
+    pub start_line: u32,
+    pub end_line: u32,
+    pub inputs: MetricInputs,
+}
+
+// ── Built-in metric registry (loaded from data, not hardcoded) ───────────────
+
+static BUILTIN_TOML: &str = include_str!("../metrics/builtin.toml");
+
+#[derive(Debug, Deserialize)]
+struct Builtin {
+    #[serde(default)]
+    stat: Vec<String>,
+    #[serde(default)]
+    ui: UiOrder,
+    #[serde(default)]
+    formulas: BTreeMap<String, String>,
+    #[serde(default)]
+    groups: BTreeMap<String, AttributeGroup>,
+    #[serde(default)]
+    specs: BTreeMap<String, AttributeSpec>,
+}
+
+/// Canonical UI render orders (column / summary / sort / size / card), read from
+/// `metrics/builtin.toml`. The orchestrator prunes each to the keys present.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct UiOrder {
+    #[serde(default)]
+    pub columns: Vec<String>,
+    #[serde(default)]
+    pub summary: Vec<String>,
+    #[serde(default)]
+    pub sort: Vec<String>,
+    #[serde(default)]
+    pub size: Vec<String>,
+    #[serde(default)]
+    pub card: Vec<String>,
+}
+
+static BUILTIN: LazyLock<Builtin> =
+    LazyLock::new(|| toml::from_str(BUILTIN_TOML).expect("metrics/builtin.toml parses"));
+
+/// The compiled tier-2 registry: `MetricDef`s built from the file's `[formulas]`
+/// (with each metric's `omit_at` taken from its spec), compiled once.
+static BUILTIN_ENGINE: LazyLock<(BTreeMap<String, MetricDef>, Engine)> = LazyLock::new(|| {
+    let defs: BTreeMap<String, MetricDef> = BUILTIN
+        .formulas
+        .iter()
+        .map(|(k, f)| {
+            (
+                k.clone(),
+                MetricDef {
+                    formula: f.clone(),
+                    scope: Scope::Node,
+                    value_type: "float".to_string(),
+                    label: None,
+                    name: None,
+                    short: None,
+                    description: None,
+                    formula_pretty: None,
+                    direction: None,
+                    group: None,
+                    omit_at: BUILTIN.specs.get(k).map(|s| s.omit_at).unwrap_or(0.0),
+                },
+            )
+        })
+        .collect();
+    let engine = Engine::compile(&defs).expect("metrics/builtin.toml formulas compile");
+    (defs, engine)
+});
+
+/// Write all built-in metrics for one unit onto `node`: the tier-1 measured
+/// values (LOC block gated on `sloc > 0`, mirroring historical behaviour) plus
+/// the tier-2 metrics computed by the registry from `metrics/builtin.toml`. Each
+/// value is dropped at its `omit_at`. No tier-2 metric name appears here — they
+/// all flow from the data file.
+pub fn write_metrics(node: &mut Node, i: &MetricInputs) {
+    {
+        let mut put = |key: &str, v: f64| {
+            let a = num_attr(v);
+            if a == num_attr(0.0) {
+                node.attrs.remove(key);
+            } else {
+                node.attrs.insert(key.to_string(), a);
+            }
+        };
+        put("cognitive", i.cognitive);
+        put("exits", i.exits);
+        put("args", i.args);
+        put("closures", i.closures);
+        if i.sloc > 0.0 {
+            put("sloc", i.sloc);
+            put("lloc", i.lloc);
+            put("cloc", i.cloc);
+            put("blank", i.blank);
         }
-    };
-    put("cyclomatic", m.cyclomatic);
-    put("cognitive", m.cognitive);
-    put("exits", m.exits);
-    put("args", m.args);
-    put("closures", m.closures);
-    put("mi", m.mi);
-    put("mi_sei", m.mi_sei);
-    if m.sloc > 0.0 {
-        put("sloc", m.sloc);
-        put("lloc", m.lloc);
-        put("cloc", m.cloc);
-        put("blank", m.blank);
+        put("tloc", i.tloc);
     }
-    put("tloc", m.tloc);
-    if m.volume > 0.0 {
-        put("length", m.length);
-        put("vocabulary", m.vocabulary);
-        put("volume", m.volume);
-        put("effort", m.effort);
-        put("time", m.time);
-        put("bugs", m.bugs);
+
+    let (defs, engine) = &*BUILTIN_ENGINE;
+    for (key, value) in engine.eval_node(&inputs_map(i)) {
+        let omit = defs.get(&key).map(|d| d.omit_at).unwrap_or(0.0);
+        let a = num_attr(value);
+        if a == num_attr(omit) {
+            node.attrs.remove(&key);
+        } else {
+            node.attrs.insert(key, a);
+        }
     }
 }
 
-/// The value at which a per-file metric carries no signal and is **omitted** from
-/// output (see [`code_ranker_plugin_api::level::AttributeSpec::omit_at`]). `0` for
-/// almost everything; `1` for `cyclomatic` — the analyzer gives the file unit a
-/// McCabe base path of `1`, so a function-less file reports a vacuous `1` that
-/// carries no signal and must be dropped. The per-language writers gate emission
-/// on this value and [`metric_specs`] publishes the same value on each spec, so
-/// the two never drift.
-fn metric_omit_at(key: &str) -> f64 {
-    match key {
-        "cyclomatic" => 1.0,
-        _ => 0.0,
-    }
+/// The tier-1 inputs as a name→value map (the variables tier-2 formulas read).
+fn inputs_map(i: &MetricInputs) -> BTreeMap<String, f64> {
+    BTreeMap::from([
+        ("eta1".to_string(), i.eta1),
+        ("eta2".to_string(), i.eta2),
+        ("n1".to_string(), i.n1),
+        ("n2".to_string(), i.n2),
+        ("spaces".to_string(), i.spaces),
+        ("branches".to_string(), i.branches),
+        ("cognitive".to_string(), i.cognitive),
+        ("exits".to_string(), i.exits),
+        ("args".to_string(), i.args),
+        ("closures".to_string(), i.closures),
+        ("sloc".to_string(), i.sloc),
+        ("lloc".to_string(), i.lloc),
+        ("cloc".to_string(), i.cloc),
+        ("blank".to_string(), i.blank),
+        ("tloc".to_string(), i.tloc),
+        ("span_sloc".to_string(), i.span_sloc),
+    ])
 }
 
-/// The complexity metric attribute dictionary and its groups, fully enriched
-/// (label/name/short/description/formula/calc/direction) so the UI hardcodes no
-/// metric. The orchestrator merges these into each level's `node_attributes` /
-/// `attribute_groups` (then prunes to keys actually present) and overlays
-/// language thresholds. Coupling/cycle specs live in `code-ranker-graph`.
+/// The metric attribute dictionary + groups, read from `metrics/builtin.toml`.
+/// The orchestrator merges these into each level's `node_attributes` /
+/// `attribute_groups` (then prunes to keys present) and overlays thresholds.
 pub fn metric_specs() -> (
     BTreeMap<String, AttributeSpec>,
     BTreeMap<String, AttributeGroup>,
 ) {
-    use Direction::{HigherBetter, LowerBetter};
-    use ValueType::Float;
-    let mut specs = attr_dict(vec![
-        (
-            "cyclomatic",
-            SpecRow {
-                group: "complexity",
-                label: "Cyclomatic",
-                name: "Cyclomatic complexity",
-                short: "Cyclomatic",
-                description: "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
-                formula: "Σ (branches + 1) over functions",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "cognitive",
-            SpecRow {
-                group: "complexity",
-                label: "Cognitive",
-                name: "Cognitive complexity",
-                short: "Cognitive",
-                description: "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "exits",
-            SpecRow {
-                group: "complexity",
-                label: "Exits",
-                name: "Exit points",
-                short: "Exits",
-                description: "Number of exit points (return/throw) in the unit.",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "args",
-            SpecRow {
-                group: "complexity",
-                label: "Args",
-                name: "Arguments",
-                short: "Args",
-                description: "Number of function / closure arguments.",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "closures",
-            SpecRow {
-                group: "complexity",
-                label: "Closures",
-                name: "Closures",
-                short: "Closures",
-                description: "Number of closures defined in the unit.",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "mi",
-            SpecRow {
-                group: "maintainability",
-                value_type: Float,
-                label: "MI",
-                name: "Maintainability index",
-                short: "MI",
-                description: "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
-                formula: "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)",
-                direction: HigherBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "mi_sei",
-            SpecRow {
-                group: "maintainability",
-                value_type: Float,
-                label: "MI (SEI)",
-                name: "Maintainability (SEI)",
-                short: "MI SEI",
-                description: "SEI variant of the Maintainability Index — adds a bonus for comment density.",
-                formula: "MI + 50·sin(√(2.4 × comment-ratio))",
-                direction: HigherBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "sloc",
-            SpecRow {
-                group: "loc",
-                label: "Source",
-                name: "Source lines",
-                short: "SLOC",
-                description: "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count).",
-                ..Default::default()
-            },
-        ),
-        (
-            "lloc",
-            SpecRow {
-                group: "loc",
-                label: "Logical",
-                name: "Logical lines",
-                short: "Logical",
-                description: "Logical lines — counts statements, not physical lines.",
-                ..Default::default()
-            },
-        ),
-        (
-            "cloc",
-            SpecRow {
-                group: "loc",
-                label: "Comments",
-                name: "Comment lines",
-                short: "Comments",
-                description: "Comment-only lines (inline comments on code lines are not counted).",
-                ..Default::default()
-            },
-        ),
-        (
-            "blank",
-            SpecRow {
-                group: "loc",
-                label: "Blank",
-                name: "Blank lines",
-                short: "Blank",
-                description: "Empty or whitespace-only lines.",
-                ..Default::default()
-            },
-        ),
-        (
-            "tloc",
-            SpecRow {
-                group: "loc",
-                label: "Test",
-                name: "Test lines",
-                short: "TLOC",
-                description: "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
-                ..Default::default()
-            },
-        ),
-        (
-            "length",
-            SpecRow {
-                group: "halstead",
-                value_type: Float,
-                label: "Length",
-                name: "Halstead length",
-                short: "H.len",
-                description: "Program length — total operator + operand occurrences.",
-                formula: "N₁ + N₂",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "vocabulary",
-            SpecRow {
-                group: "halstead",
-                value_type: Float,
-                label: "Vocabulary",
-                name: "Halstead vocabulary",
-                short: "H.vocab",
-                description: "Vocabulary — distinct operators + operands.",
-                formula: "η₁ + η₂",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "volume",
-            SpecRow {
-                group: "halstead",
-                value_type: Float,
-                label: "Volume",
-                name: "Halstead volume",
-                short: "H.vol",
-                description: "Algorithm size in bits, from distinct operators and operands.",
-                formula: "length × log₂(vocabulary)",
-                calc: "length * Math.log2(vocabulary)",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "effort",
-            SpecRow {
-                group: "halstead",
-                value_type: Float,
-                label: "Effort",
-                name: "Halstead effort",
-                short: "H.effort",
-                description: "Mental effort to implement the algorithm.",
-                formula: "volume × difficulty",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "time",
-            SpecRow {
-                group: "halstead",
-                value_type: Float,
-                label: "Time",
-                name: "Halstead time, s",
-                short: "H.time(s)",
-                description: "Estimated implementation time, in seconds.",
-                formula: "effort ÷ 18",
-                calc: "effort / 18",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-        (
-            "bugs",
-            SpecRow {
-                group: "halstead",
-                value_type: Float,
-                label: "Bugs",
-                name: "Halstead bugs",
-                short: "H.bugs",
-                description: "Estimated delivered bugs — a rough predictor of defect density.",
-                formula: "effort^⅔ ÷ 3000",
-                calc: "effort ** (2/3) / 3000",
-                direction: LowerBetter,
-                ..Default::default()
-            },
-        ),
-    ]);
-    // Publish each metric's no-signal value on its spec, from the same
-    // `metric_omit_at` the writers gate on — so the emitted JSON and the declared
-    // spec agree.
-    for (key, spec) in specs.iter_mut() {
-        spec.omit_at = metric_omit_at(key);
+    (BUILTIN.specs.clone(), BUILTIN.groups.clone())
+}
+
+/// The metric keys aggregated into the per-graph `stats` block (from the data
+/// file). Coupling stat keys are added by the orchestrator.
+pub fn stat_keys() -> Vec<String> {
+    BUILTIN.stat.clone()
+}
+
+/// The canonical UI render orders, read from `metrics/builtin.toml`.
+pub fn ui_order() -> UiOrder {
+    BUILTIN.ui.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builtin_registry_loads_and_compiles() {
+        // The data file parses and every formula compiles (catches a typo here
+        // at test time, not at first use).
+        let (defs, _engine) = &*BUILTIN_ENGINE;
+        assert!(defs.contains_key("volume"));
+        assert!(!BUILTIN.specs.is_empty());
+        assert!(!BUILTIN.stat.is_empty());
     }
-    let mut groups = BTreeMap::new();
-    groups.insert(
-        "complexity".to_string(),
-        group("Complexity", "Code complexity metrics"),
-    );
-    groups.insert(
-        "halstead".to_string(),
-        group("Halstead", "Halstead software metrics"),
-    );
-    groups.insert(
-        "loc".to_string(),
-        group("Lines of Code", "Lines of code breakdown"),
-    );
-    groups.insert(
-        "maintainability".to_string(),
-        group("Maintainability", "Maintainability index"),
-    );
-    (specs, groups)
+
+    #[test]
+    fn derives_tier2_from_tier1() {
+        // A worked file unit: 87 operand+operator occurrences, vocab 23 → volume.
+        let i = MetricInputs {
+            eta1: 10.0,
+            eta2: 13.0,
+            n1: 40.0,
+            n2: 47.0,
+            spaces: 1.0,
+            branches: 2.0,
+            span_sloc: 20.0,
+            sloc: 18.0,
+            cloc: 4.0,
+            ..Default::default()
+        };
+        let mut node = Node {
+            id: "x".into(),
+            kind: "file".into(),
+            name: "x".into(),
+            parent: None,
+            attrs: Default::default(),
+        };
+        write_metrics(&mut node, &i);
+        // cyclomatic = spaces + branches = 3
+        assert_eq!(node.attrs.get("cyclomatic"), Some(&num_attr(3.0)));
+        // volume = (n1+n2) * log2(eta1+eta2) = 87 * log2(23)
+        let want = 87.0_f64 * 23.0_f64.log2();
+        assert_eq!(node.attrs.get("volume"), Some(&num_attr(want)));
+    }
 }

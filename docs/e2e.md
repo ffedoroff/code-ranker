@@ -117,7 +117,13 @@ bumps; that is why a single shared version is safe.
   canonical value on both sides, and compares the whole structure
   **character-for-character** (100% match required). The same file also holds the
   SARIF golden checks (`*_sample_check_sarif_matches_golden`) and the Code Quality
-  golden checks (`*_sample_check_codequality_matches_golden`).
+  golden checks (`*_sample_check_codequality_matches_golden`). It also holds the
+  declarative-metric / level checks (no golden file, self-contained temp project):
+  `user_defined_metric_is_computed_and_emitted` (a `[metrics.<key>]` CEL formula
+  is computed and emitted with its spec), `user_defined_aggregate_lands_in_stats`
+  (a graph-scope `agg(…)` lands in `stats`), and `functions_level_is_opt_in` (the
+  `functions` level is absent by default and present with per-function nodes when
+  `[levels] functions` is on).
 - `crates/code-ranker-cli/src/plugin/mod.rs` — `every_registered_plugin_has_committed_goldens`:
   a guard unit test driven by the **plugin registry** (the single source of truth for
   which languages exist). It asserts every registered plugin ships *both* goldens

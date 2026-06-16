@@ -8,7 +8,8 @@
 
 use anyhow::Result;
 use code_ranker_ecmascript_core::{
-    analyze_ecmascript, annotate_ecmascript_metrics, ecmascript_is_test_path, ecmascript_level,
+    analyze_ecmascript, annotate_ecmascript_metrics, ecmascript_function_units,
+    ecmascript_functions_level, ecmascript_is_test_path, ecmascript_level,
 };
 use code_ranker_plugin_api::{
     graph::Graph,
@@ -32,7 +33,7 @@ impl LanguagePlugin for JavascriptPlugin {
     }
 
     fn levels(&self) -> Vec<Level> {
-        vec![ecmascript_level("files")]
+        vec![ecmascript_level("files"), ecmascript_functions_level()]
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
@@ -50,6 +51,13 @@ impl LanguagePlugin for JavascriptPlugin {
 
     fn metrics(&self, graph: &mut Graph) -> usize {
         annotate_ecmascript_metrics(graph, |ext| match ext {
+            "js" | "jsx" | "mjs" | "cjs" => Some((tree_sitter_javascript::LANGUAGE.into(), false)),
+            _ => None,
+        })
+    }
+
+    fn function_units(&self, graph: &Graph) -> Vec<code_ranker_plugin_api::node::Node> {
+        ecmascript_function_units(graph, |ext| match ext {
             "js" | "jsx" | "mjs" | "cjs" => Some((tree_sitter_javascript::LANGUAGE.into(), false)),
             _ => None,
         })
@@ -82,11 +90,43 @@ mod tests {
     }
 
     #[test]
-    fn levels_returns_single_files_level() {
+    fn levels_returns_files_and_functions() {
         let levels = JavascriptPlugin.levels();
-        assert_eq!(levels.len(), 1);
+        assert_eq!(levels.len(), 2);
         assert_eq!(levels[0].name, "files");
         assert!(levels[0].edge_kinds.contains_key("uses"));
+        assert_eq!(levels[1].name, "functions");
+        assert!(levels[1].node_kinds.contains_key("function"));
+    }
+
+    #[test]
+    fn function_units_extracts_per_function_nodes() {
+        let tmp = TempDir::new().unwrap();
+        let f = tmp.path().join("a.js");
+        fs::write(
+            &f,
+            "function add(a, b) { if (a) return a + b; return b; }\nconst g = (x) => x;\n",
+        )
+        .unwrap();
+        let graph = Graph {
+            nodes: vec![code_ranker_plugin_api::node::Node {
+                id: f.to_string_lossy().into_owned(),
+                kind: "file".into(),
+                name: "a.js".into(),
+                parent: None,
+                attrs: Default::default(),
+            }],
+            edges: vec![],
+        };
+        let units = JavascriptPlugin.function_units(&graph);
+        assert!(
+            units
+                .iter()
+                .any(|n| n.name == "add" && n.kind == "function"),
+            "function add extracted: {:?}",
+            units.iter().map(|n| (&n.name, &n.kind)).collect::<Vec<_>>()
+        );
+        assert!(units.iter().all(|n| n.parent.is_some()));
     }
 
     #[test]

@@ -1,0 +1,239 @@
+# Built-in metric registry — the data-driven home for every tier-2 metric.
+#
+# This file (not Rust source) defines the derived complexity metrics: their CEL
+# `formula` (computed at snapshot time by the registry engine over tier-1 counts)
+# and their full display spec. Tier-1 measured metrics (sloc, cognitive, …) carry
+# only a spec here — their values are written directly from the engine counts.
+#
+# Editing a formula or spec here changes the metric with no Rust change. The
+# tier-1 inputs available to formulas: eta1, eta2, n1, n2, spaces, branches,
+# cognitive, exits, args, closures, sloc, lloc, cloc, blank, tloc, span_sloc.
+
+# Metrics aggregated into the per-graph `stats` block (mean over file nodes).
+# Coupling stat keys (fan_in / fan_out / hk) are added by the orchestrator.
+stat = [
+    "cyclomatic", "cognitive", "mi", "mi_sei", "sloc", "cloc", "blank", "tloc",
+    "length", "vocabulary", "volume", "effort", "time", "bugs",
+]
+
+# ── UI render orders (data-driven; the orchestrator prunes to present keys) ───
+# The viewer reads column/summary/sort order from the snapshot; this is the
+# canonical order. Non-metric tokens (`kind`, `cycle`) and coupling keys live
+# here too so the whole order is one list.
+[ui]
+columns = [
+    "kind", "cycle", "sloc", "hk", "fan_in", "fan_out", "volume", "bugs",
+    "effort", "time", "length", "vocabulary", "cyclomatic", "cognitive", "mi",
+    "mi_sei", "lloc", "cloc", "blank", "tloc",
+]
+summary = [
+    "cyclomatic", "cognitive", "sloc", "mi", "mi_sei", "volume", "bugs",
+    "effort", "time", "length", "vocabulary", "fan_in", "fan_out", "hk", "lloc",
+    "cloc", "blank", "tloc",
+]
+sort = ["hk", "sloc", "fan_out", "fan_in", "cyclomatic", "cognitive", "items", "cycle"]
+size = ["loc", "hk"]
+card = ["hk", "sloc"]
+
+# ── tier-2 formulas (CEL over tier-1 inputs + earlier metrics) ────────────────
+# Verbatim ports of the former Rust `derive()`; same operand order and zero
+# gating, so emitted values are unchanged. log2/ln/pow/sqrt/sin are host
+# functions registered by the engine (the exact f64 ops Rust used).
+[formulas]
+cyclomatic = "spaces + branches"
+length = "n1 + n2"
+vocabulary = "eta1 + eta2"
+volume = "vocabulary > 0.0 ? length * log2(vocabulary) : 0.0"
+effort = "eta2 > 0.0 ? (eta1 / 2.0) * (n2 / eta2) * volume : 0.0"
+time = "effort / 18.0"
+bugs = "eta2 > 0.0 ? pow(effort, 2.0 / 3.0) / 3000.0 : 0.0"
+mi = "171.0 - 5.2 * ln(volume) - 0.23 * cyclomatic - 16.2 * ln(span_sloc)"
+mi_sei = "171.0 - 5.2 * log2(volume) - 0.23 * cyclomatic - 16.2 * log2(span_sloc) + 50.0 * sin(sqrt(cloc / span_sloc * 2.4))"
+
+# ── attribute groups ──────────────────────────────────────────────────────────
+[groups.complexity]
+label = "Complexity"
+description = "Code complexity metrics"
+
+[groups.halstead]
+label = "Halstead"
+description = "Halstead software metrics"
+
+[groups.loc]
+label = "Lines of Code"
+description = "Lines of code breakdown"
+
+[groups.maintainability]
+label = "Maintainability"
+description = "Maintainability index"
+
+# ── attribute specs (display metadata; merged into node_attributes) ───────────
+[specs.args]
+value_type = "int"
+label = "Args"
+name = "Arguments"
+short = "Args"
+description = "Number of function / closure arguments."
+direction = "lower_better"
+group = "complexity"
+
+[specs.blank]
+value_type = "int"
+label = "Blank"
+name = "Blank lines"
+short = "Blank"
+description = "Empty or whitespace-only lines."
+group = "loc"
+
+[specs.bugs]
+value_type = "float"
+label = "Bugs"
+name = "Halstead bugs"
+short = "H.bugs"
+description = "Estimated delivered bugs — a rough predictor of defect density."
+formula = "effort^⅔ ÷ 3000"
+calc = "effort ** (2/3) / 3000"
+direction = "lower_better"
+group = "halstead"
+
+[specs.cloc]
+value_type = "int"
+label = "Comments"
+name = "Comment lines"
+short = "Comments"
+description = "Comment-only lines (inline comments on code lines are not counted)."
+group = "loc"
+
+[specs.closures]
+value_type = "int"
+label = "Closures"
+name = "Closures"
+short = "Closures"
+description = "Number of closures defined in the unit."
+direction = "lower_better"
+group = "complexity"
+
+[specs.cognitive]
+value_type = "int"
+label = "Cognitive"
+name = "Cognitive complexity"
+short = "Cognitive"
+description = "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file."
+direction = "lower_better"
+group = "complexity"
+
+[specs.cyclomatic]
+value_type = "int"
+label = "Cyclomatic"
+name = "Cyclomatic complexity"
+short = "Cyclomatic"
+description = "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`."
+formula = "Σ (branches + 1) over functions"
+direction = "lower_better"
+group = "complexity"
+omit_at = 1.0
+
+[specs.effort]
+value_type = "float"
+label = "Effort"
+name = "Halstead effort"
+short = "H.effort"
+description = "Mental effort to implement the algorithm."
+formula = "volume × difficulty"
+direction = "lower_better"
+group = "halstead"
+
+[specs.exits]
+value_type = "int"
+label = "Exits"
+name = "Exit points"
+short = "Exits"
+description = "Number of exit points (return/throw) in the unit."
+direction = "lower_better"
+group = "complexity"
+
+[specs.length]
+value_type = "float"
+label = "Length"
+name = "Halstead length"
+short = "H.len"
+description = "Program length — total operator + operand occurrences."
+formula = "N₁ + N₂"
+direction = "lower_better"
+group = "halstead"
+
+[specs.lloc]
+value_type = "int"
+label = "Logical"
+name = "Logical lines"
+short = "Logical"
+description = "Logical lines — counts statements, not physical lines."
+group = "loc"
+
+[specs.mi]
+value_type = "float"
+label = "MI"
+name = "Maintainability index"
+short = "MI"
+description = "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC."
+formula = "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)"
+direction = "higher_better"
+group = "maintainability"
+
+[specs.mi_sei]
+value_type = "float"
+label = "MI (SEI)"
+name = "Maintainability (SEI)"
+short = "MI SEI"
+description = "SEI variant of the Maintainability Index — adds a bonus for comment density."
+formula = "MI + 50·sin(√(2.4 × comment-ratio))"
+direction = "higher_better"
+group = "maintainability"
+
+[specs.sloc]
+value_type = "int"
+label = "Source"
+name = "Source lines"
+short = "SLOC"
+description = "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count)."
+group = "loc"
+
+[specs.time]
+value_type = "float"
+label = "Time"
+name = "Halstead time, s"
+short = "H.time(s)"
+description = "Estimated implementation time, in seconds."
+formula = "effort ÷ 18"
+calc = "effort / 18"
+direction = "lower_better"
+group = "halstead"
+
+[specs.tloc]
+value_type = "int"
+label = "Test"
+name = "Test lines"
+short = "TLOC"
+description = "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity."
+group = "loc"
+
+[specs.vocabulary]
+value_type = "float"
+label = "Vocabulary"
+name = "Halstead vocabulary"
+short = "H.vocab"
+description = "Vocabulary — distinct operators + operands."
+formula = "η₁ + η₂"
+direction = "lower_better"
+group = "halstead"
+
+[specs.volume]
+value_type = "float"
+label = "Volume"
+name = "Halstead volume"
+short = "H.vol"
+description = "Algorithm size in bits, from distinct operators and operands."
+formula = "length × log₂(vocabulary)"
+calc = "length * Math.log2(vocabulary)"
+direction = "lower_better"
+group = "halstead"

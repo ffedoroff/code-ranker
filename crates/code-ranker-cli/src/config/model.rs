@@ -14,6 +14,21 @@ pub struct Config {
     pub ignore: IgnoreConfig,
     pub rules: RulesConfig,
     pub output: OutputConfig,
+    /// User-defined declarative metrics (`[metrics.<key>]`): a CEL `formula` plus
+    /// optional spec fields. Computed per node at snapshot time and emitted like
+    /// any built-in metric. Empty by default — absent → no change to output.
+    pub metrics: BTreeMap<String, code_ranker_graph::MetricDef>,
+    /// Optional analysis levels (`[levels]`). Off by default → only the `files`
+    /// level is emitted, so default output is unchanged.
+    pub levels: LevelsConfig,
+}
+
+/// `[levels]` — opt-in extra graph levels beyond `files`.
+#[derive(Debug, Clone, Copy, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct LevelsConfig {
+    /// Emit the per-function (`functions`) level with sub-file metrics.
+    pub functions: bool,
 }
 
 /// Per-format output config: `[output.json]` / `[output.html]` /

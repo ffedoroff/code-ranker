@@ -805,3 +805,192 @@ fn every_central_metric_is_exercised_per_language() {
          {stale_exceptions:?}"
     );
 }
+
+/// A user-defined `[metrics.<key>]` CEL formula is computed per node and emitted
+/// as a first-class metric — value plus its `node_attributes` spec. This is the
+/// declarative-metric path: a metric the engine never hardcodes, added purely in
+/// config (here `comment_ratio = cloc / sloc * 100`).
+#[test]
+fn user_defined_metric_is_computed_and_emitted() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let p = dir.path();
+    // cloc = 2 comment lines, sloc = 4 code lines → comment_ratio = 50.
+    std::fs::write(
+        p.join("m.py"),
+        "# a comment line\n# another comment\ndef f(x):\n    return x + 1\n\n\ndef g(y):\n    return y * 2\n",
+    )
+    .unwrap();
+    std::fs::write(
+        p.join("code-ranker.toml"),
+        "[metrics.comment_ratio]\n\
+         formula = \"sloc > 0.0 ? cloc / sloc * 100.0 : 0.0\"\n\
+         label = \"Comments %\"\n\
+         direction = \"higher_better\"\n\
+         group = \"loc\"\n",
+    )
+    .unwrap();
+    let out = p.join("out.json");
+    let status = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(p)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(".")
+        .arg("--plugin")
+        .arg("python")
+        .arg("--config")
+        .arg(p.join("code-ranker.toml"))
+        .arg(format!("--output.json.path={}", out.display()))
+        .status()
+        .expect("spawn code-ranker");
+    assert!(status.success(), "report should succeed");
+
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let files = &v["graphs"]["files"];
+    assert!(
+        files["node_attributes"]["comment_ratio"].is_object(),
+        "the user metric must appear in node_attributes (renders as a column)"
+    );
+    let node = files["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|n| n["id"].as_str().unwrap_or("").ends_with("m.py"))
+        .expect("file node present");
+    assert_eq!(
+        node["comment_ratio"],
+        serde_json::json!(50),
+        "comment_ratio = cloc(2) / sloc(4) * 100"
+    );
+}
+
+/// A graph-scope (aggregate) `[metrics]` entry reduces a metric across all nodes
+/// via `agg(key, reducer, population)` and lands in the level `stats` block —
+/// the declarative analytics path (percentiles/means as user config).
+#[test]
+fn user_defined_aggregate_lands_in_stats() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let p = dir.path();
+    // Two files with different branch counts → different cyclomatic.
+    std::fs::write(
+        p.join("a.py"),
+        "def f(x):\n    if x:\n        return 1\n    return 0\n",
+    )
+    .unwrap();
+    std::fs::write(p.join("b.py"), "def g(y):\n    return y\n").unwrap();
+    std::fs::write(
+        p.join("code-ranker.toml"),
+        "[metrics.cyc_mean]\n\
+         scope = \"graph\"\n\
+         formula = \"agg('cyclomatic', 'avg', 'not_empty')\"\n",
+    )
+    .unwrap();
+    let out = p.join("out.json");
+    let status = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(p)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(".")
+        .arg("--plugin")
+        .arg("python")
+        .arg("--config")
+        .arg(p.join("code-ranker.toml"))
+        .arg(format!("--output.json.path={}", out.display()))
+        .status()
+        .expect("spawn code-ranker");
+    assert!(status.success(), "report should succeed");
+
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    let stats = &v["graphs"]["files"]["stats"];
+    assert!(
+        stats.get("cyc_mean").is_some(),
+        "graph-scope aggregate must appear in stats: {stats}"
+    );
+}
+
+/// The opt-in `functions` level (`[levels] functions = true`) emits per-function
+/// metric nodes (kind + parent + metrics), and is ABSENT by default — so the
+/// `files` level and its goldens are unaffected.
+#[test]
+fn functions_level_is_opt_in() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let p = dir.path();
+    std::fs::write(
+        p.join("a.py"),
+        "def f(x):\n    if x:\n        return 1\n    return 0\n\nclass C:\n    def m(self, y):\n        return y\n",
+    )
+    .unwrap();
+
+    let run = |cfg: &str| -> Value {
+        std::fs::write(p.join("code-ranker.toml"), cfg).unwrap();
+        let out = p.join("out.json");
+        let status = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+            .current_dir(p)
+            .env("CARGO_NET_OFFLINE", "true")
+            .arg("report")
+            .arg(".")
+            .arg("--plugin")
+            .arg("python")
+            .arg("--config")
+            .arg(p.join("code-ranker.toml"))
+            .arg(format!("--output.json.path={}", out.display()))
+            .status()
+            .expect("spawn code-ranker");
+        assert!(status.success());
+        serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap()
+    };
+
+    // Off by default → only the files level.
+    let off = run("");
+    assert!(
+        off["graphs"]["functions"].is_null(),
+        "functions level must be opt-in"
+    );
+
+    // On → a functions level with per-function nodes.
+    let on = run("[levels]\nfunctions = true\n");
+    let fns = &on["graphs"]["functions"];
+    assert!(fns.is_object(), "functions level present when enabled");
+    let nodes = fns["nodes"].as_array().expect("function nodes");
+    let f = nodes.iter().find(|n| n["name"] == "f").expect("function f");
+    assert_eq!(f["kind"], "function");
+    assert_eq!(f["cyclomatic"], serde_json::json!(2)); // 1 base + 1 `if`
+    assert!(f["parent"].as_str().unwrap().ends_with("a.py"));
+    let m = nodes.iter().find(|n| n["name"] == "m").expect("method m");
+    assert_eq!(m["kind"], "method");
+}
+
+/// A declared metric whose formula references a misspelled input produces no
+/// value anywhere — the run still succeeds (graceful per-node omit) but prints a
+/// project-wide-empty warning to stderr so the typo isn't silent.
+#[test]
+fn empty_metric_warns_on_stderr() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let p = dir.path();
+    std::fs::write(p.join("m.py"), "def f(x):\n    return x\n").unwrap();
+    std::fs::write(
+        p.join("code-ranker.toml"),
+        "[metrics.bad]\nformula = \"slocc / 100.0\"\n", // `slocc` is a typo for `sloc`
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(p)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(".")
+        .arg("--plugin")
+        .arg("python")
+        .arg("--config")
+        .arg(p.join("code-ranker.toml"))
+        .arg(format!("--output.json.path={}", p.join("o.json").display()))
+        .output()
+        .expect("spawn code-ranker");
+    assert!(
+        out.status.success(),
+        "run still succeeds despite the bad metric"
+    );
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("metric `bad`") && stderr.contains("no value on any node"),
+        "project-wide-empty warning expected on stderr, got: {stderr}"
+    );
+}

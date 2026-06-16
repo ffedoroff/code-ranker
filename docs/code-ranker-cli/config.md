@@ -61,10 +61,54 @@ path = "{project-dir}-{ts}.sarif"  # default if unset: .code-ranker/{ts}-{git-ha
 [output.codequality]         # `report` GitLab Code Quality (CodeClimate) artifact
 path = "gl-code-quality-report.json"  # default if unset: .code-ranker/{ts}-{git-hash-3}.codequality.json
 # enabled = true             # write Code Quality on every report run (opt-in)
+
+[levels]                     # opt-in extra graph levels beyond `files`
+# functions = true           # emit a `functions` level with per-function metrics
+
+[metrics.comment_ratio]      # user-defined metric (CEL formula + spec)
+formula   = "sloc > 0.0 ? cloc / sloc * 100.0 : 0.0"
+label     = "Comments %"
+direction = "higher_better"  # lower_better | higher_better
+group     = "loc"
+# scope   = "node"           # node (per file/function, default) | graph (aggregate)
+
+[metrics.cyclomatic_p90]     # a graph-scope aggregate → lands in the `stats` block
+scope     = "graph"
+formula   = "agg('cyclomatic', 'p90', 'not_empty')"
 ```
 
 The threshold scope is always `file` — a single source file on the one graph
 code-ranker builds.
+
+### `[levels]` — opt-in graph levels
+
+`functions = true` adds a second graph level, `functions`, with one node per
+sub-file unit (function / method / closure / …) carrying the same per-unit
+metrics. **Off by default**, so the default output (and goldens) is unchanged;
+the `files` level is always emitted. Function nodes have `parent` = their file
+node id and a per-language `kind` (e.g. `fn`/`method`/`closure`,
+`function`/`arrow`/`generator`). No call graph is built (no `Calls` edges).
+
+### `[metrics.<key>]` — declarative metrics
+
+Every tier-2 metric is **data**: a CEL `formula` plus display spec. The built-in
+set ships in `code-ranker-graph/metrics/builtin.toml`; you add or override metrics
+here with no code change. Fields:
+
+- `formula` (required) — a CEL expression over other metric keys and the tier-1
+  inputs (`eta1`/`eta2`/`n1`/`n2`/`spaces`/`branches`/`sloc`/`cloc`/`span_sloc`/…),
+  plus host math (`log2`/`ln`/`pow`/`sqrt`/`sin`/…). A bad formula or a definition
+  cycle is a hard config error.
+- `scope` — `node` (per file/function; default) or `graph` (an aggregate computed
+  once over all nodes via `agg(key, reducer, population)` and emitted into
+  `stats`). Reducers: `sum`/`avg`/`min`/`max`/`count`/`median`/`p<q>` (percentile
+  by numpy R-7). Populations: `not_empty` (value ≠ `omit_at`) / `all` (missing
+  counted at the floor).
+- `label` / `name` / `short` / `description` / `direction` / `group` / `value_type`
+  / `omit_at` — display spec (rendered like any built-in metric).
+
+A node-scope metric is computed for every file (and function, when that level is
+on) and is usable as a `[rules.thresholds.file]` limit like any built-in.
 
 ### `[output.json]` / `[output.html]` / `[output.sarif]` / `[output.codequality]` — report artifacts
 

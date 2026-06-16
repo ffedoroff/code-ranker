@@ -97,11 +97,43 @@ pub(crate) fn analyze_directory(
     let mut roots: BTreeMap<String, String> =
         plugin::roots(&plugin_name, &target).into_iter().collect();
     roots.insert("target".to_string(), target.display().to_string());
+
+    // Optional `functions` level (off by default): the plugin builds sub-file
+    // metric nodes (absolute ids) which we merge in so relativization rewrites
+    // their ids/parents alongside the files, then split back out — the `files`
+    // graph and its goldens stay untouched.
+    let want_functions = cfg.levels.functions;
+    if want_functions {
+        let fns = plugin::function_units(&plugin_name, &graph);
+        graph.nodes.extend(fns);
+    }
     code_ranker_graph::relativize::relativize_graph(&mut graph, &target, &roots);
+    let mut fn_nodes: Vec<code_ranker_plugin_api::node::Node> = Vec::new();
+    if want_functions {
+        graph.nodes.retain(|n| {
+            if n.id.contains('#') {
+                fn_nodes.push(n.clone());
+                false
+            } else {
+                true
+            }
+        });
+    }
 
     // 4. Apply ignore filters (tokenized ids), then compute the derived data.
     config::apply_ignore(&mut graph, &cfg.ignore, &target)?;
 
+    // Drop function nodes whose file was ignored above (keep the two in step).
+    if want_functions {
+        let file_ids: HashSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
+        fn_nodes.retain(|n| n.parent.as_deref().is_some_and(|p| file_ids.contains(p)));
+    }
+
+    let mut levels = levels;
+    let fn_level_spec = levels
+        .iter()
+        .position(|l| l.name == "functions")
+        .map(|i| levels.remove(i));
     let level_spec = levels.into_iter().find(|l| l.name == "files");
     let flow_kinds = flow_kinds(level_spec.as_ref());
     // Cycles, fan-in/HK and the drawn map all run on the same flow edges. A
@@ -111,12 +143,101 @@ pub(crate) fn analyze_directory(
     let mut cycles = code_ranker_graph::cycles::annotate_cycles(&mut graph, &flow_kinds);
     config::apply_cycle_rules(&mut cycles, &mut graph.nodes, &cfg.rules.cycles);
     code_ranker_graph::hk::annotate_hk(&mut graph, &flow_kinds);
-    let stats = code_ranker_graph::stats::compute_stats(&graph);
+
+    // User-defined declarative metrics: evaluate each `[metrics.<key>]` CEL
+    // formula. Node-scope metrics are written onto every internal node (built-in
+    // attributes — including the just-computed coupling — are inputs); graph-scope
+    // (aggregate) metrics are reduced over the whole node set into `stats` below.
+    // Empty registry → no-op, so the default output (and its goldens) is unchanged.
+    let mut custom_specs: BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec> =
+        BTreeMap::new();
+    let engine = if cfg.metrics.is_empty() {
+        None
+    } else {
+        let engine = code_ranker_graph::registry::Engine::compile(&cfg.metrics)
+            .context("compiling [metrics] formulas")?;
+        for node in &mut graph.nodes {
+            if node.kind == "external" {
+                continue;
+            }
+            code_ranker_graph::apply_to_node(node, &cfg.metrics, &engine);
+        }
+        // Only node-scope metrics become node-attribute columns; graph-scope keys
+        // never sit on a node, so they would be pruned anyway.
+        custom_specs = cfg
+            .metrics
+            .iter()
+            .filter(|(_, d)| d.scope == code_ranker_graph::Scope::Node)
+            .map(|(k, d)| (k.clone(), d.to_attribute_spec()))
+            .collect();
+        Some(engine)
+    };
+
+    // Stat keys are data-driven: tier-2 metrics from the registry plus the
+    // coupling metrics (computed by the graph passes above).
+    let mut stat_keys = code_ranker_graph::stat_keys();
+    stat_keys.extend([
+        "fan_in".to_string(),
+        "fan_out".to_string(),
+        "hk".to_string(),
+    ]);
+    let mut stats = code_ranker_graph::stats::compute_stats(&graph, &stat_keys);
+
+    // Graph-scope aggregates → merged into the stats block (e.g. a user's
+    // `cyclomatic_p90 = agg('cyclomatic','p90','not_empty')`).
+    if let Some(engine) = &engine
+        && engine.has_graph_metrics()
+    {
+        let omit_at = registry_omit_at(&plugin_name, &cfg.metrics);
+        let rows: Vec<BTreeMap<String, f64>> = graph
+            .nodes
+            .iter()
+            .filter(|n| n.kind != "external")
+            .map(numeric_attrs)
+            .collect();
+        let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for r in &rows {
+            keys.extend(r.keys().cloned());
+        }
+        let keys: Vec<String> = keys.into_iter().collect();
+        let pops = code_ranker_graph::Populations::build(&rows, &keys, &omit_at);
+        for (k, v) in engine.eval_graph(&pops) {
+            stats.insert(k, code_ranker_graph::num_attr(v));
+        }
+    }
+
+    // Warn on any declared metric that produced no value across the whole
+    // project. Catches the otherwise-silent failure mode — a formula that errors
+    // on every node (e.g. a misspelled input key resolves to nothing) — so a
+    // typo'd metric doesn't just vanish without a trace.
+    for (key, def) in &cfg.metrics {
+        let present = match def.scope {
+            code_ranker_graph::Scope::Graph => stats.contains_key(key),
+            code_ranker_graph::Scope::Node => graph
+                .nodes
+                .iter()
+                .any(|n| n.kind != "external" && n.attrs.contains_key(key)),
+        };
+        if !present {
+            logger::info(&format!(
+                "⚠ metric `{key}` produced no value on any node — check its formula \
+                 (a misspelled input key?) or whether it is always at its no-signal value",
+            ));
+        }
+    }
 
     let edge_count = graph.edges.len();
     let node_count = graph.nodes.len();
     let thresholds = plugin::thresholds(&plugin_name);
-    let level = assemble_level(level_spec, graph, cycles, stats, thresholds, &plugin_name);
+    let level = assemble_level(
+        level_spec,
+        graph,
+        cycles,
+        stats,
+        thresholds,
+        &custom_specs,
+        &plugin_name,
+    );
     prune_unused_roots(&level, &mut roots);
     timings.push(code_ranker_graph::snapshot::StageTime {
         stage: "projection".into(),
@@ -126,6 +247,26 @@ pub(crate) fn analyze_directory(
 
     let mut graphs = BTreeMap::new();
     graphs.insert("files".to_string(), level);
+
+    // Assemble the optional `functions` level from the split-out sub-file nodes.
+    // Reuses the same assembler: metric specs are merged and pruned to the keys
+    // present on function nodes (coupling specs drop out — functions carry none).
+    if want_functions && !fn_nodes.is_empty() {
+        let fn_graph = code_ranker_plugin_api::graph::Graph {
+            nodes: fn_nodes,
+            edges: Vec::new(),
+        };
+        let fn_level = assemble_level(
+            fn_level_spec,
+            fn_graph,
+            Vec::new(),
+            BTreeMap::new(),
+            plugin::thresholds(&plugin_name),
+            &custom_specs,
+            &plugin_name,
+        );
+        graphs.insert("functions".to_string(), fn_level);
+    }
 
     let violations = config::check_violations(&graphs, &cfg.rules);
 
@@ -188,6 +329,42 @@ fn flow_kinds(level: Option<&code_ranker_plugin_api::level::Level>) -> HashSet<S
     }
 }
 
+/// A node's numeric attributes as `f64` (the inputs an aggregate reduces over).
+fn numeric_attrs(node: &code_ranker_plugin_api::node::Node) -> BTreeMap<String, f64> {
+    use code_ranker_plugin_api::attrs::AttrValue;
+    node.attrs
+        .iter()
+        .filter_map(|(k, v)| match v {
+            AttrValue::Int(i) => Some((k.clone(), *i as f64)),
+            AttrValue::Float(f) => Some((k.clone(), *f)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The `omit_at` (no-signal floor) of every metric key, so an aggregate's `all`
+/// population counts a missing value at the right floor (`0` for most, `1` for
+/// `cyclomatic`). Built from the central + plugin-refined + coupling specs, then
+/// the user's own metric defs.
+fn registry_omit_at(
+    plugin_name: &str,
+    custom: &BTreeMap<String, code_ranker_graph::MetricDef>,
+) -> BTreeMap<String, f64> {
+    let mut m = BTreeMap::new();
+    let (specs, _) = code_ranker_graph::metric_specs();
+    for (k, s) in plugin::metric_specs(plugin_name, specs) {
+        m.insert(k, s.omit_at);
+    }
+    let (coupling, _) = code_ranker_graph::coupling_specs();
+    for (k, s) in coupling {
+        m.insert(k, s.omit_at);
+    }
+    for (k, d) in custom {
+        m.insert(k.clone(), d.omit_at);
+    }
+    m
+}
+
 /// Assemble one [`LevelGraph`]: merge the plugin's structural attribute specs
 /// with the centrally-produced complexity + coupling specs, prune them (and the
 /// edge kinds / groups) to what is actually present, and attach the graph,
@@ -198,6 +375,7 @@ fn assemble_level(
     cycles: Vec<code_ranker_graph::level_graph::CycleGroup>,
     stats: BTreeMap<String, code_ranker_plugin_api::attrs::AttrValue>,
     thresholds: BTreeMap<String, code_ranker_plugin_api::level::Thresholds>,
+    custom_specs: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     plugin_name: &str,
 ) -> LevelGraph {
     use std::collections::BTreeSet;
@@ -222,6 +400,13 @@ fn assemble_level(
     let (coupling_specs, coupling_groups) = code_ranker_graph::coupling_specs();
     node_attributes.extend(metric_specs);
     node_attributes.extend(coupling_specs);
+    // User-defined declarative metrics render as first-class columns; built-ins
+    // win a key collision (a user cannot shadow a core metric's spec).
+    for (key, spec) in custom_specs {
+        node_attributes
+            .entry(key.clone())
+            .or_insert_with(|| spec.clone());
+    }
     let mut attribute_groups = spec.attribute_groups;
     attribute_groups.extend(metric_groups);
     attribute_groups.extend(coupling_groups);
@@ -314,81 +499,21 @@ fn assemble_level(
     }
 }
 
-/// Curated metric orders (the historical UI vocabulary). The orchestrator
-/// filters each to the attributes actually present, so the viewer reads the
-/// order from data and hardcodes none of it.
-const UI_COLUMNS: &[&str] = &[
-    "kind",
-    "cycle",
-    "sloc",
-    "hk",
-    "fan_in",
-    "fan_out",
-    "volume",
-    "bugs",
-    "effort",
-    "time",
-    "length",
-    "vocabulary",
-    "cyclomatic",
-    "cognitive",
-    "mi",
-    "mi_sei",
-    "lloc",
-    "cloc",
-    "blank",
-    "tloc",
-];
-const UI_SUMMARY: &[&str] = &[
-    "cyclomatic",
-    "cognitive",
-    "sloc",
-    "mi",
-    "mi_sei",
-    "volume",
-    "bugs",
-    "effort",
-    "time",
-    "length",
-    "vocabulary",
-    "fan_in",
-    "fan_out",
-    "hk",
-    "lloc",
-    "cloc",
-    "blank",
-    "tloc",
-];
-const UI_SORT: &[&str] = &[
-    "hk",
-    "sloc",
-    "fan_out",
-    "fan_in",
-    "cyclomatic",
-    "cognitive",
-    "items",
-    "cycle",
-];
-const UI_SIZE: &[&str] = &["loc", "hk"];
-const UI_CARD: &[&str] = &["hk", "sloc"];
-
-/// Build the `ui` block: keep the canonical order, drop anything not present on
-/// an internal node (`present_internal_keys`) — external-only keys stay in the
-/// dictionary but never reach a render list. `kind` is always a column; `cycle`
-/// is a column/sort metric only when it survived pruning.
+/// Build the `ui` block: keep the canonical order (read from the data-driven
+/// metric registry), drop anything not present on an internal node
+/// (`present_internal_keys`) — external-only keys stay in the dictionary but
+/// never reach a render list. `kind` is always a column; `cycle` is a
+/// column/sort metric only when it survived pruning.
 fn build_ui(
     node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     present_internal_keys: &std::collections::BTreeSet<&str>,
     grouping: Option<code_ranker_plugin_api::level::Grouping>,
 ) -> LevelUi {
+    let order = code_ranker_graph::ui_order();
     let has = |k: &str| k == "kind" || present_internal_keys.contains(k);
-    let pick = |list: &[&str]| -> Vec<String> {
-        list.iter()
-            .filter(|k| has(k))
-            .map(|k| k.to_string())
-            .collect()
-    };
-    let sort_metrics = pick(UI_SORT);
+    let pick =
+        |list: &[String]| -> Vec<String> { list.iter().filter(|k| has(k)).cloned().collect() };
+    let sort_metrics = pick(&order.sort);
     let default_sort = if sort_metrics.iter().any(|m| m == "hk") {
         Some("hk".to_string())
     } else {
@@ -404,10 +529,10 @@ fn build_ui(
     LevelUi {
         default_sort,
         sort_metrics,
-        size_metrics: pick(UI_SIZE),
-        card_metrics: pick(UI_CARD),
-        columns: pick(UI_COLUMNS),
-        summary_metrics: pick(UI_SUMMARY),
+        size_metrics: pick(&order.size),
+        card_metrics: pick(&order.card),
+        columns: pick(&order.columns),
+        summary_metrics: pick(&order.summary),
         grouping,
     }
 }

@@ -1,6 +1,6 @@
 //! Rust metric engine on `tree-sitter-rust`, a faithful in-tree port of
 //! `rust-code-analysis`'s node-kind classification (the algorithm of record).
-//! Lives in the Rust plugin; produces a [`code_ranker_graph::FileMetrics`].
+//! Lives in the Rust plugin; produces a [`code_ranker_graph::MetricInputs`].
 //!
 //! It counts over the raw tree-sitter node tree with the same node-kind rules rca
 //! uses, so it yields the same numbers. Node kinds are resolved **by name** at
@@ -12,7 +12,7 @@
 //! η1/η2) are not emitted as metric keys.
 #![allow(dead_code)]
 
-use code_ranker_graph::FileMetrics;
+use code_ranker_graph::{FunctionUnit, MetricInputs};
 use tree_sitter::{Node, Parser};
 
 /// Node-kind ids we key on, resolved by name from the grammar once.
@@ -102,7 +102,7 @@ struct Counts {
 }
 
 /// Parse `src` (already test-stripped) with tree-sitter-rust and compute metrics.
-pub fn compute(src: &[u8]) -> Option<FileMetrics> {
+pub fn compute(src: &[u8]) -> Option<MetricInputs> {
     let lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
     let mut parser = Parser::new();
     parser.set_language(&lang).ok()?;
@@ -121,7 +121,6 @@ pub fn compute(src: &[u8]) -> Option<FileMetrics> {
     let loc = compute_loc(tree.root_node(), &lang);
     let h = compute_halstead(tree.root_node(), src, &lang);
 
-    let cyclomatic = (c.spaces + c.branches) as f64;
     let cloc = (loc.only_comment + loc.code_comment) as f64;
     // rca's MI uses the unit SPAN sloc (end − start), not ploc.
     let span_sloc = tree
@@ -130,8 +129,14 @@ pub fn compute(src: &[u8]) -> Option<FileMetrics> {
         .row
         .saturating_sub(tree.root_node().start_position().row) as f64;
 
-    Some(FileMetrics {
-        cyclomatic,
+    // tier-1 counts; tier-2 is derived downstream by the registry engine.
+    Some(MetricInputs {
+        eta1: h.eta1,
+        eta2: h.eta2,
+        n1: h.n1,
+        n2: h.n2,
+        spaces: c.spaces as f64,
+        branches: c.branches as f64,
         cognitive: cog.structural as f64,
         exits: c.exits as f64,
         args: c.args as f64,
@@ -141,37 +146,110 @@ pub fn compute(src: &[u8]) -> Option<FileMetrics> {
         cloc,
         blank: loc.blank as f64,
         tloc: 0.0, // set by the caller from strip_cfg_test's removed-line count
-        length: h.length,
-        vocabulary: h.vocabulary,
-        volume: h.volume,
-        effort: h.effort,
-        time: h.time,
-        bugs: h.bugs,
-        mi: mi_original(h.volume, cyclomatic, span_sloc),
-        mi_sei: mi_sei(h.volume, cyclomatic, span_sloc, cloc),
+        span_sloc,
     })
 }
 
-fn mi_original(volume: f64, cyclomatic: f64, sloc: f64) -> f64 {
-    171.0 - 5.2 * volume.ln() - 0.23 * cyclomatic - 16.2 * sloc.ln()
+/// Per-function metric units (function-level metrics): run the same tier-1
+/// counters over each `function_item` subtree. The caller passes already
+/// test-stripped source, so test functions never appear. `spaces` starts at 0
+/// because [`walk`] counts the `function_item` itself (+1 = McCabe base path).
+pub fn compute_functions(src: &[u8]) -> Vec<FunctionUnit> {
+    let lang: tree_sitter::Language = tree_sitter_rust::LANGUAGE.into();
+    let mut parser = Parser::new();
+    if parser.set_language(&lang).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(src, None) else {
+        return Vec::new();
+    };
+    let k = Kinds::resolve(&lang);
+    let mut units = Vec::new();
+    collect_functions(tree.root_node(), &k, src, &lang, &mut units);
+    units
 }
 
-fn mi_sei(volume: f64, cyclomatic: f64, sloc: f64, cloc: f64) -> f64 {
-    let comment_ratio = cloc / sloc;
-    171.0 - 5.2 * volume.log2() - 0.23 * cyclomatic - 16.2 * sloc.log2()
-        + 50.0 * (comment_ratio * 2.4).sqrt().sin()
+fn collect_functions(
+    node: Node,
+    k: &Kinds,
+    src: &[u8],
+    lang: &tree_sitter::Language,
+    out: &mut Vec<FunctionUnit>,
+) {
+    if node.kind_id() == k.function_item {
+        out.push(unit_for(node, k, src, lang));
+    }
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_functions(child, k, src, lang, out);
+    }
 }
 
-/// Halstead counts (η₁/η₂/N₁/N₂) and the derived metrics.
+fn unit_for(fnode: Node, k: &Kinds, src: &[u8], lang: &tree_sitter::Language) -> FunctionUnit {
+    let mut c = Counts::default(); // spaces:0 — walk(fnode) counts fnode itself
+    walk(fnode, k, &mut c);
+    let mut cog = CogState::default();
+    cog_walk(fnode, 0, 0, 0, k, &mut cog);
+    let loc = compute_loc(fnode, lang);
+    let h = compute_halstead(fnode, src, lang);
+    let cloc = (loc.only_comment + loc.code_comment) as f64;
+    let span_sloc = fnode
+        .end_position()
+        .row
+        .saturating_sub(fnode.start_position().row) as f64;
+    let inputs = MetricInputs {
+        eta1: h.eta1,
+        eta2: h.eta2,
+        n1: h.n1,
+        n2: h.n2,
+        spaces: c.spaces as f64,
+        branches: c.branches as f64,
+        cognitive: cog.structural as f64,
+        exits: c.exits as f64,
+        args: c.args as f64,
+        closures: c.closures as f64,
+        sloc: loc.ploc as f64,
+        lloc: loc.lloc as f64,
+        cloc,
+        blank: loc.blank as f64,
+        tloc: 0.0,
+        span_sloc,
+    };
+    let name = fnode
+        .child_by_field_name("name")
+        .and_then(|n| n.utf8_text(src).ok())
+        .unwrap_or("<anonymous>")
+        .to_string();
+    FunctionUnit {
+        kind: fn_kind(fnode, k).to_string(),
+        name,
+        start_line: fnode.start_position().row as u32 + 1,
+        end_line: fnode.end_position().row as u32 + 1,
+        inputs,
+    }
+}
+
+/// `method` when the nearest enclosing item is an `impl` / `trait`, else `fn`.
+fn fn_kind(node: Node, k: &Kinds) -> &'static str {
+    let mut p = node.parent();
+    while let Some(n) = p {
+        if n.kind_id() == k.impl_item || n.kind_id() == k.trait_item {
+            return "method";
+        }
+        if n.kind_id() == k.function_item {
+            return "fn";
+        }
+        p = n.parent();
+    }
+    "fn"
+}
+
+/// Halstead base counts (η₁/η₂/N₁/N₂); the derivation lives in `code-ranker-graph`.
 struct Halstead {
     eta1: f64,
     eta2: f64,
-    length: f64,
-    vocabulary: f64,
-    volume: f64,
-    effort: f64,
-    time: f64,
-    bugs: f64,
+    n1: f64,
+    n2: f64,
 }
 
 /// Halstead node kinds, replicating rca's Rust `get_op_type`.
@@ -227,33 +305,13 @@ fn compute_halstead(root: Node, src: &[u8], lang: &tree_sitter::Language) -> Hal
     let mut operands: HashMap<Vec<u8>, u64> = HashMap::new();
     hal_walk(root, src, &hk, &mut operators, &mut operands);
 
-    let eta1 = operators.len() as f64;
-    let eta2 = operands.len() as f64;
     let n1: u64 = operators.values().sum();
     let n2: u64 = operands.values().sum();
-    let length = (n1 + n2) as f64;
-    let vocabulary = eta1 + eta2;
-    let volume = if vocabulary > 0.0 {
-        length * vocabulary.log2()
-    } else {
-        0.0
-    };
-    let (effort, time, bugs) = if eta2 > 0.0 {
-        let difficulty = (eta1 / 2.0) * (n2 as f64 / eta2);
-        let effort = difficulty * volume;
-        (effort, effort / 18.0, effort.powf(2.0 / 3.0) / 3000.0)
-    } else {
-        (0.0, 0.0, 0.0)
-    };
     Halstead {
-        eta1,
-        eta2,
-        length,
-        vocabulary,
-        volume,
-        effort,
-        time,
-        bugs,
+        eta1: operators.len() as f64,
+        eta2: operands.len() as f64,
+        n1: n1 as f64,
+        n2: n2 as f64,
     }
 }
 
@@ -585,5 +643,44 @@ fn walk(node: Node, k: &Kinds, c: &mut Counts) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         walk(child, k, c);
+    }
+}
+
+#[cfg(test)]
+mod fn_tests {
+    use super::*;
+
+    /// `compute_functions` finds top-level fns, impl methods, and counts a nested
+    /// closure on its owning fn (covers collect_functions / unit_for / fn_kind).
+    #[test]
+    fn compute_functions_covers_fn_method_closure() {
+        let src = b"fn f(x: i32) -> i32 { if x > 0 { return 1; } 0 }\n\
+                    struct S;\n\
+                    impl S { fn m(&self, y: i32) -> i32 { y } }\n\
+                    fn g() { let c = |z: i32| z + 1; let _ = c(1); }\n";
+        let units = compute_functions(src);
+        let names: Vec<&str> = units.iter().map(|u| u.name.as_str()).collect();
+        assert!(names.contains(&"f"), "fn f: {names:?}");
+        assert!(names.contains(&"m"), "method m: {names:?}");
+        assert!(names.contains(&"g"), "fn g: {names:?}");
+
+        let f = units.iter().find(|u| u.name == "f").unwrap();
+        assert_eq!(f.kind, "fn");
+        assert!(f.inputs.branches >= 1.0, "f has an `if` branch");
+        assert!(
+            f.inputs.exits >= 1.0,
+            "f has a `return` / value-returning exit"
+        );
+
+        let m = units.iter().find(|u| u.name == "m").unwrap();
+        assert_eq!(m.kind, "method");
+
+        let g = units.iter().find(|u| u.name == "g").unwrap();
+        assert!(g.inputs.closures >= 1.0, "g defines a closure");
+    }
+
+    #[test]
+    fn compute_functions_empty_on_no_functions() {
+        assert!(compute_functions(b"const X: i32 = 1;\n").is_empty());
     }
 }

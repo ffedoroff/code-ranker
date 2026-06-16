@@ -1,9 +1,10 @@
 # ---------------------------------------------------------------------------
-# code-ranker — MINIMAL mode (advisory linter + artifacts)
+# code-ranker — MINIMAL mode (analyze + gate + GitLab findings)
 #
-# Runs code-ranker on every MR and on the default branch, produces a JSON
-# snapshot and a self-contained HTML viewer, and keeps both as artifacts.
-# It does NOT compare against anything — no baseline, no token, no API calls.
+# Runs code-ranker on every MR and on the default branch: produces a JSON
+# snapshot + a self-contained HTML viewer (kept as artifacts), then `check`s the
+# snapshot, gating on violations and emitting a GitLab Code Quality report so the
+# findings show inline on the MR. No baseline / token / API calls.
 #
 # Prerequisite: `code-ranker` must be on PATH. Either bake it into your CI image
 # (`cargo install code-ranker`, or copy a prebuilt binary), or install it in a
@@ -25,7 +26,10 @@ code-ranker:
 
   stage: test
   interruptible: true
-  allow_failure: true        # advisory — a failed analysis never blocks the pipeline
+  # Soft gate: the `check` below exits non-zero on a violation, but allow_failure
+  # keeps it advisory (job goes yellow, pipeline continues, findings still shown).
+  # Remove this line to turn it into a HARD gate that blocks the pipeline.
+  allow_failure: true
 
   script:
     # Name artifacts by commit hash so each run is identifiable and never collides.
@@ -43,8 +47,14 @@ code-ranker:
         --git.dirty-files=0 \
         --git.origin="$CI_PROJECT_URL" \
         --output.json.path="code-ranker-${H}.json" \
-        --output.html.path="code-ranker-${H}.html" \
-        --output.codequality.path="gl-code-quality-report.json"
+        --output.html.path="code-ranker-${H}.html"
+    # Gate + native findings. `check` re-reads the snapshot (no re-analysis),
+    # evaluates the rules, and writes them as a GitLab Code Quality report — which
+    # GitLab renders inline on the MR diff + the pipeline Code Quality widget.
+    # `check` EXITS NON-ZERO on a violation, so it is also the gate; `artifacts:
+    # when: always` still uploads the report, so the findings are highlighted even
+    # when the gate fails. Keep this LAST — a non-zero exit ends the script.
+    - code-ranker check "code-ranker-${H}.json" --output-format codequality > gl-code-quality-report.json
 
   artifacts:
     when: always
@@ -53,17 +63,16 @@ code-ranker:
       - "code-ranker-*.json"
       - "code-ranker-*.html"
       - "gl-code-quality-report.json"
-    # Native findings: GitLab ingests the Code Quality (CodeClimate) report and
-    # shows the rule violations inline in the MR diff + the pipeline Code Quality
-    # widget. This is GA — works on current GitLab, no feature flag. The path is
-    # fixed (not `${H}`-named) because `reports:` is resolved at config time,
-    # before the script runs.
+    # GitLab ingests the Code Quality (CodeClimate) report `check` wrote and shows
+    # the violations inline in the MR diff + the pipeline Code Quality widget. GA —
+    # works on current GitLab, no feature flag. The path is fixed (not `${H}`-named)
+    # because `reports:` is resolved at config time, before the script runs.
     reports:
       codequality: gl-code-quality-report.json
-    # SARIF alternative (GitLab >= 18.11 with the `sarif_ingestion` flag ON, which
-    # is off by default — ask your admin). Surfaces findings in the security views
-    # instead. Add `--output.sarif.path="gl-code-ranker.sarif"` to the report
-    # command above and uncomment:
+    # SARIF alternative (GitLab >= 18.11 with the `sarif_ingestion` flag ON, off by
+    # default — ask your admin); surfaces findings in the security views instead.
+    # Add `--output-format sarif` (a second `check` writing `gl-code-ranker.sarif`)
+    # and uncomment:
     #   reports:
     #     sarif: gl-code-ranker.sarif
 
@@ -76,13 +85,9 @@ code-ranker:
     - when: never
 
 # ---------------------------------------------------------------------------
-# Optional: a strict gate instead of (or alongside) the advisory report.
-# `check` evaluates thresholds / cycle rules and EXITS NON-ZERO on violation,
-# so drop `allow_failure` to actually block the pipeline. It writes no files.
-#
-# code-ranker-gate:
-#   image: your-registry/your-rust-image:latest
-#   stage: test
-#   script:
-#     - code-ranker check .          # add threshold/cycle flags as needed
+# Hard gate: delete the `allow_failure: true` line above and a code-ranker rule
+# violation (threshold / cycle) blocks the pipeline. The Code Quality report is
+# still written and highlighted in the MR either way (`artifacts: when: always`).
+# Tune what gates via code-ranker.toml ([rules.thresholds.file] / [rules.cycles])
+# or CLI flags on the `check` line (e.g. --threshold file.sloc=800 --cycle-rule chain=0).
 # ---------------------------------------------------------------------------

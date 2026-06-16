@@ -1,13 +1,13 @@
 //! ECMAScript metric engine (JavaScript / TypeScript / TSX) on tree-sitter,
 //! replicating `rust-code-analysis`'s shared `js_*` node-kind rules. Lives in
-//! `code-ranker-ecmascript-core`; produces a [`code_ranker_graph::FileMetrics`].
+//! `code-ranker-ecmascript-core`; produces a [`code_ranker_graph::MetricInputs`].
 //! The grammar is passed in by the caller (js → tree-sitter-javascript, ts/tsx →
 //! tree-sitter-typescript). Node kinds are resolved by name; duplicate kinds
 //! (rca's `Identifier2`/`String2`/… variants) are all collected, since they share
 //! a name but differ by id.
 #![allow(dead_code)]
 
-use code_ranker_graph::FileMetrics;
+use code_ranker_graph::{FunctionUnit, MetricInputs};
 use std::collections::{HashMap, HashSet};
 use tree_sitter::{Language, Node, Parser};
 
@@ -173,7 +173,7 @@ impl Kinds {
 
 /// `else_if_via_else_clause`: true for TypeScript, false for JavaScript and TSX
 /// (matches rca's per-language `is_else_if`).
-pub fn compute(src: &[u8], lang: &Language, else_if_via_else_clause: bool) -> Option<FileMetrics> {
+pub fn compute(src: &[u8], lang: &Language, else_if_via_else_clause: bool) -> Option<MetricInputs> {
     let mut parser = Parser::new();
     parser.set_language(lang).ok()?;
     let tree = parser.parse(src, None)?;
@@ -190,15 +190,20 @@ pub fn compute(src: &[u8], lang: &Language, else_if_via_else_clause: bool) -> Op
     let loc = compute_loc(root, lang);
     let h = compute_halstead(root, src, lang);
 
-    let cyclomatic = (c.spaces + c.branches) as f64;
     let cloc = (loc.only_comment + loc.code_comment) as f64;
     let span_sloc = root
         .end_position()
         .row
         .saturating_sub(root.start_position().row) as f64;
 
-    Some(FileMetrics {
-        cyclomatic,
+    // tier-1 counts; tier-2 is derived downstream by the registry engine.
+    Some(MetricInputs {
+        eta1: h.eta1,
+        eta2: h.eta2,
+        n1: h.n1,
+        n2: h.n2,
+        spaces: c.spaces as f64,
+        branches: c.branches as f64,
         cognitive: cog.structural as f64,
         exits: c.exits as f64,
         args: c.args as f64,
@@ -208,24 +213,111 @@ pub fn compute(src: &[u8], lang: &Language, else_if_via_else_clause: bool) -> Op
         cloc,
         blank: loc.blank as f64,
         tloc: 0.0, // ECMAScript has no inline-test stripping
-        length: h.length,
-        vocabulary: h.vocabulary,
-        volume: h.volume,
-        effort: h.effort,
-        time: h.time,
-        bugs: h.bugs,
-        mi: mi_original(h.volume, cyclomatic, span_sloc),
-        mi_sei: mi_sei(h.volume, cyclomatic, span_sloc, cloc),
+        span_sloc,
     })
 }
 
-fn mi_original(volume: f64, cyclomatic: f64, sloc: f64) -> f64 {
-    171.0 - 5.2 * volume.ln() - 0.23 * cyclomatic - 16.2 * sloc.ln()
+/// Per-function metric units (function-level metrics): run the same tier-1
+/// counters over each function-like subtree (declarations, methods, arrows,
+/// function/generator expressions). `spaces` starts at 0 because [`walk`] counts
+/// the function node itself (+1). The file-level [`compute`] is untouched.
+pub fn compute_functions(
+    src: &[u8],
+    lang: &Language,
+    else_if_via_else_clause: bool,
+) -> Vec<FunctionUnit> {
+    let mut parser = Parser::new();
+    if parser.set_language(lang).is_err() {
+        return Vec::new();
+    }
+    let Some(tree) = parser.parse(src, None) else {
+        return Vec::new();
+    };
+    let k = Kinds::resolve(lang, else_if_via_else_clause);
+    let mut units = Vec::new();
+    collect_functions(tree.root_node(), &k, src, lang, &mut units);
+    units
 }
-fn mi_sei(volume: f64, cyclomatic: f64, sloc: f64, cloc: f64) -> f64 {
-    let cr = cloc / sloc;
-    171.0 - 5.2 * volume.log2() - 0.23 * cyclomatic - 16.2 * sloc.log2()
-        + 50.0 * (cr * 2.4).sqrt().sin()
+
+/// A function-like unit. Excludes the `program` and `class` func-spaces, which
+/// are in `func_space` for metric scoping but are not functions.
+fn is_function_unit(id: u16, k: &Kinds) -> bool {
+    id == k.function_declaration
+        || id == k.function_expression
+        || id == k.arrow_function
+        || id == k.method_definition
+        || id == k.generator_function
+        || id == k.generator_function_declaration
+}
+
+fn collect_functions(
+    node: Node,
+    k: &Kinds,
+    src: &[u8],
+    lang: &Language,
+    out: &mut Vec<FunctionUnit>,
+) {
+    if is_function_unit(node.kind_id(), k) {
+        out.push(unit_for(node, k, src, lang));
+    }
+    let mut cur = node.walk();
+    for child in node.children(&mut cur) {
+        collect_functions(child, k, src, lang, out);
+    }
+}
+
+fn unit_for(fnode: Node, k: &Kinds, src: &[u8], lang: &Language) -> FunctionUnit {
+    let mut c = Counts::default(); // spaces:0 — walk(fnode) counts fnode itself
+    walk(fnode, k, &mut c);
+    let mut cog = CogState::default();
+    cog_walk(fnode, 0, 0, 0, k, &mut cog);
+    let loc = compute_loc(fnode, lang);
+    let h = compute_halstead(fnode, src, lang);
+    let cloc = (loc.only_comment + loc.code_comment) as f64;
+    let span_sloc = fnode
+        .end_position()
+        .row
+        .saturating_sub(fnode.start_position().row) as f64;
+    let inputs = MetricInputs {
+        eta1: h.eta1,
+        eta2: h.eta2,
+        n1: h.n1,
+        n2: h.n2,
+        spaces: c.spaces as f64,
+        branches: c.branches as f64,
+        cognitive: cog.structural as f64,
+        exits: c.exits as f64,
+        args: c.args as f64,
+        closures: c.closures as f64,
+        sloc: loc.ploc as f64,
+        lloc: loc.lloc as f64,
+        cloc,
+        blank: loc.blank as f64,
+        tloc: 0.0,
+        span_sloc,
+    };
+    let id = fnode.kind_id();
+    let kind = if id == k.method_definition {
+        "method"
+    } else if id == k.arrow_function {
+        "arrow"
+    } else if id == k.generator_function || id == k.generator_function_declaration {
+        "generator"
+    } else {
+        "function"
+    };
+    let name = fnode
+        .child_by_field_name("name")
+        .and_then(|n| n.utf8_text(src).ok())
+        .unwrap_or("<anonymous>")
+        .to_string();
+    FunctionUnit {
+        kind: kind.to_string(),
+        name,
+        start_line: fnode.start_position().row as u32 + 1,
+        end_line: fnode.end_position().row as u32 + 1,
+        inputs,
+    }
 }
 
 // ── structural ────────────────────────────────────────────────────────────
@@ -549,12 +641,8 @@ fn check_comment_ends_on_code_line(st: &mut LocState, start: usize) {
 struct Halstead {
     eta1: f64,
     eta2: f64,
-    length: f64,
-    vocabulary: f64,
-    volume: f64,
-    effort: f64,
-    time: f64,
-    bugs: f64,
+    n1: f64,
+    n2: f64,
 }
 
 struct HalKinds {
@@ -630,33 +718,13 @@ fn compute_halstead(root: Node, src: &[u8], lang: &Language) -> Halstead {
     let mut operands: HashMap<Vec<u8>, u64> = HashMap::new();
     hal_walk(root, src, &hk, &mut operators, &mut operands);
 
-    let eta1 = operators.len() as f64;
-    let eta2 = operands.len() as f64;
     let n1: u64 = operators.values().sum();
     let n2: u64 = operands.values().sum();
-    let length = (n1 + n2) as f64;
-    let vocabulary = eta1 + eta2;
-    let volume = if vocabulary > 0.0 {
-        length * vocabulary.log2()
-    } else {
-        0.0
-    };
-    let (effort, time, bugs) = if eta2 > 0.0 {
-        let difficulty = (eta1 / 2.0) * (n2 as f64 / eta2);
-        let effort = difficulty * volume;
-        (effort, effort / 18.0, effort.powf(2.0 / 3.0) / 3000.0)
-    } else {
-        (0.0, 0.0, 0.0)
-    };
     Halstead {
-        eta1,
-        eta2,
-        length,
-        vocabulary,
-        volume,
-        effort,
-        time,
-        bugs,
+        eta1: operators.len() as f64,
+        eta2: operands.len() as f64,
+        n1: n1 as f64,
+        n2: n2 as f64,
     }
 }
 
@@ -678,5 +746,41 @@ fn hal_walk(
     let mut cur = node.walk();
     for child in node.children(&mut cur) {
         hal_walk(child, src, hk, operators, operands);
+    }
+}
+
+#[cfg(test)]
+mod fn_tests {
+    use super::*;
+
+    /// `compute_functions` classifies the function-like forms (declaration /
+    /// method / arrow / generator) and counts branches (covers collect_functions
+    /// / unit_for / the kind mapping).
+    #[test]
+    fn compute_functions_covers_forms() {
+        let lang: Language = tree_sitter_javascript::LANGUAGE.into();
+        let src = b"function f(x){ if (x) return 1; return 0; }\n\
+                    const g = (y) => y + 1;\n\
+                    class C { m(z){ return z; } }\n\
+                    function* gen(){ yield 1; }\n";
+        let units = compute_functions(src, &lang, false);
+        assert!(
+            units.iter().any(|u| u.name == "f" && u.kind == "function"),
+            "function declaration f"
+        );
+        assert!(
+            units.iter().any(|u| u.name == "m" && u.kind == "method"),
+            "method m"
+        );
+        assert!(units.iter().any(|u| u.kind == "arrow"), "arrow fn");
+        assert!(units.iter().any(|u| u.kind == "generator"), "generator");
+        let f = units.iter().find(|u| u.name == "f").unwrap();
+        assert!(f.inputs.branches >= 1.0, "f has an `if` branch");
+    }
+
+    #[test]
+    fn compute_functions_empty_on_no_functions() {
+        let lang: Language = tree_sitter_javascript::LANGUAGE.into();
+        assert!(compute_functions(b"const x = 1;\n", &lang, false).is_empty());
     }
 }

@@ -6,7 +6,8 @@
 
 use anyhow::Result;
 use code_ranker_ecmascript_core::{
-    analyze_ecmascript, annotate_ecmascript_metrics, ecmascript_is_test_path, ecmascript_level,
+    analyze_ecmascript, annotate_ecmascript_metrics, ecmascript_function_units,
+    ecmascript_functions_level, ecmascript_is_test_path, ecmascript_level,
 };
 use code_ranker_plugin_api::{
     graph::Graph,
@@ -30,7 +31,7 @@ impl LanguagePlugin for TypescriptPlugin {
     }
 
     fn levels(&self) -> Vec<Level> {
-        vec![ecmascript_level("files")]
+        vec![ecmascript_level("files"), ecmascript_functions_level()]
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
@@ -52,6 +53,16 @@ impl LanguagePlugin for TypescriptPlugin {
         // `else_if_via_else_clause` is true for TypeScript proper, false for TSX
         // (the only per-dialect difference in the cognitive `else-if` rule).
         annotate_ecmascript_metrics(graph, |ext| match ext {
+            "ts" | "mts" | "cts" => {
+                Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), true))
+            }
+            "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), false)),
+            _ => None,
+        })
+    }
+
+    fn function_units(&self, graph: &Graph) -> Vec<code_ranker_plugin_api::node::Node> {
+        ecmascript_function_units(graph, |ext| match ext {
             "ts" | "mts" | "cts" => {
                 Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), true))
             }
@@ -92,11 +103,46 @@ mod tests {
     }
 
     #[test]
-    fn levels_returns_single_files_level() {
+    fn levels_returns_files_and_functions() {
         let levels = TypescriptPlugin.levels();
-        assert_eq!(levels.len(), 1);
+        assert_eq!(levels.len(), 2);
         assert_eq!(levels[0].name, "files");
         assert!(levels[0].edge_kinds.contains_key("uses"));
+        assert_eq!(levels[1].name, "functions");
+        assert!(levels[1].node_kinds.contains_key("function"));
+    }
+
+    #[test]
+    fn function_units_extracts_per_function_nodes() {
+        let tmp = TempDir::new().unwrap();
+        let ts = tmp.path().join("a.ts");
+        fs::write(
+            &ts,
+            "function add(a: number, b: number): number { if (a) return a + b; return b; }\nclass C { m(x: number) { return x; } }\n",
+        )
+        .unwrap();
+        // a `.tsx` file too, to exercise the TSX grammar arm.
+        let tsx = tmp.path().join("w.tsx");
+        fs::write(&tsx, "function widget(p: number) { return p; }\n").unwrap();
+        let node = |p: &std::path::Path, name: &str| code_ranker_plugin_api::node::Node {
+            id: p.to_string_lossy().into_owned(),
+            kind: "file".into(),
+            name: name.into(),
+            parent: None,
+            attrs: Default::default(),
+        };
+        let graph = Graph {
+            nodes: vec![node(&ts, "a.ts"), node(&tsx, "w.tsx")],
+            edges: vec![],
+        };
+        let units = TypescriptPlugin.function_units(&graph);
+        assert!(
+            units
+                .iter()
+                .any(|n| n.name == "add" && n.kind == "function")
+        );
+        assert!(units.iter().any(|n| n.name == "m" && n.kind == "method"));
+        assert!(units.iter().any(|n| n.name == "widget"), "tsx function");
     }
 
     #[test]

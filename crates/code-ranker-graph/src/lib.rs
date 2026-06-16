@@ -15,6 +15,7 @@ pub mod finalize;
 pub mod hk;
 pub mod level_graph;
 pub mod metrics;
+pub mod registry;
 pub mod relativize;
 pub mod serialize;
 pub mod snapshot;
@@ -25,7 +26,10 @@ pub use cycles::annotate_cycles;
 pub use finalize::finalize_graph;
 pub use hk::annotate_hk;
 pub use level_graph::{CycleGroup, LevelGraph, LevelUi};
-pub use metrics::{FileMetrics, metric_specs, write_metrics};
+pub use metrics::{
+    FunctionUnit, MetricInputs, UiOrder, metric_specs, stat_keys, ui_order, write_metrics,
+};
+pub use registry::{Engine, MetricDef, Populations, RegistryError, Scope, apply_to_node};
 pub use relativize::{relativize_graph, relativize_level};
 pub use serialize::{to_canonical_string, to_canonical_string_pretty};
 pub use snapshot::{GitInfo, Snapshot, StageTime};

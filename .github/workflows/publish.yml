@@ -86,9 +86,18 @@ jobs:
         run: |
           set -e
           picked=0
+          release_rid=""
+
+          # Independent registries build from source (no cross-dep) → run in
+          # parallel. The GitHub Release also builds the binary tarballs the Docker
+          # image downloads, so capture its run id to order Docker after it.
           if [ "${{ inputs.github_release }}" = "true" ]; then
             echo "==> GitHub Release + binaries + npm (cargo-dist)"
             gh workflow run release.yml   --ref main -f tag="v$V"; picked=1
+            sleep 8   # let the dispatched run register before we look it up
+            release_rid="$(gh run list --workflow release.yml --event workflow_dispatch \
+                             --limit 1 --json databaseId --jq '.[0].databaseId')"
+            echo "Release run id: ${release_rid:-<none>}"
           fi
           if [ "${{ inputs.crates }}" = "true" ]; then
             echo "==> crates.io"
@@ -98,10 +107,22 @@ jobs:
             echo "==> PyPI"
             gh workflow run pypi.yml      --ref main -f version="$V"; picked=1
           fi
+
+          # Docker depends on the GitHub Release (the Dockerfile downloads its
+          # binary tarballs). If the Release was dispatched this run, wait for it to
+          # finish before dispatching Docker; a failed Release short-circuits Docker
+          # (set -e + --exit-status). Docker-only runs assume an existing release.
           if [ "${{ inputs.docker }}" = "true" ]; then
+            picked=1
+            if [ -n "$release_rid" ]; then
+              echo "Docker waits for Release run $release_rid (it downloads the release binaries)…"
+              gh run watch "$release_rid" --exit-status --interval 20
+              echo "Release finished ✅ — dispatching Docker."
+            fi
             echo "==> Docker (Docker Hub + GHCR)"
-            gh workflow run docker.yml    --ref main -f version="$V"; picked=1
+            gh workflow run docker.yml    --ref main -f version="$V"
           fi
+
           if [ "$picked" = "0" ]; then
             echo "no registry selected — tick at least one checkbox"; exit 1
           fi

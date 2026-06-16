@@ -12,6 +12,8 @@ description = "Operations over the Code Ranker property-graph model: cycles, cou
 [dependencies]
 code-ranker-plugin-api = { workspace = true }
 anyhow = { workspace = true }
+cel = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+toml = { workspace = true }

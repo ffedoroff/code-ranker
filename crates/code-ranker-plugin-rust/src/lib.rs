@@ -3,7 +3,7 @@ use code_ranker_plugin_api::{
     attrs::ValueType,
     default_cycle_kinds, default_node_kinds,
     graph::Graph,
-    level::{AttributeSpec, Direction, EdgeKindSpec, Grouping, Level, Thresholds},
+    level::{AttributeSpec, Direction, EdgeKindSpec, Grouping, Level, NodeKindSpec, Thresholds},
     log,
     node::Node,
     plugin::{LanguagePlugin, PluginInput, Preset},
@@ -208,21 +208,34 @@ impl LanguagePlugin for RustPlugin {
         let mut edge_attributes: BTreeMap<String, AttributeSpec> = BTreeMap::new();
         edge_attributes.insert("visibility".into(), aspec(ValueType::Str, "Visibility"));
 
-        vec![Level {
-            name: "files".into(),
-            edge_kinds,
-            node_attributes,
-            edge_attributes,
-            attribute_groups: BTreeMap::new(),
-            node_kinds: default_node_kinds(),
-            cycle_kinds: default_cycle_kinds(),
-            // Cluster the diagram by the owning crate (compilation unit), not by
-            // the source folder. Falls back to `dir` if `crate` is ever absent.
-            grouping: Some(Grouping {
-                key: Some("crate".into()),
-                function: None,
-            }),
-        }]
+        vec![
+            Level {
+                name: "files".into(),
+                edge_kinds,
+                node_attributes,
+                edge_attributes,
+                attribute_groups: BTreeMap::new(),
+                node_kinds: default_node_kinds(),
+                cycle_kinds: default_cycle_kinds(),
+                // Cluster the diagram by the owning crate (compilation unit), not by
+                // the source folder. Falls back to `dir` if `crate` is ever absent.
+                grouping: Some(Grouping {
+                    key: Some("crate".into()),
+                    function: None,
+                }),
+            },
+            // Optional sub-file level (off by default; `[levels] functions`).
+            Level {
+                name: "functions".into(),
+                edge_kinds: BTreeMap::new(),
+                node_attributes: BTreeMap::new(),
+                edge_attributes: BTreeMap::new(),
+                attribute_groups: BTreeMap::new(),
+                node_kinds: function_node_kinds(),
+                cycle_kinds: default_cycle_kinds(),
+                grouping: None,
+            },
+        ]
     }
 
     fn thresholds(&self) -> BTreeMap<String, Thresholds> {
@@ -308,6 +321,32 @@ impl LanguagePlugin for RustPlugin {
             }
         }
         annotated
+    }
+
+    fn function_units(&self, graph: &Graph) -> Vec<Node> {
+        let mut out = Vec::new();
+        for node in &graph.nodes {
+            if node.kind != "file" {
+                continue;
+            }
+            let Ok(src) = std::fs::read(&node.id) else {
+                continue;
+            };
+            // Mirror file metrics: strip inline tests so test fns never appear.
+            let (prod, _tloc) = strip_cfg_test(&src);
+            for u in rust_ts::compute_functions(&prod) {
+                let mut fnode = Node {
+                    id: format!("{}#{}@{}", node.id, u.name, u.start_line),
+                    kind: u.kind.clone(),
+                    name: u.name.clone(),
+                    parent: Some(node.id.clone()),
+                    attrs: Default::default(),
+                };
+                code_ranker_graph::write_metrics(&mut fnode, &u.inputs);
+                out.push(fnode);
+            }
+        }
+        out
     }
 
     fn is_test_path(&self, rel_path: &str) -> bool {
@@ -471,6 +510,33 @@ fn version_string() -> Option<String> {
 // Complexity: strip inline tests, run the tree-sitter-rust engine, write metrics
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Per-language unit kinds for the `functions` level (rendered via this dict —
+/// the viewer hardcodes no kind by name).
+fn function_node_kinds() -> BTreeMap<String, NodeKindSpec> {
+    BTreeMap::from([
+        (
+            "fn".to_string(),
+            NodeKindSpec {
+                label: Some("Function".into()),
+                plural: Some("Functions".into()),
+                fill: Some("#dbe9f4".into()),
+                stroke: Some("#4d6f9c".into()),
+                external: None,
+            },
+        ),
+        (
+            "method".to_string(),
+            NodeKindSpec {
+                label: Some("Method".into()),
+                plural: Some("Methods".into()),
+                fill: Some("#e2eccf".into()),
+                stroke: Some("#5d8a3a".into()),
+                external: None,
+            },
+        ),
+    ])
+}
+
 /// Compute and write Rust complexity metrics for one file node from its source
 /// bytes. `#[cfg(test)]` / `#[test]` / `#[bench]` items are stripped first (their
 /// lines become `tloc`), then the in-tree `rust_ts` engine runs. Returns `true`
@@ -591,6 +657,44 @@ mod tests {
 
     fn strip(src: &str) -> String {
         String::from_utf8(strip_cfg_test(src.as_bytes()).0).unwrap()
+    }
+
+    #[test]
+    fn function_units_extracts_fns_and_methods() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let f = tmp.path().join("a.rs");
+        std::fs::write(
+            &f,
+            "fn add(a: i32, b: i32) -> i32 { if a > 0 { return a + b; } b }\n\
+             struct S;\n\
+             impl S { fn m(&self) -> i32 { 1 } }\n\
+             #[cfg(test)]\n\
+             mod tests { fn helper() -> i32 { 0 } }\n",
+        )
+        .unwrap();
+        let graph = Graph {
+            nodes: vec![Node {
+                id: f.to_string_lossy().into_owned(),
+                kind: "file".into(),
+                name: "a.rs".into(),
+                parent: None,
+                attrs: Default::default(),
+            }],
+            edges: vec![],
+        };
+        let units = RustPlugin.function_units(&graph);
+        assert!(
+            units.iter().any(|n| n.name == "add" && n.kind == "fn"),
+            "fn add: {:?}",
+            units.iter().map(|n| (&n.name, &n.kind)).collect::<Vec<_>>()
+        );
+        assert!(units.iter().any(|n| n.name == "m" && n.kind == "method"));
+        // `#[cfg(test)]` helper is stripped before the per-function walk.
+        assert!(
+            !units.iter().any(|n| n.name == "helper"),
+            "test fn excluded"
+        );
+        assert!(units.iter().all(|n| n.parent.is_some()));
     }
 
     /// Build a `Module` internal node for one file, with structural attrs.

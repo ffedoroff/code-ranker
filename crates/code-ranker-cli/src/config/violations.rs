@@ -101,15 +101,15 @@ fn check_node_metrics(
     t: &MetricThresholds,
     node: &Node,
 ) {
-    // Walk the canonical metric vocabulary in a stable order; for each one the
-    // user gave a limit, read its node attribute (the metric key doubles as the
-    // attribute key) and breach when it exceeds the limit. A new engine metric is
-    // thresholdable as soon as it is listed in `THRESHOLD_METRICS`.
-    for tm in super::metrics::THRESHOLD_METRICS {
-        let Some(limit) = t.get(tm.key) else {
+    // Walk the per-file metric vocabulary (data-driven); for each one the user
+    // gave a limit, read its node attribute (the metric key doubles as the
+    // attribute key) and breach when it exceeds the limit. A new registry metric
+    // is thresholdable automatically.
+    for tm in super::metrics::threshold_metrics() {
+        let Some(limit) = t.get(&tm.key) else {
             continue;
         };
-        if let Some(value) = attr_num(node, tm.key)
+        if let Some(value) = attr_num(node, &tm.key)
             && value > limit
         {
             push_threshold(
@@ -117,7 +117,7 @@ fn check_node_metrics(
                 graph,
                 &format!("threshold.{scope}.{}", tm.key),
                 node.id.clone(),
-                tm.label,
+                &tm.label,
                 value,
                 limit,
             );

@@ -22,3 +22,6 @@ which = { workspace = true }
 # Rust metric engine (rust_ts): parse with tree-sitter-rust, port of rca's rules.
 tree-sitter = { workspace = true }
 tree-sitter-rust = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

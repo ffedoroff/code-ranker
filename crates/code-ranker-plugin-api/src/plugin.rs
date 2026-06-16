@@ -97,6 +97,17 @@ pub trait LanguagePlugin {
         0
     }
 
+    /// Function-level metric nodes — one per sub-file unit (function / method /
+    /// closure) — for the optional `functions` graph level. Each returned node
+    /// carries its metrics in `attrs`, a per-language `kind`, and `parent` set to
+    /// its **file node's id** (so the orchestrator can relativize and group it).
+    /// `graph` is the just-parsed file graph with **absolute** file-path ids, so a
+    /// plugin reads each file by `node.id`. Only called when the level is enabled;
+    /// default: none (a plugin that ships no function-level support).
+    fn function_units(&self, _graph: &Graph) -> Vec<crate::node::Node> {
+        Vec::new()
+    }
+
     /// Does this workspace-relative path (forward-slashed, no leading `./`) name
     /// a **test** file in this language? Used to drop tests during the walk when
     /// `PluginInput::ignore_tests` is set. Default: nothing is a test.
@@ -191,6 +202,14 @@ mod tests {
         assert!(g.nodes.is_empty() && g.edges.is_empty());
 
         assert!(!p.is_test_path("anything"), "default: nothing is a test");
+        let empty_graph = Graph {
+            nodes: Vec::new(),
+            edges: Vec::new(),
+        };
+        assert!(
+            p.function_units(&empty_graph).is_empty(),
+            "default: no function units"
+        );
         assert!(p.versions(ws, &input).is_empty(), "default: no versions");
         assert!(p.roots(ws).is_empty(), "default: no roots");
         assert!(p.thresholds().is_empty(), "default: no thresholds");

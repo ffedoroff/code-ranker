@@ -7,34 +7,14 @@ use crate::attrs::{attr_f64, is_external, num_attr};
 use code_ranker_plugin_api::{attrs::AttrValue, graph::Graph};
 use std::collections::BTreeMap;
 
-/// Metrics averaged into the stats block, in a fixed vocabulary. Structural-only
-/// keys (`loc`, `lloc`, `exits`, `args`, `closures`, `fan_out_external`) are not
-/// aggregated — they are per-node detail.
-const STAT_KEYS: &[&str] = &[
-    "cyclomatic",
-    "cognitive",
-    "fan_in",
-    "fan_out",
-    "hk",
-    "mi",
-    "mi_sei",
-    "sloc",
-    "cloc",
-    "blank",
-    "tloc",
-    "length",
-    "vocabulary",
-    "volume",
-    "effort",
-    "time",
-    "bugs",
-];
-
-/// Compute the averages over all internal (file) nodes. Returns a flat map keyed
-/// by metric name; empty when nothing positive was found.
-pub fn compute_stats(graph: &Graph) -> BTreeMap<String, AttrValue> {
+/// Compute the mean of each metric in `stat_keys` over all internal (file)
+/// nodes. Zero/missing values are excluded (historical behaviour); a metric is
+/// emitted only when its average is positive. The key set is data-driven — the
+/// caller passes the tier-2 stat metrics (from the registry) plus coupling keys —
+/// so this module names no metric.
+pub fn compute_stats(graph: &Graph, stat_keys: &[String]) -> BTreeMap<String, AttrValue> {
     let mut stats = BTreeMap::new();
-    for key in STAT_KEYS {
+    for key in stat_keys {
         let vals: Vec<f64> = graph
             .nodes
             .iter()
@@ -47,7 +27,7 @@ pub fn compute_stats(graph: &Graph) -> BTreeMap<String, AttrValue> {
         }
         let avg = vals.iter().sum::<f64>() / vals.len() as f64;
         if avg > 0.0 {
-            stats.insert((*key).to_string(), num_attr(avg));
+            stats.insert(key.clone(), num_attr(avg));
         }
     }
     stats
@@ -83,13 +63,13 @@ mod tests {
             ],
             edges: vec![],
         };
-        let s = compute_stats(&g);
+        let s = compute_stats(&g, &["cyclomatic".to_string()]);
         assert_eq!(s.get("cyclomatic"), Some(&AttrValue::Int(3)));
     }
 
     #[test]
     fn empty_graph_has_no_stats() {
         let g = Graph::default();
-        assert!(compute_stats(&g).is_empty());
+        assert!(compute_stats(&g, &["cyclomatic".to_string()]).is_empty());
     }
 }

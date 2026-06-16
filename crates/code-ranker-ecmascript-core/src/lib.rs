@@ -12,7 +12,7 @@ use code_ranker_plugin_api::{
     default_cycle_kinds, default_node_kinds,
     edge::Edge,
     graph::Graph,
-    level::{AttributeSpec, EdgeKindSpec, Level},
+    level::{AttributeSpec, EdgeKindSpec, Level, NodeKindSpec},
     node::Node,
 };
 use std::collections::{BTreeMap, HashMap};
@@ -229,6 +229,88 @@ pub fn annotate_ecmascript_metrics(
         }
     }
     annotated
+}
+
+/// The optional `functions` [`Level`] both JS and TS plugins expose (off by
+/// default; emitted only when `[levels] functions` is on). Declares per-language
+/// unit kinds; metric attribute specs are merged centrally by the orchestrator.
+pub fn ecmascript_functions_level() -> Level {
+    Level {
+        name: "functions".to_string(),
+        edge_kinds: BTreeMap::new(),
+        node_attributes: BTreeMap::new(),
+        edge_attributes: BTreeMap::new(),
+        attribute_groups: BTreeMap::new(),
+        node_kinds: ecmascript_function_node_kinds(),
+        cycle_kinds: default_cycle_kinds(),
+        grouping: None,
+    }
+}
+
+fn ecmascript_function_node_kinds() -> BTreeMap<String, NodeKindSpec> {
+    let spec = |label: &str, plural: &str, fill: &str, stroke: &str| NodeKindSpec {
+        label: Some(label.to_string()),
+        plural: Some(plural.to_string()),
+        fill: Some(fill.to_string()),
+        stroke: Some(stroke.to_string()),
+        external: None,
+    };
+    BTreeMap::from([
+        (
+            "function".to_string(),
+            spec("Function", "Functions", "#dbe9f4", "#4d6f9c"),
+        ),
+        (
+            "method".to_string(),
+            spec("Method", "Methods", "#e2eccf", "#5d8a3a"),
+        ),
+        (
+            "arrow".to_string(),
+            spec("Arrow fn", "Arrow fns", "#efe0ef", "#8a5d8a"),
+        ),
+        (
+            "generator".to_string(),
+            spec("Generator", "Generators", "#f6e9cf", "#b3801f"),
+        ),
+    ])
+}
+
+/// Function-level metric nodes for every file node (one per function-like unit),
+/// for the optional `functions` level. Mirrors [`annotate_ecmascript_metrics`]:
+/// the grammar is injected per extension. Each node carries its metrics and
+/// `parent` = the file id; id is `<file>#<name>@<start_line>`.
+pub fn ecmascript_function_units(
+    graph: &Graph,
+    engine_for_ext: impl Fn(&str) -> Option<(tree_sitter::Language, bool)>,
+) -> Vec<Node> {
+    let mut out = Vec::new();
+    for node in &graph.nodes {
+        if node.kind != "file" {
+            continue;
+        }
+        let ext = Path::new(&node.id)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        let Some((lang, else_if)) = engine_for_ext(ext) else {
+            continue;
+        };
+        let Ok(src) = std::fs::read(&node.id) else {
+            continue;
+        };
+        for u in ecmascript_ts::compute_functions(&src, &lang, else_if) {
+            let mut fnode = Node {
+                id: format!("{}#{}@{}", node.id, u.name, u.start_line),
+                kind: u.kind.clone(),
+                name: u.name.clone(),
+                parent: Some(node.id.clone()),
+                attrs: Default::default(),
+            };
+            code_ranker_graph::write_metrics(&mut fnode, &u.inputs);
+            out.push(fnode);
+        }
+    }
+    out
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

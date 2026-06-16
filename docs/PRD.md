@@ -230,8 +230,10 @@ required.
 
 - Expanding external dependencies (registry/git/npm/pypi packages
   appear as opaque depth-1 nodes; their internals are never read)
-- Function-level or call-graph analysis (no `Calls` edges, no semantic
-  call resolution)
+- Call-graph analysis (no `Calls` edges, no semantic call resolution).
+  Per-function **metrics** are available as an opt-in `functions` level
+  (`[levels] functions`), but functions are metric nodes only — they carry no
+  edges and form no call graph.
 - Automated code modification or refactoring suggestions
 - IDE/LSP integration and interactive visualization
 - Cross-language linkage (FFI/RPC boundaries are leaves)
@@ -315,7 +317,8 @@ Top-level fields:
   `git` is not invoked at all
 - `timings` — per-stage wall-clock timings (`stage`, `ms`, `detail`), in
   execution order; omitted when empty
-- `graphs` — a map `level_name → level`; today the only key is `files`. Each
+- `graphs` — a map `level_name → level`. `files` is always present; `functions`
+  (per-function metric nodes) is present when `[levels] functions` is enabled. Each
   level carries the four semantics dictionaries (`edge_kinds`,
   `node_attributes`, `edge_attributes`, `attribute_groups`) plus `nodes`,
   `edges`, `cycles`, `stats`, and a computed `ui` block (column/sort/size order
@@ -419,9 +422,10 @@ workspaces. The plugin MUST:
 - Emit **structure only** (file + external nodes, `uses`/`contains`/`reexports`/`super`
   edges). The downstream pipeline then enriches every file node: per-file
   complexity metrics (cyclomatic, cognitive, Halstead, maintainability index, LOC
-  variants) are computed by each plugin's `metrics()` step with its in-tree
-  language engine and written through the neutral scaffolding in
-  `code-ranker-graph` (`FileMetrics` / `write_metrics`);
+  variants) are produced by each plugin's `metrics()` step — its in-tree engine
+  measures tier-1 counts (`MetricInputs`) and the `code-ranker-graph` registry
+  evaluates the declarative tier-2 formulas (`metrics/builtin.toml`) via
+  `write_metrics`;
   dependency cycles (Kosaraju SCC over flow edges) annotated as a `cycle` node
   attribute (`mutual` | `chain`) with `CycleGroup` entries, with
   any SCC that spans more than one crate dropped (Rust forbids circular crate
@@ -736,14 +740,21 @@ can render any language/metric set without hardcoding names.
 }
 ```
 
-`graphs` is a map `level_name → level`; today only `files`. The dictionaries are
-pruned to the keys/kinds/groups actually present at that level, and the `ui`
-block is computed by the orchestrator from the present attributes. Every
-metric's label / name / formula / live-`calc` / direction / threshold lives in
-`node_attributes`, and the Prompt-Generator principles live in top-level
-`presets`, so the **viewer hardcodes no metric, kind, threshold or prompt by
-name** — it renders entirely from this data (see DESIGN §3.2 HTML assets).
-Optional `AttributeSpec` fields are omitted when absent.
+`graphs` is a map `level_name → level` (`files`, plus `functions` when enabled).
+The dictionaries are pruned to the keys/kinds/groups actually present at that
+level, and the `ui` block is computed by the orchestrator from the present
+attributes. Every metric's label / name / formula / live-`calc` / direction /
+threshold lives in `node_attributes`, and the Prompt-Generator principles live in
+top-level `presets`, so the **viewer hardcodes no metric, kind, threshold or
+prompt by name** — it renders entirely from this data (see DESIGN §3.2 HTML
+assets). Optional `AttributeSpec` fields are omitted when absent.
+
+Tier-2 metrics are **declarative data**, not hardcoded computation: each is a CEL
+`formula` plus spec in `code-ranker-graph/metrics/builtin.toml`, evaluated by the
+registry engine over the per-language tier-1 counts. A user adds or overrides
+metrics under `[metrics.<key>]` in config (node-scope per-unit formulas, or
+graph-scope `agg(…)` aggregates emitted into `stats`) with no code change; only
+tier-1 counting and the graph algorithms (`fan_in`/`fan_out`/`cycle`) are in Rust.
 
 **Node shape** — `id`, `kind`, `name`, optional `parent`, plus flat attributes:
 
@@ -923,7 +934,8 @@ as a self-contained HTML report.
 |------------|-------------|----------|
 | `cargo_metadata` crate | Cargo workspace enumeration (local vs. external crates) | p1 |
 | `syn` crate | Rust source parsing for the module tree and `use` statements | p1 |
-| `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript`) | Source parsing for the in-tree per-language metric engines (`rust_ts` / `python_ts` / `ecmascript_ts`: cyclomatic, cognitive, Halstead, MI, LOC — faithful ports of `rust-code-analysis`'s rules) and for the Python / JavaScript / TypeScript plugins | p1 |
+| `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript`) | Source parsing for the in-tree per-language tier-1 metric engines (`rust_ts` / `python_ts` / `ecmascript_ts` — faithful ports of `rust-code-analysis`'s node-kind rules) and for the Python / JavaScript / TypeScript plugins | p1 |
+| `cel` crate | Evaluates the declarative tier-2 metric formulas (`metrics/builtin.toml`) and user `[metrics.<key>]` formulas; the metric registry engine | p1 |
 | Python 3.9+ | Runtime for the built-in Python language plugin | p3 |
 
 ## 11. Assumptions
