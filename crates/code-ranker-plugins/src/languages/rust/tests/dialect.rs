@@ -33,3 +33,27 @@ fn compute_functions_covers_fn_method_closure() {
 fn compute_functions_empty_on_no_functions() {
     assert!(compute_functions(b"const X: i32 = 1;\n").is_empty());
 }
+
+/// A labeled `break` adds a cognitive structural point; a nested `fn` is its own
+/// unit, still classified `fn` (not a method) even though it sits inside another
+/// function. Covers the labeled break/continue and function-nesting cog branches.
+#[test]
+fn compute_functions_covers_labeled_break_and_nested_fn() {
+    let src = b"fn outer() {\n\
+                    'a: loop { break 'a; }\n\
+                    fn inner() -> i32 { 1 }\n\
+                }\n";
+    let units = compute_functions(src);
+    let names: Vec<&str> = units.iter().map(|u| u.name.as_str()).collect();
+    assert!(names.contains(&"outer"), "outer: {names:?}");
+    assert!(names.contains(&"inner"), "nested inner: {names:?}");
+
+    let inner = units.iter().find(|u| u.name == "inner").unwrap();
+    assert_eq!(inner.kind, "fn", "a nested fn is still `fn`, not a method");
+
+    let outer = units.iter().find(|u| u.name == "outer").unwrap();
+    assert!(
+        outer.inputs.cognitive >= 1.0,
+        "the labeled `break 'a` adds a cognitive point"
+    );
+}

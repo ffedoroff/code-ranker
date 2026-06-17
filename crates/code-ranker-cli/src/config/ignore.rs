@@ -217,4 +217,46 @@ mod tests {
         assert_eq!(g.nodes.len(), 1);
         assert!(g.edges.is_empty(), "edge into a removed node is dropped");
     }
+
+    /// `filter_graph` prunes external nodes whose crate is in the dev-only set
+    /// (matched by the `ext:<name>[@version]` base), keeps the rest. Drives the
+    /// dev-only branch directly with an in-memory set — no `cargo metadata`.
+    #[test]
+    fn filter_graph_drops_dev_only_external_crates() {
+        let ext = |id: &str| file_node(id, &[("external", AttrValue::Bool(true))]);
+        let mut g = Graph {
+            nodes: vec![
+                file_node("{target}/src/a.rs", &[]),
+                ext("ext:devdep@2.0"),
+                ext("ext:realdep"),
+            ],
+            edges: vec![],
+        };
+        let dev_only: HashSet<String> = ["devdep".to_string()].into_iter().collect();
+        let removed = filter_graph(&mut g, None, &dev_only);
+        assert_eq!(removed, 1, "only the dev-only external is dropped");
+        assert!(
+            g.nodes.iter().any(|n| n.id == "ext:realdep"),
+            "a non-dev external is kept"
+        );
+        assert!(
+            !g.nodes.iter().any(|n| n.id == "ext:devdep@2.0"),
+            "the dev-only external (matched by its base name) is dropped"
+        );
+    }
+
+    /// With nothing matching, `filter_graph` removes nothing and returns 0 (the
+    /// `removed.is_empty()` early return).
+    #[test]
+    fn filter_graph_removes_nothing_when_no_match() {
+        let mut g = Graph {
+            nodes: vec![file_node(
+                "ext:keep",
+                &[("external", AttrValue::Bool(true))],
+            )],
+            edges: vec![],
+        };
+        assert_eq!(filter_graph(&mut g, None, &HashSet::new()), 0);
+        assert_eq!(g.nodes.len(), 1);
+    }
 }

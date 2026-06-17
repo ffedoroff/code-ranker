@@ -24,8 +24,12 @@ fn external_package_extracts_top_level_and_scope() {
         external_package("@scope/pkg/sub").as_deref(),
         Some("@scope/pkg")
     );
+    // A bare scope with no sub-package keeps the scope verbatim.
+    assert_eq!(external_package("@scope").as_deref(), Some("@scope"));
     assert_eq!(external_package("./local"), None);
+    assert_eq!(external_package("../up"), None);
     assert_eq!(external_package("@/aliased"), None);
+    assert_eq!(external_package(""), None);
 }
 
 #[test]
