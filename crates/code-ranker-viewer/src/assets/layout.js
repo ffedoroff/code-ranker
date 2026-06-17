@@ -16,23 +16,38 @@ function dotId(id) {
 // source-line count, falling back to the structural loc), 'hk' → hk. ──
 const METRIC_BASE_DIAM = 0.3, METRIC_BASE_LOC = 100, METRIC_BASE_HK = 1000;
 function metricNodeVal(n, mode) {
-  if (!n) return 0;
+  if (!n || !mode) return 0;
+  // The size-mode key IS the attribute key (data-driven from `ui.size_metrics`).
+  // `loc` is the one historical alias (→ sloc) kept for older shared links.
   if (mode === 'loc') return Number(n.sloc ?? n.loc ?? 0);
-  if (mode === 'hk')  return Number(n.hk ?? 0);
-  return 0;
+  return Number(n[mode] ?? 0);
+}
+// The value that maps to the minimum circle (`METRIC_BASE_DIAM`); larger values
+// grow as sqrt. Built-in loc/hk keep their calibrated bases; any other metric
+// uses the median of the rendered population's positive values (cached per render
+// in `window._sizeBaseCache`), so a ratio ~1 and a count in the thousands both
+// spread sensibly. Falls back to 1 when no population base was computed.
+function sizeBaseFor(mode) {
+  if (mode === 'loc') return METRIC_BASE_LOC;
+  if (mode === 'hk')  return METRIC_BASE_HK;
+  const c = window._sizeBaseCache;
+  return c && c.mode === mode && c.base > 0 ? c.base : 1;
+}
+function metricSizeBase(nodes, mode) {
+  if (mode === 'loc') return METRIC_BASE_LOC;
+  if (mode === 'hk')  return METRIC_BASE_HK;
+  const vals = nodes.map(n => metricNodeVal(n, mode)).filter(v => v > 0).sort((a, b) => a - b);
+  return vals.length ? vals[Math.floor(vals.length / 2)] || 1 : 1;
 }
 function metricNodeDiam(n, mode) {
-  const v = metricNodeVal(n, mode);
-  if (mode === 'loc') return +(METRIC_BASE_DIAM * Math.sqrt(Math.max(v, METRIC_BASE_LOC) / METRIC_BASE_LOC)).toFixed(3);
-  if (mode === 'hk')  return v === 0 ? 0.3 : +(METRIC_BASE_DIAM * Math.sqrt(Math.max(v, METRIC_BASE_HK) / METRIC_BASE_HK)).toFixed(3);
-  return 0.3;
+  const v = metricNodeVal(n, mode), base = sizeBaseFor(mode);
+  return +(METRIC_BASE_DIAM * Math.sqrt(Math.max(v, base) / base)).toFixed(3);
 }
 // Diameter for an aggregate (sum over all files in a group). Uses the same
 // sqrt-scale formula but with a higher base so groups don't dwarf the canvas.
 function metricGroupDiam(aggVal, mode) {
-  if (mode === 'loc') return +(METRIC_BASE_DIAM * Math.sqrt(Math.max(aggVal, METRIC_BASE_LOC) / METRIC_BASE_LOC)).toFixed(3);
-  if (mode === 'hk')  return aggVal === 0 ? 0.3 : +(METRIC_BASE_DIAM * Math.sqrt(Math.max(aggVal, METRIC_BASE_HK) / METRIC_BASE_HK)).toFixed(3);
-  return 0.3;
+  const base = sizeBaseFor(mode);
+  return +(METRIC_BASE_DIAM * Math.sqrt(Math.max(aggVal, base) / base)).toFixed(3);
 }
 function fmtMetricShort(v) {
   if (v >= 1_000_000) return Math.round(v / 1_000_000) + 'M';
@@ -46,16 +61,27 @@ const metricFontSize = d => Math.max(6, Math.round(d * 26));
 function buildDOT(nodes, edges, level, viewport) {
   const sizeMode   = window.nodeSizeMode || null;
   const drillGroup = window.drillGroup   || null;
-  const isMetric   = sizeMode === 'loc' || sizeMode === 'hk';
+  // Any active size mode renders nodes as sized circles (else default boxes).
+  const isMetric   = sizeMode !== null;
+  // Cache the size-scale base for this render (data-driven for custom metrics);
+  // metricNodeDiam/metricGroupDiam read it via sizeBaseFor, including the
+  // post-layout per-side resize (applySideSizing) which runs after this.
+  if (isMetric) window._sizeBaseCache = { mode: sizeMode, base: metricSizeBase(nodes, sizeMode) };
   // Overview granularity follows the relative zoom; a drilled (focus) view filters
   // by the zoom that was active when the user drilled in.
   const activeDig  = drillGroup === null ? (window.dig || 0) : (window.drillDig ?? 0);
   const gOf        = grouperForDig(level, activeDig);
   const cycleOf    = window.CYCLES?.[level]?.nodeCycleStatus;
-  // Cycle filter: when on, keep only nodes that sit in a dependency cycle (and
-  // the edges between them); callers/dependencies clusters are kept as usual.
-  const cycleOnly  = !!window.cycleOnly;
+  // Node filter (data-driven from `ui.filter_metrics`): when a key is active keep
+  // only nodes where that metric has signal. `cycle` is special (uses the cycle
+  // membership set); any other key keeps nodes whose attribute value is non-zero.
   const isCyc      = id => !!(cycleOf && cycleOf.has(id));
+  const nodeFilter = window.nodeFilter || null;
+  const passFilter = n => {
+    if (!nodeFilter) return true;
+    if (nodeFilter === 'cycle') return isCyc(n.id);
+    return Number(n[nodeFilter] ?? 0) > 0;
+  };
 
   // Fan-in/out section data is recomputed each render; overview leaves it empty.
   window._fanData = { in: [], out: [] };
@@ -83,7 +109,7 @@ function buildDOT(nodes, edges, level, viewport) {
     const nodeGroup  = new Map();
     const groupNodes = new Map();
     for (const n of nodes) {
-      if (cycleOnly && !isCyc(n.id)) continue;   // cycle filter: drop non-cycle nodes
+      if (!passFilter(n)) continue;   // node filter: drop nodes without signal
       const g = gOf(n);
       nodeGroup.set(n.id, g);
       if (!groupNodes.has(g)) groupNodes.set(g, []);
@@ -179,7 +205,7 @@ function buildDOT(nodes, edges, level, viewport) {
   }
 
   // ── Drilled file view: only files in the selected group ───────────────────────
-  const drillNodes = nodes.filter(n => gOf(n) === drillGroup && (!cycleOnly || isCyc(n.id)));
+  const drillNodes = nodes.filter(n => gOf(n) === drillGroup && passFilter(n));
   const drillIds   = new Set(drillNodes.map(n => n.id));
   dot += '  newrank=true\n';
 

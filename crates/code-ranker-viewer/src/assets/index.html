@@ -45,15 +45,12 @@
          lens chip. Always visible; populated by renderBreadcrumb() in
          map-interactions.js. -->
     <div class="drill-breadcrumb" id="drill-breadcrumb-files"></div>
+    <!-- Size-mode + filter buttons are built per render from the level's
+         `ui.size_metrics` / `ui.filter_metrics` (renderMapControls in
+         view-state.js) — nothing hardcoded here. -->
     <div class="size-controls">
-      <div class="size-row" data-row="metric">
-        <button class="size-mode-btn active" data-size="dot"  title="Default box mode">■</button>
-        <button class="size-mode-btn"        data-size="loc"  title="Size ∝ source lines of code">SLOC</button>
-        <button class="size-mode-btn"        data-size="hk"   title="Size ∝ Henry–Kafura">HK</button>
-      </div>
-      <div class="size-row" data-row="filter">
-        <button class="size-mode-btn" data-filter="cycle" title="Show only nodes in dependency cycles (+ their connections)">cycle</button>
-      </div>
+      <div class="size-row" data-row="metric"></div>
+      <div class="size-row" data-row="filter"></div>
     </div>
     <div class="zoom-controls">
       <button class="zoom-btn" data-zoom="fullscreen" title="Fullscreen">⛶</button>

@@ -253,6 +253,8 @@ the active language's own `[report]`:
 columns = { after = { hk = ["tsr", "tsr_big"] } }  # place after `hk` in the table
 card    = { add = ["tsr"] }                        # feature on the node card
 stats   = { add = ["tsr_big_avg"] }                # add to the JSON stats block
+size    = { add = ["tsr"] }                        # SVG circle-size mode (§3)
+filter  = { add = ["tsr_big"] }                    # SVG node filter (§3)
 ```
 
 - `columns` drives the HTML table and the JSON `ui.columns` (and the derived sort
@@ -261,6 +263,7 @@ stats   = { add = ["tsr_big_avg"] }                # add to the JSON stats block
 - `card` drives the node card's featured numbers.
 - `stats` patches the aggregate keys averaged into the JSON `stats` block (a
   graph-scope metric is already emitted there; this is for re-ordering / pruning).
+- `size` / `filter` drive the SVG map's circle-size modes and node filters (§3).
 
 Only keys that actually exist on a node survive (the orchestrator prunes the
 patched list), so listing a metric the current language doesn't emit is harmless.
@@ -363,7 +366,8 @@ card    = { replace = { "sloc" = "unsafe" } }
 
 `columns` drives both the HTML table and the JSON `ui.columns` (and the derived
 sort / summary lists); `card` drives the node card's featured numbers; `stats`
-patches the aggregate keys averaged into the JSON `stats` block.
+patches the aggregate keys averaged into the JSON `stats` block; `size` and
+`filter` drive the SVG map's circle-size modes and node filters (§3).
 
 > The **same `[report]` section works in the project `code-ranker.toml`** (§1.6) —
 > the patches layer: catalog → language `[report]` → project `[report]`. A plugin
@@ -372,32 +376,46 @@ patches the aggregate keys averaged into the JSON `stats` block.
 
 ---
 
-## 3. Viewer integration — filtering the map & sizing by a metric
+## 3. Viewer integration — sizing & filtering the SVG map by a metric
 
-The **table, node card, and JSON stats already reflect your custom metrics** —
-they are driven by the `ui` lists (`columns`, `card_metrics`, `summary_metrics`)
-that the `[report]` overrides patch (§1.6 / §2.2), so a metric added there shows up
-in the HTML table and popup with no viewer change. Two asks remain viewer-side —
-"filter the SVG diagram by my aggregate" and "draw nodes as circles sized by my
-metric" — both reading from the same snapshot `ui` block. Current status:
+The **table, node card, and JSON stats** reflect your custom metrics via the `ui`
+lists (`columns`, `card_metrics`, `summary_metrics`) that `[report]` patches (§1.6 /
+§2.2). The **SVG map** is driven the same way — its size-mode and filter buttons are
+built entirely from two more `ui` lists, so the viewer hardcodes none of them:
 
-- **Filter the map to a metric's population** (show only the nodes that feed an
-  aggregate — e.g. only `loc > 300` files, the way the map can isolate nodes in a
-  `cycle` today). The data is already there: the per-file metric (`tsr_big` ≠ 0 on
-  exactly those files) marks the population. **What's missing** is a generic
-  viewer toggle "show only nodes where `<metric>` has signal", analogous to the
-  existing `cycle` isolation. Proposed: a `ui.filter_metrics` list (keys the map
-  offers as on/off node filters), populated like `columns`.
-- **Circle sizing by a metric.** The map already resizes nodes by a metric in its
-  `loc` / `hk` size modes (`size_metrics`); generalising it to an arbitrary metric
-  is wiring `ui.size_metrics` from a `[report] size = { add = ["tsr"] }` override
-  (today `size_metrics` is emitted empty). The renderer's per-circle radius
-  (`view-state.js`) already takes a metric value.
+- **Circle sizing by a metric — `[report] size`.** Each key in `ui.size_metrics`
+  becomes a button on the map; clicking it draws every node as a circle whose area
+  scales with that metric (re-click to return to box mode). The built-in modes are
+  `sloc` and `hk`; add your own:
 
-Both are small, well-scoped follow-ups on top of the `[report]` plumbing in §2.2
-(a new `filter`/`size` list patched the same way, consumed by the map). They are
-**not wired yet** — the metric and aggregate from §1.3 are fully functional in the
-JSON and table today; the map filter/circle modes are the remaining step.
+  ```toml
+  [report]
+  size = { add = ["tsr"] }   # a "TLOC/SLOC" circle-size mode next to SLOC / HK
+  ```
+
+  Built-in metrics keep their calibrated scale; a custom metric is scaled against
+  the median of the rendered population, so a ratio (~1) and a line count (~1000s)
+  both spread sensibly.
+
+- **Filter the map to a metric's population — `[report] filter`.** Each key in
+  `ui.filter_metrics` becomes an on/off toggle that keeps only the nodes where that
+  metric has signal — exactly how the built-in `cycle` filter isolates cycle
+  members. So filtering on `tsr_big` (zero on small files; see §1.3) shows only the
+  `loc > 300` files that feed the aggregate:
+
+  ```toml
+  [report]
+  filter = { add = ["tsr_big"] }   # toggle: show only the large files
+  ```
+
+  The built-in default is `cycle`; a button is only shown when its metric is
+  actually present on a node (so `cycle` is offered only when the project has
+  cycles).
+
+Both lists are pruned to keys present on an internal node and are patched with the
+same DSL as `columns` / `card` / `stats`. The worked example
+([`custom-field-example.toml`](./custom-field-example.toml)) wires both: open its
+HTML report and the map offers a **TLOC/SLOC** size mode and a **tsr_big** filter.
 
 ---
 
@@ -415,5 +433,6 @@ check threshold [rules.thresholds.file] k = <limit>   (K/M/G suffixes; built-ins
 list patch      key = { clear=true, remove=[..], replace={old="new"},
                         after={anchor=[..]}, before={anchor=[..]}, prepend=[..], add=[..] }
 report views    [report] columns|card|stats = <list patch>   (works in <lang>.toml AND code-ranker.toml)
+map controls    [report] size|filter = <list patch>   (SVG circle-size modes / node filters; built-ins sloc,hk / cycle)
 preset          [presets.ID] sort_metric="k" title="…" prompt="…"   (--preset ID / scorecard / prompt)
 ```

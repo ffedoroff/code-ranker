@@ -175,6 +175,41 @@ function recomputeAll() {
   if (active && window.gv) renderView(active);
 }
 
+// Build the map's size-mode + filter buttons for a level entirely from its
+// `ui.size_metrics` / `ui.filter_metrics` (the viewer hardcodes none): the ■ box
+// mode plus one circle-size button per size key, and one node-filter button per
+// filter key. Labels/titles come from the metric specs. Active state mirrors
+// window.nodeSizeMode / window.nodeFilter. Clicks are handled by delegation in
+// panzoom.js, so rebuilding the buttons here every render is safe.
+function renderMapControls(section, level) {
+  const metricRow = section.querySelector('.size-row[data-row="metric"]');
+  const filterRow = section.querySelector('.size-row[data-row="filter"]');
+  const mode = window.nodeSizeMode || null;
+  const filt = window.nodeFilter || null;
+  if (metricRow) {
+    const sizes = levelUi(level).size_metrics || [];
+    let html = `<button class="size-mode-btn${mode === null ? ' active' : ''}" `
+             + `data-size="dot" title="Default box mode">■</button>`;
+    for (const k of sizes) {
+      html += `<button class="size-mode-btn${mode === k ? ' active' : ''}" `
+            + `data-size="${escAttr(k)}" title="Size ∝ ${escAttr(attrName(level, k))}">`
+            + `${escHtml(attrShort(level, k))}</button>`;
+    }
+    metricRow.innerHTML = html;
+  }
+  if (filterRow) {
+    const filters = levelUi(level).filter_metrics || [];
+    filterRow.innerHTML = filters.map(k => {
+      const title = k === 'cycle'
+        ? 'Show only nodes in dependency cycles (+ their connections)'
+        : `Show only nodes where ${attrName(level, k)} has signal`;
+      return `<button class="size-mode-btn${filt === k ? ' active' : ''}" `
+           + `data-filter="${escAttr(k)}" title="${escAttr(title)}">${escHtml(attrShort(level, k))}</button>`;
+    }).join('');
+    filterRow.style.display = filters.length ? '' : 'none';
+  }
+}
+
 function renderView(section, opts = {}) {
   const level   = section.dataset.view;
   const frame   = section.querySelector('.svg-frame');
@@ -182,6 +217,8 @@ function renderView(section, opts = {}) {
 
   // Plain count of distinct warning types next to the Prompt-Generator (AI) button.
   updateWarnCount();
+  // (Re)build the data-driven size/filter controls for this level.
+  renderMapControls(section, level);
 
   // Preserve pan/zoom across a re-render (a size-mode switch — Baseline/Current no
   // longer relayouts). Size modes have different coordinate extents, so we carry
@@ -267,11 +304,10 @@ function applyViewState(st, { rerender = false } = {}) {
   }
   // Sync the always-visible breadcrumb (tier dropdown + path chips + reveal-depth lens).
   window.renderBreadcrumb?.(lvl);
-  // Sync metric buttons
-  document.querySelectorAll('.size-row[data-row="metric"] .size-mode-btn').forEach(b => {
-    const bMode = b.dataset.size === 'dot' ? null : b.dataset.size;
-    b.classList.toggle('active', bMode === mode);
-  });
+  // Rebuild the size/filter controls so their active state matches the restored
+  // mode (a render also does this, but we may not re-render when nothing changed).
+  const actSec = document.querySelector('.view.active');
+  if (actSec) renderMapControls(actSec, lvl);
   if ((changed || rerender) && window.gv) {
     document.querySelectorAll('.view').forEach(sec => { sec.dataset.rendered = 'false'; });
     const active = document.querySelector('.view.active');

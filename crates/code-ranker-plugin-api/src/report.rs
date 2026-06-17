@@ -104,6 +104,12 @@ pub struct ReportOverride {
     pub card: ListPatch,
     /// The JSON report's aggregate `stats` keys.
     pub stats: ListPatch,
+    /// Metrics the SVG map offers as circle-size modes (`ui.size_metrics`), on top
+    /// of the built-in `loc` / `hk` modes.
+    pub size: ListPatch,
+    /// Metrics the SVG map offers as on/off node filters (`ui.filter_metrics`) —
+    /// keep only nodes where the metric has signal — alongside the built-in `cycle`.
+    pub filter: ListPatch,
 }
 
 #[cfg(test)]

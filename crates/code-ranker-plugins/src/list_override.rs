@@ -70,6 +70,8 @@ pub fn report_override_section(report: &Table) -> ReportOverride {
         columns: patch("columns"),
         card: patch("card"),
         stats: patch("stats"),
+        size: patch("size"),
+        filter: patch("filter"),
     }
 }
 
