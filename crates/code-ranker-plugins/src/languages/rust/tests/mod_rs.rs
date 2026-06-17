@@ -765,3 +765,48 @@ fn is_test_path_keys_on_config_test_dirs() {
     assert!(!RustPlugin.is_test_path("src/tests/foo.rs"));
     assert!(!RustPlugin.is_test_path("src/lib.rs"));
 }
+
+#[test]
+fn metrics_and_function_units_skip_unreadable_files() {
+    // A file node whose path does not exist is silently skipped by both passes
+    // (the `fs::read(..) else continue` arms) — no panic, no output.
+    let graph = code_ranker_plugin_api::graph::Graph {
+        nodes: vec![code_ranker_plugin_api::node::Node {
+            id: "/no/such/dir/missing.rs".into(),
+            kind: "file".into(),
+            name: "missing.rs".into(),
+            parent: None,
+            attrs: Default::default(),
+        }],
+        edges: vec![],
+    };
+    assert!(RustPlugin.metrics(&graph).is_empty());
+    assert!(RustPlugin.function_units(&graph).is_empty());
+}
+
+#[test]
+fn strip_cfg_test_passes_through_non_utf8() {
+    // Non-UTF-8 input can't be parsed; `strip_cfg_test` returns it unchanged with
+    // `tloc = 0` (the `from_utf8 .. else` guard) rather than panicking.
+    let (out, tloc) = strip_cfg_test(&[0xff, 0xfe, 0x00]);
+    assert_eq!(out, vec![0xff, 0xfe, 0x00]);
+    assert_eq!(tloc, 0);
+}
+
+#[test]
+fn offline_metadata_error_explains_warm_cache() {
+    let err = cargo_metadata::Error::CargoMetadata {
+        stderr: "no such manifest".into(),
+    };
+    let e = offline_metadata_error(std::path::Path::new("/proj/Cargo.toml"), err);
+    let msg = format!("{e}");
+    assert!(msg.contains("/proj/Cargo.toml"), "names the manifest");
+    assert!(
+        msg.contains("offline tool"),
+        "explains the offline constraint"
+    );
+    assert!(
+        msg.contains("no such manifest"),
+        "includes the underlying cargo error"
+    );
+}

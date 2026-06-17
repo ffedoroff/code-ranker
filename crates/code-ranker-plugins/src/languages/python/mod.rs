@@ -150,3 +150,7 @@ fn function_nodes(graph: &Graph) -> Vec<(Node, MetricInputs)> {
     }
     out
 }
+
+#[cfg(test)]
+#[path = "tests/mod_rs.rs"]
+mod mod_rs_tests;

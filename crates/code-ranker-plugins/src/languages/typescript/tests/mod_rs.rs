@@ -100,6 +100,26 @@ fn metrics_measures_ts_and_tsx_file_nodes() {
 }
 
 #[test]
+fn metrics_skip_unreadable_and_unsupported_files() {
+    // `/missing.ts` maps to a grammar but can't be read (`fs::read .. else
+    // continue`); `readme.txt` maps to no grammar (the `_ => None` arm). Both are
+    // skipped, so nothing is measured.
+    let n = |id: &str| code_ranker_plugin_api::node::Node {
+        id: id.into(),
+        kind: "file".into(),
+        name: id.into(),
+        parent: None,
+        attrs: Default::default(),
+    };
+    let graph = Graph {
+        nodes: vec![n("/no/such/missing.ts"), n("/x/readme.txt")],
+        edges: vec![],
+    };
+    assert!(TypescriptPlugin.metrics(&graph).is_empty());
+    assert!(TypescriptPlugin.function_units(&graph).is_empty());
+}
+
+#[test]
 fn analyze_builds_ts_graph_with_imports_and_externals() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();

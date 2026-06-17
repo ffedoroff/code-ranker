@@ -26,6 +26,8 @@ fn super_glob_only_marks_ancestor_namespace_pulls() {
     // `use self::*` resolves to a descendant of the current module (not an
     // ancestor), so it is not a super pull either (exercises the `self` arm).
     assert!(!is_super_glob(&pu(&["self", "sub"], &["assets"], true)));
+    // An empty glob path resolves to no module → not a super pull.
+    assert!(!is_super_glob(&pu(&[], &["assets"], true)));
     // A specific (non-glob) import of a parent item is a real dependency.
     assert!(!is_super_glob(&pu(
         &["crate", "syntax_mapping"],
@@ -370,4 +372,95 @@ fn flattens_group() {
 fn flattens_glob() {
     let paths = use_paths("use foo::bar::*;");
     assert_eq!(paths, vec![vec!["foo", "bar"]]);
+}
+
+#[test]
+fn resolve_use_path_empty_is_none() {
+    assert_eq!(
+        resolve_use_path(
+            &[],
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashMap::new(),
+            &ReexportMap::new(),
+            0,
+        ),
+        None
+    );
+}
+
+/// Cross-crate `pub use` whose **source** is keyword-rooted exercises every arm
+/// of `resolve_foreign_source` (`crate` / `self` / `super` / a `std` root) plus
+/// the module-only `walk_foreign` early return.
+#[test]
+fn resolves_cross_crate_reexport_keyword_sources() {
+    let mut foreign: HashMap<Vec<String>, NodeId> = HashMap::new();
+    foreign.insert(vec![], "F_ROOT".into());
+    foreign.insert(vec!["inner".into()], "F_INNER".into());
+    foreign.insert(vec!["sub".into()], "F_SUB".into());
+
+    let mut rx = ReexportMap::new();
+    // root re-exports rooted at `crate` / `self` / `std`
+    rx.insert(
+        vec![],
+        vec![
+            (
+                "ViaCrate".into(),
+                vec!["crate".into(), "inner".into(), "ViaCrate".into()],
+            ),
+            (
+                "ViaSelf".into(),
+                vec!["self".into(), "inner".into(), "ViaSelf".into()],
+            ),
+            ("ViaStd".into(), vec!["std".into(), "fmt".into()]),
+        ],
+    );
+    // a submodule re-exports rooted at `super`
+    rx.insert(
+        vec!["sub".into()],
+        vec![(
+            "ViaSuper".into(),
+            vec!["super".into(), "inner".into(), "ViaSuper".into()],
+        )],
+    );
+
+    let mut lib_index: HashMap<String, ForeignLib> = HashMap::new();
+    lib_index.insert(
+        "f 1.0".into(),
+        ForeignLib {
+            index: foreign,
+            reexports: rx,
+        },
+    );
+    let mut dep_pkg_by_name: HashMap<String, String> = HashMap::new();
+    dep_pkg_by_name.insert("f".into(), "f 1.0".into());
+    let mut externs: HashMap<String, NodeId> = HashMap::new();
+    externs.insert("f".into(), "crate:f".into());
+
+    let resolve = |path: &[&str]| {
+        resolve_use_path(
+            &path.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
+            &[],
+            &HashMap::new(),
+            &externs,
+            &dep_pkg_by_name,
+            &lib_index,
+            &ReexportMap::new(),
+            0,
+        )
+    };
+
+    // module-only import → walk_foreign resolves fully (early return).
+    assert_eq!(resolve(&["f", "inner"]).as_deref(), Some("F_INNER"));
+    // `crate` / `self` / `super`-rooted re-export sources land on the definer.
+    assert_eq!(resolve(&["f", "ViaCrate"]).as_deref(), Some("F_INNER"));
+    assert_eq!(resolve(&["f", "ViaSelf"]).as_deref(), Some("F_INNER"));
+    assert_eq!(
+        resolve(&["f", "sub", "ViaSuper"]).as_deref(),
+        Some("F_INNER")
+    );
+    // a `std`-rooted re-export source is suppressed → stays at the facade root.
+    assert_eq!(resolve(&["f", "ViaStd"]).as_deref(), Some("F_ROOT"));
 }

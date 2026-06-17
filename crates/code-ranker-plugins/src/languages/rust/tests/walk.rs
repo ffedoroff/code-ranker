@@ -212,3 +212,40 @@ fn convert_visibility_maps_every_form() {
         }
     );
 }
+
+#[test]
+fn is_test_item_covers_every_item_kind_and_attr_form() {
+    // `#[cfg(test)]` on each item *kind* (mod/fn/impl/struct/enum/trait/type/
+    // const/static/use/macro/union) is recognised — exercising every arm of the
+    // `is_test_item` match. `#[test]`/`#[bench]` and `cfg(all(test, ..))` cover
+    // the `is_test_attr` forms; a plain item and an `extern` block are NOT tests
+    // (the `_ => false` arms).
+    let src = "\
+#[cfg(test)] mod m {}\n\
+#[test] fn tagged() {}\n\
+#[bench] fn benched() {}\n\
+#[cfg(all(test, feature = \"x\"))] fn nested_cfg() {}\n\
+#[cfg(test)] impl Plain {}\n\
+#[cfg(test)] struct Sx;\n\
+#[cfg(test)] enum E { A }\n\
+#[cfg(test)] trait T {}\n\
+#[cfg(test)] type Y = u8;\n\
+#[cfg(test)] const C: u8 = 0;\n\
+#[cfg(test)] static ST: u8 = 0;\n\
+#[cfg(test)] use std::fmt;\n\
+#[cfg(test)] union U { a: u8 }\n\
+#[cfg(test)] mac! {}\n\
+struct Plain;\n\
+extern \"C\" {}\n\
+#[cfg(feature = \"test\")] fn not_a_test() {}\n";
+    let f = syn::parse_file(src).unwrap();
+    let test_count = f.items.iter().filter(|i| is_test_item(i)).count();
+    // The 14 `#[cfg(test)]` / `#[test]` / `#[bench]` / `cfg(all(test,..))` items.
+    assert_eq!(test_count, 14, "every test-gated item kind is recognised");
+    // `Plain`, `extern "C" {}`, and `cfg(feature = "test")` are not tests.
+    assert_eq!(
+        f.items.len() - test_count,
+        3,
+        "non-test items are not flagged"
+    );
+}

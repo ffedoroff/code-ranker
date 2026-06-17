@@ -54,6 +54,30 @@ fn py_visibility_str_classifies_by_underscore_convention() {
 }
 
 #[test]
+fn analyze_resolves_aliased_from_import_and_skips_root_init() {
+    use crate::test_support::write_file;
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path();
+    // A root-level `__init__.py` maps to no module path → skipped by `analyze`.
+    write_file(root, "__init__.py", "");
+    write_file(root, "pkg/__init__.py", "");
+    write_file(root, "pkg/b.py", "x = 1\n");
+    // `b as c` is an `aliased_import`; resolution keys on its `name` field (`b`).
+    write_file(root, "pkg/a.py", "from pkg import b as c\nprint(c)\n");
+
+    let g = analyze(root, false).unwrap();
+    let a = root.join("pkg/a.py").to_string_lossy().into_owned();
+    let b = root.join("pkg/b.py").to_string_lossy().into_owned();
+    assert!(
+        g.edges
+            .iter()
+            .any(|e| e.source == a && e.target == b && e.kind == "uses"),
+        "aliased `from pkg import b as c` resolves to pkg/b.py: {:?}",
+        g.edges
+    );
+}
+
+#[test]
 fn file_to_module_path_maps_and_rejects() {
     let ws = std::path::Path::new("/proj");
     // `pkg/__init__.py` → the package; `pkg/mod.py` → the dotted module.
