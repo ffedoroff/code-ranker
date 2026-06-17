@@ -756,13 +756,18 @@ registry engine over the per-language tier-1 counts. A user adds or overrides
 metrics under `[metrics.<key>]` in config (node-scope per-unit formulas, or
 graph-scope `agg(…)` aggregates emitted into `stats`) with no code change; only
 tier-1 counting and the graph algorithms (`fan_in`/`fan_out`/`cycle`) are in Rust.
+A project config can also surface those metrics in the report (`[report]` column /
+card / stats list-overrides), gate `check` on them (`[rules.thresholds.file]`,
+custom metrics included), and add Prompt-Generator lenses (`[presets.<ID>]`) — all
+data, no code. See `docs/code-ranker-cli/config.md` and `docs/customization/`.
 
 **Node shape** — `id`, `kind`, `name`, optional `parent`, plus flat attributes:
 
 ```json
 { "id": "{target}/src/foo.rs", "kind": "file", "name": "foo.rs",
   "visibility": "public", "loc": 48, "sloc": 36, "lloc": 12, "cloc": 4, "blank": 6, "tloc": 2,
-  "cyclomatic": 3, "cognitive": 2, "exits": 2, "args": 3, "unsafe": 1,
+  "cyclomatic": 3, "cognitive": 2, "exits": 2, "args": 3, "closures": 1, "unsafe": 1,
+  "eta1": 14, "eta2": 9, "n1": 52, "n2": 35, "spaces": 2, "branches": 1, "span_sloc": 40,
   "mi": 78.4, "mi_sei": 52.1, "length": 87, "vocabulary": 23, "volume": 312.5,
   "effort": 4820, "time": 267.8, "bugs": 0.104,
   "fan_in": 4, "fan_out": 2, "fan_out_external": 1, "hk": 1344, "cycle": "mutual" }

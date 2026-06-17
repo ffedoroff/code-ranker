@@ -16,7 +16,7 @@ pub struct ThresholdMetric {
 }
 
 /// Map an attribute-spec group to a threshold concern group.
-fn concern_group(spec_group: Option<&str>) -> &'static str {
+pub(crate) fn concern_group(spec_group: Option<&str>) -> &'static str {
     match spec_group {
         Some("loc") => "SIZ",
         Some("coupling") => "CPL",

@@ -102,13 +102,42 @@ here with no code change. Fields:
 - `scope` — `node` (per file/function; default) or `graph` (an aggregate computed
   once over all nodes via `agg(key, reducer, population)` and emitted into
   `stats`). Reducers: `sum`/`avg`/`min`/`max`/`count`/`median`/`p<q>` (percentile
-  by numpy R-7). Populations: `not_empty` (value ≠ `omit_at`) / `all` (missing
+  by numpy R-7), and `top<N>`/`top<N>_<reducer>` (keep the N largest, then reduce —
+  default `avg`). Populations: `not_empty` (value ≠ `omit_at`) / `all` (missing
   counted at the floor).
-- `label` / `name` / `short` / `description` / `direction` / `group` / `value_type`
-  / `omit_at` — display spec (rendered like any built-in metric).
+- `label` / `name` / `short` / `description` / `formula_pretty` / `calc` /
+  `direction` / `group` / `value_type` / `omit_at` — display spec (rendered like
+  any built-in metric). `name` is the tooltip title, `short` the table header,
+  `description` the tooltip body, `formula_pretty` the readable formula's first
+  tooltip line. `calc` is the JS the viewer re-runs with the node's values for the
+  second line (the formula filled with numbers, like `hk`); it defaults to the CEL
+  `formula`, so plain-arithmetic metrics get the line for free.
+- `warning` / `info` — optional two-tier severity thresholds the scorecard and
+  viewer badge against (a missing tier mirrors the other). Distinct from the
+  single-tier `[rules.thresholds.file]` `check` gate.
 
 A node-scope metric is computed for every file (and function, when that level is
-on) and is usable as a `[rules.thresholds.file]` limit like any built-in.
+on) and is usable as a `[rules.thresholds.file]` limit like any built-in (the key
+is validated at load — a typo, or a metric you never defined, is a hard error).
+
+### `[presets.<ID>]` — project Prompt-Generator presets
+
+A preset is a refactoring lens: it ranks files by one metric and ships a
+ready-to-paste AI prompt, surfaced by `--preset` / the `scorecard` / the viewer's
+Prompt-Generator buttons. The plugin catalog ships the SOLID/complexity presets;
+a project adds its own (e.g. over a custom metric) here. The table key is the id;
+a same-id project preset overrides the plugin's, a new id appends.
+
+```toml
+[presets.TSR]
+title       = "TSR — Trim inline test bulk"  # prompt heading (defaults to id)
+sort_metric = "tsr"                          # the metric the worst-first list ranks by
+prompt      = "Move inline test modules into sibling test files…"
+# optional: label (button text, defaults to id), doc_url, connections = ["in","out","common"]
+```
+
+Only `sort_metric` is essential. See the worked example in
+[`docs/customization/`](../customization/README.md#17-prompt-generator-presets--presetsid).
 
 ### `[output.json]` / `[output.html]` / `[output.sarif]` / `[output.codequality]` — report artifacts
 

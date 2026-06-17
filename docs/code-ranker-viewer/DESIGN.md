@@ -96,7 +96,7 @@ top-to-bottom). The viewer was split out of three former monoliths (`diagram.js`
 
 | File | Purpose |
 |------|---------|
-| `tooltip.js` | The shared `#tt` engine: `renderTooltip` (distribution table — `avg`, `min`, `max` + p1/p10/p50/p90/p99 percentiles), `renderDescTooltip` (title + formula + filled-calc + description with `<br>`/`` `code` `` markup), `renderNodeTooltip`/`renderGroupTooltip`, and `setupTooltip` — one delegated hover controller with a 300 ms delay; derives metric tooltips lazily on hover. Used by the table, map, popup and summary. |
+| `tooltip.js` | The shared `#tt` engine: `renderTooltip` (distribution table — `avg`, `min`, `max` + p1/p10/p50/p90/p99 percentiles), `renderDescTooltip` (title + formula + filled-calc + description with `<br>`/`` `code` `` markup), `renderNodeTooltip`/`renderGroupTooltip`, and `setupTooltip` — one delegated hover controller with a 300 ms delay; derives metric tooltips lazily on hover. Used by the table, map, popup and summary. The `#tt` box is **content-sized** (`width: max-content`, capped at `min(560px, 92vw)`): short tips stay compact, long ones (a metric's full formula, or a language's enumerated Halstead operator/operand list) wrap instead of clipping, growing the box's height; `position()` flips off the cursor then **clamps to the viewport** so the larger box stays fully visible. |
 
 ### Tables & summary
 

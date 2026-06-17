@@ -297,6 +297,20 @@ description = "Comment-only lines (inline comments on code lines are not counted
 [specs.blank]
 description = "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`)."
 
+# Halstead base counts — the exact Rust operator/operand tokens counted (from the
+# `[halstead]` table above). Keep in lock-step with that table.
+[specs.eta1]
+description = "Distinct operators (η₁): the count of unique operator token kinds. Rust counts punctuation & delimiters (`( { [ , . ; -> => ? .. ..=`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % & | ^ << >> == != < > <= >= && || += -= *= /= %= &= |= ^= <<= >>=`), the keywords `async await continue for if let loop match move return unsafe while fn`, `mut` (mutable_specifier) and primitive types, plus the context-sensitive `|| / !`."
+
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.eta2]
+description = "Distinct operands (η₂): the count of unique operand texts. Rust counts identifiers, `self`, the `_` wildcard, and literals — string, raw-string, integer, float, boolean and char."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Rust-specific structural node/edge attributes (display specs). The shared
 # `path`/`loc`/`visibility`/`external` come from `defaults.toml`; Rust adds these.
@@ -324,3 +338,19 @@ direction = "lower_better"
 [edge_attributes.visibility]
 value_type = "str"
 label = "Visibility"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Report-list patches — DATA, not code. The table `columns`, the card-featured
+# metrics, and the JSON `stats` keys are inherited from the global metric catalog
+# (`code-ranker-graph/metrics/builtin.toml`); a language patches them here with
+# the list-override DSL (a plain array replaces; an op-table mutates in place):
+#   { add = [..], remove = [..], replace = { old = "new" }, prepend = [..], clear = true }
+# The orchestrator applies the patch over the catalog list, then prunes to keys
+# present on a node. (`unsafe` is Rust-only, so it only ever surfaces here.)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[report]
+# Drop the five Halstead-derivative columns and surface the Rust `unsafe` count.
+columns = { remove = ["volume", "effort", "time", "length", "vocabulary"], add = ["unsafe"] }
+# Also report the project-wide mean `unsafe` in the JSON `stats` block.
+stats = { add = ["unsafe"] }

@@ -117,6 +117,11 @@ impl LanguagePlugin for RustPlugin {
         crate::config::resolved_presets(&CONFIG)
     }
 
+    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
+        // Rust's `[report]` patches: e.g. surface the `unsafe` column / stat.
+        crate::list_override::report_override(&CONFIG)
+    }
+
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
         let mut builder = GraphBuilder::new();
         syn_analyze(workspace, input.ignore_tests, &mut builder)?;
@@ -193,21 +198,12 @@ impl LanguagePlugin for RustPlugin {
 
     fn metric_specs(
         &self,
-        mut defaults: BTreeMap<String, AttributeSpec>,
+        defaults: BTreeMap<String, AttributeSpec>,
     ) -> BTreeMap<String, AttributeSpec> {
-        // Apply the Rust `[specs.<key>]` overrides over the central builtin
-        // specs. Rust strips inline `#[cfg(test)]` / `#[test]` / `#[bench]`
-        // items before measuring, so the LOC metrics count production code only
-        // — a nuance the language-neutral default descriptions omit, re-added
-        // here from `rust.toml`.
-        for (key, ov) in crate::config::spec_overrides(&CONFIG) {
-            if let Some(spec) = defaults.get_mut(&key)
-                && let Some(desc) = ov.description
-            {
-                spec.description = Some(desc);
-            }
-        }
-        defaults
+        // Apply the Rust `[specs.<key>]` overrides over the central builtin specs:
+        // the production-only LOC nuance (`#[cfg(test)]` stripped) and the exact
+        // Halstead operator/operand sets Rust counts.
+        crate::config::apply_spec_overrides(defaults, &CONFIG)
     }
 }
 

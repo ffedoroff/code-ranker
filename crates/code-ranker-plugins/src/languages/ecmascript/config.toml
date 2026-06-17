@@ -194,3 +194,21 @@ statement_kinds.named = [
     "break_statement", "continue_statement", "debugger_statement", "return_statement",
     "throw_statement", "empty_statement", "statement_identifier",
 ]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Halstead base counts — the exact JS/TS operator/operand tokens counted (from the
+# `[halstead]` table above). Shared by both the JavaScript and TypeScript plugins
+# (`ecmascript_metric_specs`). Keep in lock-step with that table.
+# ──────────────────────────────────────────────────────────────────────────────
+
+[specs.eta1]
+description = "Distinct operators (η₁): the count of unique operator token kinds. JavaScript / TypeScript count the keywords `export import from as extends new function let var const return delete throw break continue if else switch case default for in of while try catch finally with async await yield`, arithmetic / logical / comparison / assignment operators (`+ - * / % ** ++ -- && || ! == === != !== < <= > >= = += -= *= /= %= **= ?? ?`), bitwise operators (`& | ^ << >> >>> ~`), and punctuation / delimiters (`. , : ; ( [ { @`)."
+
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.eta2]
+description = "Distinct operands (η₂): the count of unique operand texts. JavaScript / TypeScript count identifiers (including `member_expression` / `property_identifier` / `nested_identifier`), literals (`string`, `number`, `true`, `false`, `null`, `undefined`, `void`), `this` / `super`, and the contextual keywords `set` / `get` / `typeof` / `instanceof`."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

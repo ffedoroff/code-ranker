@@ -9,7 +9,7 @@ If a `code-ranker` command errors with "command not found" (the binary isn't
 installed) and you are working in a Rust project, install it with cargo:
 
 ```sh
-cargo install code-ranker --version 1.0.0-alpha.4
+cargo install code-ranker
 ```
 
 ## Two commands

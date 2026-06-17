@@ -40,6 +40,7 @@ pub mod log;
 pub mod metrics;
 pub mod node;
 pub mod plugin;
+pub mod report;
 
 pub use attrs::{AttrValue, Attributes, ValueType};
 pub use edge::Edge;
@@ -51,6 +52,7 @@ pub use level::{
 pub use metrics::{FunctionUnit, MetricInputs};
 pub use node::{Node, NodeId};
 pub use plugin::{LanguagePlugin, Options, PluginInput, Preset};
+pub use report::{ListPatch, ReportOverride};
 
 use std::collections::BTreeMap;
 

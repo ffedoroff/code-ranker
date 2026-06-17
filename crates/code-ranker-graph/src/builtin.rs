@@ -15,7 +15,7 @@
 //!   and available but not yet wired into the built-in stats.
 
 use crate::attrs::num_attr;
-use crate::registry::{Engine, MetricDef, Scope};
+use crate::registry::{Engine, MetricDef};
 use code_ranker_plugin_api::metrics::MetricInputs;
 use code_ranker_plugin_api::{
     attrs::ValueType,
@@ -122,16 +122,9 @@ static DERIVED: LazyLock<(BTreeMap<String, MetricDef>, Engine)> = LazyLock::new(
 fn derived_def(cel: &str, omit_at: f64) -> MetricDef {
     MetricDef {
         formula: cel.to_string(),
-        scope: Scope::Node,
         value_type: "float".to_string(),
-        label: None,
-        name: None,
-        short: None,
-        description: None,
-        formula_pretty: None,
-        direction: None,
-        group: None,
         omit_at,
+        ..MetricDef::default()
     }
 }
 
@@ -258,6 +251,15 @@ pub fn write_metrics(node: &mut Node, i: &MetricInputs) {
         put("exits", i.exits);
         put("args", i.args);
         put("closures", i.closures);
+        // Halstead/AST base counts — emitted so derived formulas can show their
+        // live derivation line in the viewer (each dropped at 0 by `put`).
+        put("eta1", i.eta1);
+        put("eta2", i.eta2);
+        put("n1", i.n1);
+        put("n2", i.n2);
+        put("spaces", i.spaces);
+        put("branches", i.branches);
+        put("span_sloc", i.span_sloc);
         if i.sloc > 0.0 {
             put("sloc", i.sloc);
             put("lloc", i.lloc);
@@ -308,12 +310,13 @@ mod tests {
     #[test]
     fn parses_and_compiles() {
         let (specs, groups) = metric_specs();
-        // Emitted measured + derived = 18 specs; pure AST inputs excluded.
         assert!(specs.contains_key("volume"), "derived present");
         assert!(specs.contains_key("sloc"), "emitted measured present");
+        // Halstead/AST base counts are now emitted (they carry a label), so the
+        // derived formulas can render a live derivation line in the viewer.
         assert!(
-            !specs.contains_key("eta1"),
-            "pure input excluded from specs"
+            specs.contains_key("eta1"),
+            "base count emitted (has a display spec)"
         );
         assert!(groups.contains_key("halstead"));
         let (defs, _engine) = &*DERIVED;

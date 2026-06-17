@@ -177,3 +177,20 @@ statement_kinds.named = [
 [loc.special]
 loc_string = { kind = "string" }
 loc_expression_statement = { kind = "expression_statement" }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Halstead base counts — the exact Python operator/operand tokens counted (from
+# the `[halstead]` table above). Keep in lock-step with that table.
+# ──────────────────────────────────────────────────────────────────────────────
+
+[specs.eta1]
+description = "Distinct operators (η₁): the count of unique operator token kinds. Python counts the keywords `and or not is in if elif else for while try except finally with return yield await async def del raise pass break continue global exec assert import from as print`, arithmetic / bitwise / comparison / assignment operators (`+ - * / // % ** & | ^ << ~ < <= == != >= > <> := = += -= *= /= //= %= **= >>= <<= &= ^= |= @=`), and `. , @ -> *`."
+
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.eta2]
+description = "Distinct operands (η₂): the count of unique operand texts. Python counts identifiers, numeric literals (`integer`, `float`), the constants `True` / `False` / `None`, and string literals — except a bare docstring (a string that is the sole statement of its block), which is treated as a comment, not an operand."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

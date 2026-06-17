@@ -116,6 +116,16 @@ pub fn thresholds(name: &str) -> BTreeMap<String, Thresholds> {
         .unwrap_or_default()
 }
 
+/// The matching plugin's report-list overrides (table `columns` / card / JSON
+/// `stats`), applied by the orchestrator over the global catalog lists.
+pub fn report_overrides(name: &str) -> code_ranker_plugin_api::report::ReportOverride {
+    registry()
+        .iter()
+        .find(|p| p.name() == name)
+        .map(|p| p.report_overrides())
+        .unwrap_or_default()
+}
+
 /// The matching plugin's Prompt-Generator presets (the common catalog plus any
 /// language-specific presets), built from its own config.
 pub fn presets(name: &str, input: &PluginInput) -> Vec<Preset> {

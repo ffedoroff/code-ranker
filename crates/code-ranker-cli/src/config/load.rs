@@ -36,10 +36,29 @@ pub fn load(
     }
     apply_inline_overrides(&mut config, &inline)?;
     apply_cli_overrides(&mut config, ignore_paths, cycle_rules, thresholds)?;
+    validate_thresholds(&config)?;
     Ok(LoadedConfig {
         config,
         source_file,
     })
+}
+
+/// Validate every configured threshold key once the full config is known: a key
+/// is legal if it is a registry per-file metric OR a project `[metrics.<key>]`.
+/// Deferred here (not in the deserializer) so a custom metric — invisible to the
+/// `MetricThresholds` deserializer — is accepted while a typo still fails fast.
+fn validate_thresholds(cfg: &Config) -> Result<()> {
+    for key in cfg.rules.thresholds.file.limits.keys() {
+        if super::metrics::is_threshold_metric(key) || cfg.metrics.contains_key(key) {
+            continue;
+        }
+        anyhow::bail!(
+            "unknown threshold metric {key:?}; expected a per-file metric (e.g. sloc, loc, \
+             cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, bugs) or a custom \
+             [metrics.{key}] defined in this config"
+        );
+    }
+    Ok(())
 }
 
 fn load_file(workspace: &Path, explicit: Option<&Path>) -> Result<(Config, Option<String>)> {
@@ -204,12 +223,9 @@ fn set_threshold(cfg: &mut Config, scope: &str, metric: &str, val: f64) -> Resul
 }
 
 fn set_metric(bucket: &mut MetricThresholds, metric: &str, val: f64) -> Result<()> {
-    if !super::metrics::is_threshold_metric(metric) {
-        anyhow::bail!(
-            "unknown threshold metric {metric:?}; expected a per-file metric such as \
-             sloc, loc, cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, bugs"
-        );
-    }
+    // Validity (registry metric ∪ custom `[metrics]`) is checked centrally in
+    // `validate_thresholds`, once the whole config — including `[metrics]` — is
+    // known; a CLI/inline override only records the limit here.
     bucket.set(metric.to_string(), val);
     Ok(())
 }
@@ -318,25 +334,39 @@ mod tests {
     }
 
     #[test]
-    fn set_metric_each_then_unknown() {
+    fn set_metric_records_every_key() {
+        // `set_metric` only records the limit now — validity is checked later by
+        // `validate_thresholds` (which can see the project's custom metrics).
         let mut b = MetricThresholds::default();
-        // The full open vocabulary is accepted — not just the legacy six.
-        for m in [
-            "hk",
-            "cyclomatic",
-            "cognitive",
-            "fan_in",
-            "fan_out",
-            "loc",
-            "sloc",
-            "mi",
-            "bugs",
-            "volume",
-        ] {
+        for m in ["hk", "cyclomatic", "sloc", "mi", "bugs", "bogus"] {
             set_metric(&mut b, m, 1.0).unwrap();
             assert_eq!(b.get(m), Some(1.0));
         }
-        assert!(set_metric(&mut b, "bogus", 1.0).is_err());
+    }
+
+    #[test]
+    fn validate_thresholds_accepts_registry_and_custom_keys() {
+        use code_ranker_graph::MetricDef;
+
+        // A registry metric is always valid.
+        let mut cfg = Config::default();
+        cfg.rules.thresholds.file.set("hk".into(), 1.0);
+        assert!(validate_thresholds(&cfg).is_ok());
+
+        // An unknown key with no matching custom metric is rejected, named.
+        cfg.rules.thresholds.file.set("tsr".into(), 1.0);
+        let err = validate_thresholds(&cfg).unwrap_err().to_string();
+        assert!(err.contains("tsr"), "names the bad key: {err}");
+
+        // …but once `[metrics.tsr]` exists, the same threshold is accepted.
+        cfg.metrics.insert(
+            "tsr".into(),
+            MetricDef {
+                formula: "1.0".into(),
+                ..Default::default()
+            },
+        );
+        assert!(validate_thresholds(&cfg).is_ok());
     }
 
     #[test]

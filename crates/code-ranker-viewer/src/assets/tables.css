@@ -37,7 +37,10 @@
 #tt { position: fixed; z-index: 30001; pointer-events: none;
       background: #1e2a3a; color: #e8eef5; border-radius: 8px;
       padding: 10px 14px; font-size: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,.4); max-width: 240px;
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+      /* Grow to fit the content, capped so it still fits small viewports; long
+         lines wrap (below) rather than overflow, so the box never clips. */
+      width: max-content; max-width: min(560px, 92vw);
       border: 1px solid rgba(255,255,255,.08); }
 #tt[hidden] { display: none; }
 .tt-title { font-weight: 700; color: #7ec8e3; margin-bottom: 7px; font-size: 13px; }
@@ -57,18 +60,20 @@
 [data-tt] { cursor: help; border-bottom: 1px dashed rgba(100,120,140,.35); }
 [data-tip] { cursor: help; }
 .tt-desc { color: #c8d8e8; font-size: 12px; line-height: 1.55; margin-top: 2px; }
-/* Inline `code` spans inside a description: highlighted and never wrapped. */
-.tt-desc .tt-code { white-space: nowrap; font-family: ui-monospace, 'SF Mono', monospace;
+/* Inline `code` spans inside a description: highlighted. Wraps at the spaces
+   between tokens (a long operator list grows the box's height, not its width). */
+.tt-desc .tt-code { font-family: ui-monospace, 'SF Mono', monospace;
                     font-size: 11px; color: #e8eef5; background: rgba(126,200,227,0.16);
-                    border-radius: 3px; padding: 0 4px; }
-/* Metric formula on its own bold line, never wrapped mid-expression. */
-.tt-formula { font-weight: 700; color: #e8eef5; white-space: nowrap;
+                    border-radius: 3px; padding: 0 4px; overflow-wrap: anywhere; }
+/* Metric formula on its own bold line. Prefers a single line, but wraps (at
+   operators) when it would exceed the box, rather than overflowing/clipping. */
+.tt-formula { font-weight: 700; color: #e8eef5;
+              white-space: normal; overflow-wrap: anywhere;
               margin: 4px 0 6px; font-size: 11px;
               font-family: ui-monospace, 'SF Mono', monospace; }
 /* The formula filled with the node's real values — lighter, sits under the
    generic formula. */
 .tt-calc { font-weight: 400; color: #9fd0e8; margin-top: -3px; }
-#tt { max-width: 330px; }
 
 /* ── Node table ─────────────────────────────────────────────────────────────── */
 .node-table-wrap { margin: 10px 0 20px; }

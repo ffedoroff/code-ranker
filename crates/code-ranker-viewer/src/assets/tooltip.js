@@ -85,8 +85,13 @@ function setupTooltip() {
     const pad = 14;
     const tw = tt.offsetWidth, th = tt.offsetHeight;
     let x = lastX + pad, y = lastY + pad;
+    // Flip to the other side of the cursor when it would overflow right/bottom…
     if (x + tw > window.innerWidth  - 8) x = lastX - tw - pad;
     if (y + th > window.innerHeight - 8) y = lastY - th - pad;
+    // …then clamp to the viewport so a large (now content-sized) box can't spill
+    // off the top/left edge — it stays fully visible.
+    x = Math.max(8, Math.min(x, window.innerWidth  - tw - 8));
+    y = Math.max(8, Math.min(y, window.innerHeight - th - 8));
     tt.style.left = x + 'px';
     tt.style.top  = y + 'px';
   };

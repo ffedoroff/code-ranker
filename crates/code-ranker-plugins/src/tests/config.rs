@@ -367,3 +367,29 @@ fn resolved_presets_inherit_catalog_and_resolve_doc_urls() {
     assert_eq!(js.len(), 17);
     assert!(js[0].doc_url.as_deref().unwrap().contains("/typescript/"));
 }
+
+/// An inherited list is patched in place by an op-table (the list-override DSL);
+/// a plain array still replaces it wholesale (the historical behaviour).
+#[test]
+fn deep_merge_patches_inherited_lists_via_op_table() {
+    let strs = |v: &Value| -> Vec<String> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|x| x.as_str().map(str::to_string))
+            .collect()
+    };
+    let base: Table = "xs = [\"a\", \"b\", \"c\"]\nys = [\"keep\"]\n"
+        .parse()
+        .unwrap();
+    let overlay: Table = "xs = { remove = [\"b\"], add = [\"d\"] }\nys = [\"replaced\"]\n"
+        .parse()
+        .unwrap();
+    let merged = deep_merge(base, overlay);
+    assert_eq!(
+        strs(&merged["xs"]),
+        ["a", "c", "d"],
+        "op-table mutates in place"
+    );
+    assert_eq!(strs(&merged["ys"]), ["replaced"], "plain array replaces");
+}

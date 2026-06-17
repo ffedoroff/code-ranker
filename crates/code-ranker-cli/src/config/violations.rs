@@ -74,14 +74,16 @@ fn check_level_violations(
             message = format!("{message}  (over budget: {count} > {budget})");
         }
         let (location, line) = cycle_break_point(level, &cg.nodes);
+        let id = cycle_rule_id(&cg.kind);
         push(
             vs,
             name,
-            cycle_rule_id(&cg.kind),
+            id,
             location,
             line,
             message,
             cg.nodes.len() as f64,
+            super::rules::rule_group(id),
         );
     }
 
@@ -90,8 +92,22 @@ fn check_level_violations(
         if is_external(node) {
             continue;
         }
-        check_node_metrics(vs, name, "file", bucket, node);
+        check_node_metrics(vs, name, "file", bucket, node, level);
     }
+}
+
+/// The concern group for a threshold key: a registry metric carries its own; a
+/// custom `[metrics.<key>]` is mapped from its spec's group (e.g. `loc` → `SIZ`),
+/// so a custom-metric breach groups alongside related built-ins instead of `?`.
+fn metric_group(level: &LevelGraph, key: &str) -> &'static str {
+    if let Some(m) = super::metrics::threshold_metric(key) {
+        return m.group;
+    }
+    let spec_group = level
+        .node_attributes
+        .get(key)
+        .and_then(|s| s.group.as_deref());
+    super::metrics::concern_group(spec_group)
 }
 
 fn check_node_metrics(
@@ -100,26 +116,28 @@ fn check_node_metrics(
     scope: &str,
     t: &MetricThresholds,
     node: &Node,
+    level: &LevelGraph,
 ) {
-    // Walk the per-file metric vocabulary (data-driven); for each one the user
-    // gave a limit, read its node attribute (the metric key doubles as the
-    // attribute key) and breach when it exceeds the limit. A new registry metric
-    // is thresholdable automatically.
-    for tm in super::metrics::threshold_metrics() {
-        let Some(limit) = t.get(&tm.key) else {
-            continue;
-        };
-        if let Some(value) = attr_num(node, &tm.key)
-            && value > limit
+    // Walk the limits the user actually set (data-driven). The metric key doubles
+    // as the node-attribute key, so read it and breach when it exceeds the limit.
+    // The label comes from the registry vocabulary when known, else the key itself
+    // — so a project `[metrics.<key>]` is checked exactly like a built-in.
+    for (key, limit) in &t.limits {
+        if let Some(value) = attr_num(node, key)
+            && value > *limit
         {
+            let label = super::metrics::threshold_metric(key)
+                .map(|m| m.label)
+                .unwrap_or_else(|| key.clone());
             push_threshold(
                 vs,
                 graph,
-                &format!("threshold.{scope}.{}", tm.key),
+                &format!("threshold.{scope}.{key}"),
                 node.id.clone(),
-                &tm.label,
+                &label,
                 value,
-                limit,
+                *limit,
+                metric_group(level, key),
             );
         }
     }
@@ -175,6 +193,7 @@ fn cycle_rule_id(kind: &str) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_threshold(
     vs: &mut Vec<Violation>,
     graph: &'static str,
@@ -183,6 +202,7 @@ fn push_threshold(
     metric: &str,
     value: f64,
     limit: f64,
+    group: &'static str,
 ) {
     let ratio = if limit > 0.0 {
         value / limit
@@ -199,7 +219,7 @@ fn push_threshold(
     let message = format!(
         "{metric} {value:.decimals$} exceeds limit {limit:.decimals$} ({ratio:.1}× over budget)"
     );
-    push(vs, graph, id, location, None, message, ratio);
+    push(vs, graph, id, location, None, message, ratio, group);
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -211,8 +231,8 @@ fn push(
     line: Option<u32>,
     message: String,
     weight: f64,
+    group: &'static str,
 ) {
-    let group = super::rules::rule_group(id);
     vs.push(Violation {
         rule: id.to_string(),
         group,
@@ -351,6 +371,27 @@ mod tests {
         assert_eq!(vs.len(), 1);
         assert_eq!(vs[0].rule, "threshold.file.sloc");
         assert_eq!(vs[0].group, "SIZ");
+    }
+
+    #[test]
+    fn custom_metric_threshold_breaches() {
+        // A project `[metrics.tsr]` is checked exactly like a built-in: the key
+        // doubles as the node-attribute key, and the breach reads the bare key as
+        // its label (no registry entry to borrow a nicer one from).
+        let graphs = level_with(
+            vec![
+                file_node("hot.rs", &[("tsr", AttrValue::Float(2.5))]),
+                file_node("cold.rs", &[("tsr", AttrValue::Float(0.3))]),
+            ],
+            vec![],
+        );
+        let mut rules = RulesConfig::default();
+        rules.thresholds.file.set("tsr".into(), 1.0);
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 1);
+        assert_eq!(vs[0].rule, "threshold.file.tsr");
+        assert!(vs[0].location.contains("hot.rs"));
+        assert!(vs[0].message.contains("tsr"));
     }
 
     #[test]

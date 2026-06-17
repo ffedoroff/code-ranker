@@ -1,6 +1,6 @@
 {
-  "command": "code-ranker report crates/code-ranker-plugins/src/javascript/tests/sample --config crates/code-ranker-plugins/src/javascript/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/javascript/tests/sample/code-ranker-report.json",
-  "config_file": "crates/code-ranker-plugins/src/javascript/tests/sample/code-ranker.toml",
+  "command": "code-ranker report crates/code-ranker-plugins/src/languages/javascript/tests/sample --config crates/code-ranker-plugins/src/languages/javascript/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/javascript/tests/sample/code-ranker-report.json",
+  "config_file": "crates/code-ranker-plugins/src/languages/javascript/tests/sample/code-ranker.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
     "branch": "main",
@@ -153,6 +153,15 @@
           "short": "Blank",
           "value_type": "int"
         },
+        "branches": {
+          "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Branches",
+          "name": "Decision points",
+          "short": "Branches",
+          "value_type": "int"
+        },
         "bugs": {
           "calc": "effort ** (2/3) / 3000",
           "description": "Estimated delivered bugs — a rough predictor of defect density.",
@@ -197,9 +206,10 @@
           "value_type": "str"
         },
         "cyclomatic": {
+          "calc": "spaces + branches",
           "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
           "direction": "lower_better",
-          "formula": "Σ (branches + 1) over functions",
+          "formula": "spaces + branches",
           "group": "complexity",
           "label": "Cyclomatic",
           "name": "Cyclomatic complexity",
@@ -208,14 +218,33 @@
           "value_type": "int"
         },
         "effort": {
+          "calc": "(eta1 / 2) * (n2 / eta2) * volume",
           "description": "Mental effort to implement the algorithm.",
           "direction": "lower_better",
-          "formula": "volume × difficulty",
+          "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
           "group": "halstead",
           "label": "Effort",
           "name": "Halstead effort",
           "short": "H.effort",
           "value_type": "float"
+        },
+        "eta1": {
+          "description": "Distinct operators (η₁): the count of unique operator token kinds. JavaScript / TypeScript count the keywords `export import from as extends new function let var const return delete throw break continue if else switch case default for in of while try catch finally with async await yield`, arithmetic / logical / comparison / assignment operators (`+ - * / % ** ++ -- && || ! == === != !== < <= > >= = += -= *= /= %= **= ?? ?`), bitwise operators (`& | ^ << >> >>> ~`), and punctuation / delimiters (`. , : ; ( [ { @`).",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "η₁",
+          "name": "Unique operators",
+          "short": "η₁",
+          "value_type": "int"
+        },
+        "eta2": {
+          "description": "Distinct operands (η₂): the count of unique operand texts. JavaScript / TypeScript count identifiers (including `member_expression` / `property_identifier` / `nested_identifier`), literals (`string`, `number`, `true`, `false`, `null`, `undefined`, `void`), `this` / `super`, and the contextual keywords `set` / `get` / `typeof` / `instanceof`.",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "η₂",
+          "name": "Unique operands",
+          "short": "η₂",
+          "value_type": "int"
         },
         "exits": {
           "description": "Number of exit points (return/throw) in the unit.",
@@ -265,9 +294,10 @@
           "value_type": "float"
         },
         "length": {
+          "calc": "n1 + n2",
           "description": "Program length — total operator + operand occurrences.",
           "direction": "lower_better",
-          "formula": "N₁ + N₂",
+          "formula": "n1 + n2",
           "group": "halstead",
           "label": "Length",
           "name": "Halstead length",
@@ -287,9 +317,10 @@
           "value_type": "int"
         },
         "mi": {
+          "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
           "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
           "direction": "higher_better",
-          "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)",
+          "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
           "group": "maintainability",
           "label": "MI",
           "name": "Maintainability index",
@@ -297,14 +328,33 @@
           "value_type": "float"
         },
         "mi_sei": {
+          "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
           "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
           "direction": "higher_better",
-          "formula": "MI + 50·sin(√(2.4 × comment-ratio))",
+          "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
           "group": "maintainability",
           "label": "MI (SEI)",
           "name": "Maintainability (SEI)",
           "short": "MI SEI",
           "value_type": "float"
+        },
+        "n1": {
+          "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "N₁",
+          "name": "Total operators",
+          "short": "N₁",
+          "value_type": "int"
+        },
+        "n2": {
+          "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "N₂",
+          "name": "Total operands",
+          "short": "N₂",
+          "value_type": "int"
         },
         "sloc": {
           "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count).",
@@ -312,6 +362,24 @@
           "label": "Source",
           "name": "Source lines",
           "short": "SLOC",
+          "value_type": "int"
+        },
+        "spaces": {
+          "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Spaces",
+          "name": "Unit count",
+          "short": "Spaces",
+          "value_type": "int"
+        },
+        "span_sloc": {
+          "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
+          "direction": "lower_better",
+          "group": "maintainability",
+          "label": "Span",
+          "name": "Line span",
+          "short": "Span",
           "value_type": "int"
         },
         "time": {
@@ -330,9 +398,10 @@
           "value_type": "str"
         },
         "vocabulary": {
+          "calc": "eta1 + eta2",
           "description": "Vocabulary — distinct operators + operands.",
           "direction": "lower_better",
-          "formula": "η₁ + η₂",
+          "formula": "eta1 + eta2",
           "group": "halstead",
           "label": "Vocabulary",
           "name": "Halstead vocabulary",
@@ -386,6 +455,8 @@
           "cycle": "chain",
           "cyclomatic": 3,
           "effort": 3311.938,
+          "eta1": 17,
+          "eta2": 17,
           "exits": 2,
           "fan_in": 2,
           "fan_out": 2,
@@ -398,8 +469,12 @@
           "loc": 23,
           "mi": 90.314,
           "mi_sei": 95.107,
+          "n1": 41,
+          "n2": 21,
           "name": "a.js",
           "sloc": 11,
+          "spaces": 3,
+          "span_sloc": 22,
           "time": 183.996,
           "visibility": "public",
           "vocabulary": 34,
@@ -412,6 +487,8 @@
           "closures": 1,
           "cyclomatic": 2,
           "effort": 373.333,
+          "eta1": 7,
+          "eta2": 9,
           "fan_out": 1,
           "id": "{target}/src/a.test.js",
           "kind": "file",
@@ -420,8 +497,12 @@
           "loc": 8,
           "mi": 115.281,
           "mi_sei": 127.65,
+          "n1": 14,
+          "n2": 10,
           "name": "a.test.js",
           "sloc": 4,
+          "spaces": 2,
+          "span_sloc": 7,
           "time": 20.74,
           "visibility": "public",
           "vocabulary": 16,
@@ -434,6 +515,8 @@
           "cycle": "chain",
           "cyclomatic": 3,
           "effort": 517.942,
+          "eta1": 8,
+          "eta2": 7,
           "exits": 2,
           "fan_in": 2,
           "fan_out": 2,
@@ -445,8 +528,12 @@
           "loc": 15,
           "mi": 102.961,
           "mi_sei": 106.007,
+          "n1": 21,
+          "n2": 8,
           "name": "b.js",
           "sloc": 8,
+          "spaces": 3,
+          "span_sloc": 14,
           "time": 28.774,
           "visibility": "public",
           "vocabulary": 15,
@@ -460,6 +547,8 @@
           "cycle": "chain",
           "cyclomatic": 4,
           "effort": 1881.938,
+          "eta1": 11,
+          "eta2": 17,
           "exits": 2,
           "fan_in": 2,
           "fan_out": 1,
@@ -472,8 +561,12 @@
           "loc": 20,
           "mi": 93.377,
           "mi_sei": 97.656,
+          "n1": 33,
+          "n2": 22,
           "name": "c.js",
           "sloc": 9,
+          "spaces": 4,
+          "span_sloc": 19,
           "time": 104.552,
           "visibility": "public",
           "vocabulary": 28,
@@ -481,11 +574,14 @@
         },
         {
           "args": 4,
+          "branches": 4,
           "bugs": 0.124,
           "cloc": 7,
           "cognitive": 7,
           "cyclomatic": 7,
           "effort": 7175.808,
+          "eta1": 18,
+          "eta2": 8,
           "exits": 3,
           "id": "{target}/src/complex.js",
           "kind": "file",
@@ -494,8 +590,12 @@
           "loc": 17,
           "mi": 95.223,
           "mi_sei": 105.117,
+          "n1": 36,
+          "n2": 23,
           "name": "complex.js",
           "sloc": 11,
+          "spaces": 3,
+          "span_sloc": 16,
           "time": 398.656,
           "visibility": "public",
           "vocabulary": 26,
@@ -505,6 +605,8 @@
           "bugs": 0.00329,
           "cloc": 3,
           "effort": 31.019,
+          "eta1": 4,
+          "eta2": 2,
           "id": "{target}/src/dynamic.js",
           "kind": "file",
           "length": 6,
@@ -512,8 +614,12 @@
           "loc": 5,
           "mi": 134.056,
           "mi_sei": 166.496,
+          "n1": 4,
+          "n2": 2,
           "name": "dynamic.js",
           "sloc": 1,
+          "spaces": 1,
+          "span_sloc": 4,
           "time": 1.723,
           "visibility": "public",
           "vocabulary": 6,
@@ -525,6 +631,8 @@
           "cycle": "mutual",
           "cyclomatic": 2,
           "effort": 276.754,
+          "eta1": 8,
+          "eta2": 3,
           "exits": 1,
           "fan_in": 1,
           "fan_out": 1,
@@ -536,8 +644,12 @@
           "loc": 7,
           "mi": 120.977,
           "mi_sei": 138.029,
+          "n1": 11,
+          "n2": 4,
           "name": "m1.js",
           "sloc": 4,
+          "spaces": 2,
+          "span_sloc": 6,
           "time": 15.375,
           "visibility": "public",
           "vocabulary": 11,
@@ -549,6 +661,8 @@
           "cycle": "mutual",
           "cyclomatic": 2,
           "effort": 276.754,
+          "eta1": 8,
+          "eta2": 3,
           "exits": 1,
           "fan_in": 1,
           "fan_out": 1,
@@ -560,8 +674,12 @@
           "loc": 6,
           "mi": 123.931,
           "mi_sei": 135.233,
+          "n1": 11,
+          "n2": 4,
           "name": "m2.js",
           "sloc": 4,
+          "spaces": 2,
+          "span_sloc": 5,
           "time": 15.375,
           "visibility": "public",
           "vocabulary": 11,
@@ -830,10 +948,10 @@
     }
   ],
   "roots": {
-    "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/javascript/tests/sample"
+    "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/javascript/tests/sample"
   },
   "schema_version": "2",
-  "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/javascript/tests/sample",
+  "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/javascript/tests/sample",
   "timings": [
     {
       "detail": "10 nodes from 8 files",
@@ -852,7 +970,7 @@
     }
   ],
   "versions": {
-    "code-ranker": "2.0.0"
+    "code-ranker": "3.0.0-alpha.1"
   },
   "workspace": "/home/user/code-ranker"
 }

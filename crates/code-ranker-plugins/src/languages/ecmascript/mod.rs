@@ -54,6 +54,16 @@ pub fn ecmascript_level(name: &str, cfg: &toml::Table) -> Level {
     }
 }
 
+/// Apply the shared ECMAScript `[specs.<key>]` description overrides (from
+/// `ecmascript/config.toml`) over the central builtin metric specs — used by both
+/// the JS and TS plugins, since they share the same `[halstead]` operator/operand
+/// vocabulary, so the exact-tokens descriptions live in one place.
+pub fn ecmascript_metric_specs(
+    defaults: BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
+) -> BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec> {
+    crate::config::apply_spec_overrides(defaults, &cfg::CONFIG)
+}
+
 /// Measure ECMAScript complexity metrics for every `file` node, shared by the
 /// JavaScript and TypeScript plugins, returning a [`MetricInputs`] keyed by file
 /// node id (the orchestrator writes them). For each file the caller's

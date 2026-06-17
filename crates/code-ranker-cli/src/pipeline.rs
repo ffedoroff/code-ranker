@@ -173,14 +173,28 @@ pub(crate) fn analyze_directory(
         Some(engine)
     };
 
+    // The active plugin's report-list patches (table columns / card / JSON
+    // stats), applied over the global catalog lists below.
+    // The report-list patches applied over the catalog lists, in order: the
+    // language's `[report]` (from `<lang>.toml`), then the project's `[report]`
+    // (from `code-ranker.toml`) — so a project can surface its own metrics.
+    let report_overrides = [
+        plugin::report_overrides(&plugin_name),
+        code_ranker_plugins::list_override::report_override_section(&cfg.report),
+    ];
+
     // Stat keys are data-driven: tier-2 metrics from the registry plus the
-    // coupling metrics (computed by the graph passes above).
+    // coupling metrics (computed by the graph passes above), then patched by the
+    // language's `[report].stats` (e.g. Rust adds `unsafe`).
     let mut stat_keys = code_ranker_graph::stat_keys();
     stat_keys.extend([
         "fan_in".to_string(),
         "fan_out".to_string(),
         "hk".to_string(),
     ]);
+    let stat_keys = report_overrides
+        .iter()
+        .fold(stat_keys, |acc, ov| ov.stats.apply(&acc));
     let mut stats = code_ranker_graph::stats::compute_stats(&graph, &stat_keys);
 
     // Graph-scope aggregates → merged into the stats block (e.g. a user's
@@ -237,6 +251,7 @@ pub(crate) fn analyze_directory(
         thresholds,
         &custom_specs,
         &plugin_name,
+        &report_overrides,
     );
     prune_unused_roots(&level, &mut roots);
     timings.push(code_ranker_graph::snapshot::StageTime {
@@ -264,6 +279,7 @@ pub(crate) fn analyze_directory(
             plugin::thresholds(&plugin_name),
             &custom_specs,
             &plugin_name,
+            &report_overrides,
         );
         graphs.insert("functions".to_string(), fn_level);
     }
@@ -289,7 +305,10 @@ pub(crate) fn analyze_directory(
         versions.insert(k, v);
     }
 
-    let presets = plugin::presets(&plugin_name, &input);
+    // Plugin catalog presets, then the project's own (`[presets.<ID>]`): a
+    // same-id project preset overrides the plugin's, a new id appends. So a
+    // project can recommend / scorecard on its custom metric.
+    let presets = merge_project_presets(plugin::presets(&plugin_name, &input), &cfg.presets);
 
     let snapshot = Snapshot::new(
         command,
@@ -341,6 +360,23 @@ fn numeric_attrs(node: &code_ranker_plugin_api::node::Node) -> BTreeMap<String, 
         .collect()
 }
 
+/// Merge the project's `[presets.<ID>]` over the plugin catalog: a same-id project
+/// preset replaces the plugin's (in place, keeping catalog order), a new id is
+/// appended. So a project can recommend / scorecard on its own custom metric.
+fn merge_project_presets(
+    mut catalog: Vec<code_ranker_plugin_api::plugin::Preset>,
+    project: &BTreeMap<String, config::model::PresetDef>,
+) -> Vec<code_ranker_plugin_api::plugin::Preset> {
+    for (id, def) in project {
+        let p = def.to_preset(id);
+        match catalog.iter_mut().find(|e| e.id == p.id) {
+            Some(existing) => *existing = p,
+            None => catalog.push(p),
+        }
+    }
+    catalog
+}
+
 /// The `omit_at` (no-signal floor) of every metric key, so an aggregate's `all`
 /// population counts a missing value at the right floor (`0` for most, `1` for
 /// `cyclomatic`). Built from the central + plugin-refined + coupling specs, then
@@ -368,6 +404,7 @@ fn registry_omit_at(
 /// with the centrally-produced complexity + coupling specs, prune them (and the
 /// edge kinds / groups) to what is actually present, and attach the graph,
 /// cycles and stats.
+#[allow(clippy::too_many_arguments)]
 fn assemble_level(
     level_spec: Option<code_ranker_plugin_api::level::Level>,
     graph: code_ranker_plugin_api::graph::Graph,
@@ -376,6 +413,7 @@ fn assemble_level(
     thresholds: BTreeMap<String, code_ranker_plugin_api::level::Thresholds>,
     custom_specs: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     plugin_name: &str,
+    report_overrides: &[code_ranker_plugin_api::report::ReportOverride],
 ) -> LevelGraph {
     use std::collections::BTreeSet;
 
@@ -481,7 +519,12 @@ fn assemble_level(
     let mut cycle_kinds = spec.cycle_kinds;
     cycle_kinds.retain(|k, _| present_cycle_kinds.contains(k.as_str()));
 
-    let ui = build_ui(&node_attributes, &present_internal_keys, spec.grouping);
+    let ui = build_ui(
+        &node_attributes,
+        &present_internal_keys,
+        spec.grouping,
+        report_overrides,
+    );
 
     LevelGraph {
         edge_kinds,
@@ -506,14 +549,23 @@ fn build_ui(
     node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     present_internal_keys: &std::collections::BTreeSet<&str>,
     grouping: Option<code_ranker_plugin_api::level::Grouping>,
+    report_overrides: &[code_ranker_plugin_api::report::ReportOverride],
 ) -> LevelUi {
     let v = code_ranker_graph::views();
     let has = |k: &str| k == "kind" || present_internal_keys.contains(k);
     let pick =
         |list: &[String]| -> Vec<String> { list.iter().filter(|k| has(k)).cloned().collect() };
 
-    let columns = pick(&v.columns);
-    let card_metrics = pick(&v.featured);
+    // Apply the report patches (language then project) over the catalog lists in
+    // order, then prune to keys present on an internal node.
+    let cols_base = report_overrides
+        .iter()
+        .fold(v.columns.clone(), |acc, ov| ov.columns.apply(&acc));
+    let card_base = report_overrides
+        .iter()
+        .fold(v.featured.clone(), |acc, ov| ov.card.apply(&acc));
+    let columns = pick(&cols_base);
+    let card_metrics = pick(&card_base);
     // Default sort: a signed-rank list (order = priority, leading `-` =
     // descending). Strip the sign and pick the first key present. Every column
     // stays sortable in the UI — this only sets the opening order.
@@ -594,6 +646,46 @@ fn prune_unused_roots(level: &LevelGraph, roots: &mut BTreeMap<String, String>) 
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn project_presets_override_then_append() {
+        use code_ranker_plugin_api::plugin::Preset;
+        let catalog = vec![Preset {
+            id: "CPX".into(),
+            label: "CPX".into(),
+            title: "Complexity".into(),
+            prompt: "old".into(),
+            doc_url: None,
+            sort_metric: "cognitive".into(),
+            connections: vec![],
+        }];
+        let mut project = BTreeMap::new();
+        // Same id → replaces the catalog entry in place.
+        project.insert(
+            "CPX".to_string(),
+            config::model::PresetDef {
+                prompt: "new".into(),
+                sort_metric: "cyclomatic".into(),
+                ..Default::default()
+            },
+        );
+        // New id → appended.
+        project.insert(
+            "TSR".to_string(),
+            config::model::PresetDef {
+                sort_metric: "tsr".into(),
+                ..Default::default()
+            },
+        );
+        let merged = merge_project_presets(catalog, &project);
+        assert_eq!(merged.len(), 2);
+        let cpx = merged.iter().find(|p| p.id == "CPX").unwrap();
+        assert_eq!(cpx.sort_metric, "cyclomatic", "same id replaced in place");
+        assert_eq!(cpx.prompt, "new");
+        let tsr = merged.iter().find(|p| p.id == "TSR").unwrap();
+        assert_eq!(tsr.sort_metric, "tsr");
+        assert_eq!(tsr.title, "TSR", "title defaults to id");
+    }
 
     #[test]
     fn detect_plugin_by_single_marker() {

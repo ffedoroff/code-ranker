@@ -16,6 +16,7 @@ use crate::graph::Graph;
 use crate::level::{AttributeSpec, Level, Thresholds};
 use crate::metrics::MetricInputs;
 use crate::node::Node;
+use crate::report::ReportOverride;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -166,6 +167,16 @@ pub trait LanguagePlugin {
     fn thresholds(&self) -> BTreeMap<String, Thresholds> {
         BTreeMap::new()
     }
+
+    /// Per-language patches over the global report lists — the table `columns`,
+    /// the card-featured metrics, and the JSON `stats` keys (all inherited from
+    /// the metric catalog). A language adds its own metric (e.g. Rust `unsafe`),
+    /// drops some, or reorders, via its `<lang>.toml` `[report]` section. The
+    /// orchestrator applies the patch over the catalog defaults, then prunes to
+    /// keys present. Default: no override (use the catalog lists as-is).
+    fn report_overrides(&self) -> ReportOverride {
+        ReportOverride::default()
+    }
 }
 
 #[cfg(test)]
@@ -226,6 +237,10 @@ mod tests {
         assert!(p.presets(&input).is_empty());
         let specs: BTreeMap<String, AttributeSpec> = BTreeMap::new();
         assert!(p.metric_specs(specs).is_empty());
+
+        // report_overrides defaults to a no-op (catalog lists kept as-is).
+        let ro = p.report_overrides();
+        assert!(ro.columns.is_noop() && ro.card.is_noop() && ro.stats.is_noop());
     }
 
     #[test]

@@ -24,7 +24,9 @@ on) function nodes alike. How the registry orders and evaluates formulas (e.g. w
 ## Status legend
 
 - **✓ emitted** — written onto the node and present in the JSON report.
-- **◦ intermediate** — computed and used as a formula input, but not emitted.
+- **◦ intermediate** — computed and used as a formula input only, not emitted.
+  (No metric is `◦` today: every measured input is now also emitted so the viewer
+  can show each derived metric's live "formula = numbers" derivation line.)
 
 ---
 
@@ -35,25 +37,27 @@ on) function nodes alike. How the registry orders and evaluates formulas (e.g. w
 > syntax nodes, not text*.
 
 The engine produces these as a `MetricInputs` for each unit. The Halstead base
-counts and the structural counters are **inputs** to the derived formulas, not
-emitted on their own; the LOC and structural metrics below them are emitted.
+counts and the structural counters feed the derived formulas **and are emitted**
+on the node — so the viewer can render each derived metric's live "formula = this
+node's numbers" line (e.g. `length = N₁ + N₂` shown with the actual N₁/N₂). They
+carry a display spec but are kept out of the default table columns.
 
 ### Halstead base counts (`compute_halstead`; operands distinguished by text)
 
 | key | status | meaning |
 |---|---|---|
-| `eta1` | ◦ | unique operators (η₁) |
-| `eta2` | ◦ | unique operands (η₂) |
-| `n1` | ◦ | total operators (N₁) |
-| `n2` | ◦ | total operands (N₂) |
+| `eta1` | ✓ | unique operators (η₁) |
+| `eta2` | ✓ | unique operands (η₂) |
+| `n1` | ✓ | total operators (N₁) |
+| `n2` | ✓ | total operands (N₂) |
 
 ### Structural counts (`walk` / `cog_walk`)
 
 | key | status | meaning |
 |---|---|---|
-| `spaces` | ◦ | unit count: `source_file` (1) + each `function`/`impl`/`trait`/closure space |
-| `branches` | ◦ | `if`/`for`/`while`/`loop`/`match_arm`/`try`/`&&`/`\|\|` |
-| `span_sloc` | ◦ | `end_row − start_row` of the unit (the MI input) |
+| `spaces` | ✓ | unit count: `source_file` (1) + each `function`/`impl`/`trait`/closure space |
+| `branches` | ✓ | `if`/`for`/`while`/`loop`/`match_arm`/`try`/`&&`/`\|\|` |
+| `span_sloc` | ✓ | `end_row − start_row` of the unit (the MI input) |
 | `exits` | ✓ | `return` + `try` + (fn declaring `-> T`) |
 | `args` | ✓ | parameters of a fn/closure (punctuation/attributes excluded) |
 | `closures` | ✓ | number of closures |

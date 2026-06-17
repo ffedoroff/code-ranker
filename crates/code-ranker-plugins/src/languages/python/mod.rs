@@ -2,7 +2,7 @@ use anyhow::Result;
 use code_ranker_plugin_api::{
     default_cycle_kinds, default_node_kinds,
     graph::Graph,
-    level::{Level, NodeKindSpec},
+    level::{AttributeSpec, Level, NodeKindSpec},
     metrics::MetricInputs,
     node::Node,
     plugin::{LanguagePlugin, PluginInput, Preset},
@@ -92,6 +92,18 @@ impl LanguagePlugin for PythonPlugin {
         // The common catalog from `defaults.toml`, with `doc_url` resolved to
         // `{doc_base}/python/<slug>.md` (Python adds no presets of its own).
         crate::config::resolved_presets(&CONFIG)
+    }
+
+    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
+        crate::list_override::report_override(&CONFIG)
+    }
+
+    fn metric_specs(
+        &self,
+        defaults: BTreeMap<String, AttributeSpec>,
+    ) -> BTreeMap<String, AttributeSpec> {
+        // Python `[specs.<key>]` overrides (the exact Halstead tokens it counts).
+        crate::config::apply_spec_overrides(defaults, &CONFIG)
     }
 }
 

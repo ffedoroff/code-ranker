@@ -244,6 +244,11 @@ Halstead treats a program as operators (η₁ unique / N₁ total) and operands
 | `time` | `effort ÷ 18` | Estimated implementation time, in **seconds** (18 = Stroud number). |
 | `bugs` | `effort^⅔ ÷ 3000` | Estimated delivered bugs (the engine's actual definition, **not** the classic `volume ÷ 3000`). A relative ranking, not an absolute count. |
 
+The Halstead/AST base counts these formulas read — `eta1`/`eta2` (η₁/η₂),
+`n1`/`n2` (N₁/N₂), `spaces`, `branches`, `span_sloc` — are **also emitted** on the
+node (kept out of the default table columns) so the viewer can show each derived
+metric's live "formula = this node's numbers" derivation line, the way `hk` does.
+
 ### Coupling — `fan_in`, `fan_out`, `fan_out_external`, `hk`
 
 Derived from the dependency graph (edges), not source code. `fan_in` / `fan_out`

@@ -8,16 +8,17 @@
 
 use crate::languages::ecmascript::{
     analyze_ecmascript, ecmascript_function_units, ecmascript_functions_level,
-    ecmascript_is_test_path, ecmascript_level, ecmascript_metrics,
+    ecmascript_is_test_path, ecmascript_level, ecmascript_metric_specs, ecmascript_metrics,
 };
 use anyhow::Result;
 use code_ranker_plugin_api::{
     graph::Graph,
-    level::Level,
+    level::{AttributeSpec, Level},
     metrics::MetricInputs,
     node::Node,
     plugin::{LanguagePlugin, PluginInput, Preset, detect_with_marker},
 };
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::LazyLock;
 
@@ -92,6 +93,19 @@ impl LanguagePlugin for JavascriptPlugin {
         // The common catalog from `defaults.toml`, with `doc_url` resolved to
         // `{doc_base}/typescript/<slug>.md` (JS shares the TS principle corpus).
         crate::config::resolved_presets(&CONFIG)
+    }
+
+    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
+        crate::list_override::report_override(&CONFIG)
+    }
+
+    fn metric_specs(
+        &self,
+        defaults: BTreeMap<String, AttributeSpec>,
+    ) -> BTreeMap<String, AttributeSpec> {
+        // Shared ECMAScript Halstead operator/operand descriptions (JS and TS use
+        // the same `[halstead]` vocab → one home in `ecmascript/config.toml`).
+        ecmascript_metric_specs(defaults)
     }
 }
 

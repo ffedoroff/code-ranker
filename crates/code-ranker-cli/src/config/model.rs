@@ -21,6 +21,54 @@ pub struct Config {
     /// Optional analysis levels (`[levels]`). Off by default → only the `files`
     /// level is emitted, so default output is unchanged.
     pub levels: LevelsConfig,
+    /// Project-level report-list patches (`[report]`): `columns` / `card` /
+    /// `stats`, each a list-override (plain array = replace, or an op-table
+    /// `{add,remove,replace,clear,prepend}`). Applied over the language's own
+    /// `[report]` patch, so a project can surface its custom metrics in the table
+    /// / card / JSON stats. Raw table; parsed by `list_override::report_override_section`.
+    pub report: toml::Table,
+    /// Project-defined Prompt-Generator presets (`[presets.<ID>]`), keyed by the
+    /// preset id. Appended to the active plugin's catalog (a same-id project preset
+    /// overrides the plugin's), so a project can recommend/scorecard on its own
+    /// custom metric. Empty by default → no change to output.
+    pub presets: BTreeMap<String, PresetDef>,
+}
+
+/// A project-config preset (`[presets.<ID>]`) — the table key is the id. Mirrors
+/// the plugin [`Preset`](code_ranker_plugin_api::plugin::Preset) but with sane
+/// defaults so a project entry needs only `sort_metric` (+ usually `title`).
+#[derive(Debug, Clone, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct PresetDef {
+    /// Button label; defaults to the id.
+    pub label: Option<String>,
+    /// Principle title (first heading of the generated prompt); defaults to the id.
+    pub title: Option<String>,
+    /// Prompt body (Markdown). Defaults to empty.
+    pub prompt: String,
+    /// Link to a principle doc, if any.
+    pub doc_url: Option<String>,
+    /// The metric the recommended-node list sorts by (an attribute key, or the
+    /// pseudo-metric `"cycle"`). Required in practice — the lens the preset is.
+    pub sort_metric: String,
+    /// Connection sets the preset pre-selects: any of `"in"` / `"out"` / `"common"`.
+    pub connections: Vec<String>,
+}
+
+impl PresetDef {
+    /// Build the runtime [`Preset`](code_ranker_plugin_api::plugin::Preset) for
+    /// this entry, defaulting `label` / `title` to the id.
+    pub fn to_preset(&self, id: &str) -> code_ranker_plugin_api::plugin::Preset {
+        code_ranker_plugin_api::plugin::Preset {
+            id: id.to_string(),
+            label: self.label.clone().unwrap_or_else(|| id.to_string()),
+            title: self.title.clone().unwrap_or_else(|| id.to_string()),
+            prompt: self.prompt.clone(),
+            doc_url: self.doc_url.clone(),
+            sort_metric: self.sort_metric.clone(),
+            connections: self.connections.clone(),
+        }
+    }
 }
 
 /// `[levels]` — opt-in extra graph levels beyond `files`.
@@ -160,17 +208,21 @@ pub struct ThresholdRules {
 }
 
 /// Per-file metric thresholds, keyed by metric name (`sloc`, `cyclomatic`, `hk`,
-/// …). **Any** per-file metric the engine emits is accepted — see
-/// [`super::metrics::THRESHOLD_METRICS`] — so this is an open map, not a fixed set
-/// of fields; an unknown key is a config error. A value is a number with optional
-/// `_` separators and a `K`/`M`/`G` suffix. Unset = no limit.
+/// …). **Any** per-file metric the engine emits is accepted — the registry
+/// vocabulary (see [`super::metrics`]) plus the project's own custom
+/// `[metrics.<key>]` — so this is an open map, not a fixed set of fields. Keys are
+/// validated once in [`super::load`] after the full config is parsed (an unknown
+/// key is a config error there). A value is a number with optional `_` separators
+/// and a `K`/`M`/`G` suffix. Unset = no limit.
 #[derive(Debug, Clone, Default)]
 pub struct MetricThresholds {
     pub limits: BTreeMap<String, f64>,
 }
 
 impl MetricThresholds {
-    /// The limit configured for `metric`, if any.
+    /// The limit configured for `metric`, if any. (Test-only: evaluation now
+    /// iterates `limits` directly in `violations`.)
+    #[cfg(test)]
     pub fn get(&self, metric: &str) -> Option<f64> {
         self.limits.get(metric).copied()
     }
@@ -192,14 +244,13 @@ impl<'de> Deserialize<'de> for MetricThresholds {
                 self,
                 mut map: M,
             ) -> Result<MetricThresholds, M::Error> {
+                // Keys are NOT validated here: a custom `[metrics.<key>]` is a
+                // legal threshold target but isn't known at deserialize time
+                // (serde can't see the sibling `[metrics]` table). Validation —
+                // against the registry vocabulary ∪ the project's custom metrics —
+                // happens once in `load`, after the whole config is parsed.
                 let mut limits = BTreeMap::new();
                 while let Some(key) = map.next_key::<String>()? {
-                    if !super::metrics::is_threshold_metric(&key) {
-                        return Err(serde::de::Error::custom(format!(
-                            "unknown threshold metric {key:?}; expected a per-file metric such as \
-                             sloc, loc, cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, bugs"
-                        )));
-                    }
                     let ThresholdNumber(val) = map.next_value()?;
                     limits.insert(key, val);
                 }
@@ -432,14 +483,29 @@ sloc = 1.5M           # fractional + suffix
     }
 
     #[test]
-    fn config_rejects_unknown_threshold_metric() {
-        // A mistyped metric is a hard error (not silently ignored), and the
-        // message names the offending key.
-        let err = toml::from_str::<Config>("[rules.thresholds.file]\nslocc = 800\n")
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("unknown threshold metric"), "kind: {err}");
-        assert!(err.contains("slocc"), "names the bad key: {err}");
+    fn project_preset_parses_with_id_defaults() {
+        // `[presets.TSR]` keys the preset by its table name; `label`/`title`
+        // default to the id, so a minimal entry needs only `sort_metric`.
+        let cfg = toml::from_str::<Config>(
+            "[presets.TSR]\nsort_metric = \"tsr\"\nprompt = \"fix the ratio\"\n",
+        )
+        .unwrap();
+        let def = &cfg.presets["TSR"];
+        let p = def.to_preset("TSR");
+        assert_eq!(p.id, "TSR");
+        assert_eq!(p.label, "TSR");
+        assert_eq!(p.title, "TSR");
+        assert_eq!(p.sort_metric, "tsr");
+        assert_eq!(p.prompt, "fix the ratio");
+    }
+
+    #[test]
+    fn threshold_keys_parse_without_validation() {
+        // Deserialization records every key verbatim — a custom `[metrics.<key>]`
+        // is invisible here, so validation is deferred to `load` (see
+        // `super::load::validate_thresholds`). A mistyped key is caught there.
+        let cfg = toml::from_str::<Config>("[rules.thresholds.file]\nslocc = 800\n").unwrap();
+        assert_eq!(cfg.rules.thresholds.file.get("slocc"), Some(800.0));
     }
 
     #[test]

@@ -4,10 +4,13 @@
 #   - `[categories.*]`  the metric groups (each metric references one).
 #   - `[ast.*]`         tier-1 metrics measured directly from the AST during the
 #                       tree walk — these are the variables a `cel` formula reads.
-#                       An emitted measured metric (sloc, cognitive, …) carries a
-#                       full display spec; a pure input (eta1, eta2, n1, n2,
-#                       spaces, branches, span_sloc) carries only a description —
-#                       it is never emitted, it just feeds formulas.
+#                       Every one carries a display spec and is emitted onto the
+#                       node; the Halstead/structural base counts (eta1, eta2, n1,
+#                       n2, spaces, branches, span_sloc) are kept out of the default
+#                       table columns but emitted so the viewer can show each
+#                       derived metric's live "formula = numbers" line. Each
+#                       language refines their descriptions (the exact operator /
+#                       operand tokens it counts) via its `[specs.<key>]`.
 #   - `[fields.*]`      the derived metrics: each is a `cel` formula over the AST
 #                       inputs (and earlier fields), with its display spec.
 #   - `[tableview]` / `[cardview]` / `[report.json.aggregate]`  the views that
@@ -49,28 +52,66 @@ label = "Maintainability"
 description = "Maintainability index"
 
 # ── ast (tier-1, measured directly from the AST) ──────────────────────────────
-# Halstead base counts — pure inputs (not emitted, just CEL variables).
+# Halstead base counts — emitted so the derived formulas (length, vocabulary,
+# effort, volume, …) can render their live "formula with this node's numbers" line
+# in the viewer. They are the operator/operand tallies the Halstead model is built
+# from; useful on their own only when reading a formula's derivation.
 [ast.eta1]
-description = "Unique operators (η₁)."
+value_type = "int"
+label = "η₁"
+name = "Unique operators"
+description = "Distinct operators (η₁) — a Halstead base count feeding `vocabulary` / `volume`."
+direction = "lower_better"
+category = "halstead"
 
 [ast.eta2]
-description = "Unique operands (η₂)."
+value_type = "int"
+label = "η₂"
+name = "Unique operands"
+description = "Distinct operands (η₂) — a Halstead base count feeding `vocabulary` / `volume`."
+direction = "lower_better"
+category = "halstead"
 
 [ast.n1]
-description = "Total operators (N₁)."
+value_type = "int"
+label = "N₁"
+name = "Total operators"
+description = "Total operator occurrences (N₁) — a Halstead base count feeding `length`."
+direction = "lower_better"
+category = "halstead"
 
 [ast.n2]
-description = "Total operands (N₂)."
+value_type = "int"
+label = "N₂"
+name = "Total operands"
+description = "Total operand occurrences (N₂) — a Halstead base count feeding `length`."
+direction = "lower_better"
+category = "halstead"
 
-# Structural counts — pure inputs.
+# Structural counts — emitted (inputs to cyclomatic / MI).
 [ast.spaces]
-description = "Unit count: the source file (1) plus each function / impl / trait / closure space."
+value_type = "int"
+label = "Spaces"
+name = "Unit count"
+description = "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`."
+direction = "lower_better"
+category = "complexity"
 
 [ast.branches]
-description = "Decision points: if / for / while / loop / match arm / try / && / ||."
+value_type = "int"
+label = "Branches"
+name = "Decision points"
+description = "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`."
+direction = "lower_better"
+category = "complexity"
 
 [ast.span_sloc]
-description = "Line span of the unit (end_row − start_row) — the MI size input."
+value_type = "int"
+label = "Span"
+name = "Line span"
+description = "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from."
+direction = "lower_better"
+category = "maintainability"
 
 # Structural counts — emitted measured metrics.
 [ast.cognitive]
@@ -169,7 +210,8 @@ A function starts at 1 and gains +1 per decision point: each `if` / `else if`, e
 Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.
 Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`."""
 cel = "spaces + branches"
-formula_human = "Σ (branches + 1) over functions"
+formula_human = "spaces + branches"
+formula_js = "spaces + branches"
 direction = "lower_better"
 category = "complexity"
 omit_at = 1.0
@@ -181,7 +223,8 @@ name = "Halstead effort"
 short = "H.effort"
 description = "Mental effort to implement the algorithm."
 cel = "eta2 > 0.0 ? (eta1 / 2.0) * (n2 / eta2) * volume : 0.0"
-formula_human = "volume × difficulty"
+formula_human = "(eta1 ÷ 2) × (n2 ÷ eta2) × volume"
+formula_js = "(eta1 / 2) * (n2 / eta2) * volume"
 direction = "lower_better"
 category = "halstead"
 
@@ -192,7 +235,8 @@ name = "Halstead length"
 short = "H.len"
 description = "Program length — total operator + operand occurrences."
 cel = "n1 + n2"
-formula_human = "N₁ + N₂"
+formula_human = "n1 + n2"
+formula_js = "n1 + n2"
 direction = "lower_better"
 category = "halstead"
 
@@ -202,7 +246,8 @@ label = "MI"
 name = "Maintainability index"
 description = "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC."
 cel = "171.0 - 5.2 * ln(volume) - 0.23 * cyclomatic - 16.2 * ln(span_sloc)"
-formula_human = "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(sloc)"
+formula_human = "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)"
+formula_js = "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)"
 direction = "higher_better"
 category = "maintainability"
 
@@ -213,7 +258,8 @@ name = "Maintainability (SEI)"
 short = "MI SEI"
 description = "SEI variant of the Maintainability Index — adds a bonus for comment density."
 cel = "171.0 - 5.2 * log2(volume) - 0.23 * cyclomatic - 16.2 * log2(span_sloc) + 50.0 * sin(sqrt(cloc / span_sloc * 2.4))"
-formula_human = "MI + 50·sin(√(2.4 × comment-ratio))"
+formula_human = "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))"
+formula_js = "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))"
 direction = "higher_better"
 category = "maintainability"
 
@@ -236,7 +282,8 @@ name = "Halstead vocabulary"
 short = "H.vocab"
 description = "Vocabulary — distinct operators + operands."
 cel = "eta1 + eta2"
-formula_human = "η₁ + η₂"
+formula_human = "eta1 + eta2"
+formula_js = "eta1 + eta2"
 direction = "lower_better"
 category = "halstead"
 

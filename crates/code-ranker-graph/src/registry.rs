@@ -16,7 +16,7 @@ use crate::attrs::num_attr;
 use cel::{Context, Program, Value};
 use code_ranker_plugin_api::{
     attrs::{AttrValue, ValueType},
-    level::{AttributeSpec, Direction},
+    level::{AttributeSpec, Direction, Thresholds},
     node::Node,
 };
 use serde::Deserialize;
@@ -34,7 +34,7 @@ pub enum Scope {
 /// One metric definition: a CEL formula plus the spec fields needed to emit it
 /// as a first-class, sortable, delta-coloured attribute. Spec fields are
 /// optional so a quick user formula needs only `formula`.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MetricDef {
     /// CEL expression over other metric keys + the registered math functions.
@@ -47,15 +47,26 @@ pub struct MetricDef {
     pub name: Option<String>,
     pub short: Option<String>,
     pub description: Option<String>,
-    /// Human-readable formula shown in the viewer (display only); falls back to
-    /// nothing — the executable `formula` is CEL, not a JS `calc`.
+    /// Human-readable formula shown in the viewer (display only).
     pub formula_pretty: Option<String>,
+    /// JS expression the viewer re-runs with the node's values to show the live
+    /// "formula = numbers" line (like a built-in's `formula_js`). When omitted, a
+    /// node-scope metric falls back to its CEL `formula` — valid JS for plain
+    /// arithmetic / ternaries; if it uses CEL-only host functions (`log2`, `pow`,
+    /// …) the viewer simply skips the line. Set `calc` explicitly to control it.
+    pub calc: Option<String>,
     /// `lower_better` / `higher_better`.
     pub direction: Option<String>,
     pub group: Option<String>,
     /// No-signal value at which the metric is omitted (default `0`).
     #[serde(default)]
     pub omit_at: f64,
+    /// Two-tier severity thresholds (the `warning` / `info` limits the scorecard
+    /// and viewer badge against, like a built-in metric). When either is set the
+    /// metric carries a [`Thresholds`] in its spec; the other tier falls back to
+    /// it. Distinct from the `[rules.thresholds.file]` single-tier `check` gate.
+    pub warning: Option<f64>,
+    pub info: Option<f64>,
 }
 
 fn default_value_type() -> String {
@@ -63,10 +74,23 @@ fn default_value_type() -> String {
 }
 
 impl MetricDef {
+    /// The two-tier severity thresholds, if the metric declares either tier. A
+    /// missing tier mirrors the other, so `warning = 1.0` alone yields
+    /// `{ warning: 1.0, info: 1.0 }` (one effective tier).
+    fn thresholds(&self) -> Option<Thresholds> {
+        match (self.warning, self.info) {
+            (None, None) => None,
+            (w, i) => Some(Thresholds {
+                warning: w.or(i).unwrap_or(0.0),
+                info: i.or(w).unwrap_or(0.0),
+            }),
+        }
+    }
+
     /// The viewer-facing [`AttributeSpec`] for this metric, so a config-defined
     /// metric renders as a named, sortable, delta-coloured column like any
-    /// built-in. `calc` is left empty: the executable formula is CEL (computed at
-    /// snapshot time), not a JS expression the viewer can re-run.
+    /// built-in — including the live "formula = numbers" tooltip line, driven by
+    /// `calc` (defaulted from the CEL `formula` for node-scope metrics).
     pub fn to_attribute_spec(&self) -> AttributeSpec {
         let value_type = match self.value_type.as_str() {
             "int" => ValueType::Int,
@@ -86,11 +110,17 @@ impl MetricDef {
             short: self.short.clone(),
             description: self.description.clone(),
             formula: self.formula_pretty.clone(),
-            calc: None,
+            // Node-scope metric: default the live-derivation JS to the CEL formula
+            // (valid JS for arithmetic; the viewer no-ops if it can't run it). A
+            // graph aggregate isn't shown per node, so it carries no `calc`.
+            calc: self
+                .calc
+                .clone()
+                .or_else(|| (self.scope == Scope::Node).then(|| self.formula.clone())),
             direction,
             abbreviate: None,
             group: self.group.clone(),
-            thresholds: None,
+            thresholds: self.thresholds(),
             omit_at: self.omit_at,
         }
     }
@@ -317,6 +347,24 @@ fn reduce(vals: &[f64], reducer: &str) -> Option<f64> {
         "max" => Some(vals.iter().copied().fold(f64::NEG_INFINITY, f64::max)),
         "count" => Some(vals.len() as f64),
         "median" => percentile(vals, 50.0),
+        // `top<N>` / `top<N>_<reducer>`: keep the N largest values, then apply the
+        // base reducer (default `avg`). E.g. `top10_avg`, `top5_sum`, `top10_max`.
+        _ if reducer
+            .strip_prefix("top")
+            .and_then(|rest| rest.split('_').next())
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())) =>
+        {
+            let rest = reducer.strip_prefix("top").unwrap();
+            let (num, base) = match rest.split_once('_') {
+                Some((n, b)) => (n, b),
+                None => (rest, "avg"),
+            };
+            let n: usize = num.parse().ok()?;
+            let mut s = vals.to_vec();
+            s.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal)); // desc
+            s.truncate(n);
+            reduce(&s, base)
+        }
         r if r.starts_with('p') => r[1..].parse::<f64>().ok().and_then(|q| percentile(vals, q)),
         _ => None,
     }
@@ -457,16 +505,8 @@ mod tests {
     fn def(formula: &str) -> MetricDef {
         MetricDef {
             formula: formula.to_string(),
-            scope: Scope::Node,
             value_type: "float".to_string(),
-            label: None,
-            name: None,
-            short: None,
-            description: None,
-            formula_pretty: None,
-            direction: None,
-            group: None,
-            omit_at: 0.0,
+            ..Default::default()
         }
     }
 
@@ -658,6 +698,16 @@ mod cover_tests {
     }
 
     #[test]
+    fn top_n_reducer_keeps_largest_then_reduces() {
+        let vals = [1.0, 5.0, 3.0, 9.0, 2.0, 8.0]; // top 3 = 9, 8, 5
+        assert_eq!(reduce(&vals, "top3_avg"), Some((9.0 + 8.0 + 5.0) / 3.0));
+        assert_eq!(reduce(&vals, "top3_max"), Some(9.0));
+        assert_eq!(reduce(&vals, "top2_sum"), Some(17.0));
+        assert_eq!(reduce(&vals, "top10"), reduce(&vals, "avg")); // N ≥ len, default avg
+        assert_eq!(reduce(&vals, "top"), None); // no number → not a top reducer
+    }
+
+    #[test]
     fn exec_f64_handles_int_result() {
         // an int-literal formula yields a CEL Int → coerced to f64.
         let mut defs = BTreeMap::new();
@@ -665,16 +715,8 @@ mod cover_tests {
             "two".to_string(),
             MetricDef {
                 formula: "1 + 1".to_string(),
-                scope: Scope::Node,
                 value_type: "int".to_string(),
-                label: None,
-                name: None,
-                short: None,
-                description: None,
-                formula_pretty: None,
-                direction: None,
-                group: None,
-                omit_at: 0.0,
+                ..Default::default()
             },
         );
         let eng = Engine::compile(&defs).unwrap();
@@ -685,16 +727,10 @@ mod cover_tests {
     fn to_attribute_spec_maps_types_and_direction() {
         let mk = |vt: &str, dir: Option<&str>| MetricDef {
             formula: "0.0".to_string(),
-            scope: Scope::Node,
             value_type: vt.to_string(),
             label: Some("L".into()),
-            name: None,
-            short: None,
-            description: None,
-            formula_pretty: None,
             direction: dir.map(|s| s.to_string()),
-            group: None,
-            omit_at: 0.0,
+            ..Default::default()
         };
         use code_ranker_plugin_api::attrs::ValueType;
         use code_ranker_plugin_api::level::Direction;
@@ -724,21 +760,67 @@ mod cover_tests {
     }
 
     #[test]
+    fn two_tier_thresholds_map_to_spec() {
+        let with = |warning, info| MetricDef {
+            formula: "0.0".to_string(),
+            warning,
+            info,
+            ..Default::default()
+        };
+        // No tiers → no thresholds.
+        assert!(with(None, None).to_attribute_spec().thresholds.is_none());
+        // One tier mirrors into the other.
+        let th = with(Some(1.5), None)
+            .to_attribute_spec()
+            .thresholds
+            .unwrap();
+        assert_eq!((th.warning, th.info), (1.5, 1.5));
+        // Both tiers preserved.
+        let th = with(Some(2.0), Some(1.0))
+            .to_attribute_spec()
+            .thresholds
+            .unwrap();
+        assert_eq!((th.warning, th.info), (2.0, 1.0));
+    }
+
+    #[test]
+    fn calc_defaults_to_formula_for_node_scope() {
+        // Node-scope: `calc` (the live derivation line) defaults to the CEL formula.
+        let node = MetricDef {
+            formula: "tloc / sloc".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(
+            node.to_attribute_spec().calc.as_deref(),
+            Some("tloc / sloc")
+        );
+        // Explicit `calc` wins over the formula fallback.
+        let explicit = MetricDef {
+            formula: "tloc / sloc".to_string(),
+            calc: Some("tloc / sloc * 1.0".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            explicit.to_attribute_spec().calc.as_deref(),
+            Some("tloc / sloc * 1.0")
+        );
+        // Graph-scope aggregate isn't shown per node → no calc.
+        let agg = MetricDef {
+            formula: "agg('x', 'avg', 'not_empty')".to_string(),
+            scope: Scope::Graph,
+            ..Default::default()
+        };
+        assert!(agg.to_attribute_spec().calc.is_none());
+    }
+
+    #[test]
     fn apply_to_node_writes_and_omits() {
         let mut defs = BTreeMap::new();
         defs.insert("ratio".to_string(), {
             let mut d = MetricDef {
                 formula: "a * 2.0".to_string(),
-                scope: Scope::Node,
                 value_type: "float".to_string(),
-                label: None,
-                name: None,
-                short: None,
-                description: None,
-                formula_pretty: None,
-                direction: None,
-                group: None,
-                omit_at: 0.0,
+                ..Default::default()
             };
             d.formula = "a * 2.0".to_string();
             d
@@ -763,16 +845,8 @@ mod cover_tests {
             "ratio".to_string(),
             MetricDef {
                 formula: "0.0".to_string(),
-                scope: Scope::Node,
                 value_type: "float".to_string(),
-                label: None,
-                name: None,
-                short: None,
-                description: None,
-                formula_pretty: None,
-                direction: None,
-                group: None,
-                omit_at: 0.0,
+                ..Default::default()
             },
         );
         let zeng = Engine::compile(&zdefs).unwrap();

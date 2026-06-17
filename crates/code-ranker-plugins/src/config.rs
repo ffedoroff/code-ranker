@@ -18,6 +18,9 @@
 //!   with an `id` already present in the base replaces that entry in place;
 //!   a new `id` is appended. (This lets a language extend the shared catalog
 //!   and override individual entries without restating the whole list.)
+//! - **array patched by an op-table** (`{add,remove,replace,clear,prepend}`) →
+//!   the inherited list is **mutated in place** (see `crate::list_override`);
+//!   a plain array still replaces it wholesale.
 //! - **any other value** (scalar, plain array, table-vs-non-table) → the
 //!   language value **replaces** the base value outright.
 //!
@@ -63,6 +66,18 @@ fn deep_merge(mut base: Table, overlay: Table) -> Table {
                     base.insert(key, ov);
                 }
             }
+            // An inherited list patched by an op-table (`{add,remove,replace,
+            // clear,prepend}`) is mutated in place; a plain array replaces it
+            // wholesale (the historical behaviour). See `crate::list_override`.
+            Some(Value::Array(ba)) => match &ov {
+                Value::Table(t) if crate::list_override::is_list_op_table(t) => {
+                    let patched = crate::list_override::patch_value_list(ba, &ov);
+                    base.insert(key, Value::Array(patched));
+                }
+                _ => {
+                    base.insert(key, ov);
+                }
+            },
             _ => {
                 base.insert(key, ov);
             }
@@ -290,6 +305,25 @@ pub fn spec_overrides(cfg: &Table) -> BTreeMap<String, SpecOverride> {
         .cloned()
         .map(|v| v.try_into().expect("[specs] shape"))
         .unwrap_or_default()
+}
+
+/// Apply a config's `[specs.<key>]` description overrides over the central
+/// builtin metric specs — the shared body of every plugin's `metric_specs`. A
+/// language refines a metric's description (e.g. enumerating the exact Halstead
+/// operators/operands it counts) without restating the rest of the spec; an
+/// override whose key isn't a known metric is ignored.
+pub fn apply_spec_overrides(
+    mut defaults: BTreeMap<String, AttributeSpec>,
+    cfg: &Table,
+) -> BTreeMap<String, AttributeSpec> {
+    for (key, ov) in spec_overrides(cfg) {
+        if let Some(spec) = defaults.get_mut(&key)
+            && let Some(desc) = ov.description
+        {
+            spec.description = Some(desc);
+        }
+    }
+    defaults
 }
 
 #[cfg(test)]
