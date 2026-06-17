@@ -23,6 +23,9 @@ fn super_glob_only_marks_ancestor_namespace_pulls() {
     )));
     // Globbing a *child* module (descendant) is not a super pull.
     assert!(!is_super_glob(&pu(&["serialized"], &["assets"], true)));
+    // `use self::*` resolves to a descendant of the current module (not an
+    // ancestor), so it is not a super pull either (exercises the `self` arm).
+    assert!(!is_super_glob(&pu(&["self", "sub"], &["assets"], true)));
     // A specific (non-glob) import of a parent item is a real dependency.
     assert!(!is_super_glob(&pu(
         &["crate", "syntax_mapping"],

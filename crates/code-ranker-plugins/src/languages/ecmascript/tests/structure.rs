@@ -14,6 +14,17 @@ fn file_to_mod_path_strips_ext_and_collapses_index() {
         file_to_mod_path(ws, Path::new("/proj/src/lib/index.ts")).as_deref(),
         Some("src/lib")
     );
+    // A bare `index.<ext>` at the workspace root collapses to an empty path → None.
+    assert_eq!(file_to_mod_path(ws, Path::new("/proj/index.ts")), None);
+}
+
+#[test]
+fn normalize_path_resolves_dot_and_dotdot() {
+    // `..` pops the previous component, `.` is skipped — no filesystem touched.
+    assert_eq!(
+        normalize_path(Path::new("a/b/../c/./d")),
+        std::path::PathBuf::from("a/c/d")
+    );
 }
 
 #[test]

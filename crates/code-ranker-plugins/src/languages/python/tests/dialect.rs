@@ -23,6 +23,22 @@ fn compute_functions_empty_on_no_functions() {
     assert!(compute_functions(b"x = 1\n").is_empty());
 }
 
+#[test]
+fn compute_functions_nested_def_is_a_function_not_method() {
+    // A `def` nested inside another `def` (not a class) is its own unit, kind
+    // `function` — `fn_kind` walks past the enclosing `function_definition`.
+    let units =
+        compute_functions(b"def outer():\n    def inner():\n        return 1\n    return inner\n");
+    let inner = units
+        .iter()
+        .find(|u| u.name == "inner")
+        .expect("nested inner emitted");
+    assert_eq!(
+        inner.kind, "function",
+        "a fn nested in a fn is `function`, not `method`"
+    );
+}
+
 /// The `python.toml` `[roles]`/`[halstead]`/`[loc]` sections parse and
 /// deserialize into the engine's `RoleCfg` (forces the `ROLE_CFG` LazyLock +
 /// `try_into`, which would panic on a bad config) and carry the expected

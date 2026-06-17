@@ -151,18 +151,6 @@ pub struct LocState {
 
 // ── small shared helpers used by several sub-walks / dialects ─────────────────
 
-/// True if any ancestor of `node` has kind id in `set`.
-pub fn has_ancestor(node: Node, set: &HashSet<u16>) -> bool {
-    let mut cur = node;
-    while let Some(p) = cur.parent() {
-        if set.contains(&p.kind_id()) {
-            return true;
-        }
-        cur = p;
-    }
-    false
-}
-
 /// True if any ancestor of `node` has the single kind id `kind`.
 pub fn has_ancestor_id(node: Node, kind: u16) -> bool {
     let mut cur = node;
