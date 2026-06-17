@@ -66,6 +66,40 @@ fn function_units_extracts_per_function_nodes() {
 }
 
 #[test]
+fn metrics_measures_ts_and_tsx_file_nodes() {
+    let tmp = TempDir::new().unwrap();
+    let ts = tmp.path().join("a.ts");
+    fs::write(
+        &ts,
+        "export function f(x: number) { if (x > 0) return 1; return 2; }\n",
+    )
+    .unwrap();
+    // a `.tsx` file too, to exercise the TSX grammar arm of the metrics closure.
+    let tsx = tmp.path().join("w.tsx");
+    fs::write(&tsx, "export const g = (p: number) => p;\n").unwrap();
+    let node = |p: &std::path::Path, name: &str| code_ranker_plugin_api::node::Node {
+        id: p.to_string_lossy().into_owned(),
+        kind: "file".into(),
+        name: name.into(),
+        parent: None,
+        attrs: Default::default(),
+    };
+    let graph = Graph {
+        nodes: vec![node(&ts, "a.ts"), node(&tsx, "w.tsx")],
+        edges: vec![],
+    };
+    let inputs = TypescriptPlugin.metrics(&graph);
+    // Both the `.ts` and `.tsx` arms map to a grammar, so both files are measured.
+    assert_eq!(inputs.len(), 2, "both ts and tsx files measured");
+    // The orchestrator writes; mirror it to confirm the `.ts` file has complexity.
+    let ts_id = ts.to_string_lossy().into_owned();
+    let (_, m) = inputs.iter().find(|(id, _)| id == &ts_id).unwrap();
+    let mut n = node(&ts, "a.ts");
+    code_ranker_graph::write_metrics(&mut n, m);
+    assert!(n.attrs.contains_key("cyclomatic"), "ts file has cyclomatic");
+}
+
+#[test]
 fn analyze_builds_ts_graph_with_imports_and_externals() {
     let tmp = TempDir::new().unwrap();
     let root = tmp.path();

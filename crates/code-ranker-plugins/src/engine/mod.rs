@@ -37,7 +37,7 @@ mod structural;
 
 pub use core::{
     CogCtx, CogState, Dialect, HalClass, LocState, OpMap, OperandMap, UnitKind, count_args,
-    has_ancestor, has_ancestor_id,
+    has_ancestor_id,
 };
 pub use roles::{RoleCfg, Roles};
 

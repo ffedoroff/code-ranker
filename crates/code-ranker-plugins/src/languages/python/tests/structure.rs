@@ -54,6 +54,30 @@ fn py_visibility_str_classifies_by_underscore_convention() {
 }
 
 #[test]
+fn file_to_module_path_maps_and_rejects() {
+    let ws = std::path::Path::new("/proj");
+    // `pkg/__init__.py` → the package; `pkg/mod.py` → the dotted module.
+    assert_eq!(
+        file_to_module_path(ws, std::path::Path::new("/proj/pkg/mod.py")).as_deref(),
+        Some("pkg.mod")
+    );
+    assert_eq!(
+        file_to_module_path(ws, std::path::Path::new("/proj/pkg/__init__.py")).as_deref(),
+        Some("pkg")
+    );
+    // A root-level `__init__.py` collapses to an empty path → None.
+    assert_eq!(
+        file_to_module_path(ws, std::path::Path::new("/proj/__init__.py")),
+        None
+    );
+    // A non-`.py` file is not a module → None.
+    assert_eq!(
+        file_to_module_path(ws, std::path::Path::new("/proj/pkg/data.txt")),
+        None
+    );
+}
+
+#[test]
 fn absolute_base_resolves_relative_imports() {
     // A non-relative base passes through unchanged.
     assert_eq!(absolute_base("pkg.mod", "a.b"), "pkg.mod");
