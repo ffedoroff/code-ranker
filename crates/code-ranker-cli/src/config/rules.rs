@@ -177,4 +177,42 @@ mod tests {
         apply_cycle_rules(&mut cycles, &mut nodes, &rules);
         assert!(cycles.is_empty(), "disabled kind -> stripped");
     }
+
+    #[test]
+    fn apply_cycle_rules_clears_disabled_cycle_attr_on_nodes() {
+        use crate::config::model::CycleRule;
+        let mut cycles: Vec<CycleGroup> = vec![];
+        let node = |id: &str, kind: &str| Node {
+            id: id.into(),
+            kind: "file".into(),
+            name: id.into(),
+            parent: None,
+            attrs: [("cycle".to_string(), AttrValue::Str(kind.into()))]
+                .into_iter()
+                .collect(),
+        };
+        // `mutual` is disabled, `chain` keeps a budget — only the mutual node's
+        // `cycle` attribute is cleared.
+        let mut nodes = vec![node("a", "mutual"), node("b", "chain")];
+        let rules = CycleRules {
+            mutual: CycleRule::Off,
+            chain: CycleRule::Max(3),
+        };
+        apply_cycle_rules(&mut cycles, &mut nodes, &rules);
+        assert!(
+            !nodes[0].attrs.contains_key("cycle"),
+            "disabled-kind cycle attr cleared"
+        );
+        assert!(
+            nodes[1].attrs.contains_key("cycle"),
+            "an enabled kind's attr is kept"
+        );
+    }
+
+    #[test]
+    fn rule_tuning_emits_cli_and_config_hints() {
+        assert!(rule_tuning("cycle.mutual").contains("--cycle-rule mutual=off"));
+        assert!(rule_tuning("threshold.file.hk").contains("--threshold file.hk=N"));
+        assert_eq!(rule_tuning("bogus.id"), "");
+    }
 }
