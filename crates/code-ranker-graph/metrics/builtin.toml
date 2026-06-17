@@ -323,6 +323,17 @@ default_sort = ["-cycle", "-hk", "-sloc"]
 [cardview]
 featured = ["hk", "sloc"]
 
+# ── map view ──────────────────────────────────────────────────────────────────
+# The SVG map's interactive controls, as DATA so the viewer hardcodes none of it.
+# `size` = the attribute keys offered as circle-size modes (the node area scales
+# with the metric); `filter` = the keys offered as on/off node filters (keep only
+# nodes where the metric has signal). A language/project extends either via its
+# `[report] size = { add = [...] }` / `[report] filter = { add = [...] }`. The
+# orchestrator prunes both to keys actually present on an internal node.
+[mapview]
+size = ["sloc", "hk"]
+filter = ["cycle"]
+
 # ── aggregates (the `stats` block of the JSON report) ─────────────────────────
 # Each key here becomes one entry in the report's per-graph aggregate map; its
 # value is a graph-scope CEL formula, evaluated once over the whole node set.

@@ -149,30 +149,32 @@ function setupPanZoom(frame, svg) {
     });
     wrap.addEventListener('mouseleave', () => wrap.classList.remove('show-zoom'));
 
-    // Metric row: ■ (dot=null) | SLOC (loc) | HK (hk).
-    // Clicking the active SLOC/HK deselects back to ■ (null).
-    const modeFor = size => (size === 'dot' ? null : size);
-    wrap.querySelectorAll('.size-row[data-row="metric"] .size-mode-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const clicked  = modeFor(btn.dataset.size);
-        const newMode  = (window.nodeSizeMode === clicked && clicked !== null) ? null : clicked;
-        window.nodeSizeMode = newMode;
-        btn.closest('.size-row').querySelectorAll('.size-mode-btn').forEach(b =>
-          b.classList.toggle('active', modeFor(b.dataset.size) === newMode));
+    // The size-mode + filter buttons are built per render (renderMapControls)
+    // from the level's `ui.size_metrics` / `ui.filter_metrics`, so handle clicks
+    // by DELEGATION on the controls container (one listener, survives rebuilds).
+    // Metric row: ■ (data-size="dot" → null) toggles back to box mode; any other
+    //   data-size key is the attribute the circle area scales with. Filter row:
+    //   data-filter key toggles the single active node filter.
+    wrap.querySelector('.size-controls')?.addEventListener('click', e => {
+      const btn = e.target.closest('.size-mode-btn');
+      if (!btn) return;
+      const rerenderMap = preserve => {
         window.navReplaceView?.();
         document.querySelectorAll('.view').forEach(sec => { sec.dataset.rendered = 'false'; });
         const active = document.querySelector('.view.active');
-        if (active && window.gv) renderView(active, { preserve: true });
-      });
-    });
-
-    // Cycle filter toggle: show only nodes in dependency cycles (+ connections).
-    wrap.querySelector('[data-filter="cycle"]')?.addEventListener('click', e => {
-      window.cycleOnly = !window.cycleOnly;
-      e.currentTarget.classList.toggle('active', window.cycleOnly);
-      document.querySelectorAll('.view').forEach(sec => { sec.dataset.rendered = 'false'; });
-      const active = document.querySelector('.view.active');
-      if (active && window.gv) renderView(active, { preserve: false });
+        if (active && window.gv) renderView(active, { preserve });
+      };
+      if (btn.dataset.size !== undefined) {
+        const clicked = btn.dataset.size === 'dot' ? null : btn.dataset.size;
+        // Re-clicking the active mode toggles back to box mode (■).
+        window.nodeSizeMode =
+          window.nodeSizeMode === clicked && clicked !== null ? null : clicked;
+        rerenderMap(true);   // size change keeps pan/zoom
+      } else if (btn.dataset.filter !== undefined) {
+        const key = btn.dataset.filter;
+        window.nodeFilter = window.nodeFilter === key ? null : key;
+        rerenderMap(false);  // filter changes the node set → relayout
+      }
     });
 
     // Drill back button: return from file view to group view.

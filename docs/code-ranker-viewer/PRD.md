@@ -96,10 +96,13 @@ override on top of the global depth), and revealing individual files inline in t
 
 Cycle membership MUST be **visible at every level**: file nodes and edges in a
 dependency cycle are drawn red, and a collapsed group (crate/folder) is marked
-when it contains cycle members. A **cycle filter** toggle (next to the size
-controls) MUST be able to reduce the map to only the nodes in a cycle and the
-edges between them (callers/dependencies clusters kept). Cycle data is sourced
-solely from the backend (`graph.cycles`); per-language thresholds are kept in
+when it contains cycle members. **Node-filter** toggles (next to the size
+controls) are built from the snapshot's `ui.filter_metrics` — the built-in
+`cycle` plus any a project adds via `[report] filter` — and reduce the map to only
+the nodes where the active filter metric has signal; for `cycle` that is the nodes
+in a cycle and the edges between them (callers/dependencies clusters kept). Cycle
+data is sourced solely from the backend (`graph.cycles`); per-language thresholds
+are kept in
 `principles/<lang>/metric-thresholds.md`.
 
 **Rationale**: A flat per-file map does not scale to large workspaces. Semantic
@@ -223,10 +226,13 @@ The map is laid out **once** from the **union** of both snapshots; the
 extends to the **Fan-in / Fan-out** overlay sections of a drilled group:
 their crate chips and arrows each hide on the side where that caller/dependency
 does not exist, exactly like internal nodes/edges.
-**Current is shown by default.** The display mode is controlled by **three buttons** —
-`■` (box/label mode), `SLOC` (circles sized by source lines), `HK` (circles
-sized by Henry-Kafura) — reflected in the `mode=` URL parameter. In metric
-modes (SLOC/HK) **every node is a sized circle** — never a box. In group view
+**Current is shown by default.** The display mode is controlled by **size-mode
+buttons built from the snapshot's `ui.size_metrics`** — `■` (box/label mode) plus
+one button per offered metric: the built-in `SLOC` / `HK`, and any a project adds
+via `[report] size` — reflected in the `mode=` URL parameter. In a metric mode
+**every node is a sized circle** — never a box; a built-in metric uses its
+calibrated scale, a custom one scales against the median of the rendered
+population. In group view
 circles are sized by the aggregate value across the group's files
 (`max(baselineAgg, currentAgg)`); in the drilled file view each revealed file
 circle is resized to the active side's value around its fixed centre, and a

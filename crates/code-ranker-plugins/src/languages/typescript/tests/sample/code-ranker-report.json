@@ -798,7 +798,13 @@
           "blank"
         ],
         "default_sort": "cycle",
-        "size_metrics": [],
+        "filter_metrics": [
+          "cycle"
+        ],
+        "size_metrics": [
+          "sloc",
+          "hk"
+        ],
         "sort_metrics": [
           "cycle",
           "sloc",

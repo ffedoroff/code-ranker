@@ -564,8 +564,18 @@ fn build_ui(
     let card_base = report_overrides
         .iter()
         .fold(v.featured.clone(), |acc, ov| ov.card.apply(&acc));
+    let size_base = report_overrides
+        .iter()
+        .fold(v.size.clone(), |acc, ov| ov.size.apply(&acc));
+    let filter_base = report_overrides
+        .iter()
+        .fold(v.filter.clone(), |acc, ov| ov.filter.apply(&acc));
     let columns = pick(&cols_base);
     let card_metrics = pick(&card_base);
+    // Map controls: prune to keys present on an internal node. `cycle` is a
+    // string attribute (a cycle kind), valid as a filter but never a size mode.
+    let size_metrics = pick(&size_base);
+    let filter_metrics = pick(&filter_base);
     // Default sort: a signed-rank list (order = priority, leading `-` =
     // descending). Strip the sign and pick the first key present. Every column
     // stays sortable in the UI — this only sets the opening order.
@@ -595,7 +605,8 @@ fn build_ui(
     LevelUi {
         default_sort,
         sort_metrics,
-        size_metrics: Vec::new(),
+        size_metrics,
+        filter_metrics,
         card_metrics,
         columns,
         summary_metrics,

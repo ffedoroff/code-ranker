@@ -71,6 +71,16 @@ struct CardView {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
+struct MapView {
+    /// Attribute keys the SVG map offers as circle-size modes (default `sloc`/`hk`).
+    #[serde(default)]
+    size: Vec<String>,
+    /// Attribute keys the SVG map offers as on/off node filters (default `cycle`).
+    #[serde(default)]
+    filter: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
 struct Report {
     #[serde(default)]
     json: ReportJson,
@@ -95,6 +105,8 @@ struct Builtin {
     tableview: TableView,
     #[serde(default)]
     cardview: CardView,
+    #[serde(default)]
+    mapview: MapView,
     #[serde(default)]
     report: Report,
 }
@@ -136,6 +148,10 @@ pub struct Views {
     pub columns: Vec<String>,
     pub default_sort: Vec<String>,
     pub featured: Vec<String>,
+    /// Map circle-size modes (attribute keys); built-in default `sloc`/`hk`.
+    pub size: Vec<String>,
+    /// Map node-filter keys; built-in default `cycle`.
+    pub filter: Vec<String>,
 }
 
 /// The canonical view orders (table columns + default sort, card featured).
@@ -144,6 +160,8 @@ pub fn views() -> Views {
         columns: BUILTIN.tableview.columns.clone(),
         default_sort: BUILTIN.tableview.default_sort.clone(),
         featured: BUILTIN.cardview.featured.clone(),
+        size: BUILTIN.mapview.size.clone(),
+        filter: BUILTIN.mapview.filter.clone(),
     }
 }
 

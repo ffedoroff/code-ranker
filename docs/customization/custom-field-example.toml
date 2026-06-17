@@ -67,6 +67,11 @@ tsr = 1.5
 columns = { after = { hk = ["tsr", "tsr_big"] } }
 card    = { add = ["tsr"] }
 stats   = { add = ["tsr_big_avg"] }
+# SVG map: offer `tsr` as a circle-size mode (node area ∝ ratio) alongside the
+# built-in sloc/hk, and `tsr_big` as a node filter (show only the loc>300 files
+# that feed the aggregate) alongside the built-in cycle filter.
+size    = { add = ["tsr"] }
+filter  = { add = ["tsr_big"] }
 
 # A project-defined Prompt-Generator preset (a refactoring lens over the custom
 # metric). Makes `--preset TSR` / the scorecard rank files by `tsr`. The id is the

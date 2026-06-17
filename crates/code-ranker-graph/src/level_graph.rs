@@ -21,7 +21,13 @@ pub struct LevelUi {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_sort: Option<String>,
     pub sort_metrics: Vec<String>,
+    /// Metrics the SVG map offers as circle-size modes, beyond the built-in
+    /// `loc` / `hk` (from a `[report] size = …` override). Default empty.
     pub size_metrics: Vec<String>,
+    /// Metrics the SVG map offers as on/off node filters (keep only nodes where
+    /// the metric has signal), beyond the built-in `cycle` (from `[report] filter`).
+    #[serde(default)]
+    pub filter_metrics: Vec<String>,
     pub card_metrics: Vec<String>,
     pub columns: Vec<String>,
     pub summary_metrics: Vec<String>,

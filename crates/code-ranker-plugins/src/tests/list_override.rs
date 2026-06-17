@@ -52,6 +52,23 @@ fn report_override_absent_is_noop() {
     assert!(ro.columns.is_noop() && ro.card.is_noop() && ro.stats.is_noop());
 }
 
+/// The `size` / `filter` map-control lists are parsed like the other report
+/// lists (here as op-table `add`s over the catalog defaults).
+#[test]
+fn report_override_parses_size_and_filter() {
+    let cfg: Table = "[report]\n\
+         size = { add = [\"tsr\"] }\n\
+         filter = { add = [\"tsr_big\"] }\n"
+        .parse()
+        .unwrap();
+    let ro = report_override(&cfg);
+    assert_eq!(
+        ro.size.apply(&["sloc".into(), "hk".into()]),
+        ["sloc", "hk", "tsr"]
+    );
+    assert_eq!(ro.filter.apply(&["cycle".into()]), ["cycle", "tsr_big"]);
+}
+
 /// `report_override_section` reads a bare `[report]` table (the project
 /// `code-ranker.toml` form); the `after` op inserts after an anchor column.
 #[test]

@@ -1496,10 +1496,16 @@
           "unsafe"
         ],
         "default_sort": "cycle",
+        "filter_metrics": [
+          "cycle"
+        ],
         "grouping": {
           "key": "crate"
         },
-        "size_metrics": [],
+        "size_metrics": [
+          "sloc",
+          "hk"
+        ],
         "sort_metrics": [
           "cycle",
           "sloc",
