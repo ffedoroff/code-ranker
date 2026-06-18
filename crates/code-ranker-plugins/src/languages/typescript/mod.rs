@@ -53,7 +53,7 @@ impl LanguagePlugin for TypescriptPlugin {
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
         // File-collection extensions and the TS-first import-resolution order are
         // DATA: read from `config.toml`'s `extensions` / `resolution_order`. The
-        // `ext → grammar` match below stays in Rust (string → grammar TYPE).
+        // grammar selector ([`grammar_for`]) stays in Rust (string → grammar TYPE).
         let exts = crate::config::string_list(&CONFIG, "extensions");
         let exts: Vec<&str> = exts.iter().map(String::as_str).collect();
         let order = crate::config::string_list(&CONFIG, "resolution_order");
@@ -61,36 +61,19 @@ impl LanguagePlugin for TypescriptPlugin {
         analyze_ecmascript(
             workspace,
             &exts,
-            |ext| match ext {
-                "ts" | "mts" | "cts" => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
-                "tsx" => Some(tree_sitter_typescript::LANGUAGE_TSX.into()),
-                _ => None,
-            },
+            |ext| grammar_for(ext).map(|(lang, _)| lang),
             &order,
             input.ignore_tests,
+            &crate::walk::ignore_from(input),
         )
     }
 
     fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
-        // `else_if_via_else_clause` is true for TypeScript proper, false for TSX
-        // (the only per-dialect difference in the cognitive `else-if` rule).
-        ecmascript_metrics(graph, |ext| match ext {
-            "ts" | "mts" | "cts" => {
-                Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), true))
-            }
-            "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), false)),
-            _ => None,
-        })
+        ecmascript_metrics(graph, grammar_for)
     }
 
     fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
-        ecmascript_function_units(graph, |ext| match ext {
-            "ts" | "mts" | "cts" => {
-                Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), true))
-            }
-            "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), false)),
-            _ => None,
-        })
+        ecmascript_function_units(graph, grammar_for)
     }
 
     fn is_test_path(&self, rel_path: &str) -> bool {
@@ -114,6 +97,21 @@ impl LanguagePlugin for TypescriptPlugin {
         // Shared ECMAScript Halstead operator/operand descriptions (JS and TS use
         // the same `[halstead]` vocab → one home in `ecmascript/config.toml`).
         ecmascript_metric_specs(defaults)
+    }
+}
+
+/// Map a TypeScript file extension to its `tree-sitter` grammar and the
+/// `else_if_via_else_clause` cognitive flag (the only per-dialect difference in
+/// the `else-if` rule). `.tsx` uses the TSX grammar (JSX syntax) with the flag
+/// off; `.ts` / `.mts` / `.cts` use plain TypeScript with it on. The binding
+/// stays in Rust because it selects a grammar TYPE (only the `extensions` *list*
+/// is config); `tsx` is the sole extension literal — it alone picks a different
+/// grammar. The shared engine only ever calls this for a collected `extensions`
+/// file, so the `_` arm is the TypeScript-proper default.
+fn grammar_for(ext: &str) -> Option<(tree_sitter::Language, bool)> {
+    match ext {
+        "tsx" => Some((tree_sitter_typescript::LANGUAGE_TSX.into(), false)),
+        _ => Some((tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(), true)),
     }
 }
 

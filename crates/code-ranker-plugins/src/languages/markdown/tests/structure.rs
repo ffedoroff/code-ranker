@@ -29,7 +29,7 @@ fn link_graph_edges_local_md_only() {
     )
     .unwrap();
 
-    let g = analyze(d.path()).unwrap();
+    let g = analyze(d.path(), &crate::test_support::IGNORE_ALL).unwrap();
     assert_eq!(
         g.nodes
             .iter()
@@ -59,7 +59,7 @@ fn counts_headings_and_fenced_code_lines() {
         "# Title\n\n## Section\n\n```rust\nlet a = 1;\nlet b = 2;\n```\n\nNot [code](https://x.com).\n",
     )
     .unwrap();
-    let g = analyze(d.path()).unwrap();
+    let g = analyze(d.path(), &crate::test_support::IGNORE_ALL).unwrap();
     let n = g.nodes.iter().find(|n| n.name == "doc.md").unwrap();
     let int = |k: &str| match n.attrs.get(k) {
         Some(code_ranker_plugin_api::attrs::AttrValue::Int(v)) => *v,
@@ -82,7 +82,7 @@ fn non_md_and_subdir_links() {
     )
     .unwrap();
 
-    let g = analyze(d.path()).unwrap();
+    let g = analyze(d.path(), &crate::test_support::IGNORE_ALL).unwrap();
     assert!(
         g.edges
             .iter()
@@ -109,7 +109,7 @@ fn existing_non_md_link_is_local_ok_not_broken() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("logo.png"), [0x89u8, b'P', b'N', b'G']).unwrap();
     std::fs::write(d.path().join("index.md"), "# Index\n![logo](logo.png)\n").unwrap();
-    let g = analyze(d.path()).unwrap();
+    let g = analyze(d.path(), &crate::test_support::IGNORE_ALL).unwrap();
     let n = g.nodes.iter().find(|n| n.name == "index.md").unwrap();
     let broken = match n.attrs.get("broken_links") {
         Some(code_ranker_plugin_api::attrs::AttrValue::Int(v)) => *v,
@@ -124,7 +124,7 @@ fn non_utf8_markdown_file_is_skipped() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("ok.md"), "# ok\n").unwrap();
     std::fs::write(d.path().join("bad.md"), [0xFFu8, 0xFE, 0x00]).unwrap();
-    let g = analyze(d.path()).unwrap();
+    let g = analyze(d.path(), &crate::test_support::IGNORE_ALL).unwrap();
     assert!(g.nodes.iter().any(|n| n.name == "ok.md"));
     assert!(
         g.nodes.iter().all(|n| n.name != "bad.md"),

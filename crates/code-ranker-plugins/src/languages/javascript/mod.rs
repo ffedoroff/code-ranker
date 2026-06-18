@@ -55,33 +55,31 @@ impl LanguagePlugin for JavascriptPlugin {
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
         // File-collection extensions / import-resolution order are DATA: read
         // from `config.toml`'s `extensions` (a JS-only project collects and
-        // resolves against the same list). The `ext → grammar` match below stays
-        // in Rust (it binds a string to a grammar TYPE).
+        // resolves against the same list). Every JavaScript extension uses the one
+        // `tree-sitter-javascript` grammar, so the grammar selector is a constant
+        // (a grammar TYPE can't be config) — the `extensions` list alone gates
+        // which files reach it, so no extension is enumerated here.
         let exts = crate::config::string_list(&CONFIG, "extensions");
         let exts: Vec<&str> = exts.iter().map(String::as_str).collect();
         analyze_ecmascript(
             workspace,
             &exts,
-            |ext| match ext {
-                "js" | "jsx" | "mjs" => Some(tree_sitter_javascript::LANGUAGE.into()),
-                _ => None,
-            },
+            |_ext| Some(tree_sitter_javascript::LANGUAGE.into()),
             &exts,
             input.ignore_tests,
+            &crate::walk::ignore_from(input),
         )
     }
 
     fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
-        ecmascript_metrics(graph, |ext| match ext {
-            "js" | "jsx" | "mjs" | "cjs" => Some((tree_sitter_javascript::LANGUAGE.into(), false)),
-            _ => None,
+        ecmascript_metrics(graph, |_ext| {
+            Some((tree_sitter_javascript::LANGUAGE.into(), false))
         })
     }
 
     fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
-        ecmascript_function_units(graph, |ext| match ext {
-            "js" | "jsx" | "mjs" | "cjs" => Some((tree_sitter_javascript::LANGUAGE.into(), false)),
-            _ => None,
+        ecmascript_function_units(graph, |_ext| {
+            Some((tree_sitter_javascript::LANGUAGE.into(), false))
         })
     }
 

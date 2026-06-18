@@ -11,7 +11,6 @@ use code_ranker_plugin_api::{attrs::AttrValue, edge::Edge, graph::Graph, node::N
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use walkdir::WalkDir;
 
 struct Kinds {
     extensions: Vec<String>,
@@ -74,41 +73,29 @@ pub(super) fn is_test_path(rel_path: &str) -> bool {
             .any(|s| file.ends_with(s.as_str()))
 }
 
-pub(super) fn detect(workspace: &Path) -> bool {
-    collect_files(workspace, false).next().is_some()
+pub(super) fn detect(workspace: &Path, ignore: &crate::config::IgnoreCfg) -> bool {
+    !collect_files(workspace, false, ignore).is_empty()
 }
 
-fn collect_files(workspace: &Path, ignore_tests: bool) -> impl Iterator<Item = PathBuf> + '_ {
-    WalkDir::new(workspace)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(move |e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
-                && !is_skip_path(e.path(), workspace)
-                && !(ignore_tests && is_test_file(e.path(), workspace))
-        })
-        .map(|e| e.into_path())
+fn collect_files(
+    workspace: &Path,
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> Vec<PathBuf> {
+    crate::walk::collect(workspace, &KINDS.skip_dirs, ignore, |p| {
+        p.extension()
+            .and_then(|x| x.to_str())
+            .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
+    })
+    .into_iter()
+    .filter(|p| !(ignore_tests && is_test_file(p, workspace)))
+    .collect()
 }
 
 fn is_test_file(path: &Path, workspace: &Path) -> bool {
     path.strip_prefix(workspace)
         .ok()
         .map(|rel| is_test_path(&rel.to_string_lossy().replace('\\', "/")))
-        .unwrap_or(false)
-}
-
-fn is_skip_path(path: &Path, workspace: &Path) -> bool {
-    path.strip_prefix(workspace)
-        .map(|rel| {
-            rel.components().any(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                s.starts_with('.') || KINDS.skip_dirs.iter().any(|d| d.as_str() == s)
-            })
-        })
         .unwrap_or(false)
 }
 
@@ -120,8 +107,12 @@ struct FileInfo {
     usings: Vec<(String, u32)>,
 }
 
-pub(super) fn analyze(workspace: &Path, ignore_tests: bool) -> Result<Graph> {
-    let files: Vec<PathBuf> = collect_files(workspace, ignore_tests).collect();
+pub(super) fn analyze(
+    workspace: &Path,
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> Result<Graph> {
+    let files: Vec<PathBuf> = collect_files(workspace, ignore_tests, ignore);
     let infos: Vec<FileInfo> = files.iter().filter_map(|p| parse_file(p)).collect();
 
     // namespace → files declaring it.

@@ -110,6 +110,16 @@ pub struct IgnoreConfig {
     pub tests: bool,
     /// Strip crates that appear only in [dev-dependencies].
     pub dev_only_crates: bool,
+    /// Honour `.gitignore` (+ global gitignore + `.git/info/exclude`) while a
+    /// directory-walking plugin collects source files, scoped to the analyzed
+    /// root. **On by default.** The Rust plugin uses `cargo metadata`, not a
+    /// walk, so it is unaffected.
+    pub gitignore: bool,
+    /// Honour `.ignore` files during file collection. **On by default.**
+    pub ignore_files: bool,
+    /// Skip hidden files / directories (dotfiles) during file collection.
+    /// **On by default.**
+    pub hidden: bool,
 }
 
 impl Default for IgnoreConfig {
@@ -118,6 +128,9 @@ impl Default for IgnoreConfig {
             paths: Vec::new(),
             tests: true,
             dev_only_crates: false,
+            gitignore: true,
+            ignore_files: true,
+            hidden: true,
         }
     }
 }

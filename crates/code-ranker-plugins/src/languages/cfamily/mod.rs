@@ -8,11 +8,11 @@
 //! Each plugin supplies its own merged config (extensions, skip-dirs, test
 //! conventions); the walk/resolution LOGIC lives here once.
 
+use crate::config::IgnoreCfg;
 use anyhow::Result;
 use code_ranker_plugin_api::{attrs::AttrValue, edge::Edge, graph::Graph, node::Node};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
 
 /// File-collection + resolution DATA read from a language's merged config.
 pub struct Cfg {
@@ -72,28 +72,24 @@ pub fn is_test_path(rel_path: &str, cfg: &Cfg) -> bool {
 
 /// True when any source file with one of `cfg.extensions` exists under
 /// `workspace` (used by `detect` — C/C++ have no universal manifest file).
-pub fn detect(workspace: &Path, cfg: &Cfg) -> bool {
-    collect_files(workspace, cfg, false).next().is_some()
+pub fn detect(workspace: &Path, cfg: &Cfg, ignore: &IgnoreCfg) -> bool {
+    !collect_files(workspace, cfg, false, ignore).is_empty()
 }
 
-fn collect_files<'a>(
-    workspace: &'a Path,
-    cfg: &'a Cfg,
+fn collect_files(
+    workspace: &Path,
+    cfg: &Cfg,
     ignore_tests: bool,
-) -> impl Iterator<Item = PathBuf> + 'a {
-    WalkDir::new(workspace)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(move |e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|x| cfg.extensions.iter().any(|e| e == x))
-                && !is_skip_path(e.path(), workspace, cfg)
-                && !(ignore_tests && is_test_file(e.path(), workspace, cfg))
-        })
-        .map(|e| e.into_path())
+    ignore: &IgnoreCfg,
+) -> Vec<PathBuf> {
+    crate::walk::collect(workspace, &cfg.skip_dirs, ignore, |p| {
+        p.extension()
+            .and_then(|x| x.to_str())
+            .is_some_and(|x| cfg.extensions.iter().any(|e| e == x))
+    })
+    .into_iter()
+    .filter(|p| !(ignore_tests && is_test_file(p, workspace, cfg)))
+    .collect()
 }
 
 fn is_test_file(path: &Path, workspace: &Path, cfg: &Cfg) -> bool {
@@ -103,20 +99,14 @@ fn is_test_file(path: &Path, workspace: &Path, cfg: &Cfg) -> bool {
         .unwrap_or(false)
 }
 
-fn is_skip_path(path: &Path, workspace: &Path, cfg: &Cfg) -> bool {
-    path.strip_prefix(workspace)
-        .map(|rel| {
-            rel.components().any(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                s.starts_with('.') || cfg.skip_dirs.iter().any(|d| d.as_str() == s)
-            })
-        })
-        .unwrap_or(false)
-}
-
 /// Build the `#include` dependency graph for a C-family workspace.
-pub fn analyze(workspace: &Path, ignore_tests: bool, cfg: &Cfg) -> Result<Graph> {
-    let files: Vec<PathBuf> = collect_files(workspace, cfg, ignore_tests).collect();
+pub fn analyze(
+    workspace: &Path,
+    ignore_tests: bool,
+    cfg: &Cfg,
+    ignore: &IgnoreCfg,
+) -> Result<Graph> {
+    let files: Vec<PathBuf> = collect_files(workspace, cfg, ignore_tests, ignore);
     // rel-path → abs (for `"a/b.h"` resolution) and basename → abs list (fallback).
     let mut by_rel: HashMap<String, PathBuf> = HashMap::new();
     let mut by_name: HashMap<String, Vec<PathBuf>> = HashMap::new();

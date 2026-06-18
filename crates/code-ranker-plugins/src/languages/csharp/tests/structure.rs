@@ -24,7 +24,7 @@ fn using_graph_resolves_internal_and_external() {
     )
     .unwrap();
 
-    let g = analyze(d.path(), false).unwrap();
+    let g = analyze(d.path(), false, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(
         g.edges
             .iter()
@@ -44,6 +44,6 @@ fn ignore_tests_drops_test_files() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("A.cs"), "namespace N { class A {} }\n").unwrap();
     fs::write(d.path().join("ATests.cs"), "namespace N { class T {} }\n").unwrap();
-    let g = analyze(d.path(), true).unwrap();
+    let g = analyze(d.path(), true, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(g.nodes.iter().all(|n| !n.id.ends_with("ATests.cs")));
 }

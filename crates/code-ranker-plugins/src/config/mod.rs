@@ -24,7 +24,7 @@ mod parse;
 mod specs;
 mod views;
 
-pub use lookup::{string_list, string_table, units};
+pub use lookup::{IgnoreCfg, string_list, string_table, units};
 pub use parse::{DEFAULTS, load};
 // Internal merge helpers, re-exported only for the config unit tests (which
 // reach them via `super::*`).

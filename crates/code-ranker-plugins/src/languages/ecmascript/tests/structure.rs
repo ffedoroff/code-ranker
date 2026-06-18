@@ -92,6 +92,7 @@ fn analyze_builds_file_graph_with_imports_and_externals() {
         },
         &["ts", "tsx", "js", "jsx"],
         false,
+        &crate::test_support::IGNORE_ALL,
     )
     .expect("analyze_ecmascript should succeed");
 
@@ -157,6 +158,7 @@ fn import_path_in_comment_or_string_is_not_an_edge() {
         },
         &["ts", "tsx", "js", "jsx"],
         false,
+        &crate::test_support::IGNORE_ALL,
     )
     .expect("analyze_ecmascript should succeed");
 
@@ -200,6 +202,7 @@ fn edges_scale_with_real_imports() {
             },
             &["ts", "tsx", "js", "jsx"],
             false,
+            &crate::test_support::IGNORE_ALL,
         )
         .expect("analyze_ecmascript should succeed");
 
@@ -249,6 +252,7 @@ fn js_uses_edges(a_src: &str) -> usize {
         },
         &["js", "jsx", "ts"],
         false,
+        &crate::test_support::IGNORE_ALL,
     )
     .expect("analyze_ecmascript should succeed");
     let a_id = root.join("src/a.js").to_string_lossy().into_owned();
@@ -316,6 +320,7 @@ fn analyze_js(root: &std::path::Path, ignore_tests: bool) -> Graph {
         },
         &["js", "jsx"],
         ignore_tests,
+        &crate::test_support::IGNORE_ALL,
     )
     .expect("analyze_ecmascript should succeed")
 }

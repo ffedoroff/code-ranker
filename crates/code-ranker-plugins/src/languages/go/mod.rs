@@ -66,7 +66,11 @@ impl LanguagePlugin for GoPlugin {
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
-        structure::analyze(workspace, input.ignore_tests)
+        structure::analyze(
+            workspace,
+            input.ignore_tests,
+            &crate::walk::ignore_from(input),
+        )
     }
 
     fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
