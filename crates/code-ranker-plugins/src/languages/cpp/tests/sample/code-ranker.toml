@@ -1,0 +1,5 @@
+# Self-contained config for the code-ranker "cpp" sample fixture.
+plugin = "cpp"
+
+[ignore]
+tests = false

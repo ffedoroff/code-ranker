@@ -51,7 +51,8 @@ loads layered config (the `config/` module — code-ranker.toml / Cargo.toml
 metadata / CLI flags);
 resolves the plugin name (CLI `--plugin` → config `plugin` → marker
 auto-detect, all under `auto`); invokes the selected built-in plugin
-(`rust` / `python` / `javascript` / `typescript`) via `plugin::analyze`, getting
+(`rust` / `python` / `javascript` / `typescript` / `go` / `c` / `cpp` / `csharp`
+/ `markdown`) via `plugin::analyze`, getting
 a structural `api::Graph` + the plugin's `Level`s. It then runs the orchestrator
 pipeline (see [§3.6 in the main DESIGN](../DESIGN.md#36-interactions--sequences)):
 the plugin's `metrics()` step (per-language complexity metrics, computed by the

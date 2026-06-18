@@ -1,0 +1,95 @@
+# C language config — inherits `../defaults.toml` (see `../config.rs`).
+#
+# The dependency graph (the `#include` graph) is shared with C++ via
+# `../cfamily/`; this config supplies the node-kind tables the metric engine
+# keys on plus the file-collection / test DATA.
+
+doc_lang = "c"
+
+# `.c` source and `.h` headers (C++ owns the `.cc`/`.cpp`/`.hpp` extensions).
+extensions = ["c", "h"]
+# C/C++ have no universal manifest, so detection is by source-file presence
+# (see `cfamily::detect`); `detect_markers` stays empty.
+detect_markers = []
+skip_dirs = ["build", "cmake-build-debug", "node_modules"]
+
+test_dirs = ["test", "tests"]
+test_suffixes = ["_test.c", "_test.h"]
+
+[units]
+default = "function"
+
+# tree-sitter field-name API navigation (`child_by_field_name`): the function's
+# declarator (its parameters nest under it — see `dialect::args`).
+[fields]
+declarator = "declarator"
+
+[roles]
+# C functions are the only spaces (no methods, no closures/lambdas).
+space_kinds.named = ["function_definition"]
+# Cyclomatic decision points: if / loops / each switch case arm / the ?: ternary,
+# plus the short-circuit boolean operators.
+branch_kinds.named = [
+    "if_statement", "for_statement", "while_statement", "do_statement",
+    "case_statement", "conditional_expression",
+]
+branch_kinds.anon = ["&&", "||"]
+exit_kinds.named = ["return_statement"]
+non_arg_kinds.anon = ["(", ")", ","]
+
+[roles.one]
+amp_amp = { kind = "&&", named = false }
+pipe_pipe = { kind = "||", named = false }
+
+[roles.group]
+# tree-sitter-c declares TWO named `binary_expression` symbols (the ordinary one
+# and the preprocessor-context one used in `#if A && B`); both appear in real
+# trees, so cognitive's boolean-run detection must match the whole SET, not a
+# single id (a `[roles.one]` lookup would resolve to just one and silently drop
+# `&&`/`||` cognitive nesting in the other context).
+binary_expression.named = ["binary_expression"]
+
+# ── Halstead operators / operands ─────────────────────────────────────────────
+[halstead]
+operators.anon = [
+    "(", "{", "[", ",", ".", ";", ":", "->", "+", "-", "*", "/", "%", "++", "--",
+    "+=", "-=", "*=", "/=", "%=", "=", "==", "!=", "<", ">", "<=", ">=", "&&",
+    "||", "!", "&", "|", "^", "<<", ">>", "&=", "|=", "^=", "<<=", ">>=", "?",
+    "~", "...", "break", "case", "const", "continue", "default", "do", "else",
+    "enum", "extern", "for", "goto", "if", "inline", "return", "sizeof", "static",
+    "struct", "switch", "typedef", "union", "volatile", "while", "auto",
+    "register", "signed", "unsigned", "short", "long",
+    "#define", "#include", "#if", "#ifdef", "#ifndef", "#else", "#endif", "#elif",
+]
+operands.named = [
+    "identifier", "field_identifier", "type_identifier", "statement_identifier",
+    "number_literal", "char_literal", "string_literal", "system_lib_string",
+    "true", "false", "null", "primitive_type",
+]
+
+# ── LOC breakdown ─────────────────────────────────────────────────────────────
+[loc]
+noop_kinds.named = [
+    "translation_unit", "compound_statement", "string_literal", "char_literal",
+    "system_lib_string", "string_content",
+]
+comment_kinds.named = ["comment"]
+statement_kinds.named = [
+    "declaration", "expression_statement", "if_statement", "for_statement",
+    "while_statement", "do_statement", "switch_statement", "case_statement",
+    "return_statement", "break_statement", "continue_statement", "goto_statement",
+    "labeled_statement", "compound_statement", "type_definition",
+    "preproc_include", "preproc_def", "preproc_function_def", "preproc_call",
+]
+
+[specs.eta1]
+description = "Distinct operators (η₁): the count of unique operator token kinds. C counts punctuation & delimiters (`( { [ , . ; : ->`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % ++ -- == != < > <= >= && || ! & | ^ << >> = += … ?: ~`), the keywords `break case const continue default do else enum extern for goto if inline return sizeof static struct switch typedef union volatile while auto register signed unsigned short long`, and the preprocessor directives `#define #include #if #ifdef #ifndef #else #endif #elif`."
+
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.eta2]
+description = "Distinct operands (η₂): the count of unique operand texts. C counts identifiers (incl. field / type / label identifiers), literals (number, char, string, `<system.h>` lib strings), primitive type names, and `true` / `false` / `NULL`."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

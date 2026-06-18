@@ -1,0 +1,6 @@
+# Self-contained config for the code-ranker "markdown" sample fixture.
+plugin = "markdown"
+
+# Documentation-quality gate: no broken local links allowed.
+[rules.thresholds.file]
+broken_links = 0

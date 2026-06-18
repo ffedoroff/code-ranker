@@ -47,11 +47,18 @@ pub fn threshold_metrics() -> Vec<ThresholdMetric> {
             label,
         });
     }
-    // Structural per-file attributes (not in the metric registry).
+    // Structural per-file attributes (not in the metric registry) — emitted by a
+    // specific plugin, thresholdable like any metric. `items`/`unsafe` are Rust;
+    // the `headings`…`broken_links` group is Markdown's doc metrics.
     for (key, group, label) in [
         ("loc", "SIZ", "source loc"),
         ("items", "SIZ", "item count"),
         ("unsafe", "CPX", "unsafe blocks"),
+        ("headings", "SIZ", "headings"),
+        ("max_depth", "SIZ", "max heading depth"),
+        ("code_lines", "SIZ", "embedded code lines"),
+        ("links", "CPL", "links"),
+        ("broken_links", "CPX", "broken links"),
     ] {
         out.push(ThresholdMetric {
             key: key.to_string(),

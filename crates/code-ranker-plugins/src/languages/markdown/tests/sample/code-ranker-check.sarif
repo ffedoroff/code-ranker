@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "index.md"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "{target}/index.md: broken links 1 exceeds limit 0 (inf× over budget)"
+          },
+          "partialFingerprints": {
+            "codeRankerRuleLocation/v1": "threshold.file.broken_links:{target}/index.md"
+          },
+          "properties": {
+            "graph": "files",
+            "group": "CPX",
+            "weight": null
+          },
+          "ruleId": "threshold.file.broken_links"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "api.md"
+                },
+                "region": {
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "{target}/api.md: chain cycle: {target}/api.md → {target}/index.md → {target}/guide.md → (back to start)"
+          },
+          "partialFingerprints": {
+            "codeRankerRuleLocation/v1": "cycle.chain:{target}/api.md"
+          },
+          "properties": {
+            "graph": "files",
+            "group": "CYC",
+            "weight": 3.0
+          },
+          "ruleId": "cycle.chain"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/ffedoroff/code-ranker",
+          "name": "code-ranker",
+          "rules": [
+            {
+              "fullDescription": {
+                "text": ""
+              },
+              "helpUri": "https://github.com/ffedoroff/code-ranker/blob/main/docs/code-ranker-cli/ERRORS.md#group-cpx",
+              "id": "threshold.file.broken_links",
+              "properties": {
+                "group": "CPX"
+              },
+              "shortDescription": {
+                "text": "threshold.file.broken_links"
+              }
+            },
+            {
+              "fullDescription": {
+                "text": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries."
+              },
+              "helpUri": "https://github.com/ffedoroff/code-ranker/blob/main/docs/code-ranker-cli/ERRORS.md#group-cyc",
+              "id": "cycle.chain",
+              "properties": {
+                "group": "CYC"
+              },
+              "shortDescription": {
+                "text": "Chain dependency cycle"
+              }
+            }
+          ],
+          "version": "3.0.0-alpha.1"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

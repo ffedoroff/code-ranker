@@ -1,0 +1,26 @@
+[
+  {
+    "check_name": "threshold.file.broken_links",
+    "description": "{target}/index.md: broken links 1 exceeds limit 0 (inf× over budget)",
+    "fingerprint": "threshold.file.broken_links:{target}/index.md",
+    "location": {
+      "lines": {
+        "begin": 1
+      },
+      "path": "index.md"
+    },
+    "severity": "major"
+  },
+  {
+    "check_name": "cycle.chain",
+    "description": "{target}/api.md: chain cycle: {target}/api.md → {target}/index.md → {target}/guide.md → (back to start)",
+    "fingerprint": "cycle.chain:{target}/api.md",
+    "location": {
+      "lines": {
+        "begin": 1
+      },
+      "path": "api.md"
+    },
+    "severity": "major"
+  }
+]

@@ -15,7 +15,12 @@ pub mod list_override;
 #[cfg(test)]
 mod test_support;
 
+pub use languages::c::CPlugin;
+pub use languages::cpp::CppPlugin;
+pub use languages::csharp::CsharpPlugin;
+pub use languages::go::GoPlugin;
 pub use languages::javascript::JavascriptPlugin;
+pub use languages::markdown::MarkdownPlugin;
 pub use languages::python::PythonPlugin;
 pub use languages::rust::RustPlugin;
 pub use languages::typescript::TypescriptPlugin;

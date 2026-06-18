@@ -166,3 +166,90 @@ crates/code-ranker-syn/src/module_graph.rs       # module / file extraction
 - Zero `sleep`, `timeout`, or async usage in tests.
 - `make all` (build + test + lint) passes with zero errors.
 - Every rule invariant is covered by at least one test.
+
+## Raising coverage without crutches
+
+The whole-workspace floor (`make coverage`, ≥ 90% lines) is the blunt backstop;
+`make diff-coverage` is the surgical view for one branch — it intersects the
+`cargo llvm-cov` zero-hit lines with the lines your branch changed vs `origin/main`
+and prints exactly the new, untested lines per file. Work that list, but treat each
+line as a **decision**, not a quota.
+
+### First ask: is the uncovered line a missing test, or a bug?
+
+An uncovered branch is sometimes telling you the branch is **unreachable as
+written** — a real defect hiding behind a green build. Before writing a test,
+confirm the line *can* execute and that exercising it gives the *right* answer.
+
+> Worked example (this is why the rule exists). `cargo llvm-cov` flagged the
+> `else if id == self.binary_expression { … eval_boolean … }` arm in
+> `c/dialect.rs` as uncovered, even though a test fed it `a > b && a > 0`. The arm
+> was **dead**: `tree-sitter-c` (and `-cpp`) declare the name `binary_expression`
+> on **two** symbols — the ordinary expression and the preprocessor-context one
+> used in `#if A && B` — both *named*, both *visible*, neither a *supertype*. The
+> single-id `roles.one("binary_expression")` resolved to whichever symbol comes
+> first, which is **not** the one that appears in normal-code trees, so the `==`
+> never matched and `&&`/`||` silently dropped out of C/C++ cognitive complexity.
+> The fix was not a test — it was switching the lookup to a **set**
+> (`[roles.group] binary_expression.named = ["binary_expression"]`, matched with
+> `.contains(&id)`, which `resolve_set` fills with *all* matching ids). The test
+> came after, as a regression guard: `&&` must raise `cognitive` over the same
+> code without it. **Lesson: when a single-id node-kind lookup silently no-ops,
+> suspect a duplicate-named grammar symbol and use a group/set, not `[roles.one]`.**
+
+A fast way to confirm a suspicion like this: drop a temporary `#[test]` that prints
+(`eprintln!`) the resolved id and walks the parsed tree printing `node.kind()` /
+`kind_id()`, run it with `-- --nocapture`, then delete it (`git checkout` the test
+file). Never leave a probe behind.
+
+### Cheap, organic tests for the "skip / error" branches
+
+Most remaining gaps after the happy path are guard clauses. These are reachable
+with tiny fixtures — no mocks:
+
+- **`fs::read … else continue` (unreadable source).** Write a file with invalid
+  UTF-8 bytes (`[0xFF, 0xFE, 0x00]`) and the right extension. `read_to_string`
+  fails on it, so the analyzer's skip arm runs while the rest of the walk
+  proceeds. Assert the bad file is absent from the graph and a good sibling is
+  present.
+- **Plugin `metrics` / `function_units` node guards.** Build a `Graph` by hand
+  with one `EXTERNAL` node (trips the `kind != FILE` guard) and one `FILE` node
+  whose path doesn't exist (trips the read-skip). Assert both `metrics(&g)` and
+  `function_units(&g)` come back empty. (See the per-language `tests/mod_rs.rs`.)
+- **Scanner edge forms.** Feed the line/text scanner its malformed inputs
+  directly — an unterminated `#include "x`, a macro `#include FOO`, a `](` with no
+  closing `)`. One assertion per arm.
+- **Resolution fallbacks.** A subdir include resolved by repo-relative path; an
+  on-disk neighbour with an uncollected extension resolved by the `is_file()`
+  fallback — each is a few lines in a temp dir.
+
+### Lines worth leaving uncovered (state them, don't paper over them)
+
+Some lines are honest gaps. Skip them deliberately — a forced test is worse than a
+documented gap — but **mark the gap in the code, right next to the line**, with a
+short comment saying it is intentionally uncovered and why (rare case, defensive
+guard, region artifact). The note belongs at the call site, not only in a PR
+description, so the next reader (and the next coverage diff) sees the decision in
+place. Use a consistent prefix so the gaps are greppable, e.g.:
+
+```rust
+// COVERAGE: defensive — tree-sitter `parse()` never returns None for a valid
+// grammar, so this `?` is unreachable in practice.
+let tree = parser.parse(src, None)?;
+```
+
+- **Defensive `?`/`None` propagation that can't fire in practice** — e.g. a
+  tree-sitter `parse()` returning `None` (it effectively never does for a valid
+  grammar), or `utf8_text()` failing on a node whose bytes were already required to
+  parse. Reaching these needs contradictory inputs or brittle scaffolding.
+- **`unwrap`-region closing braces.** `llvm-cov` sometimes attributes a `}` that
+  closes an `if let … { return … }` to a region the happy-path test doesn't mark,
+  even when every reachable statement is covered. Don't contort a fixture to color
+  a brace.
+- **Paths that need escaping the workspace / hidden dirs** — e.g. a Markdown link
+  to an `.md` that exists on disk but was never collected. Constructing it is
+  brittle and tests an effectively-impossible state.
+
+Rule of thumb: if covering the line requires a mock, a contrived input that could
+never occur in real source, or a production-side hook added only to be tested,
+leave it — and drop a `// COVERAGE:` note on the line saying why.
