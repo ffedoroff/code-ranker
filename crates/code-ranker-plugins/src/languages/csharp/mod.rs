@@ -30,8 +30,8 @@ impl LanguagePlugin for CsharpPlugin {
         "csharp"
     }
 
-    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
-        structure::detect(workspace)
+    fn detect(&self, workspace: &Path, input: &PluginInput) -> bool {
+        structure::detect(workspace, &crate::walk::ignore_from(input))
     }
 
     fn levels(&self) -> Vec<Level> {
@@ -60,7 +60,11 @@ impl LanguagePlugin for CsharpPlugin {
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
-        structure::analyze(workspace, input.ignore_tests)
+        structure::analyze(
+            workspace,
+            input.ignore_tests,
+            &crate::walk::ignore_from(input),
+        )
     }
 
     fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {

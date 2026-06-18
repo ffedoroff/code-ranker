@@ -9,7 +9,7 @@ request. Three jobs run in parallel:
 
 | Job | Steps | Gate |
 |---|---|---|
-| **Test & lint** | `cargo fmt --all --check` → `cargo clippy --workspace --all-targets -- -D warnings` → `cargo test --workspace` | Fails the build on any formatting drift, clippy warning, or failing test. |
+| **Test & lint** | `cargo fmt --all --check` → `cargo clippy --workspace --all-targets -- -D warnings` → `cargo machete` → `cargo test --workspace` | Fails the build on any formatting drift, clippy warning, unused dependency, or failing test. |
 | **Coverage** | `cargo llvm-cov --workspace --lcov` → upload to Codecov | Measures line/region coverage and reports it to Codecov; does not fail the build. |
 | **Security audit** | `cargo audit` against the [RustSec](https://rustsec.org) advisory DB | Fails the build on a known vulnerability in any locked dependency. Informational advisories (unmaintained / unsound) are reported but do **not** fail — only actual vulnerabilities gate. |
 
@@ -22,12 +22,19 @@ Toolchain is `stable` (`dtolnay/rust-toolchain`); builds are cached with
 The `test` job mirrors the `Makefile`:
 
 ```sh
-make all        # build + test + lint
+make all        # build + test + lint (lint = fmt-check + clippy + machete + lint-md)
 # or individually:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+cargo machete    # unused-dependency check; `make machete-fix` to auto-remove
 cargo test --workspace
 ```
+
+`make lint` (hence `make all`) also runs [`cargo machete`](https://github.com/bnjbvr/cargo-machete)
+to fail on any unused crate dependency (the CI `Test & lint` job runs it too).
+It is detect-only — `make all` never rewrites `Cargo.toml`; run `make
+machete-fix` to drop the dep, or whitelist a genuine false positive under
+`[package.metadata.cargo-machete]`.
 
 Coverage, the same way CI generates it:
 

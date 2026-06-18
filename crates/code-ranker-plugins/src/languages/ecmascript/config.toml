@@ -19,12 +19,12 @@
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Walk skip lists — DATA, not code (see `../README.md` §3). Shared by the JS and
-# TS plugins (both reuse this module's `structure.rs::is_skip_path`). `skip_dirs`
-# are directory names pruned by EXACT match; `skip_suffixes` are filename
-# suffixes pruned by `ends_with` (generated / config / minified / bundle
-# artifacts). The leading-`.` rule (prune any dotted path component) stays in
-# Rust as a syntax rule, not an enumerable list. (Top-level keys: they must
-# precede the first `[table]` header below to stay top-level in TOML.)
+# TS plugins (both walk via the shared `crate::walk`). `skip_dirs` are directory
+# names pruned by EXACT match; `skip_suffixes` are filename suffixes pruned by
+# `ends_with` in `structure.rs::has_skip_suffix` (generated / config / minified /
+# bundle artifacts). Hidden (dot-prefixed) files/dirs are pruned by the shared
+# walker's `hidden` flag (the `[ignore]` config), not enumerated here. (Top-level
+# keys: they must precede the first `[table]` header below to stay top-level.)
 # ──────────────────────────────────────────────────────────────────────────────
 
 skip_dirs = ["node_modules", "dist", "target", "build", "out", ".venv", "__pycache__"]

@@ -555,13 +555,14 @@ scaffolding in `code-ranker-graph`; see that component.)
 
 In-process Python plugin implemented in the `python` module of the
 `code-ranker-plugins` crate (`code-ranker-plugins/src/languages/python/mod.rs`).
-Uses `tree-sitter-python` (a direct dependency) for AST traversal and `walkdir`
-for file discovery.
+Uses `tree-sitter-python` (a direct dependency) for AST traversal and the shared
+`crate::walk` (the `ignore` crate) for file discovery.
 
 **Pipeline**:
 
 1. **Scan** — walk all `.py` files under the workspace, skipping `.venv`,
-   `__pycache__`, `node_modules`, and any dot-prefixed directory.
+   `__pycache__`, `node_modules`, hidden directories, and (by default) anything
+   matched by `.gitignore` / `.ignore` — see the `[ignore]` config.
 2. **Module index** — derive dotted module paths from file paths:
    `parser/shops/amazon/pdp.py` → `parser.shops.amazon.pdp`;
    `parser/shops/amazon/__init__.py` → `parser.shops.amazon`.
@@ -644,9 +645,10 @@ follow the `src/` layout convention.
 
 **Pipeline**:
 
-1. **Scan** — walk `.ts`, `.tsx`, `.js`, `.jsx` files from source root,
-   skipping `node_modules`, `dist`, `.venv`, dotfile directories,
-   `.gen.ts`, `.config.ts/js`.
+1. **Scan** — walk `.ts`, `.tsx`, `.js`, `.jsx` files from source root (via the
+   shared `crate::walk`), skipping `node_modules`, `dist`, `.venv`, hidden
+   directories, `.gen.ts`, `.config.ts/js`, and (by default) anything matched by
+   `.gitignore` / `.ignore` — see the `[ignore]` config.
 2. **File index** — map each file's relative path to its absolute path.
 3. **Per-file node** — emit one `File` node per source file.
 4. **Import resolution** — resolve ES `import` statements and CommonJS
@@ -670,7 +672,7 @@ follow the `src/` layout convention.
 `LanguagePlugin` trait), which delegates to the shared `ecmascript` module's
 `ecmascript_metrics` helper (the shared generic engine via the
 ECMAScript `Dialect` + `code_ranker_graph::write_metrics`) for each
-`.js`/`.jsx`/`.mjs` file node.
+`.js`/`.jsx`/`.mjs`/`.cjs` file node.
 
 #### code-ranker-plugins · typescript module (built-in)
 
@@ -1116,7 +1118,9 @@ code-ranker report /path/to/my-crate --plugin rust
    f. External crates are added as opaque `Crate` nodes with
       `external = true`; their source is never read.
 4. Annotates complexity (the Rust plugin's `metrics()` measures; the orchestrator writes):
-   a. Walks all `.rs` files in the workspace with `walkdir`.
+   a. Iterates the `File`-backed nodes already discovered by the module-graph
+      walk above (resolved via `cargo metadata` + `syn`; no separate filesystem
+      walk — the Rust plugin does not use the shared `crate::walk`).
    b. For each file, parses it with the shared generic engine via the Rust
       `Dialect` (`engine::compute`) to obtain a `code_ranker_plugin_api::MetricInputs`.
    c. The orchestrator annotates each file-backed `Module` node with the derived

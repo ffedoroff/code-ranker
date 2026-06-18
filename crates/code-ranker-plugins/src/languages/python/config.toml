@@ -21,8 +21,8 @@ doc_lang = "python"
 # not code (see `../README.md` §3). `extensions` is the source-file extension the
 # walker collects (`.py`). `detect_markers` are the project-root marker filenames
 # `detect()` looks for. `skip_dirs` are directory names the walk prunes by exact
-# match; the leading-`.` rule (skip any dotted dir) stays in Rust as a syntax
-# rule, not an enumerable list.
+# match; hidden (dot-prefixed) dirs are pruned by the shared `crate::walk`'s
+# `hidden` flag (the `[ignore]` config), not enumerated here.
 # ──────────────────────────────────────────────────────────────────────────────
 
 extensions = ["py"]

@@ -14,7 +14,7 @@ exclude = ["src/rust/tests/sample", "src/python/tests/sample", "src/javascript/t
 [dependencies]
 code-ranker-plugin-api = { workspace = true }
 anyhow = { workspace = true }
-walkdir = { workspace = true }
+ignore = { workspace = true }
 cargo_metadata = { workspace = true }
 syn = { workspace = true }
 proc-macro2 = { workspace = true }

@@ -11,7 +11,6 @@ use code_ranker_plugin_api::{attrs::AttrValue, edge::Edge, graph::Graph, node::N
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use walkdir::WalkDir;
 
 struct Kinds {
     extensions: Vec<String>,
@@ -95,38 +94,20 @@ enum Link {
     External,
 }
 
-pub(super) fn detect(workspace: &Path) -> bool {
-    collect_files(workspace).next().is_some()
+pub(super) fn detect(workspace: &Path, ignore: &crate::config::IgnoreCfg) -> bool {
+    !collect_files(workspace, ignore).is_empty()
 }
 
-fn collect_files(workspace: &Path) -> impl Iterator<Item = PathBuf> + '_ {
-    WalkDir::new(workspace)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(move |e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
-                && !is_skip_path(e.path(), workspace)
-        })
-        .map(|e| e.into_path())
+fn collect_files(workspace: &Path, ignore: &crate::config::IgnoreCfg) -> Vec<PathBuf> {
+    crate::walk::collect(workspace, &KINDS.skip_dirs, ignore, |p| {
+        p.extension()
+            .and_then(|x| x.to_str())
+            .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
+    })
 }
 
-fn is_skip_path(path: &Path, workspace: &Path) -> bool {
-    path.strip_prefix(workspace)
-        .map(|rel| {
-            rel.components().any(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                s.starts_with('.') || KINDS.skip_dirs.iter().any(|d| d.as_str() == s)
-            })
-        })
-        .unwrap_or(false)
-}
-
-pub(super) fn analyze(workspace: &Path) -> Result<Graph> {
-    let files: Vec<PathBuf> = collect_files(workspace).collect();
+pub(super) fn analyze(workspace: &Path, ignore: &crate::config::IgnoreCfg) -> Result<Graph> {
+    let files: Vec<PathBuf> = collect_files(workspace, ignore);
     let mut by_rel: HashMap<String, PathBuf> = HashMap::new();
     for p in &files {
         if let Ok(rel) = p.strip_prefix(workspace) {

@@ -37,6 +37,19 @@ pub fn string_list(cfg: &Table, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// File-walk ignore toggles fed to the shared file walker [`crate::walk::collect`]
+/// from the CLI's `[ignore]` config (via [`code_ranker_plugin_api::plugin::PluginInput`]).
+/// The walk LOGIC stays in Rust; *which* ignore sources it honours is data.
+#[derive(Clone, Copy, Debug)]
+pub struct IgnoreCfg {
+    /// Respect `.gitignore` (+ global gitignore + `.git/info/exclude`).
+    pub gitignore: bool,
+    /// Respect `.ignore` files.
+    pub ignore_files: bool,
+    /// Skip hidden files / directories (dotfiles).
+    pub hidden: bool,
+}
+
 /// Read a `[<section>]` sub-table from a merged config as `key → string`
 /// (empty if absent). Used for free-form vocab tables a structure builder keys
 /// on — e.g. a language's `[structure]` tree-sitter node-kind strings.

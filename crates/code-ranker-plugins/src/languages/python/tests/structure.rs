@@ -65,7 +65,7 @@ fn analyze_resolves_aliased_from_import_and_skips_root_init() {
     // `b as c` is an `aliased_import`; resolution keys on its `name` field (`b`).
     write_file(root, "pkg/a.py", "from pkg import b as c\nprint(c)\n");
 
-    let g = analyze(root, false).unwrap();
+    let g = analyze(root, false, &crate::test_support::IGNORE_ALL).unwrap();
     let a = root.join("pkg/a.py").to_string_lossy().into_owned();
     let b = root.join("pkg/b.py").to_string_lossy().into_owned();
     assert!(

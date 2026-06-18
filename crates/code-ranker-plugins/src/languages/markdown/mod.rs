@@ -29,8 +29,8 @@ impl LanguagePlugin for MarkdownPlugin {
         "markdown"
     }
 
-    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
-        structure::detect(workspace)
+    fn detect(&self, workspace: &Path, input: &PluginInput) -> bool {
+        structure::detect(workspace, &crate::walk::ignore_from(input))
     }
 
     fn levels(&self) -> Vec<Level> {
@@ -46,8 +46,8 @@ impl LanguagePlugin for MarkdownPlugin {
         }]
     }
 
-    fn analyze(&self, workspace: &Path, _level: &str, _input: &PluginInput) -> Result<Graph> {
-        structure::analyze(workspace)
+    fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
+        structure::analyze(workspace, &crate::walk::ignore_from(input))
     }
 
     // No `metrics` / `function_units`: Markdown emits only the structural `loc`

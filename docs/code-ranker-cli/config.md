@@ -33,6 +33,13 @@ paths = [
 tests = true             # skip the language's test files — ON BY DEFAULT; set false to keep them
                          # (the plugin decides what is a test: Rust #[cfg(test)] modules,
                          #  Python test_*.py / tests/, JS/TS *.test.* …; legacy alias: test_modules)
+gitignore = true         # honour .gitignore (+ global gitignore + .git/info/exclude) while a
+                         # directory-walking plugin collects files — ON BY DEFAULT; scoped to the
+                         # analyzed root (an enclosing repo's rules never leak in). Git-faithful:
+                         # applies only inside a git repo. The Rust plugin uses cargo metadata
+                         # (not a walk), so it is unaffected.
+ignore_files = true      # honour .ignore files — ON BY DEFAULT
+hidden = true            # skip hidden files/dirs (dotfiles) — ON BY DEFAULT; set false to include them
 
 [rules.cycles]
 # each kind: false = off, true = strict (any cycle fails, same as 0),

@@ -12,7 +12,6 @@ use code_ranker_plugin_api::{attrs::AttrValue, edge::Edge, graph::Graph, node::N
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use walkdir::WalkDir;
 
 /// File-collection / import-graph DATA, resolved once from `go/config.toml`.
 struct StructureKinds {
@@ -79,12 +78,16 @@ pub(super) fn go_is_test_path(rel_path: &str) -> bool {
             .any(|s| file.ends_with(s.as_str()))
 }
 
-pub(super) fn analyze(workspace: &Path, ignore_tests: bool) -> Result<Graph> {
+pub(super) fn analyze(
+    workspace: &Path,
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> Result<Graph> {
     let mut nodes: Vec<Node> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
 
     let module_path = read_module_path(workspace);
-    let go_files = collect_go_files(workspace, ignore_tests);
+    let go_files = collect_go_files(workspace, ignore_tests, ignore);
     // package import path → the `.go` files that make it up.
     let pkg_index = build_package_index(workspace, &module_path, &go_files);
 
@@ -126,38 +129,25 @@ fn read_module_path(workspace: &Path) -> String {
 
 // ── file discovery ──────────────────────────────────────────────────────────
 
-fn collect_go_files(workspace: &Path, ignore_tests: bool) -> Vec<PathBuf> {
-    WalkDir::new(workspace)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
-                && !is_skip_path(e.path(), workspace)
-                && !(ignore_tests && is_test_file(e.path(), workspace))
-        })
-        .map(|e| e.into_path())
-        .collect()
+fn collect_go_files(
+    workspace: &Path,
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> Vec<PathBuf> {
+    crate::walk::collect(workspace, &KINDS.skip_dirs, ignore, |p| {
+        p.extension()
+            .and_then(|x| x.to_str())
+            .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
+    })
+    .into_iter()
+    .filter(|p| !(ignore_tests && is_test_file(p, workspace)))
+    .collect()
 }
 
 fn is_test_file(path: &Path, workspace: &Path) -> bool {
     path.strip_prefix(workspace)
         .ok()
         .map(|rel| go_is_test_path(&rel.to_string_lossy().replace('\\', "/")))
-        .unwrap_or(false)
-}
-
-fn is_skip_path(path: &Path, workspace: &Path) -> bool {
-    path.strip_prefix(workspace)
-        .map(|rel| {
-            rel.components().any(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                s.starts_with('.') || KINDS.skip_dirs.iter().any(|d| d.as_str() == s)
-            })
-        })
         .unwrap_or(false)
 }
 

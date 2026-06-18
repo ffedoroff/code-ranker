@@ -1,4 +1,4 @@
-.PHONY: all build test e2e clippy lint-md lint check self-check coverage diff-coverage fmt fmt-check clean bump tag release publish
+.PHONY: all build test e2e clippy lint-md machete machete-fix lint check self-check coverage diff-coverage fmt fmt-check clean bump tag release publish
 
 all: build test lint self-check coverage
 
@@ -28,7 +28,21 @@ lint-md:
 	lychee --offline --no-progress 'docs/**/*.md' 'contrib/**/*.md' 'principles/**/*.md' 'AGENTS.md' 'CLAUDE.md'
 	npx --yes markdownlint-cli2
 
-lint: fmt-check clippy lint-md
+# Unused-dependency check (fast, stable toolchain). FAILS the build on any unused
+# crate dependency — keeping Cargo.toml honest. To resolve: drop the dep, run
+# `make machete-fix` to remove it automatically, or — for a genuine false
+# positive (a dep used only via macro/re-export) — whitelist it under
+# `[package.metadata.cargo-machete] ignored = [...]` in that crate's Cargo.toml.
+# Detect-only on purpose: `make all` never silently rewrites Cargo.toml.
+machete:
+	cargo machete --version >/dev/null 2>&1 || cargo install cargo-machete
+	cargo machete
+
+machete-fix:
+	cargo machete --version >/dev/null 2>&1 || cargo install cargo-machete
+	cargo machete --fix
+
+lint: fmt-check clippy machete lint-md
 
 # Dogfood: run code-ranker's own gate on this repo (the thresholds + cycle rules
 # in code-ranker.toml). Part of `make all`, so a regression here fails the build.

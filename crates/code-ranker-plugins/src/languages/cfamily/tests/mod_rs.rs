@@ -2,6 +2,13 @@
 
 use super::*;
 
+/// All-on ignore config for the analyze tests (temp dirs carry no ignore files).
+const IGNORE: IgnoreCfg = IgnoreCfg {
+    gitignore: true,
+    ignore_files: true,
+    hidden: true,
+};
+
 fn cfg() -> Cfg {
     Cfg {
         extensions: vec!["c".into(), "h".into()],
@@ -47,7 +54,7 @@ fn include_graph_resolves_local_and_external() {
     .unwrap();
     std::fs::write(d.path().join("util.h"), "int util(void);\n").unwrap();
 
-    let g = analyze(d.path(), false, &cfg()).unwrap();
+    let g = analyze(d.path(), false, &cfg(), &IGNORE).unwrap();
     assert!(
         g.edges
             .iter()
@@ -66,7 +73,7 @@ fn include_graph_resolves_local_and_external() {
 fn unresolved_local_include_becomes_external() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("a.c"), "#include \"missing.h\"\nint a;\n").unwrap();
-    let g = analyze(d.path(), false, &cfg()).unwrap();
+    let g = analyze(d.path(), false, &cfg(), &IGNORE).unwrap();
     assert!(
         g.nodes
             .iter()
@@ -82,7 +89,7 @@ fn resolves_local_include_by_unique_basename() {
     std::fs::write(d.path().join("inc/util.h"), "int u;\n").unwrap();
     // a.c's "util.h" isn't in a.c's dir → resolved by unique basename to inc/util.h.
     std::fs::write(d.path().join("a.c"), "#include \"util.h\"\nint a;\n").unwrap();
-    let g = analyze(d.path(), false, &cfg()).unwrap();
+    let g = analyze(d.path(), false, &cfg(), &IGNORE).unwrap();
     assert!(
         g.edges
             .iter()
@@ -96,7 +103,7 @@ fn ignore_tests_drops_test_files() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("a.c"), "int a;\n").unwrap();
     std::fs::write(d.path().join("a_test.c"), "int t;\n").unwrap();
-    let g = analyze(d.path(), true, &cfg()).unwrap();
+    let g = analyze(d.path(), true, &cfg(), &IGNORE).unwrap();
     assert!(g.nodes.iter().all(|n| !n.id.ends_with("a_test.c")));
     assert!(g.nodes.iter().any(|n| n.id.ends_with("a.c")));
 }
@@ -108,7 +115,7 @@ fn non_utf8_source_file_is_skipped() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("ok.c"), "int a;\n").unwrap();
     std::fs::write(d.path().join("bad.c"), [0xFFu8, 0xFE, 0x00]).unwrap();
-    let g = analyze(d.path(), false, &cfg()).unwrap();
+    let g = analyze(d.path(), false, &cfg(), &IGNORE).unwrap();
     assert!(
         g.nodes.iter().any(|n| n.id.ends_with("ok.c")),
         "good file kept"
@@ -132,7 +139,7 @@ fn resolves_include_by_full_relative_path_from_subdir() {
         "#include \"util.h\"\nint main(){return 0;}\n",
     )
     .unwrap();
-    let g = analyze(d.path(), false, &cfg()).unwrap();
+    let g = analyze(d.path(), false, &cfg(), &IGNORE).unwrap();
     assert!(
         g.edges
             .iter()
@@ -153,7 +160,7 @@ fn resolves_adjacent_file_outside_the_collected_set() {
         "#include \"vendor.hpp\"\nint main(){return 0;}\n",
     )
     .unwrap();
-    let g = analyze(d.path(), false, &cfg()).unwrap();
+    let g = analyze(d.path(), false, &cfg(), &IGNORE).unwrap();
     assert!(
         g.edges
             .iter()

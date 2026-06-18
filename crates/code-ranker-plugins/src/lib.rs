@@ -9,6 +9,7 @@ pub mod config;
 pub mod engine;
 pub mod languages;
 pub mod list_override;
+pub mod walk;
 
 /// Test-only helpers shared across the per-language tests (reachable as
 /// `crate::test_support::*` from the `#[path]`-wired test modules).

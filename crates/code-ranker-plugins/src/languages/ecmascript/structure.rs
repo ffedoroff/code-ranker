@@ -13,7 +13,6 @@ use code_ranker_plugin_api::{attrs::AttrValue, edge::Edge, graph::Graph, node::N
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use walkdir::WalkDir;
 
 /// Walk skip lists the ECMAScript file collector prunes on, resolved once from
 /// `ecmascript/config.toml`. `dirs` match a path component exactly; `suffixes`
@@ -114,10 +113,11 @@ pub fn analyze_ecmascript(
     lang_for_ext: impl Fn(&str) -> Option<tree_sitter::Language>,
     candidate_exts_order: &[&str],
     ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
 ) -> Result<Graph> {
     let source_root = find_source_root(workspace);
     let alias_root = source_root.clone();
-    let files = collect_files(&source_root, exts, ignore_tests);
+    let files = collect_files(&source_root, exts, ignore_tests, ignore);
     let file_index = build_file_index(workspace, &files);
 
     let mut nodes: Vec<Node> = Vec::new();
@@ -242,20 +242,20 @@ fn find_source_root(workspace: &Path) -> PathBuf {
 // File discovery
 // ─────────────────────────────────────────────────────────────────────────────
 
-fn collect_files(root: &Path, exts: &[&str], ignore_tests: bool) -> Vec<PathBuf> {
-    WalkDir::new(root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .is_some_and(|x| exts.contains(&x.to_str().unwrap_or("")))
-                && !is_skip_path(e.path(), root)
-                && !(ignore_tests && is_test_file(e.path(), root))
-        })
-        .map(|e| e.into_path())
-        .collect()
+fn collect_files(
+    root: &Path,
+    exts: &[&str],
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> Vec<PathBuf> {
+    crate::walk::collect(root, &SKIP.dirs, ignore, |p| {
+        p.extension()
+            .is_some_and(|x| exts.contains(&x.to_str().unwrap_or("")))
+    })
+    .into_iter()
+    .filter(|p| !has_skip_suffix(p, root))
+    .filter(|p| !(ignore_tests && is_test_file(p, root)))
+    .collect()
 }
 
 /// ECMAScript test conventions, shared by the JS and TS plugins: `*.test.*` /
@@ -282,16 +282,17 @@ fn is_test_file(path: &Path, root: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn is_skip_path(path: &Path, workspace: &Path) -> bool {
-    path.strip_prefix(workspace)
+/// True if any path component (relative to `root`) ends with a configured
+/// skip-suffix (`.gen.ts`, `.config.js`, …) — DATA from `config.toml`. The
+/// dotted-component / skip-dir pruning and `.gitignore`/`.ignore` handling are
+/// done by the shared walker (`crate::walk`); only this language-specific
+/// suffix rule stays here as a post-filter.
+fn has_skip_suffix(path: &Path, root: &Path) -> bool {
+    path.strip_prefix(root)
         .map(|rel| {
             rel.components().any(|c| {
                 let s = c.as_os_str().to_string_lossy();
-                // Leading-`.` is a syntax rule (prune any dotted component); the
-                // named dirs / suffixes are DATA from `config.toml`.
-                s.starts_with('.')
-                    || SKIP.dirs.iter().any(|d| d.as_str() == s)
-                    || SKIP.suffixes.iter().any(|suf| s.ends_with(suf.as_str()))
+                SKIP.suffixes.iter().any(|suf| s.ends_with(suf.as_str()))
             })
         })
         .unwrap_or(false)

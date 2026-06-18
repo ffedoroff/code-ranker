@@ -29,7 +29,7 @@ fn builds_import_graph_internal_and_external() {
     )
     .unwrap();
 
-    let g = analyze(d.path(), false).unwrap();
+    let g = analyze(d.path(), false, &crate::test_support::IGNORE_ALL).unwrap();
 
     let files = g
         .nodes
@@ -64,7 +64,7 @@ fn go_mod_without_module_line_yields_external() {
         "package m\nimport \"strings\"\nfunc F() string { return strings.ToUpper(\"a\") }\n",
     )
     .unwrap();
-    let g = analyze(d.path(), false).unwrap();
+    let g = analyze(d.path(), false, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(
         g.nodes
             .iter()
@@ -81,7 +81,7 @@ fn no_go_mod_treats_all_imports_as_external() {
         "package m\nimport \"fmt\"\nfunc F() { fmt.Println() }\n",
     )
     .unwrap();
-    let g = analyze(d.path(), false).unwrap();
+    let g = analyze(d.path(), false, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(
         g.nodes
             .iter()
@@ -103,12 +103,12 @@ fn ignore_tests_drops_test_files() {
     fs::write(d.path().join("a.go"), "package m\nfunc A() {}\n").unwrap();
     fs::write(d.path().join("a_test.go"), "package m\nfunc TestA() {}\n").unwrap();
 
-    let kept = analyze(d.path(), true).unwrap();
+    let kept = analyze(d.path(), true, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(
         kept.nodes.iter().all(|n| !n.id.ends_with("a_test.go")),
         "a_test.go dropped with ignore_tests"
     );
-    let all = analyze(d.path(), false).unwrap();
+    let all = analyze(d.path(), false, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(all.nodes.iter().any(|n| n.id.ends_with("a_test.go")));
 }
 
@@ -124,7 +124,7 @@ fn internal_import_without_matching_package_yields_no_edge() {
         "package main\n\nimport \"example.com/m/missing\"\n\nfunc main() { _ = missing.X }\n",
     )
     .unwrap();
-    let g = analyze(d.path(), false).unwrap();
+    let g = analyze(d.path(), false, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(g.edges.is_empty(), "unknown internal package -> no edge");
     assert!(
         g.nodes
@@ -145,7 +145,7 @@ fn empty_import_path_is_ignored() {
         "package m\nimport \"\"\nfunc F() {}\n",
     )
     .unwrap();
-    let g = analyze(d.path(), false).unwrap();
+    let g = analyze(d.path(), false, &crate::test_support::IGNORE_ALL).unwrap();
     assert!(g.edges.is_empty(), "empty import path -> no edge");
     assert!(
         g.nodes

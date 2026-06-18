@@ -44,6 +44,17 @@ pub struct PluginInput {
     /// see [`LanguagePlugin::is_test_path`] — so the detection lives in the
     /// plugin, not the CLI.
     pub ignore_tests: bool,
+    /// When `true`, a directory-walking plugin honours `.gitignore` (+ global
+    /// gitignore + `.git/info/exclude`) while collecting source files, scoped to
+    /// the analyzed root (mirrors `[ignore] gitignore`). The Rust plugin resolves
+    /// files via `cargo metadata`, not a walk, so it ignores this.
+    pub gitignore: bool,
+    /// When `true`, a directory-walking plugin honours `.ignore` files while
+    /// collecting source files (mirrors `[ignore] ignore_files`).
+    pub ignore_files: bool,
+    /// When `true`, a directory-walking plugin skips hidden files / directories
+    /// (dotfiles) while collecting source files (mirrors `[ignore] hidden`).
+    pub hidden: bool,
     /// Free-form key/value options. A plugin reads its own keys, ignores the rest.
     pub options: Options,
 }

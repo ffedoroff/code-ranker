@@ -5,6 +5,15 @@
 use code_ranker_plugin_api::graph::Graph;
 use std::path::Path;
 
+/// All-on file-walk ignore config for structure tests. Their fixtures are
+/// throwaway temp dirs with no `.gitignore` / `.ignore` / dotfiles, so the flags
+/// are inert — this just satisfies the `analyze` signature.
+pub(crate) const IGNORE_ALL: crate::config::IgnoreCfg = crate::config::IgnoreCfg {
+    gitignore: true,
+    ignore_files: true,
+    hidden: true,
+};
+
 /// Write `contents` to `dir/rel`, creating any missing parent directories.
 /// Panics on I/O error — these run against a throwaway temp dir in tests.
 pub(crate) fn write_file(dir: &Path, rel: &str, contents: &str) {

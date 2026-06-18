@@ -11,7 +11,6 @@ use code_ranker_plugin_api::{attrs::AttrValue, edge::Edge, graph::Graph, node::N
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
-use walkdir::WalkDir;
 
 /// Import-graph tree-sitter NODE-KIND strings the walk keys on, plus the
 /// file-collection / skip-dir DATA lists, resolved once from `python/config.toml`.
@@ -142,11 +141,15 @@ pub(super) fn py_is_test_path(rel_path: &str) -> bool {
             .any(|s| file.ends_with(s.as_str()))
 }
 
-pub(super) fn analyze(workspace: &Path, ignore_tests: bool) -> Result<Graph> {
+pub(super) fn analyze(
+    workspace: &Path,
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> Result<Graph> {
     let mut nodes: Vec<Node> = Vec::new();
     let mut edges: Vec<Edge> = Vec::new();
 
-    let py_files = collect_py_files(workspace, ignore_tests);
+    let py_files = collect_py_files(workspace, ignore_tests, ignore);
     let module_index = build_module_index(workspace, &py_files);
 
     // Track external nodes already added (by id) to avoid duplicates.
@@ -173,21 +176,19 @@ pub(super) fn analyze(workspace: &Path, ignore_tests: bool) -> Result<Graph> {
 // File discovery
 // ---------------------------------------------------------------------------
 
-fn collect_py_files(workspace: &Path, ignore_tests: bool) -> Vec<PathBuf> {
-    WalkDir::new(workspace)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.file_type().is_file()
-                && e.path()
-                    .extension()
-                    .and_then(|x| x.to_str())
-                    .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
-                && !is_skip_path(e.path(), workspace)
-                && !(ignore_tests && is_test_file(e.path(), workspace))
-        })
-        .map(|e| e.into_path())
-        .collect()
+fn collect_py_files(
+    workspace: &Path,
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> Vec<PathBuf> {
+    crate::walk::collect(workspace, &KINDS.skip_dirs, ignore, |p| {
+        p.extension()
+            .and_then(|x| x.to_str())
+            .is_some_and(|x| KINDS.extensions.iter().any(|e| e == x))
+    })
+    .into_iter()
+    .filter(|p| !(ignore_tests && is_test_file(p, workspace)))
+    .collect()
 }
 
 /// Workspace-relative test check used during the walk.
@@ -195,19 +196,6 @@ fn is_test_file(path: &Path, workspace: &Path) -> bool {
     path.strip_prefix(workspace)
         .ok()
         .map(|rel| py_is_test_path(&rel.to_string_lossy().replace('\\', "/")))
-        .unwrap_or(false)
-}
-
-fn is_skip_path(path: &Path, workspace: &Path) -> bool {
-    path.strip_prefix(workspace)
-        .map(|rel| {
-            rel.components().any(|c| {
-                let s = c.as_os_str().to_string_lossy();
-                // Leading-`.` is a syntax rule (skip any dotted dir); the named
-                // skip-dirs are DATA from `config.toml`'s `skip_dirs`.
-                s.starts_with('.') || KINDS.skip_dirs.iter().any(|d| d.as_str() == s)
-            })
-        })
         .unwrap_or(false)
 }
 

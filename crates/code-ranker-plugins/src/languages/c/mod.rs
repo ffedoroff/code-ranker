@@ -32,8 +32,8 @@ impl LanguagePlugin for CPlugin {
         "c"
     }
 
-    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
-        cfamily::detect(workspace, &CFG)
+    fn detect(&self, workspace: &Path, input: &PluginInput) -> bool {
+        cfamily::detect(workspace, &CFG, &crate::walk::ignore_from(input))
     }
 
     fn levels(&self) -> Vec<Level> {
@@ -62,7 +62,12 @@ impl LanguagePlugin for CPlugin {
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
-        cfamily::analyze(workspace, input.ignore_tests, &CFG)
+        cfamily::analyze(
+            workspace,
+            input.ignore_tests,
+            &CFG,
+            &crate::walk::ignore_from(input),
+        )
     }
 
     fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {

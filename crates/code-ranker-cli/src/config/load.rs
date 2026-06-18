@@ -161,6 +161,9 @@ fn apply_inline_overrides(cfg: &mut Config, entries: &[&str]) -> Result<()> {
             "plugin" => cfg.plugin = Some(value.to_string()),
             "ignore.tests" | "ignore.test_modules" => cfg.ignore.tests = parse_on_off(value)?,
             "ignore.dev_only_crates" => cfg.ignore.dev_only_crates = parse_on_off(value)?,
+            "ignore.gitignore" => cfg.ignore.gitignore = parse_on_off(value)?,
+            "ignore.ignore_files" => cfg.ignore.ignore_files = parse_on_off(value)?,
+            "ignore.hidden" => cfg.ignore.hidden = parse_on_off(value)?,
             "ignore.paths" => cfg
                 .ignore
                 .paths
