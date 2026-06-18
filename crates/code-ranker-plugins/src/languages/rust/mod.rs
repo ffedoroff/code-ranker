@@ -136,7 +136,7 @@ impl LanguagePlugin for RustPlugin {
         code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 
-    fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         let mut builder = GraphBuilder::new();
         syn_analyze(workspace, input.ignore_tests, &mut builder)?;
         let internal = builder.build();
@@ -186,18 +186,6 @@ impl LanguagePlugin for RustPlugin {
             }
         }
         out
-    }
-
-    fn is_test_path(&self, rel_path: &str) -> bool {
-        // Cargo's integration-test / bench targets live under top-level
-        // `tests/` / `benches/` dirs — DATA from `config.toml`'s `test_dirs`.
-        // The predicate LOGIC (first path component ∈ that list) stays here.
-        // (Inline `#[cfg(test)]` modules are a separate, attribute-based notion
-        // handled during the syn walk.)
-        let first = rel_path.split('/').next();
-        crate::config::string_list(&CONFIG, "test_dirs")
-            .iter()
-            .any(|d| first == Some(d.as_str()))
     }
 
     fn versions(&self, _workspace: &Path, _input: &PluginInput) -> Vec<(String, String)> {

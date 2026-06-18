@@ -21,12 +21,9 @@ fn metrics_and_function_units_over_a_temp_project() {
     )
     .unwrap();
     let p = CppPlugin;
-    let g = p
-        .analyze(d.path(), "files", &PluginInput::default())
-        .unwrap();
+    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
     assert!(!p.metrics(&g).is_empty());
     assert!(p.function_units(&g).iter().any(|(n, _)| n.name == "add"));
-    assert!(p.is_test_path("a_test.cpp"));
 }
 
 #[test]

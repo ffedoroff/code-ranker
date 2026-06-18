@@ -31,13 +31,10 @@ fn metrics_and_function_units_over_a_temp_project() {
     .unwrap();
 
     let p = GoPlugin;
-    let g = p
-        .analyze(d.path(), "files", &PluginInput::default())
-        .unwrap();
+    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
     assert!(!p.metrics(&g).is_empty(), "file metrics produced");
     let units = p.function_units(&g);
     assert!(units.iter().any(|(n, _)| n.name == "A"), "function unit A");
-    assert!(p.is_test_path("a_test.go"));
 }
 
 #[test]

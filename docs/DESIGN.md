@@ -436,13 +436,12 @@ prelude adds no `fan_out` / HK to the root.
 
 `LanguagePlugin` is a **pure parser** contract — `name`, `detect(ws, input)`
 (can-parse, replacing markers), `levels` (the levels + their semantics
-dictionaries), `analyze(ws, level, input) -> Graph` (**structure only**, no
-metrics), `is_test_path(rel)` (does this path name a test file, in this
-language's conventions), `versions` (e.g. `rustc`). `PluginInput` carries
-`ignore` globs, the `ignore_tests` flag (when set, the plugin drops its own test
-files during the walk — test detection is language-specific, so it lives in the
-plugin, not the CLI), and free-form `options`, so input can grow without trait
-changes.
+dictionaries), `analyze(ws, input) -> Graph` (**structure only**, no
+metrics; when `input.ignore_tests` is set the plugin drops its own test files
+here — test detection is language-specific, so it lives in the plugin, not the
+CLI), `versions` (e.g. `rustc`). `PluginInput` carries the `ignore` globs and the
+`ignore_tests` / `gitignore` / `ignore_files` / `hidden` walk flags, and is a
+plain struct so input can grow without breaking implementors.
 
 The CLI works **only** against `dyn LanguagePlugin` and never names a concrete
 language. Plugins **self-register**: each module in `code-ranker-plugins` submits
@@ -610,7 +609,7 @@ The **grammar-agnostic ECMAScript engine** both the `javascript` and `typescript
 modules are built on (the `ecmascript` module of the `code-ranker-plugins` crate).
 It owns the file walker (`analyze_ecmascript`), the
 import/require specifier extractor + resolver, source-root detection, the
-`uses`-edge model, `ecmascript_level`, `ecmascript_is_test_path`,
+`uses`-edge model (test-file detection folded into the walker), `ecmascript_level`,
 `external_package`, and the metric helper `ecmascript_metrics`. The
 concrete tree-sitter grammar is **injected by the caller** (each plugin passes its
 own `tree-sitter-javascript` / `tree-sitter-typescript` `Language` + extension
@@ -758,7 +757,7 @@ See [§3.7 Plugin System](#37-plugin-system).
 | `code-ranker-cli` | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | each **self-registers** via `inventory::submit!`. The CLI references NO symbol from this crate — a single `extern crate code_ranker_plugins as _;` link-anchor in `main.rs` pulls it in so the submissions are collected by `code_ranker_plugin_api::registry()`. All shared functionality (the merge, the list-override DSL) lives in `code-ranker-plugin-api`, not here. |
 | `code-ranker-cli` | `code-ranker-graph` | `Snapshot`/`LevelGraph`, `annotate_cycles`/`annotate_hk`/`compute_stats`, `relativize_graph`, `finalize_graph`, `coupling_specs`, `metric_specs()` (the metric attribute catalog), canonical serialization |
 | `code-ranker-cli` | `code-ranker-viewer` | `render_html_viewer()`, `extract_embedded_snapshot()` |
-| `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | `code-ranker-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/metrics/is_test_path/versions/roots/metric_specs); generic `detect_with_marker` |
+| `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | `code-ranker-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/metrics/versions/roots/metric_specs); generic `detect_with_marker` |
 | `code-ranker-plugins` (`rust`/`python`/`ecmascript`/`go`/`cfamily`/`csharp` modules) | `code-ranker-graph` | `MetricInputs` + `write_metrics` (the neutral metric scaffolding); all measure tier-1 counts via the **one shared generic engine** (`src/engine/`), parameterized by each language's `Dialect` + `config.toml` |
 | `code-ranker-plugins` (`javascript`/`typescript` modules) | `code-ranker-plugins` (`ecmascript` module) | shared ECMAScript walker/resolver + ECMAScript `Dialect` + `ecmascript_level` + `ecmascript_metrics`; each injects its own grammar. **Neither plugin depends on the other.** |
 | `code-ranker-graph` | `code-ranker-plugin-api` | the generic model it operates on; the metric scaffolding (modules `metrics` + `builtin`) builds `MetricInputs`/`metric_specs` on its `AttributeSpec` / `AttrValue` types |

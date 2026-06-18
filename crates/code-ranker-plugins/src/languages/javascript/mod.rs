@@ -7,8 +7,8 @@
 //! vice-versa).
 
 use crate::languages::ecmascript::{
-    analyze_ecmascript, ecmascript_function_units, ecmascript_functions_level,
-    ecmascript_is_test_path, ecmascript_level, ecmascript_metric_specs, ecmascript_metrics,
+    analyze_ecmascript, ecmascript_function_units, ecmascript_functions_level, ecmascript_level,
+    ecmascript_metric_specs, ecmascript_metrics,
 };
 use anyhow::Result;
 use code_ranker_plugin_api::{
@@ -68,7 +68,7 @@ impl LanguagePlugin for JavascriptPlugin {
         ]
     }
 
-    fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         // File-collection extensions / import-resolution order are DATA: read
         // from `config.toml`'s `extensions` (a JS-only project collects and
         // resolves against the same list). Every JavaScript extension uses the one
@@ -97,10 +97,6 @@ impl LanguagePlugin for JavascriptPlugin {
         ecmascript_function_units(graph, |_ext| {
             Some((tree_sitter_javascript::LANGUAGE.into(), false))
         })
-    }
-
-    fn is_test_path(&self, rel_path: &str) -> bool {
-        ecmascript_is_test_path(rel_path)
     }
 
     fn presets(&self, _input: &PluginInput) -> Vec<Preset> {

@@ -18,9 +18,7 @@ fn analyze_emits_file_nodes_with_loc() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("a.md"), "# Title\n\nbody line\n").unwrap();
     let p = MarkdownPlugin;
-    let g = p
-        .analyze(d.path(), "files", &PluginInput::default())
-        .unwrap();
+    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
     let file = g
         .nodes
         .iter()

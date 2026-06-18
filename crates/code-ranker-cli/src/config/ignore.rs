@@ -18,8 +18,8 @@ pub(crate) fn is_external(node: &Node) -> bool {
 /// dropped by the language plugin during its walk.
 pub fn apply_ignore(graph: &mut Graph, ignore: &IgnoreConfig, target: &Path) -> Result<usize> {
     // Test files are dropped earlier — by the language plugin during its walk,
-    // which knows the language's test conventions (see `PluginInput::ignore_tests`
-    // / `LanguagePlugin::is_test_path`). Here we only apply the language-agnostic
+    // which knows the language's test conventions (see `PluginInput::ignore_tests`).
+    // Here we only apply the language-agnostic
     // glob filter and dev-only-crate pruning of external nodes.
     let gs = if ignore.paths.is_empty() {
         None

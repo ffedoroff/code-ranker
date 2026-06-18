@@ -31,19 +31,15 @@ pub fn detect_with_marker(workspace: &Path, marker: &str) -> bool {
     workspace.join(marker).exists()
 }
 
-/// Free-form key/value options passed from the CLI (future `--plugin-opt k=v`).
-/// `BTreeMap` for deterministic iteration order.
-pub type Options = BTreeMap<String, String>;
-
 /// Everything the orchestrator feeds a plugin from config + CLI input.
 #[derive(Debug, Clone, Default)]
 pub struct PluginInput {
     /// Glob patterns for paths to skip during analysis (config + CLI).
     pub ignore: Vec<String>,
     /// When `true`, the plugin must skip its own **test files** during the walk
-    /// (mirrors `[ignore] tests`). What counts as a test is language-specific —
-    /// see [`LanguagePlugin::is_test_path`] — so the detection lives in the
-    /// plugin, not the CLI.
+    /// (mirrors `[ignore] tests`). What counts as a test is language-specific, so
+    /// the detection lives in the plugin (during
+    /// [`analyze`](LanguagePlugin::analyze)), not the CLI.
     pub ignore_tests: bool,
     /// When `true`, a directory-walking plugin honours `.gitignore` (+ global
     /// gitignore + `.git/info/exclude`) while collecting source files, scoped to
@@ -56,8 +52,6 @@ pub struct PluginInput {
     /// When `true`, a directory-walking plugin skips hidden files / directories
     /// (dotfiles) while collecting source files (mirrors `[ignore] hidden`).
     pub hidden: bool,
-    /// Free-form key/value options. A plugin reads its own keys, ignores the rest.
-    pub options: Options,
 }
 
 /// A Prompt-Generator preset (a refactoring principle): a ready-to-paste AI
@@ -105,12 +99,11 @@ pub trait LanguagePlugin: Sync {
     /// node-kind / cycle-kind semantics.
     fn levels(&self) -> Vec<Level>;
 
-    /// Parse the workspace into a graph AT `level` (by name). **Structure only**:
-    /// nodes (with their structural attributes) + edges. Metrics are added
-    /// downstream. When `input.ignore_tests` is set, the plugin must drop its
-    /// own test files here (it knows the language's conventions; see
-    /// [`is_test_path`](Self::is_test_path)).
-    fn analyze(&self, workspace: &Path, level: &str, input: &PluginInput) -> Result<Graph>;
+    /// Parse the workspace into the file-level graph. **Structure only**: nodes
+    /// (with their structural attributes) + edges. Metrics are added downstream.
+    /// When `input.ignore_tests` is set, the plugin must drop its own test files
+    /// here (it knows the language's conventions).
+    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph>;
 
     /// **Measure** this language's per-file complexity tier-1 counts and return
     /// them keyed by `file` node id (an absolute path). The plugin parses each of
@@ -133,13 +126,6 @@ pub trait LanguagePlugin: Sync {
     /// default: none (a plugin that ships no function-level support).
     fn function_units(&self, _graph: &Graph) -> Vec<(Node, MetricInputs)> {
         Vec::new()
-    }
-
-    /// Does this workspace-relative path (forward-slashed, no leading `./`) name
-    /// a **test** file in this language? Used to drop tests during the walk when
-    /// `PluginInput::ignore_tests` is set. Default: nothing is a test.
-    fn is_test_path(&self, _rel_path: &str) -> bool {
-        false
     }
 
     /// Toolchain versions to record in the snapshot, e.g. `[("rustc", "1.88.0")]`.
@@ -225,8 +211,8 @@ mod tests {
     use crate::graph::Graph;
 
     /// A minimal plugin that implements only the required methods, so the trait's
-    /// default hooks (`is_test_path` / `versions` / `roots` / `presets` /
-    /// `metric_specs` / `thresholds` / `metrics`) are exercised as-is.
+    /// default hooks (`versions` / `roots` / `presets` / `metric_specs` /
+    /// `thresholds` / `metrics`) are exercised as-is.
     struct Dummy;
     impl LanguagePlugin for Dummy {
         fn name(&self) -> &str {
@@ -238,7 +224,7 @@ mod tests {
         fn levels(&self) -> Vec<crate::level::Level> {
             Vec::new()
         }
-        fn analyze(&self, _w: &Path, _l: &str, _i: &PluginInput) -> Result<Graph> {
+        fn analyze(&self, _w: &Path, _i: &PluginInput) -> Result<Graph> {
             Ok(Graph {
                 nodes: Vec::new(),
                 edges: Vec::new(),
@@ -256,10 +242,9 @@ mod tests {
         assert_eq!(p.name(), "dummy");
         assert!(!p.detect(ws, &input));
         assert!(p.levels().is_empty());
-        let g = p.analyze(ws, "files", &input).expect("dummy analyze ok");
+        let g = p.analyze(ws, &input).expect("dummy analyze ok");
         assert!(g.nodes.is_empty() && g.edges.is_empty());
 
-        assert!(!p.is_test_path("anything"), "default: nothing is a test");
         let empty_graph = Graph {
             nodes: Vec::new(),
             edges: Vec::new(),

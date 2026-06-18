@@ -152,8 +152,8 @@ pub struct IgnoreConfig {
     pub paths: Vec<String>,
     /// Skip the language's test files during analysis. **On by default** —
     /// metrics and cycles describe production code unless you opt back in with
-    /// `tests = false`. The plugin decides what counts as a test (see
-    /// `LanguagePlugin::is_test_path`).
+    /// `tests = false`. The plugin decides what counts as a test, during its
+    /// own walk (see `PluginInput::ignore_tests`).
     #[serde(alias = "test_modules", alias = "test-modules")]
     pub tests: bool,
     /// Strip crates that appear only in [dev-dependencies].

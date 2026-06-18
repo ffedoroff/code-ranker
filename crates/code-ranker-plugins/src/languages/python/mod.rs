@@ -82,7 +82,7 @@ impl LanguagePlugin for PythonPlugin {
         ]
     }
 
-    fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         structure::analyze(
             workspace,
             input.ignore_tests,
@@ -96,10 +96,6 @@ impl LanguagePlugin for PythonPlugin {
 
     fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
         function_nodes(graph)
-    }
-
-    fn is_test_path(&self, rel_path: &str) -> bool {
-        structure::py_is_test_path(rel_path)
     }
 
     fn presets(&self, _input: &PluginInput) -> Vec<Preset> {

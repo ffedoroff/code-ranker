@@ -65,7 +65,6 @@ pub(crate) fn analyze_directory(
         gitignore: cfg.ignore.gitignore,
         ignore_files: cfg.ignore.ignore_files,
         hidden: cfg.ignore.hidden,
-        options: BTreeMap::new(),
     };
 
     // 1. Parse structure (absolute file-path ids).

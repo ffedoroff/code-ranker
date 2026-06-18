@@ -20,13 +20,10 @@ fn metrics_and_function_units_over_a_temp_project() {
     )
     .unwrap();
     let p = CPlugin;
-    let g = p
-        .analyze(d.path(), "files", &PluginInput::default())
-        .unwrap();
+    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
     assert!(!p.metrics(&g).is_empty(), "file metrics produced");
     assert!(p.function_units(&g).iter().any(|(n, _)| n.name == "add"));
     assert_eq!(p.name(), "c");
-    assert!(p.is_test_path("a_test.c"));
 }
 
 #[test]

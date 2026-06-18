@@ -678,13 +678,13 @@ There is no subprocess invocation, no external plugin binary, and no
 external/dynamic plugin loading.
 
 Each plugin implements the `LanguagePlugin` trait (`code-ranker-plugin-api`) as a
-**pure parser**: `analyze(workspace, level, input)` returns a structural `Graph`
+**pure parser**: `analyze(workspace, input)` returns a structural `Graph`
 (nodes + edges, **no metrics**), and `levels()` declares the level's semantics
 dictionaries. When `input.ignore_tests` is set (`[ignore] tests`, **on by
 default**), the plugin skips its own test files during the walk — what counts as
 a test is language-specific (Rust `#[cfg(test)]` modules, Python
-`test_*.py`/`tests/`, JS/TS `*.test.*`/`__tests__`), so the detection
-(`is_test_path`) lives in the plugin, not the CLI. The directory-walking plugins
+`test_*.py`/`tests/`, JS/TS `*.test.*`/`__tests__`), so the detection lives in
+the plugin (inside `analyze`), not the CLI. The directory-walking plugins
 also honour `.gitignore` / `.ignore` / hidden files while collecting sources
 (`[ignore] gitignore` / `ignore_files` / `hidden`, **all on by default**, scoped
 to the analyzed root); the Rust plugin resolves files via `cargo metadata`, so it

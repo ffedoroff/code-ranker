@@ -56,7 +56,7 @@ impl LanguagePlugin for MarkdownPlugin {
         }]
     }
 
-    fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         structure::analyze(workspace, &crate::walk::ignore_from(input))
     }
 

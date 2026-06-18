@@ -78,7 +78,7 @@ impl LanguagePlugin for CppPlugin {
         ]
     }
 
-    fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         cfamily::analyze(
             workspace,
             input.ignore_tests,
@@ -93,10 +93,6 @@ impl LanguagePlugin for CppPlugin {
 
     fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
         function_nodes(graph)
-    }
-
-    fn is_test_path(&self, rel_path: &str) -> bool {
-        cfamily::is_test_path(rel_path, &CFG)
     }
 
     fn presets(&self, _input: &PluginInput) -> Vec<Preset> {

@@ -753,20 +753,6 @@ fn metric_specs_override_adds_rust_cfg_test_note() {
 }
 
 #[test]
-fn is_test_path_keys_on_config_test_dirs() {
-    // `test_dirs` DATA (`tests` / `benches`) drives which top-level dirs flag a
-    // test path; the predicate LOGIC (first component ∈ list) stays in Rust.
-    assert_eq!(
-        crate::config::string_list(&CONFIG, "test_dirs"),
-        ["tests", "benches"]
-    );
-    assert!(RustPlugin.is_test_path("tests/foo.rs"));
-    assert!(RustPlugin.is_test_path("benches/bench.rs"));
-    assert!(!RustPlugin.is_test_path("src/tests/foo.rs"));
-    assert!(!RustPlugin.is_test_path("src/lib.rs"));
-}
-
-#[test]
 fn metrics_and_function_units_skip_unreadable_files() {
     // A file node whose path does not exist is silently skipped by both passes
     // (the `fs::read(..) else continue` arms) — no panic, no output.

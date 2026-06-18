@@ -22,13 +22,6 @@ doc_lang = "rust"
 # extension, so it carries no `extensions` list.)
 detect_markers = ["Cargo.toml"]
 
-# Test-path conventions — DATA, not code (see `../README.md` §4). Cargo's
-# integration-test / bench targets live under these top-level dirs; the
-# `is_test_path` predicate LOGIC (first path component ∈ this list) stays in Rust,
-# *which* names it keys on is data. (Inline `#[cfg(test)]` modules are a separate,
-# attribute-based notion handled during the syn walk.)
-test_dirs = ["tests", "benches"]
-
 # ──────────────────────────────────────────────────────────────────────────────
 # Cargo / Rust vocabulary the resolver and module walk key on — DATA, not code
 # (see `../README.md` §3: a list the code keys on is data). The predicate / match

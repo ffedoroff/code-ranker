@@ -75,7 +75,7 @@ fn analyze_builds_js_graph_with_imports_and_externals() {
     write_file(root, "src/b.js", "export function greet() { return 1; }\n");
 
     let graph = JavascriptPlugin
-        .analyze(root, "files", &PluginInput::default())
+        .analyze(root, &PluginInput::default())
         .expect("analyze should succeed");
 
     let a_id = root.join("src/a.js").to_string_lossy().into_owned();
@@ -102,7 +102,7 @@ fn metrics_annotates_file_nodes() {
         "export function f(x) { if (x > 0) { return 1; } return 2; }\n",
     );
     let graph = JavascriptPlugin
-        .analyze(root, "files", &PluginInput::default())
+        .analyze(root, &PluginInput::default())
         .expect("analyze should succeed");
     // The plugin measures inputs; the orchestrator (here, the test) writes them.
     let inputs = JavascriptPlugin.metrics(&graph);
@@ -137,12 +137,4 @@ fn metrics_skip_unreadable_and_unsupported_files() {
     };
     assert!(JavascriptPlugin.metrics(&graph).is_empty());
     assert!(JavascriptPlugin.function_units(&graph).is_empty());
-}
-
-#[test]
-fn cjs_is_not_detected_as_test() {
-    // `.cjs` files are walked but the JS grammar maps them to no node;
-    // is_test_path follows the shared ECMAScript convention.
-    assert!(JavascriptPlugin.is_test_path("src/a.test.js"));
-    assert!(!JavascriptPlugin.is_test_path("src/a.js"));
 }

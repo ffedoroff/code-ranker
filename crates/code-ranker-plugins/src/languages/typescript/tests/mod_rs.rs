@@ -139,7 +139,7 @@ fn analyze_builds_ts_graph_with_imports_and_externals() {
 
     let input = PluginInput::default();
     let graph = TypescriptPlugin
-        .analyze(root, "files", &input)
+        .analyze(root, &input)
         .expect("TypescriptPlugin.analyze should succeed");
 
     let a_id = root.join("src/a.ts").to_string_lossy().into_owned();
@@ -190,7 +190,7 @@ fn import_path_in_comment_or_string_is_not_an_edge() {
 
     let input = PluginInput::default();
     let graph = TypescriptPlugin
-        .analyze(root, "files", &input)
+        .analyze(root, &input)
         .expect("TypescriptPlugin.analyze should succeed");
 
     let a_id = root.join("src/a.ts").to_string_lossy().into_owned();
@@ -212,7 +212,7 @@ fn uses_edges_from_a(a_rel: &str, a_src: &str) -> usize {
     write_file(root, a_rel, a_src);
     write_file(root, "src/b.ts", "export const g: number = 1;\n");
     let g = TypescriptPlugin
-        .analyze(root, "files", &PluginInput::default())
+        .analyze(root, &PluginInput::default())
         .expect("analyze should succeed");
     let a_id = root.join(a_rel).to_string_lossy().into_owned();
     edge_count_from(&g, &a_id, "uses")
@@ -317,7 +317,7 @@ fn edges_scale_with_real_imports() {
         write_file(root, "src/a.ts", &a);
 
         let graph = TypescriptPlugin
-            .analyze(root, "files", &PluginInput::default())
+            .analyze(root, &PluginInput::default())
             .expect("TypescriptPlugin.analyze should succeed");
 
         let a_id = root.join("src/a.ts").to_string_lossy().into_owned();

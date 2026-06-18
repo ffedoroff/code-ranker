@@ -22,7 +22,7 @@ mod cfg;
 mod dialect;
 mod structure;
 
-pub use structure::{analyze_ecmascript, ecmascript_is_test_path, external_package};
+pub use structure::{analyze_ecmascript, external_package};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Public shared helpers (used by the TypeScript plugin)

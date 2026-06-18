@@ -37,7 +37,7 @@ pub fn analyze(name: &str, workspace: &Path, input: &PluginInput) -> Result<(Gra
     let reg = registry();
     match reg.iter().find(|p| p.name() == name) {
         Some(p) => {
-            let graph = p.analyze(workspace, "files", input)?;
+            let graph = p.analyze(workspace, input)?;
             Ok((graph, p.levels()))
         }
         None => bail!("unknown plugin {name:?}; built-in plugins are: {}", names()),

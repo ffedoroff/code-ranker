@@ -261,7 +261,7 @@ fn collect_files(
 /// ECMAScript test conventions, shared by the JS and TS plugins: `*.test.*` /
 /// `*.spec.*` files and anything under `__tests__`, `__mocks__`, `tests` or
 /// `test` directories.
-pub fn ecmascript_is_test_path(rel_path: &str) -> bool {
+pub(super) fn ecmascript_is_test_path(rel_path: &str) -> bool {
     let file = rel_path.rsplit('/').next().unwrap_or(rel_path);
     let stem = file.split('.').next().unwrap_or(file);
     rel_path

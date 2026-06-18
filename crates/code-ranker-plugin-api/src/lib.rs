@@ -53,7 +53,7 @@ pub use level::{
 };
 pub use metrics::{FunctionUnit, MetricInputs};
 pub use node::{Node, NodeId};
-pub use plugin::{LanguagePlugin, Options, PluginInput, Preset};
+pub use plugin::{LanguagePlugin, PluginInput, Preset};
 pub use report::{ListPatch, ReportOverride};
 
 use std::collections::BTreeMap;
