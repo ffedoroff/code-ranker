@@ -122,6 +122,9 @@ function buildDOT(nodes, edges, level, viewport) {
     // Crate-tier groups (zoom 0) are pink; any other grouping (folders, or the
     // file tier) is a uniform neutral white, so the colour signals "these are crates".
     const isCrateTier = window.viewTier(level) === 'crate' && activeDig === 0 && !!(levelUi(level).grouping?.key);
+    // Files mode (one step past the deepest folders): each group IS a single file,
+    // so drop the member-count suffix and render like a plain file node.
+    const filesMode   = window.isFilesDig(level, activeDig);
     const groupFill   = isCrateTier ? '#ffd4d4' : '#ffffff';
     // Metric circles are always filled — red for the crate tier, blue otherwise
     // (white reads as "empty" / unfinished on the folder tiers).
@@ -153,8 +156,49 @@ function buildDOT(nodes, edges, level, viewport) {
     // At dig IN (>0) with crate grouping, wrap each crate's folder-groups in a
     // labelled crate cluster — so folders read as "inside their crate", mirroring
     // the drilled view's directory sub-clusters. dig 0 / dig OUT render flat.
-    const clusterByCrate = window.viewTier(level) === 'crate' && activeDig > 0 && !!(levelUi(level).grouping?.key);
-    if (clusterByCrate) {
+    // Files mode keys groups by full workspace path (not `crate/under`), so the
+    // crate-cluster wrapper can't parse them → render flat.
+    const clusterByCrate = window.viewTier(level) === 'crate' && activeDig > 0 && !filesMode && !!(levelUi(level).grouping?.key);
+    if (filesMode) {
+      // Files level: keep the deepest SINGLE folder level as clusters (no nested
+      // folders), but draw the real file nodes inside each — mirroring the drilled
+      // view's directory sub-clusters. Internal edges (below) are file↔file via the
+      // per-file grouping; external nodes stay as their plural group box.
+      const folderDig = window.filesDig(level) - 1;
+      const fileDot = n => {
+        const ks   = nodeKindSpec(level, n.kind);
+        const fill = ks.fill   || N_FILL;
+        const col  = ks.stroke || N_COLOR;
+        const cls  = `class="node-${n.kind || 'unknown'} status-${n.status} cycle-status-${cycleOf?.get(n.id) || 'none'}"`;
+        if (isMetric) {
+          const db = baselineById.has(n.id) ? metricNodeDiam(baselineById.get(n.id), sizeMode) : 0;
+          const da = currentById.has(n.id)  ? metricNodeDiam(currentById.get(n.id),  sizeMode) : 0;
+          const d  = Math.max(db, da) || metricNodeDiam(n, sizeMode);
+          const v  = metricNodeVal(n, sizeMode);
+          const lbl = v > 0 ? fmtMetricShort(v) : '';
+          const fs  = metricFontSize(d);
+          return `label=${dotId(lbl)} fontsize=${fs} fontcolor="#333" fillcolor="${fill}" color="${col}" width=${d} shape=circle style=filled fixedsize=true ${cls}`;
+        }
+        return `label=${dotId(n.name)} fillcolor="${fill}" color="${col}" shape=box style=filled fontname="Helvetica" fontsize=11 ${cls}`;
+      };
+      const folders = new Map();   // deepest-folder key → [internal file nodes]
+      const extGrp  = new Map();   // plural → [external nodes]
+      for (const [g, gNodes] of groupNodes) {
+        for (const n of gNodes) {
+          if (isExternalNode(n, level)) { (extGrp.get(g) || extGrp.set(g, []).get(g)).push(n); continue; }
+          const fk = groupKeyAtDig(level, n, folderDig);
+          (folders.get(fk) || folders.set(fk, []).get(fk)).push(n);
+        }
+      }
+      let fi = 0;
+      for (const [fk, ns] of folders) {
+        dot += `  subgraph cluster_files_${fi++} {\n`;
+        dot += `    label=${dotId(groupLabel(level, fk, folderDig))} style=filled fillcolor="#f7f7f7" color="#cccccc" fontcolor="#666666" fontname="Helvetica" fontsize=11\n`;
+        for (const n of ns) dot += `    ${dotId(n.id)} [${fileDot(n)}]\n`;
+        dot += '  }\n';
+      }
+      for (const [g, gNodes] of extGrp) dot += `  ${groupBoxDot(g, gNodes)}\n`;
+    } else if (clusterByCrate) {
       const crateOf = g => { const i = g.indexOf('/'); return i >= 0 ? g.slice(0, i) : g; };
       const byCrate = new Map();   // crate → [[g, gNodes], …]
       const loose   = [];          // external / crate-less groups stay outside clusters

@@ -79,7 +79,11 @@ zoom, surfaced in a single always-visible top-left breadcrumb:
 3. **Reveal depth** — a **lens chip** at the end of the breadcrumb (`⊟ depth N ⊞`)
    controlling how deep the current focus is expanded; the user moves it with the
    buttons (`⊞` reveals one level deeper, `⊟` collapses). The overview opens at
-   depth 0 (crates / top folders); **drilling into a crate/folder opens at the
+   depth 0 (crates / top folders) and `⊞` reveals progressively finer folder
+   groups; one step **past the deepest folder** the overview reaches a **files
+   level** — the deepest single folder level is kept as clusters but each is drawn
+   with its **individual files inside** (no further nesting), after which `⊞`
+   stops. **Drilling into a crate/folder opens at the
    node-budget depth** — the deepest reveal whose visible node count stays under a
    fixed budget (20) — so the focus comes up usefully expanded rather than fully
    collapsed. In a focused group the view is a hybrid: files at or above the
@@ -91,8 +95,9 @@ crate/file total under the root. The tier, focus, and reveal depth MUST round-tr
 through the URL (`tier=`, `group=`, `depth=`, each omitted at its default).
 
 Deferred (P2): expanding individual collapsed boxes **in place** (a per-node
-override on top of the global depth), and revealing individual files inline in the
-**overview** (the overview currently always renders group boxes).
+override on top of the global depth). Revealing individual files inline in the
+**overview** is now implemented — the files level draws each deepest folder as a
+cluster of its real file nodes.
 
 Cycle membership MUST be **visible at every level**: file nodes and edges in a
 dependency cycle are drawn red, and a collapsed group (crate/folder) is marked

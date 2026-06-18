@@ -387,19 +387,26 @@ function fanCollapsed(dir) {
 function nodeCenterUser(svg, el) {
   const m = svg.getScreenCTM();
   if (!m) return null;
-  const r = el.getBoundingClientRect();
+  // In metric size-modes (loc/hk) graphviz draws the node as an <ellipse>; measure
+  // the shape itself, not the group bbox (which would include the text label and
+  // skew the half-extents). Box nodes have no ellipse → fall back to the group bbox.
+  const shape = el.querySelector('ellipse');
+  const r = (shape || el).getBoundingClientRect();
   const p = svg.createSVGPoint();
   p.x = r.left + r.width / 2; p.y = r.top + r.height / 2;
   const o = p.matrixTransform(m.inverse());
   // half-extents in user units (graphviz applies no rotation → a/d are the scale)
-  return { x: o.x, y: o.y, hw: (r.width / 2) / (m.a || 1), hh: (r.height / 2) / (m.d || 1) };
+  return { x: o.x, y: o.y, hw: (r.width / 2) / (m.a || 1), hh: (r.height / 2) / (m.d || 1), circle: !!shape };
 }
-// Point on a node's bbox edge toward `from`, so an arrow lands on the border, not
-// the centre.
-function rectEdgePoint(t, from) {
+// Point on a node's border toward `from`, so an arrow lands on the edge, not the
+// centre. Circular/elliptical nodes use the ellipse boundary; box nodes use the
+// bbox edge (a diagonal would otherwise hit the circumscribed square's corner).
+function nodeEdgePoint(t, from) {
   const dx = from.x - t.x, dy = from.y - t.y;
   if (!dx && !dy) return { x: t.x, y: t.y };
-  const s = Math.min(dx ? t.hw / Math.abs(dx) : Infinity, dy ? t.hh / Math.abs(dy) : Infinity);
+  const s = t.circle
+    ? 1 / Math.hypot(dx / t.hw, dy / t.hh)
+    : Math.min(dx ? t.hw / Math.abs(dx) : Infinity, dy ? t.hh / Math.abs(dy) : Infinity);
   return { x: t.x + dx * s, y: t.y + dy * s };
 }
 // Measure a label's rendered width (cached) so crate chips size to their text, the
@@ -515,7 +522,7 @@ function composeFanSections(svgFrame, level) {
       for (const o of our) {
         const fa = anchors.get(o.fid);
         if (!fa) continue;
-        const ep = rectEdgePoint(fa, { x: ax, y: ay });
+        const ep = nodeEdgePoint(fa, { x: ax, y: ay });
         const d  = dir === 'in' ? `M${ax},${ay} L${ep.x},${ep.y}` : `M${ep.x},${ep.y} L${ax},${ay}`;
         parent.appendChild(svgEl('path', {
           d, fill: 'none', stroke: pal.stroke, 'stroke-width': 1.2,

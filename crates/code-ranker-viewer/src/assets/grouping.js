@@ -13,7 +13,7 @@
 // the crate grouping attribute — no extra backend data. dig 0 reproduces the
 // legacy per-crate grouping.
 
-const DIG_MIN = -12, DIG_MAX = 6;
+const DIG_MIN = -12, DIG_MAX = 8;
 function clampDig(z) { return Math.max(DIG_MIN, Math.min(DIG_MAX, (z | 0))); }
 window.clampDig = clampDig;
 
@@ -146,6 +146,40 @@ function maxFileDepth(level) {
 }
 window.maxFileDepth = maxFileDepth;
 
+// The deepest folder nesting UNDER a crate root (crate tier) — the dig at which the
+// per-crate folder grouping is fully expanded (every directory segment revealed).
+// Digging one step past it switches the overview to individual files. Memoised.
+const _underDepthCache = new Map();
+function maxUnderCrateDepth(level) {
+  if (_underDepthCache.has(level)) return _underDepthCache.get(level);
+  const gk    = levelUi(level).grouping?.key;
+  const roots = crateRoots(level);
+  let m = 0;
+  if (gk) {
+    for (const n of (unionGraph(level).nodes || [])) {
+      if (isExternalNode(n, level)) continue;
+      const crate = n[gk];
+      if (crate == null || crate === '') continue;
+      const root = roots.get(String(crate)) || [];
+      const d    = nodeDirSegs(n.id).length - root.length;
+      if (d > m) m = d;
+    }
+  }
+  _underDepthCache.set(level, m);
+  return m;
+}
+window.maxUnderCrateDepth = maxUnderCrateDepth;
+
+// The reveal dig at which the overview shows individual FILES — one step past the
+// deepest folder grouping (crate tier: under-crate depth; file tier: the finest
+// per-directory grouping at dig 0). At or beyond it every node is its own group.
+function filesDig(level) {
+  return (viewTier(level) === 'file' ? 0 : maxUnderCrateDepth(level)) + 1;
+}
+window.filesDig = filesDig;
+function isFilesDig(level, dig) { return (dig | 0) >= filesDig(level); }
+window.isFilesDig = isFilesDig;
+
 // The dig-OUT floor for the active tier: how far the grouping can collapse before
 // it is a single root group. Crate tier collapses crate-dir paths; file tier
 // collapses plain directory paths.
@@ -163,7 +197,7 @@ function overviewBaseDig(level) {
 window.overviewBaseDig = overviewBaseDig;
 
 // Snapshot swaps change the node set → drop the memoised caches.
-function clearGroupingCache() { _crateRootCache.clear(); _crateDirsCache.clear(); _fileDepthCache.clear(); }
+function clearGroupingCache() { _crateRootCache.clear(); _crateDirsCache.clear(); _fileDepthCache.clear(); _underDepthCache.clear(); }
 window.clearGroupingCache = clearGroupingCache;
 
 // Group key for a node at a given dig level. dig 0 → the crate value (matches the
@@ -174,6 +208,10 @@ function groupKeyAtDig(level, n, dig) {
     return (nodeKindSpec(level, n.kind).plural || 'external').toLowerCase();
 
   const d     = dig | 0;
+  // One reveal step past the deepest folder grouping: every node is its own group
+  // (keyed by node id, like the drilled file view) so edges read file↔file; the
+  // overview renderer still wraps them in their deepest-folder cluster.
+  if (isFilesDig(level, d)) return n.id;
   const gk    = levelUi(level).grouping?.key;
   // File tier ignores the crate attribute → plain directory tiers for every node.
   const crate = (viewTier(level) === 'crate' && gk) ? n[gk] : null;
@@ -237,6 +275,8 @@ window.grouperForDig = grouperForDig;
 function groupLabel(level, key, dig) {
   const d = dig | 0;
   if (key === '_root') return '/';   // the collapse sentinel → show the root as "/"
+  // Files mode: the key is the file's node id → show just the file name.
+  if (isFilesDig(level, d)) { const p = relPathOf(key); return p.includes('/') ? p.slice(p.lastIndexOf('/') + 1) : p; }
   // File tier: the key IS the full workspace-relative directory path; show it with
   // a leading slash (no crate-segment logic).
   if (viewTier(level) === 'file') return '/' + key;
