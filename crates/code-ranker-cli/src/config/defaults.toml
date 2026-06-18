@@ -1,0 +1,69 @@
+# Built-in project-config defaults — compiled into the binary (`include_str!` in
+# `model.rs`) and the SINGLE source of every default value. A discovered project
+# `code-ranker.toml` (or an explicit `--config FILE`) is DEEP-MERGED on top of
+# this (see `load.rs`), so a user overrides only the keys they spell out and
+# inherits everything else. No default value is hardcoded in Rust — this file is
+# it. The merge reuses the plugins' `deep_merge`, so op-table list overrides
+# (`{add,remove,replace,clear,prepend}`) work for arrays here too.
+
+# Default plugin: unset → `auto` (marker detection). A project pins one with
+# `plugin = "rust"`; `--plugin` overrides both.
+
+# ── Ignore filters (applied before cycles/metrics) ───────────────────────────
+[ignore]
+# Glob patterns (repo-relative) dropped from the graph. None by default.
+paths = []
+# Skip the language's test files — metrics and cycles describe production code.
+tests = true
+# Strip crates that appear only in [dev-dependencies].
+dev_only_crates = false
+# Honour .gitignore / .ignore / hidden-file rules during a directory walk.
+gitignore = true
+ignore_files = true
+hidden = true
+
+# ── Gate rules (`check`) ─────────────────────────────────────────────────────
+# Cycle checks per kind: `true`/0 = strict, `false` = off, N = allow up to N.
+[rules.cycles]
+mutual = true
+chain = true
+
+# Per-file metric thresholds (`file` is the only scope). No limits by default —
+# a project adds its own (e.g. `sloc = 800`). Values accept `_` separators and
+# K/M/G suffixes.
+[rules.thresholds.file]
+
+# ── Output artifacts (`report`) ──────────────────────────────────────────────
+# One section per format: `path` is a filename template; `enabled` forces the
+# format on/off. `--output.<fmt>[.path]` flags override these. Placeholders:
+# {project-dir}, {ts}, {git-hash}, {git-hash-N}. json + html are on by default;
+# sarif + codequality are written only on demand (flag or `enabled = true`).
+[output.json]
+path = ".code-ranker/{ts}-{git-hash-3}.json"
+enabled = true
+
+[output.html]
+path = ".code-ranker/{ts}-{git-hash-3}.html"
+enabled = true
+
+[output.sarif]
+path = ".code-ranker/{ts}-{git-hash-3}.sarif"
+enabled = false
+
+[output.codequality]
+path = ".code-ranker/{ts}-{git-hash-3}.codequality.json"
+enabled = false
+
+# The prompt defaults to a per-principle Markdown file; the scorecard is a console
+# overview defaulting to the stdout stream. Both stay OFF unless requested via
+# `--output.prompt` / `--output.scorecard`; these just supply the default path.
+[output.prompt]
+path = ".code-ranker/{ts}-{git-hash-3}-{preset}.md"
+
+[output.scorecard]
+path = "stdout"
+
+# ── Optional extra analysis levels ───────────────────────────────────────────
+# Off by default → only the `files` level is emitted (default output unchanged).
+[levels]
+functions = false

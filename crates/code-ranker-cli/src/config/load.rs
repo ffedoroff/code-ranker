@@ -1,14 +1,23 @@
 //! Config loading: discover `code-ranker.toml` (or `Cargo.toml` metadata),
 //! apply inline `KEY=VALUE` and `--cycle-rule` / `--threshold` CLI overrides.
 
-use super::model::{Config, CycleRule, MetricThresholds, parse_number, quote_suffixed_thresholds};
+use super::model::{
+    Config, CycleRule, DEFAULTS, MetricThresholds, parse_number, quote_suffixed_thresholds,
+};
 use anyhow::{Context, Result};
 use code_ranker_plugin_api::log;
+use code_ranker_plugin_api::toml_merge::deep_merge;
 use std::path::Path;
+use toml::Table;
 
 pub struct LoadedConfig {
     pub config: Config,
     pub source_file: Option<String>,
+    /// The raw merged project table (`built-in defaults ⊕ discovered config`),
+    /// before deserialization into [`Config`]. Kept so `--export-full-config` can
+    /// dump every effective project parameter. Does NOT include the transient
+    /// per-run `--config KEY=VALUE` / `--threshold` / `--cycle-rule` flag overrides.
+    pub merged: Table,
 }
 
 pub fn load(
@@ -29,18 +38,42 @@ pub fn load(
     }
     let explicit = files.first().copied().map(Path::new);
 
-    let (mut config, source_file) = load_file(workspace, explicit)?;
+    // Discover the user's config (if any) as a raw table, then DEEP-MERGE it over
+    // the built-in defaults: the binary always carries a complete default config,
+    // and a project file / `--config` overrides only the keys it spells out (see
+    // `defaults.toml`). The merge reuses the plugins' `deep_merge`, so op-table
+    // list overrides work here too.
+    let (user, source_file) = discover_user_table(workspace, explicit)?;
     match &source_file {
         Some(p) => log::line(&format!("config: {p}")),
         None => log::line("config: built-in defaults (no config file found)"),
     }
+    let merged = match user {
+        Some(t) => deep_merge(builtin_table(), t),
+        None => builtin_table(),
+    };
+    let mut config: Config = merged
+        .clone()
+        .try_into()
+        .context("applying project config over the built-in defaults")?;
+
     apply_inline_overrides(&mut config, &inline)?;
     apply_cli_overrides(&mut config, ignore_paths, cycle_rules, thresholds)?;
     validate_thresholds(&config)?;
     Ok(LoadedConfig {
         config,
         source_file,
+        merged,
     })
+}
+
+/// The built-in default config as a raw table — the merge base every discovered
+/// config layers over. Parsed from the embedded `defaults.toml` (the single
+/// source of default values).
+fn builtin_table() -> Table {
+    DEFAULTS
+        .parse()
+        .expect("embedded defaults.toml parses as a table")
 }
 
 /// Validate every configured threshold key once the full config is known: a key
@@ -61,13 +94,18 @@ fn validate_thresholds(cfg: &Config) -> Result<()> {
     Ok(())
 }
 
-fn load_file(workspace: &Path, explicit: Option<&Path>) -> Result<(Config, Option<String>)> {
+/// Discover the user's config as a raw [`Table`] (NOT yet deserialized into
+/// [`Config`]) so the caller can deep-merge it over the built-in defaults.
+/// Discovery order: explicit `--config PATH` > `./code-ranker.toml` >
+/// `<workspace>/code-ranker.toml` > `Cargo.toml [*.metadata.code-ranker]`. Returns
+/// `(None, None)` when nothing is found (→ pure built-in defaults).
+fn discover_user_table(
+    workspace: &Path,
+    explicit: Option<&Path>,
+) -> Result<(Option<Table>, Option<String>)> {
     if let Some(path) = explicit {
-        let text =
-            std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        let cfg = toml::from_str(&quote_suffixed_thresholds(&text))
-            .with_context(|| format!("parsing {}", path.display()))?;
-        return Ok((cfg, Some(path.display().to_string())));
+        let table = read_table(path)?;
+        return Ok((Some(table), Some(path.display().to_string())));
     }
 
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -75,25 +113,31 @@ fn load_file(workspace: &Path, explicit: Option<&Path>) -> Result<(Config, Optio
     for dir in [cwd.as_path(), workspace] {
         let p = dir.join("code-ranker.toml");
         if p.exists() {
-            let text =
-                std::fs::read_to_string(&p).with_context(|| format!("reading {}", p.display()))?;
-            let cfg = toml::from_str(&quote_suffixed_thresholds(&text))
-                .with_context(|| format!("parsing {}", p.display()))?;
+            let table = read_table(&p)?;
             let canonical = p.canonicalize().unwrap_or(p);
-            return Ok((cfg, Some(canonical.display().to_string())));
+            return Ok((Some(table), Some(canonical.display().to_string())));
         }
     }
 
     for dir in [cwd.as_path(), workspace] {
-        if let Some((cfg, src)) = load_from_cargo_toml(dir)? {
-            return Ok((cfg, Some(src)));
+        if let Some((table, src)) = table_from_cargo_toml(dir)? {
+            return Ok((Some(table), Some(src)));
         }
     }
 
-    Ok((Config::default(), None))
+    Ok((None, None))
 }
 
-fn load_from_cargo_toml(dir: &Path) -> Result<Option<(Config, String)>> {
+/// Read and parse a `code-ranker.toml` file into a raw [`Table`] (the
+/// suffixed-threshold pre-pass runs first, so `hk = 300K` parses).
+fn read_table(path: &Path) -> Result<Table> {
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+    toml::from_str(&quote_suffixed_thresholds(&text))
+        .with_context(|| format!("parsing {}", path.display()))
+}
+
+fn table_from_cargo_toml(dir: &Path) -> Result<Option<(Table, String)>> {
     let cargo = dir.join("Cargo.toml");
     if !cargo.exists() {
         return Ok(None);
@@ -114,13 +158,15 @@ fn load_from_cargo_toml(dir: &Path) -> Result<Option<(Config, String)>> {
         });
 
     if let Some(v) = section {
-        let cfg: Config = v
-            .clone()
-            .try_into()
-            .with_context(|| format!("parsing [*.metadata.code-ranker] in {}", cargo.display()))?;
+        let table = v.as_table().cloned().with_context(|| {
+            format!(
+                "[*.metadata.code-ranker] in {} must be a table",
+                cargo.display()
+            )
+        })?;
         let canonical = cargo.canonicalize().unwrap_or(cargo);
         return Ok(Some((
-            cfg,
+            table,
             format!("{}#metadata.code-ranker", canonical.display()),
         )));
     }
@@ -249,6 +295,36 @@ fn parse_on_off(s: &str) -> Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn load_merges_explicit_config_over_builtin_defaults() {
+        // A partial `--config` file: it overrides one key and a threshold; every
+        // other value must be INHERITED from the embedded `defaults.toml`.
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("ci.toml");
+        std::fs::write(
+            &cfg,
+            "[ignore]\ntests = false\n[rules.thresholds.file]\nhk = \"1M\"\n",
+        )
+        .unwrap();
+
+        let loaded = load(dir.path(), &[cfg.display().to_string()], &[], &[], &[]).unwrap();
+        let c = &loaded.config;
+
+        // Overridden by the file:
+        assert!(!c.ignore.tests);
+        assert_eq!(c.rules.thresholds.file.get("hk"), Some(1_000_000.0));
+        // Inherited from the built-in defaults (not in the file):
+        assert!(c.ignore.gitignore && c.ignore.hidden);
+        assert_eq!(c.rules.cycles.mutual, CycleRule::Max(0));
+        assert!(c.output.json.path.is_some());
+        // The merged raw table is exposed for `--export-full-config`.
+        assert!(loaded.merged.contains_key("output"));
+        assert_eq!(
+            loaded.source_file.as_deref(),
+            Some(cfg.display().to_string()).as_deref()
+        );
+    }
 
     #[test]
     fn parse_on_off_accepts_on_off_true_false() {

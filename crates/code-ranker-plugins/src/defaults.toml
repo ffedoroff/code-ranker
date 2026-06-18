@@ -33,6 +33,18 @@
 doc_base = "https://github.com/ffedoroff/code-ranker/blob/main/principles"
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Field-omission defaults for the metric engine's role config — the fallbacks a
+# `[roles.one.<key>]` entry inherits when it doesn't spell out the field. The
+# SINGLE source of these values (no literal in Rust). `one_named` = whether a
+# `[roles.one]` kind resolves a NAMED node (vs an anonymous token) when the entry
+# omits `named`; almost every `one` kind is named, so `true` is the default and an
+# entry only sets `named = false` for an anonymous token (e.g. `&&` / `||`).
+# ──────────────────────────────────────────────────────────────────────────────
+
+[defaults]
+one_named = true
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Node-id namespace prefixes — DATA, not code. A structure builder mints node ids
 # in a few namespaces; the prefix string the id is built from is data (the
 # minting LOGIC stays in Rust). `external` (`ext:<pkg>`) is the one prefix every

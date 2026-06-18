@@ -17,6 +17,14 @@ Settings are merged from multiple sources. **Higher priority wins** for the same
 For `ignore.paths` and CLI `--ignore`: lists are **merged** (union), not replaced.  
 For cycle rules and thresholds: CLI **overrides** the file value.
 
+The **built-in defaults are the merge base, always** — they ship inside the binary
+(`config/defaults.toml`) and are **deep-merged** with your config, so a partial
+`code-ranker.toml` need only spell out what it changes and inherits every other key
+(e.g. omit `[rules.cycles]` and you still get strict mutual/chain). A discovered file
+overrides per key; arrays can also be patched in place with an op-table
+(`paths = { add = ["x/**"], remove = ["y/**"] }`) instead of replaced wholesale.
+Run [`--export-full-config`](#--export-full-config-path) to see every effective value.
+
 ---
 
 ## Config file: `code-ranker.toml`
@@ -207,10 +215,23 @@ code-ranker check . --plugin python   # always uses python
 
 ### `--config <FILE>`
 
-Load config from an explicit path instead of auto-discovery.
+Load config from an explicit path instead of auto-discovery. It is still
+**deep-merged over the built-in defaults**, so it need only list overrides.
 
 ```bash
 code-ranker check . --config ci/strict.toml
+```
+
+### `--export-full-config <PATH>`
+
+A `report` flag: instead of analyzing, write the **full effective configuration**
+to `PATH` and exit. The file has two sections — `[project]` (built-in defaults ⊕
+your `--config`) and `[plugin]` (the `--plugin` language's merged config: presets,
+thresholds, vocab). A diagnostic view of every value you can override.
+
+```bash
+code-ranker report . --plugin python --config ci/strict.toml \
+  --export-full-config /tmp/effective.toml
 ```
 
 ### `--ignore <GLOB>`

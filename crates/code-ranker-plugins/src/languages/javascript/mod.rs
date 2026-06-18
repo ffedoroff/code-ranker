@@ -22,16 +22,32 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::LazyLock;
 
-/// The JavaScript config: `javascript.toml` deep-merged over the shared
-/// `defaults.toml`, used to build the preset list (the common catalog +
-/// JavaScript's `doc_lang`, which maps to the TypeScript principle corpus).
-static CONFIG: LazyLock<toml::Table> =
-    LazyLock::new(|| crate::config::load(include_str!("config.toml")));
+/// The JavaScript config: the inheritance chain `defaults.toml ⊕
+/// ecmascript/config.toml ⊕ javascript/config.toml`. The ECMAScript base supplies
+/// the shared engine vocab (`[roles]`/`[halstead]`/`[loc]`, the `arrow`/`generator`
+/// node kinds, Halstead spec overrides); `javascript/config.toml` adds only what is
+/// JS-specific (extensions, `detect_markers`, `doc_lang`).
+static CONFIG: LazyLock<toml::Table> = LazyLock::new(|| {
+    crate::config::load_chain(&[
+        include_str!("../ecmascript/config.toml"),
+        include_str!("config.toml"),
+    ])
+});
+
+// Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
+// central list anywhere names a language.
+inventory::submit! {
+    code_ranker_plugin_api::plugin::PluginRegistration(&JavascriptPlugin)
+}
 
 /// The JavaScript language plugin (handles .js / .jsx / .mjs / .cjs).
 pub struct JavascriptPlugin;
 
 impl LanguagePlugin for JavascriptPlugin {
+    fn config(&self) -> toml::Table {
+        CONFIG.clone()
+    }
+
     fn name(&self) -> &str {
         "javascript"
     }
@@ -94,7 +110,7 @@ impl LanguagePlugin for JavascriptPlugin {
     }
 
     fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        crate::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 
     fn metric_specs(

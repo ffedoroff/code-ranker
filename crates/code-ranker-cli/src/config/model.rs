@@ -5,33 +5,73 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Deserializer};
 use std::collections::BTreeMap;
 use std::fmt;
+use std::sync::LazyLock;
 
-#[derive(Debug, Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
+/// The built-in project-config defaults, compiled into the binary — the SINGLE
+/// source of every default value (no default is hardcoded in Rust). A discovered
+/// project `code-ranker.toml` (or `--config FILE`) is deep-merged on top of this
+/// in [`super::load`], so a user overrides only what they spell out and inherits
+/// the rest. [`Config::default`] and the per-section `Default` impls all source
+/// their values from here.
+pub const DEFAULTS: &str = include_str!("defaults.toml");
+
+/// `defaults.toml` parsed once into a [`Config`]. The per-section `Default` impls
+/// read their slice of this. Parsing relies on `defaults.toml` being COMPLETE
+/// (every section present) so deserialization never falls back to a section's
+/// `Default` — which would re-enter this `LazyLock`. The `builtin_defaults_complete`
+/// test guards that invariant.
+static BUILTIN: LazyLock<Config> =
+    LazyLock::new(|| toml::from_str(DEFAULTS).expect("embedded defaults.toml parses into Config"));
+
+// NOTE: `#[serde(default)]` is per FIELD (not on the container). A container-level
+// `default` would call `Config::default()` (= `BUILTIN`) while parsing — including
+// while `BUILTIN` itself is initializing — re-entering the `LazyLock` and
+// deadlocking. Per-field defaults are lazy and use each field's own `Default`
+// (`None`/empty for the scalar/map fields; the section structs' defaults are never
+// invoked because `defaults.toml` always carries those sections).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     /// Default plugin name (e.g. "rust", "python"). Overridden by --plugin.
+    #[serde(default)]
     pub plugin: Option<String>,
+    #[serde(default)]
     pub ignore: IgnoreConfig,
+    #[serde(default)]
     pub rules: RulesConfig,
+    #[serde(default)]
     pub output: OutputConfig,
     /// User-defined declarative metrics (`[metrics.<key>]`): a CEL `formula` plus
     /// optional spec fields. Computed per node at snapshot time and emitted like
     /// any built-in metric. Empty by default — absent → no change to output.
+    #[serde(default)]
     pub metrics: BTreeMap<String, code_ranker_graph::MetricDef>,
     /// Optional analysis levels (`[levels]`). Off by default → only the `files`
     /// level is emitted, so default output is unchanged.
+    #[serde(default)]
     pub levels: LevelsConfig,
     /// Project-level report-list patches (`[report]`): `columns` / `card` /
     /// `stats`, each a list-override (plain array = replace, or an op-table
     /// `{add,remove,replace,clear,prepend}`). Applied over the language's own
     /// `[report]` patch, so a project can surface its custom metrics in the table
     /// / card / JSON stats. Raw table; parsed by `list_override::report_override_section`.
+    #[serde(default)]
     pub report: toml::Table,
     /// Project-defined Prompt-Generator presets (`[presets.<ID>]`), keyed by the
     /// preset id. Appended to the active plugin's catalog (a same-id project preset
     /// overrides the plugin's), so a project can recommend/scorecard on its own
-    /// custom metric. Empty by default → no change to output.
+    /// custom metric. Empty by default — absent → no change to output.
+    #[serde(default)]
     pub presets: BTreeMap<String, PresetDef>,
+}
+
+impl Default for Config {
+    /// The built-in defaults — a clone of the embedded `defaults.toml` (the
+    /// single source of default values). Used when no project config is found,
+    /// and as the merge base every discovered config layers over.
+    fn default() -> Self {
+        BUILTIN.clone()
+    }
 }
 
 /// A project-config preset (`[presets.<ID>]`) — the table key is the id. Mirrors
@@ -89,6 +129,10 @@ pub struct OutputConfig {
     pub html: OutputArtifact,
     pub sarif: OutputArtifact,
     pub codequality: OutputArtifact,
+    /// `prompt` / `scorecard` are flag-driven (off unless `--output.<fmt>` is
+    /// passed); their `path` here only supplies the default destination template.
+    pub prompt: OutputArtifact,
+    pub scorecard: OutputArtifact,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -98,7 +142,11 @@ pub struct OutputArtifact {
     pub enabled: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
+// `Default` is the trivial type-default (empty/false) — a serde filler only,
+// NOT the effective default. The real `[ignore]` defaults live in `defaults.toml`
+// (the `BUILTIN` config), which every runtime config is merged over. Delegating
+// this to `Config::default()` would deadlock the `BUILTIN` LazyLock (see `Config`).
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct IgnoreConfig {
     pub paths: Vec<String>,
@@ -122,20 +170,7 @@ pub struct IgnoreConfig {
     pub hidden: bool,
 }
 
-impl Default for IgnoreConfig {
-    fn default() -> Self {
-        Self {
-            paths: Vec::new(),
-            tests: true,
-            dev_only_crates: false,
-            gitignore: true,
-            ignore_files: true,
-            hidden: true,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct RulesConfig {
     pub cycles: CycleRules,
@@ -143,8 +178,11 @@ pub struct RulesConfig {
 }
 
 /// A cycle check: disabled, or enabled with a maximum allowed count.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CycleRule {
+    /// Trivial type-default (serde filler only). The effective default —
+    /// `Max(0)` (strict) — lives in `defaults.toml`'s `[rules.cycles]`.
+    #[default]
     Off,
     Max(u32),
 }
@@ -185,20 +223,14 @@ impl<'de> Deserialize<'de> for CycleRule {
     }
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+// `Default` is the trivial type-default (`Off`/`Off`) — a serde filler only. The
+// effective strict default (`Max(0)`) lives in `defaults.toml`'s `[rules.cycles]`,
+// merged into every runtime config; see the `Config` / `IgnoreConfig` notes.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct CycleRules {
     pub mutual: CycleRule,
     pub chain: CycleRule,
-}
-
-impl Default for CycleRules {
-    fn default() -> Self {
-        Self {
-            mutual: CycleRule::Max(0),
-            chain: CycleRule::Max(0),
-        }
-    }
 }
 
 impl CycleRules {
@@ -214,7 +246,7 @@ impl CycleRules {
     }
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 pub struct ThresholdRules {
     pub file: MetricThresholds,
@@ -409,13 +441,44 @@ mod tests {
     use super::*;
 
     #[test]
-    fn cycle_rules_default_strict() {
-        let d = CycleRules::default();
+    fn cycle_rules_effective_default_is_strict() {
+        // The trivial `CycleRules::default()` is a serde filler (`Off`/`Off`); the
+        // EFFECTIVE default lives in `defaults.toml` and is strict. `budget_for`
+        // maps each kind to its budget.
+        let trivial = CycleRules::default();
+        assert!(trivial.mutual.is_off() && trivial.chain.is_off());
+
+        let d = Config::default().rules.cycles;
         assert_eq!(d.mutual, CycleRule::Max(0));
         assert_eq!(d.chain, CycleRule::Max(0));
         assert_eq!(d.budget_for("mutual"), Some(0));
         assert_eq!(d.budget_for("chain"), Some(0));
         assert_eq!(d.budget_for("unknown"), None);
+    }
+
+    #[test]
+    fn builtin_defaults_complete() {
+        // The embedded `defaults.toml` is the single source of every default and
+        // MUST be complete: each section present, so deserializing it never falls
+        // back to a section's `Default` (which re-enters the `BUILTIN` LazyLock).
+        // Spot-check the values the rest of the code relies on as "the defaults".
+        let d = Config::default();
+        assert!(d.ignore.tests && d.ignore.gitignore && d.ignore.ignore_files && d.ignore.hidden);
+        assert!(!d.ignore.dev_only_crates && d.ignore.paths.is_empty());
+        assert_eq!(d.rules.cycles.mutual, CycleRule::Max(0));
+        assert_eq!(d.rules.cycles.chain, CycleRule::Max(0));
+        assert!(d.rules.thresholds.file.limits.is_empty());
+        assert!(!d.levels.functions);
+        // Every output format has a default path; json/html are on, sarif/cq off.
+        assert!(d.output.json.path.is_some() && d.output.json.enabled == Some(true));
+        assert!(d.output.html.path.is_some() && d.output.html.enabled == Some(true));
+        assert!(d.output.sarif.path.is_some() && d.output.sarif.enabled == Some(false));
+        assert!(d.output.codequality.path.is_some() && d.output.codequality.enabled == Some(false));
+        assert!(
+            d.output.prompt.path.is_some() && d.output.scorecard.path.as_deref() == Some("stdout")
+        );
+        // No project plugin pinned by default (→ auto detection).
+        assert!(d.plugin.is_none());
     }
 
     #[test]

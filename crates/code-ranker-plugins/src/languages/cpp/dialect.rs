@@ -11,14 +11,21 @@ use std::collections::HashSet;
 use std::sync::LazyLock;
 use tree_sitter::{Language, Node};
 
-static CONFIG: LazyLock<toml::Table> =
-    LazyLock::new(|| crate::config::load(include_str!("config.toml")));
+// Inheritance chain `defaults.toml ⊕ cfamily/config.toml ⊕ cpp/config.toml` — same
+// as `mod.rs`; the metric engine's `[roles]`/`[halstead]`/`[loc]` and `[units]`/
+// `[fields]` draw on the shared C-family base plus C++'s own overrides.
+static CONFIG: LazyLock<toml::Table> = LazyLock::new(|| {
+    crate::config::load_chain(&[
+        include_str!("../cfamily/config.toml"),
+        include_str!("config.toml"),
+    ])
+});
 
 static ROLE_CFG: LazyLock<crate::engine::RoleCfg> = LazyLock::new(|| {
     CONFIG
         .clone()
         .try_into()
-        .expect("cpp/config.toml [roles]/[halstead]/[loc] parse")
+        .expect("cfamily ⊕ cpp/config.toml [roles]/[halstead]/[loc] parse")
 });
 
 struct CppDialect {

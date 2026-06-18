@@ -13,6 +13,7 @@
 //! set-scan collects them all, matching rca.
 
 use std::collections::HashSet;
+use std::sync::LazyLock;
 use tree_sitter::Language;
 
 /// A list of node-kind names tagged with whether they are named nodes or
@@ -77,12 +78,30 @@ pub struct RolesCfg {
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct OneEntry {
     pub kind: String,
-    #[serde(default = "default_true")]
+    #[serde(default = "default_one_named")]
     pub named: bool,
 }
 
-fn default_true() -> bool {
-    true
+/// The `[roles.one]` `named` default, sourced from `defaults.toml`'s
+/// `[defaults].one_named` (the single source — no literal in Rust). Parsed once;
+/// reads only that key, independent of any language's full config merge.
+static ONE_NAMED_DEFAULT: LazyLock<bool> = LazyLock::new(|| {
+    #[derive(serde::Deserialize)]
+    struct Wrap {
+        defaults: Defs,
+    }
+    #[derive(serde::Deserialize)]
+    struct Defs {
+        one_named: bool,
+    }
+    toml::from_str::<Wrap>(crate::config::DEFAULTS)
+        .expect("defaults.toml [defaults].one_named")
+        .defaults
+        .one_named
+});
+
+fn default_one_named() -> bool {
+    *ONE_NAMED_DEFAULT
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]

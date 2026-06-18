@@ -34,6 +34,14 @@
 # `volume`); the `cel` formulas below are verbatim ports of the former Rust
 # `derive()`, same operand order and zero gating, so emitted values are unchanged.
 
+# ── field-omission defaults ───────────────────────────────────────────────────
+# The fallbacks a metric entry inherits when it doesn't spell out the field —
+# applies to the built-in `[ast.*]` / `[fields.*]` below AND to a user's
+# `[metrics.<key>]`. The SINGLE source of these values (no literal in Rust).
+[defaults]
+value_type = "float"
+omit_at = 0.0
+
 # ── categories ────────────────────────────────────────────────────────────────
 [categories.complexity]
 label = "Complexity"

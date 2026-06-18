@@ -25,11 +25,7 @@ mod specs;
 mod views;
 
 pub use lookup::{IgnoreCfg, string_list, string_table, units};
-pub use parse::{DEFAULTS, load};
-// Internal merge helpers, re-exported only for the config unit tests (which
-// reach them via `super::*`).
-#[cfg(test)]
-pub(crate) use parse::{deep_merge, merge_presets};
+pub use parse::{DEFAULTS, load, load_chain};
 pub use specs::{
     PresetCfg, SpecOverride, ThresholdCfg, apply_spec_overrides, presets, resolved_presets,
     spec_overrides, thresholds,

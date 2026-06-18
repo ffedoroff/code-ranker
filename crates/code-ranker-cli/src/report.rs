@@ -9,17 +9,6 @@ use chrono::{DateTime, Local, Utc};
 use code_ranker_graph::snapshot::Snapshot;
 use std::path::{Path, PathBuf};
 
-/// Built-in artifact path templates, used when neither a `--output.<fmt>` flag,
-/// a `--output.<fmt>.path`, nor the `[output.<fmt>]` config section sets one.
-const DEFAULT_JSON_PATH: &str = ".code-ranker/{ts}-{git-hash-3}.json";
-const DEFAULT_HTML_PATH: &str = ".code-ranker/{ts}-{git-hash-3}.html";
-const DEFAULT_SARIF_PATH: &str = ".code-ranker/{ts}-{git-hash-3}.sarif";
-const DEFAULT_CODEQUALITY_PATH: &str = ".code-ranker/{ts}-{git-hash-3}.codequality.json";
-/// The prompt defaults to a per-principle Markdown file; the scorecard is a
-/// console overview and defaults to the stdout stream.
-const DEFAULT_PROMPT_PATH: &str = ".code-ranker/{ts}-{git-hash-3}-{preset}.md";
-const DEFAULT_SCORECARD_PATH: &str = "stdout";
-
 /// Which `report` artifact formats were requested (flags + `.path` selectors).
 pub(crate) struct ReportOutputs {
     pub(crate) json: bool,
@@ -119,7 +108,7 @@ pub(crate) fn run_report(
     if want_json {
         let tpl = json_path
             .or(a.output.json.path.as_deref())
-            .unwrap_or(DEFAULT_JSON_PATH);
+            .expect("output.json.path from built-in defaults");
         let dest = render_name(tpl, &target, commit, generated_at);
         let mut json = code_ranker_graph::serialize::to_canonical_string_pretty(snap)?;
         json.push('\n');
@@ -129,7 +118,7 @@ pub(crate) fn run_report(
     if want_html {
         let tpl = html_path
             .or(a.output.html.path.as_deref())
-            .unwrap_or(DEFAULT_HTML_PATH);
+            .expect("output.html.path from built-in defaults");
         let mut dest = render_name(tpl, &target, commit, generated_at);
         // A baseline turns the HTML into a diff; mark the filename `…-diff.html`
         // (unless it goes to the stdout stream).
@@ -149,7 +138,7 @@ pub(crate) fn run_report(
         // `--baseline` here only diffs the HTML, it does not filter SARIF).
         let tpl = sarif_path
             .or(a.output.sarif.path.as_deref())
-            .unwrap_or(DEFAULT_SARIF_PATH);
+            .expect("output.sarif.path from built-in defaults");
         let dest = render_name(tpl, &target, commit, generated_at);
         let mut sarif = crate::check::sarif_document(&a.violations);
         sarif.push('\n');
@@ -163,7 +152,7 @@ pub(crate) fn run_report(
         // `--baseline` here only diffs the HTML); GitLab dedups by fingerprint.
         let tpl = codequality_path
             .or(a.output.codequality.path.as_deref())
-            .unwrap_or(DEFAULT_CODEQUALITY_PATH);
+            .expect("output.codequality.path from built-in defaults");
         let dest = render_name(tpl, &target, commit, generated_at);
         let mut cq = crate::check::codequality_document(&a.violations);
         cq.push('\n');
@@ -171,13 +160,21 @@ pub(crate) fn run_report(
     }
 
     if want_prompt || want_scorecard {
+        // A `--output.<fmt>.path` flag wins; otherwise the default template comes
+        // from the merged config (always present from the built-in defaults).
+        let prompt_tpl = prompt_path
+            .or(a.output.prompt.path.as_deref())
+            .expect("output.prompt.path from built-in defaults");
+        let scorecard_tpl = scorecard_path
+            .or(a.output.scorecard.path.as_deref())
+            .expect("output.scorecard.path from built-in defaults");
         write_recommendations(
             snap,
             &reco,
             want_prompt,
             want_scorecard,
-            prompt_path,
-            scorecard_path,
+            prompt_tpl,
+            scorecard_tpl,
             &target,
             commit,
             generated_at,
@@ -196,8 +193,8 @@ fn write_recommendations(
     reco: &ReportReco,
     want_prompt: bool,
     want_scorecard: bool,
-    prompt_path: Option<&str>,
-    scorecard_path: Option<&str>,
+    prompt_tpl: &str,
+    scorecard_tpl: &str,
     target: &Path,
     commit: Option<&str>,
     generated_at: DateTime<Utc>,
@@ -222,8 +219,8 @@ fn write_recommendations(
             ),
         };
         let md = recommend::compose_prompt(level, &snap.presets, &preset_id, sev, reco.top)?;
-        let tpl = prompt_path.unwrap_or(DEFAULT_PROMPT_PATH);
-        let dest = render_name(tpl, target, commit, generated_at).replace("{preset}", &preset_id);
+        let dest =
+            render_name(prompt_tpl, target, commit, generated_at).replace("{preset}", &preset_id);
         write_artifact(&dest, &md, "prompt")?;
     }
 
@@ -244,8 +241,7 @@ fn write_recommendations(
             reco.top,
             reco.preset.as_deref(),
         )?;
-        let tpl = scorecard_path.unwrap_or(DEFAULT_SCORECARD_PATH);
-        let dest = render_name(tpl, target, commit, generated_at);
+        let dest = render_name(scorecard_tpl, target, commit, generated_at);
         write_artifact(&dest, &txt, "scorecard")?;
     }
 

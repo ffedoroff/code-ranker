@@ -103,7 +103,7 @@ The three pillars of the design are:
 ```mermaid
 flowchart TD
     subgraph step1["Language plugins (Rust binary)"]
-        cli["code-ranker-cli<br/>(registry + dispatch via trait)"]
+        cli["code-ranker-cli<br/>(plugin dispatch via trait)"]
         api["code-ranker-plugin-api<br/>(LanguagePlugin trait)"]
         pr["code-ranker-plugins::rust<br/>(cargo metadata + syn, module→file collapse)"]
         pp["code-ranker-plugins::python<br/>(tree-sitter)"]
@@ -444,11 +444,17 @@ files during the walk — test detection is language-specific, so it lives in th
 plugin, not the CLI), and free-form `options`, so input can grow without trait
 changes.
 
-The CLI works **only** against `dyn LanguagePlugin`. The single place that names
-concrete plugins is `code-ranker-cli`'s `plugin::registry() -> Vec<Box<dyn
-LanguagePlugin>>`; dispatch (`analyze`), `detect`, and `versions` all iterate
-that list. Adding a language is: implement the trait in a new crate, add one
-line to `registry()` — nothing else changes.
+The CLI works **only** against `dyn LanguagePlugin` and never names a concrete
+language. Plugins **self-register**: each module in `code-ranker-plugins` submits
+itself with `inventory::submit! { PluginRegistration(&XPlugin) }`, and the binary
+collects them via `code_ranker_plugin_api::registry() -> Vec<&'static dyn
+LanguagePlugin>` (the `inventory` crate's distributed slice). Dispatch (`analyze`),
+`detect`, `resolve_plugin`, and `versions` all iterate that array. Adding a language
+is: implement the trait in a module and add one `inventory::submit!` — **no central
+list to edit** anywhere (the CLI, `plugin::registry()`, and `lib.rs` are untouched).
+Link order is not significant: auto-detect errors on multiple matches rather than
+picking by position. A `LanguagePlugin::config() -> toml::Table` accessor surfaces a
+plugin's fully-merged config for `--export-full-config`.
 
 #### code-ranker-plugins · rust module
 
@@ -695,7 +701,8 @@ visibility as the JS plugin. **Complexity**: its `metrics()` reuses the shared
 #### code-ranker-cli · recommendation engine
 
 > **Moved.** The orchestrator binary (`cpt-code-ranker-component-cli`) — plugin
-> registry/dispatch, the shared analysis core, the `check` linter and `report`
+> dispatch (over the plugin-api self-registered registry), the shared analysis
+> core, the `check` linter and `report`
 > artifact writer — and the recommendation engine
 > (`cpt-code-ranker-component-recommend`, the console counterpart of the viewer's
 > Prompt Generator) are documented in
@@ -748,7 +755,7 @@ See [§3.7 Plugin System](#37-plugin-system).
 | Consumer | Dependency | Interface |
 |----------|------------|-----------|
 | `code-ranker-cli` | `code-ranker-plugin-api` | `LanguagePlugin` trait — the only contract the CLI uses to talk to plugins |
-| `code-ranker-cli` | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | one `Box<dyn LanguagePlugin>` each, listed in `plugin::registry()` |
+| `code-ranker-cli` | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | each **self-registers** via `inventory::submit!`. The CLI references NO symbol from this crate — a single `extern crate code_ranker_plugins as _;` link-anchor in `main.rs` pulls it in so the submissions are collected by `code_ranker_plugin_api::registry()`. All shared functionality (the merge, the list-override DSL) lives in `code-ranker-plugin-api`, not here. |
 | `code-ranker-cli` | `code-ranker-graph` | `Snapshot`/`LevelGraph`, `annotate_cycles`/`annotate_hk`/`compute_stats`, `relativize_graph`, `finalize_graph`, `coupling_specs`, `metric_specs()` (the metric attribute catalog), canonical serialization |
 | `code-ranker-cli` | `code-ranker-viewer` | `render_html_viewer()`, `extract_embedded_snapshot()` |
 | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | `code-ranker-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/metrics/is_test_path/versions/roots/metric_specs); generic `detect_with_marker` |
@@ -770,11 +777,13 @@ See [§3.7 Plugin System](#37-plugin-system).
   the `ecmascript` module as siblings; the generic `detect_with_marker`
   lives in `code-ranker-plugin-api`.
 - **The `LanguagePlugin` trait (in `code-ranker-plugin-api`) is the only contract
-  between the CLI and the language plugins.** The sole place that names concrete
-  plugins is `code-ranker-cli`'s `plugin::registry()` — a `Vec<Box<dyn LanguagePlugin>>`.
+  between the CLI and the language plugins.** No code names a concrete plugin:
+  each module **self-registers** with `inventory::submit!`, and the binary collects
+  them via `code_ranker_plugin_api::registry() -> Vec<&'static dyn LanguagePlugin>`.
   Everything else (dispatch, marker-based auto-detect, version metadata, metrics)
-  iterates that list and never hardcodes a language. Adding a language = add a
-  crate (implementing `analyze` + `metrics`) + one line in `registry()`.
+  iterates that array and never hardcodes a language. Adding a language = add a
+  module (implementing `analyze` + `metrics`) with one `inventory::submit!` — no
+  central list to touch (an exact-set test in the CLI guards which plugins ship).
 - Only the `rust` module of `code-ranker-plugins` uses `cargo_metadata` and `syn`
   (the whole crate carries those deps, but only the `rust` module uses them), and
   toolchain knowledge (cargo/rustup/`rustc`, the snapshot `roots`) lives **inside**
@@ -1209,10 +1218,10 @@ extension, not part of the base flat-attribute schema.)
 code-ranker/
   crates/
     code-ranker-graph/             # Rust — graph types, JSON schema, StageTime, cycles/hk/stats + language-neutral metric scaffolding (write_metrics, metric_specs; metrics/builtin.toml catalog)
-    code-ranker-plugin-api/        # Rust — the LanguagePlugin trait + detect_with_marker + the MetricInputs/FunctionUnit metric contract (plugin contract)
+    code-ranker-plugin-api/        # Rust — the LanguagePlugin trait + detect_with_marker + MetricInputs/FunctionUnit; the self-registering plugin registry (inventory) + shared TOML config utilities (toml_merge deep-merge, list_override DSL)
     code-ranker-plugins/           # Rust — all language plugins: languages/{rust,python,javascript,typescript,go,c,cpp,csharp,markdown} (+ shared languages/ecmascript & languages/cfamily) over one generic engine/ (tree-sitter metric walker); src/config/ (parse/views/specs/lookup facade) + src/defaults.toml; #[cfg(test)] test_support helpers
     code-ranker-viewer/            # Rust — HTML viewer: assets + render_html_viewer
-    code-ranker-cli/               # Rust — orchestrator, plugin registry/dispatch, check linter, report
+    code-ranker-cli/               # Rust — orchestrator, plugin dispatch (over the plugin-api self-registered registry), check linter, report
       src/
         plugin/            # Built-in plugins: rust.rs (incl. module→file collapse), python.rs, javascript.rs, finalize.rs (file-graph normalizer for Python/JS), mod.rs
         presets.rs         # Generic Prompt-Generator preset catalog (principles)

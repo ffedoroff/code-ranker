@@ -21,6 +21,7 @@ use code_ranker_plugin_api::{
 };
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use std::sync::LazyLock;
 
 /// Where a metric is evaluated: per node (default) or once over a collection.
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
@@ -43,6 +44,7 @@ pub struct MetricDef {
     pub scope: Scope,
     #[serde(default = "default_value_type")]
     pub value_type: String,
+    // (the `omit_at` field below also defaults from the registry `[defaults]`.)
     pub label: Option<String>,
     pub name: Option<String>,
     pub short: Option<String>,
@@ -58,8 +60,9 @@ pub struct MetricDef {
     /// `lower_better` / `higher_better`.
     pub direction: Option<String>,
     pub group: Option<String>,
-    /// No-signal value at which the metric is omitted (default `0`).
-    #[serde(default)]
+    /// No-signal value at which the metric is omitted (the registry `[defaults]`
+    /// `omit_at` when unset).
+    #[serde(default = "default_omit_at")]
     pub omit_at: f64,
     /// Two-tier severity thresholds (the `warning` / `info` limits the scorecard
     /// and viewer badge against, like a built-in metric). When either is set the
@@ -69,8 +72,36 @@ pub struct MetricDef {
     pub info: Option<f64>,
 }
 
-fn default_value_type() -> String {
-    "float".to_string()
+/// The registry `[defaults]` block from `metrics/builtin.toml`: the field-omission
+/// fallbacks (`value_type` / `omit_at`) a metric entry inherits when it doesn't
+/// set the field. The SINGLE source of these values — no literal in Rust. Parsed
+/// independently of the full [`crate::builtin`] catalog (it reads only `[defaults]`,
+/// so it does not re-enter that catalog's lazy parse) and shared by both the
+/// built-in `[ast.*]`/`[fields.*]` entries and a user's `[metrics.<key>]`.
+static FIELD_DEFAULTS: LazyLock<FieldDefaults> = LazyLock::new(|| {
+    #[derive(Deserialize)]
+    struct Wrap {
+        defaults: FieldDefaults,
+    }
+    toml::from_str::<Wrap>(include_str!("../metrics/builtin.toml"))
+        .expect("metrics/builtin.toml [defaults] parses")
+        .defaults
+});
+
+#[derive(Debug, Clone, Deserialize)]
+struct FieldDefaults {
+    value_type: String,
+    omit_at: f64,
+}
+
+/// Default `value_type` for a metric entry that omits it (registry `[defaults]`).
+pub(crate) fn default_value_type() -> String {
+    FIELD_DEFAULTS.value_type.clone()
+}
+
+/// Default `omit_at` for a metric entry that omits it (registry `[defaults]`).
+pub(crate) fn default_omit_at() -> f64 {
+    FIELD_DEFAULTS.omit_at
 }
 
 impl MetricDef {

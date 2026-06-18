@@ -1,0 +1,241 @@
+//! The report list-override DSL: parse a `[report]` section into a
+//! [`ReportOverride`] of per-list [`ListPatch`]es, plus the generic op-table
+//! primitives [`is_list_op_table`] / [`patch_value_list`] reused by the TOML
+//! inheritance merge ([`crate::toml_merge::deep_merge`]).
+//!
+//! The report's table `columns`, card-featured metrics, and JSON `stats` keys are
+//! inherited from the global metric catalog. A config patches an inherited list
+//! rather than restating it: a plain array replaces it wholesale, while an
+//! **op-table** mutates it in place —
+//!
+//! ```toml
+//! [report]
+//! columns = { remove = ["volume", "effort"], add = ["unsafe"] }
+//! stats   = { add = ["unsafe"] }
+//! card    = { replace = { "sloc" = "unsafe" } }
+//! ```
+//!
+//! The op semantics (`clear` → `remove` → `replace` → `after`/`before` →
+//! `prepend` → `add`, then dedup) live in [`ListPatch::apply`]. The orchestrator
+//! applies the patch over the catalog list, then prunes to keys present.
+//!
+//! Lives in `code-ranker-plugin-api` (next to [`ReportOverride`]) so both the
+//! language plugins (`<lang>.toml` `[report]`) and the CLI (a project
+//! `code-ranker.toml` `[report]`, and its config inheritance merge) use it without
+//! reaching into a sibling crate.
+
+use crate::report::{ListPatch, ReportOverride};
+use toml::{Table, Value};
+
+/// The op-table keys that mark a `[table]` as a list patch rather than a value.
+const LIST_OP_KEYS: [&str; 7] = [
+    "add", "remove", "replace", "prepend", "clear", "after", "before",
+];
+
+/// True when `t` is a list-op table (carries at least one op key) — i.e. it
+/// patches an inherited list rather than replacing it with a value.
+pub fn is_list_op_table(t: &Table) -> bool {
+    LIST_OP_KEYS.iter().any(|k| t.contains_key(*k))
+}
+
+/// Apply an op-table `ov` to a string-list `base` (used by `deep_merge`). A
+/// non-string base can't be patched by value, so it is kept unchanged.
+pub fn patch_value_list(base: Vec<Value>, ov: &Value) -> Vec<Value> {
+    let strs: Option<Vec<String>> = base
+        .iter()
+        .map(|v| v.as_str().map(str::to_string))
+        .collect();
+    match strs {
+        Some(strs) => list_patch(ov)
+            .apply(&strs)
+            .into_iter()
+            .map(Value::String)
+            .collect(),
+        None => base,
+    }
+}
+
+/// Read the `[report]` section of a merged config table as a [`ReportOverride`]
+/// (used for a language's `<lang>.toml`, which nests it under `report`).
+pub fn report_override(cfg: &Table) -> ReportOverride {
+    cfg.get("report")
+        .and_then(Value::as_table)
+        .map(report_override_section)
+        .unwrap_or_default()
+}
+
+/// Read a bare `[report]` section table (its `columns` / `card` / `stats` keys)
+/// as a [`ReportOverride`]. Used for the project `code-ranker.toml`, where the
+/// section is parsed into a table directly.
+pub fn report_override_section(report: &Table) -> ReportOverride {
+    let patch = |key: &str| report.get(key).map(list_patch).unwrap_or_default();
+    ReportOverride {
+        columns: patch("columns"),
+        card: patch("card"),
+        stats: patch("stats"),
+        size: patch("size"),
+        filter: patch("filter"),
+    }
+}
+
+/// Extract a `Vec<String>` from a TOML array value (string elements only).
+fn value_strs(v: Option<&Value>) -> Vec<String> {
+    v.and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|x| x.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Parse a TOML value into a [`ListPatch`]: a plain array → `replace_all`; an
+/// op-table → the corresponding add/remove/replace/clear/prepend ops.
+fn list_patch(v: &Value) -> ListPatch {
+    match v {
+        Value::Array(a) => ListPatch {
+            replace_all: Some(
+                a.iter()
+                    .filter_map(|x| x.as_str().map(str::to_string))
+                    .collect(),
+            ),
+            ..Default::default()
+        },
+        Value::Table(t) => ListPatch {
+            replace_all: None,
+            clear: t.get("clear").and_then(Value::as_bool).unwrap_or(false),
+            remove: value_strs(t.get("remove")),
+            replace: t
+                .get("replace")
+                .and_then(Value::as_table)
+                .map(|rt| {
+                    rt.iter()
+                        .filter_map(|(k, val)| val.as_str().map(|s| (k.clone(), s.to_string())))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            after: anchor_pairs(t.get("after")),
+            before: anchor_pairs(t.get("before")),
+            prepend: value_strs(t.get("prepend")),
+            add: value_strs(t.get("add")),
+        },
+        _ => ListPatch::default(),
+    }
+}
+
+/// Parse an anchor → items table (`{ hk = ["tsr", "tsr_big"] }`) for the
+/// `after` / `before` positional inserts.
+fn anchor_pairs(v: Option<&Value>) -> Vec<(String, Vec<String>)> {
+    v.and_then(Value::as_table)
+        .map(|t| {
+            t.iter()
+                .map(|(anchor, items)| (anchor.clone(), value_strs(Some(items))))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `report_override` parses the `[report]` section's per-list patches; each is
+    /// a plain array (replace) or an op-table (mutate), applied over a base list.
+    #[test]
+    fn report_override_parses_and_applies_patches() {
+        let cfg: Table = "[report]\n\
+             columns = { remove = [\"volume\", \"effort\"], add = [\"unsafe\"] }\n\
+             stats = { add = [\"unsafe\"] }\n\
+             card = [\"hk\"]\n"
+            .parse()
+            .unwrap();
+        let ro = report_override(&cfg);
+
+        let base: Vec<String> = ["kind", "volume", "effort", "sloc"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            ro.columns.apply(&base),
+            ["kind", "sloc", "unsafe"],
+            "columns: two dropped, `unsafe` appended"
+        );
+        assert_eq!(ro.stats.apply(&[]), ["unsafe"], "stats: `unsafe` added");
+        assert_eq!(
+            ro.card.apply(&base),
+            ["hk"],
+            "card: a plain array replaces wholesale"
+        );
+    }
+
+    /// The `replace` op swaps an element in place (position preserved).
+    #[test]
+    fn report_override_replace_in_place() {
+        let cfg: Table = "[report]\ncard = { replace = { \"sloc\" = \"unsafe\" } }\n"
+            .parse()
+            .unwrap();
+        let base: Vec<String> = ["hk", "sloc", "mi"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(
+            report_override(&cfg).card.apply(&base),
+            ["hk", "unsafe", "mi"]
+        );
+    }
+
+    /// No `[report]` section → every patch is a no-op (the catalog list is kept).
+    #[test]
+    fn report_override_absent_is_noop() {
+        let ro = report_override(&Table::new());
+        assert!(ro.columns.is_noop() && ro.card.is_noop() && ro.stats.is_noop());
+    }
+
+    /// The `size` / `filter` map-control lists are parsed like the other report
+    /// lists (here as op-table `add`s over the catalog defaults).
+    #[test]
+    fn report_override_parses_size_and_filter() {
+        let cfg: Table = "[report]\n\
+             size = { add = [\"tsr\"] }\n\
+             filter = { add = [\"tsr_big\"] }\n"
+            .parse()
+            .unwrap();
+        let ro = report_override(&cfg);
+        assert_eq!(
+            ro.size.apply(&["sloc".into(), "hk".into()]),
+            ["sloc", "hk", "tsr"]
+        );
+        assert_eq!(ro.filter.apply(&["cycle".into()]), ["cycle", "tsr_big"]);
+    }
+
+    /// `report_override_section` reads a bare `[report]` table (the project
+    /// `code-ranker.toml` form); the `after` op inserts after an anchor column.
+    #[test]
+    fn report_override_section_after_anchor() {
+        let report: Table = "columns = { after = { hk = [\"tsr\", \"tsr_big\"] } }\n"
+            .parse()
+            .unwrap();
+        let ro = report_override_section(&report);
+        let base: Vec<String> = ["kind", "sloc", "hk", "blank"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            ro.columns.apply(&base),
+            ["kind", "sloc", "hk", "tsr", "tsr_big", "blank"],
+            "columns inserted right after `hk`"
+        );
+    }
+
+    /// `patch_value_list` only patches a list of strings; a non-string base (e.g. a
+    /// list of integers) can't be patched by value, so it is returned unchanged.
+    #[test]
+    fn patch_value_list_passes_through_non_string_base() {
+        let base = vec![Value::Integer(1), Value::Integer(2)];
+        let op: Value = "add = [\"x\"]".parse::<Table>().unwrap().into();
+        assert_eq!(patch_value_list(base.clone(), &op), base);
+    }
+
+    /// A scalar TOML value (neither an array nor an op-table) yields a no-op patch.
+    #[test]
+    fn list_patch_on_scalar_is_noop() {
+        assert!(list_patch(&Value::Integer(7)).is_noop());
+    }
+}

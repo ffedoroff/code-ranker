@@ -33,7 +33,7 @@ static BUILTIN_TOML: &str = include_str!("../metrics/builtin.toml");
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FieldDef {
-    #[serde(default = "default_value_type")]
+    #[serde(default = "crate::registry::default_value_type")]
     value_type: String,
     label: Option<String>,
     name: Option<String>,
@@ -47,12 +47,8 @@ struct FieldDef {
     formula_js: Option<String>,
     direction: Option<String>,
     category: Option<String>,
-    #[serde(default)]
+    #[serde(default = "crate::registry::default_omit_at")]
     omit_at: f64,
-}
-
-fn default_value_type() -> String {
-    "float".to_string()
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

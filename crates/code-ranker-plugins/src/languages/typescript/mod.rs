@@ -20,16 +20,32 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::LazyLock;
 
-/// The TypeScript config: `typescript.toml` deep-merged over the shared
-/// `defaults.toml`, used to build the preset list (the common catalog +
-/// TypeScript's `doc_lang`).
-static CONFIG: LazyLock<toml::Table> =
-    LazyLock::new(|| crate::config::load(include_str!("config.toml")));
+/// The TypeScript config: the inheritance chain `defaults.toml ⊕
+/// ecmascript/config.toml ⊕ typescript/config.toml`. The ECMAScript base supplies
+/// the shared engine vocab (`[roles]`/`[halstead]`/`[loc]`, the `arrow`/`generator`
+/// node kinds, Halstead spec overrides); `typescript/config.toml` adds only what is
+/// TS-specific (extensions, `resolution_order`, `detect_markers`, `doc_lang`).
+static CONFIG: LazyLock<toml::Table> = LazyLock::new(|| {
+    crate::config::load_chain(&[
+        include_str!("../ecmascript/config.toml"),
+        include_str!("config.toml"),
+    ])
+});
+
+// Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
+// central list anywhere names a language.
+inventory::submit! {
+    code_ranker_plugin_api::plugin::PluginRegistration(&TypescriptPlugin)
+}
 
 /// The TypeScript language plugin (handles .ts / .tsx / .mts / .cts).
 pub struct TypescriptPlugin;
 
 impl LanguagePlugin for TypescriptPlugin {
+    fn config(&self) -> toml::Table {
+        CONFIG.clone()
+    }
+
     fn name(&self) -> &str {
         "typescript"
     }
@@ -87,7 +103,7 @@ impl LanguagePlugin for TypescriptPlugin {
     }
 
     fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        crate::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 
     fn metric_specs(

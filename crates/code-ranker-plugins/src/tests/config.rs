@@ -1,4 +1,6 @@
 use super::*;
+use code_ranker_plugin_api::list_override::report_override;
+use code_ranker_plugin_api::toml_merge::{deep_merge, merge_presets};
 use toml::{Table, Value};
 
 /// Deep-merge recurses into tables and lets the overlay win per key.
@@ -402,4 +404,20 @@ fn presets_replaced_by_non_array_overlay() {
     let overlay: Table = "presets = \"none\"\n".parse().unwrap();
     let merged = deep_merge(base, overlay);
     assert_eq!(merged["presets"].as_str(), Some("none"));
+}
+
+/// Integration: the real Rust config carries the demo `[report]` override — five
+/// Halstead-derivative columns dropped, `unsafe` added to both the columns and the
+/// JSON `stats` — read via the plugin-api `report_override` over the merged config.
+#[test]
+fn rust_config_report_override_is_the_demo() {
+    let rust = report_override(&load(include_str!("../languages/rust/config.toml")));
+    for dropped in ["volume", "effort", "time", "length", "vocabulary"] {
+        assert!(
+            rust.columns.remove.contains(&dropped.to_string()),
+            "rust drops the `{dropped}` column"
+        );
+    }
+    assert!(rust.columns.add.contains(&"unsafe".to_string()));
+    assert!(rust.stats.add.contains(&"unsafe".to_string()));
 }

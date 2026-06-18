@@ -695,8 +695,10 @@ centrally by the orchestrator via `code_ranker_graph::write_metrics`, like the
 language-agnostic derived data (cycles / Henry-Kafura / stats in
 `code-ranker-graph` over the level's flow edges); all are
 written into node attributes by id, and the orchestrator assembles the snapshot.
-Adding a language means adding a built-in plugin crate (implementing `analyze` +
-`metrics`) and one line in `plugin::registry()`.
+Adding a language means adding a built-in plugin module (implementing `analyze` +
+`metrics`) that **self-registers** with one `inventory::submit!` — the binary
+collects every plugin via `code_ranker_plugin_api::registry()`, so there is no
+central list to edit.
 
 ### 7.3 Graph JSON Schema
 

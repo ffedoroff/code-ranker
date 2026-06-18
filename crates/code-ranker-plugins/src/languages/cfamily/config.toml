@@ -1,0 +1,67 @@
+# Shared C-family base config — the layer the C and C++ plugins inherit between
+# `../defaults.toml` and their own `<lang>/config.toml` (see `../config.rs`'s
+# `load_chain`: `defaults.toml ⊕ cfamily/config.toml ⊕ <lang>/config.toml`).
+#
+# It holds ONLY the config that is byte-identical for C and C++ (the `#include`
+# dependency-graph vocabulary and the engine node-kind entries both grammars
+# share). Anything that differs between the two dialects — the bulk of the
+# Halstead operator/operand tables, the `[loc]` statement kinds, the cyclomatic
+# `branch_kinds.named`, the per-language `[specs]` η₁/η₂ wording — stays in each
+# language's own `config.toml` (a plain array there REPLACES the inherited one;
+# a sub-table merges per key, so e.g. `branch_kinds.anon` below combines with a
+# language's `branch_kinds.named`).
+#
+# The `#` and quote/bracket delimiters of an `#include` stay inline in Rust as
+# single-char preprocessor syntax; the multi-char include keyword is DATA.
+
+# Build/output dirs pruned by the shared walker (exact match). C and C++ share these.
+skip_dirs = ["build", "cmake-build-debug", "node_modules"]
+
+# Test-path directory components (matched exactly). The per-language test-file
+# suffixes (`_test.c` vs `_test.cpp` …) differ and live in each `<lang>/config.toml`.
+test_dirs = ["test", "tests"]
+
+# The `#include` dependency-graph keyword the shared `cfamily` scan keys on.
+[structure]
+include_directive = "include"
+
+# tree-sitter field-name API navigation (`child_by_field_name`): the function's
+# declarator (its parameters nest under it — see `dialect::args`).
+[fields]
+declarator = "declarator"
+
+# Function-unit `kind` id strings. `default` (a plain function) is shared; C++
+# adds `method` in its own config.
+[units]
+default = "function"
+
+[roles]
+# Short-circuit boolean operators are cyclomatic decision points in both dialects.
+# (Each language adds its own `branch_kinds.named` list; this sub-table merges in.)
+branch_kinds.anon = ["&&", "||"]
+# Punctuation children of a `parameters` node that don't count as arguments.
+non_arg_kinds.anon = ["(", ")", ","]
+
+[roles.one]
+amp_amp = { kind = "&&", named = false }
+pipe_pipe = { kind = "||", named = false }
+
+[roles.group]
+# tree-sitter-c/-cpp declare TWO named `binary_expression` symbols (the ordinary
+# one and the preprocessor-context one used in `#if A && B`); both appear in real
+# trees, so cognitive's boolean-run detection must match the whole SET, not a
+# single id (a `[roles.one]` lookup would resolve to just one and silently drop
+# `&&`/`||` cognitive nesting in the other context).
+binary_expression.named = ["binary_expression"]
+
+[loc]
+comment_kinds.named = ["comment"]
+
+# The generic, dialect-independent Halstead totals wording. The distinct-count
+# η₁/η₂ descriptions (which enumerate each dialect's exact tokens) differ and
+# live in each `<lang>/config.toml`.
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

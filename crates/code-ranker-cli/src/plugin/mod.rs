@@ -1,7 +1,8 @@
-//! The plugin registry — the single place that names concrete language plugins.
-//! Everything else works only through the `LanguagePlugin` trait. Add a language
-//! by writing a `code_ranker_plugins::<lang>` module and adding one line to
-//! [`registry`].
+//! Thin CLI-side accessors over the plugin registry. The CLI NEVER names a
+//! concrete language: plugins self-register via `inventory::submit!` in the
+//! `code-ranker-plugins` crate and are collected by `code_ranker_plugin_api::registry`.
+//! Everything here works only through the `LanguagePlugin` trait and the plugin's
+//! `name()`. Adding a language is a self-contained module in the plugins crate.
 
 use anyhow::{Result, bail};
 use code_ranker_graph::write_metrics;
@@ -15,27 +16,19 @@ use code_ranker_plugin_api::{
 use std::collections::BTreeMap;
 use std::path::Path;
 
-pub fn registry() -> Vec<Box<dyn LanguagePlugin>> {
-    vec![
-        Box::new(code_ranker_plugins::languages::rust::RustPlugin),
-        Box::new(code_ranker_plugins::languages::python::PythonPlugin),
-        Box::new(code_ranker_plugins::languages::javascript::JavascriptPlugin),
-        Box::new(code_ranker_plugins::languages::typescript::TypescriptPlugin),
-        Box::new(code_ranker_plugins::languages::go::GoPlugin),
-        Box::new(code_ranker_plugins::languages::c::CPlugin),
-        Box::new(code_ranker_plugins::languages::cpp::CppPlugin),
-        Box::new(code_ranker_plugins::languages::csharp::CsharpPlugin),
-        Box::new(code_ranker_plugins::languages::markdown::MarkdownPlugin),
-    ]
+/// Every self-registered language plugin (see `code_ranker_plugin_api::registry`).
+/// The CLI links the `code-ranker-plugins` crate (its `deep_merge` / `list_override`
+/// are used elsewhere), so every plugin's `inventory::submit!` is collected here.
+pub fn registry() -> Vec<&'static dyn LanguagePlugin> {
+    code_ranker_plugin_api::plugin::registry()
 }
 
-/// Comma-separated canonical plugin names, for help/error messages.
+/// Comma-separated canonical plugin names (sorted for stable help/error output;
+/// the registry's link order is not significant).
 pub fn names() -> String {
-    registry()
-        .iter()
-        .map(|p| p.name().to_string())
-        .collect::<Vec<_>>()
-        .join(", ")
+    let mut names: Vec<&str> = registry().iter().map(|p| p.name()).collect();
+    names.sort_unstable();
+    names.join(", ")
 }
 
 /// Parse the workspace with the named plugin at the `"files"` level, returning
@@ -178,6 +171,23 @@ pub fn detect(workspace: &Path, input: &PluginInput) -> Result<String> {
     }
 }
 
+/// Resolve the plugin name: explicit `--plugin` > config `plugin` > auto-detect.
+/// A value of `auto` (or absence) triggers project-marker detection. Lives here,
+/// with the registry and [`detect`], so plugin selection is one concern.
+pub fn resolve_plugin(arg: Option<&str>, cfg: Option<&str>, workspace: &Path) -> Result<String> {
+    if let Some(p) = arg
+        && p != "auto"
+    {
+        return Ok(p.to_string());
+    }
+    if let Some(p) = cfg
+        && p != "auto"
+    {
+        return Ok(p.to_string());
+    }
+    detect(workspace, &PluginInput::default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,5 +236,68 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Self-registration guard: the `inventory` registry must contain EXACTLY this
+    /// set of plugins — by name, no more and no less. Catches a dropped submission
+    /// (linker/inventory regression), a missing/renamed plugin, AND an unexpected
+    /// new one (which must be added here deliberately). Each must also expose a
+    /// non-empty merged `config()` (what `--export-full-config` dumps).
+    #[test]
+    fn registry_holds_exactly_the_expected_plugins() {
+        const EXPECTED: &[&str] = &[
+            "c",
+            "cpp",
+            "csharp",
+            "go",
+            "javascript",
+            "markdown",
+            "python",
+            "rust",
+            "typescript",
+        ];
+
+        let mut found: Vec<&str> = registry().iter().map(|p| p.name()).collect();
+        found.sort_unstable();
+        assert_eq!(
+            found, EXPECTED,
+            "self-registered plugin set drifted from the expected list — update EXPECTED \
+             (and ship the language's e2e goldens) if this is an intended add/remove; an \
+             empty/short list means an inventory/linker regression dropped submissions"
+        );
+
+        for plugin in registry() {
+            let name = plugin.name();
+            assert!(
+                !plugin.config().is_empty(),
+                "plugin `{name}` exposes an empty config(); --export-full-config would be blank"
+            );
+        }
+    }
+
+    #[test]
+    fn resolve_plugin_precedence_explicit_then_config_then_auto() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("pyproject.toml"), "").unwrap();
+        assert_eq!(
+            resolve_plugin(Some("rust"), Some("javascript"), d.path()).unwrap(),
+            "rust",
+            "explicit --plugin wins"
+        );
+        assert_eq!(
+            resolve_plugin(None, Some("rust"), d.path()).unwrap(),
+            "rust",
+            "config wins over auto-detect"
+        );
+        assert_eq!(
+            resolve_plugin(Some("auto"), None, d.path()).unwrap(),
+            "python",
+            "explicit auto -> detect"
+        );
+        assert_eq!(
+            resolve_plugin(None, None, d.path()).unwrap(),
+            "python",
+            "no plugin -> detect"
+        );
     }
 }

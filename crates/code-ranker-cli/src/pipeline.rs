@@ -10,7 +10,6 @@ use code_ranker_graph::level_graph::{LevelGraph, LevelUi};
 use code_ranker_graph::snapshot::Snapshot;
 use code_ranker_plugin_api::plugin::PluginInput;
 use std::collections::{BTreeMap, HashSet};
-use std::path::Path;
 
 /// Result of the shared analysis core, consumed by `check` and `report`. The
 /// snapshot is either freshly analyzed (directory input) or loaded (snapshot input).
@@ -52,7 +51,8 @@ pub(crate) fn analyze_directory(
     .context("configuration error")?;
     let cfg = loaded.config;
 
-    let plugin_name = resolve_plugin(args.plugin.as_deref(), cfg.plugin.as_deref(), &target)?;
+    let plugin_name =
+        plugin::resolve_plugin(args.plugin.as_deref(), cfg.plugin.as_deref(), &target)?;
 
     let command = format!(
         "code-ranker {}",
@@ -183,7 +183,7 @@ pub(crate) fn analyze_directory(
     // (from `code-ranker.toml`) — so a project can surface its own metrics.
     let report_overrides = [
         plugin::report_overrides(&plugin_name),
-        code_ranker_plugins::list_override::report_override_section(&cfg.report),
+        code_ranker_plugin_api::list_override::report_override_section(&cfg.report),
     ];
 
     // Stat keys are data-driven: tier-2 metrics from the registry plus the
@@ -617,22 +617,6 @@ fn build_ui(
     }
 }
 
-/// Resolve the plugin name: explicit `--plugin` > config `plugin` > auto-detect.
-/// A value of `auto` (or absence) triggers project-marker detection.
-fn resolve_plugin(arg: Option<&str>, cfg: Option<&str>, workspace: &Path) -> Result<String> {
-    if let Some(p) = arg
-        && p != "auto"
-    {
-        return Ok(p.to_string());
-    }
-    if let Some(p) = cfg
-        && p != "auto"
-    {
-        return Ok(p.to_string());
-    }
-    plugin::detect(workspace, &PluginInput::default())
-}
-
 /// Remove named roots whose `{name}` token does not appear in any node id or
 /// path after relativization. `target` is always kept (it names the analyzed
 /// project even when every node sits directly under it). This keeps the
@@ -738,31 +722,5 @@ mod tests {
             plugin::detect(empty.path(), &PluginInput::default()).unwrap_err()
         );
         assert!(err.contains("no project marker"), "empty error: {err}");
-    }
-
-    #[test]
-    fn resolve_plugin_precedence_explicit_then_config_then_auto() {
-        let d = tempfile::tempdir().unwrap();
-        fs::write(d.path().join("pyproject.toml"), "").unwrap();
-        assert_eq!(
-            resolve_plugin(Some("rust"), Some("javascript"), d.path()).unwrap(),
-            "rust",
-            "explicit --plugin wins"
-        );
-        assert_eq!(
-            resolve_plugin(None, Some("rust"), d.path()).unwrap(),
-            "rust",
-            "config wins over auto-detect"
-        );
-        assert_eq!(
-            resolve_plugin(Some("auto"), None, d.path()).unwrap(),
-            "python",
-            "explicit auto -> detect"
-        );
-        assert_eq!(
-            resolve_plugin(None, None, d.path()).unwrap(),
-            "python",
-            "no plugin -> detect"
-        );
     }
 }

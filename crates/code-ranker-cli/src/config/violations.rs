@@ -250,6 +250,13 @@ mod tests {
     use crate::config::model::CycleRule;
     use code_ranker_graph::level_graph::CycleGroup;
 
+    /// The effective strict cycle rules (from the built-in `defaults.toml`) — the
+    /// trivial `RulesConfig::default()` is now an empty serde filler, so tests that
+    /// exercise the *shipped* default behaviour build it from `Config::default()`.
+    fn strict_rules() -> RulesConfig {
+        crate::config::model::Config::default().rules
+    }
+
     fn file_node(id: &str, attrs: &[(&str, AttrValue)]) -> Node {
         let mut n = Node {
             id: id.into(),
@@ -282,7 +289,7 @@ mod tests {
                 nodes: vec!["a".into(), "b".into(), "c".into()],
             }],
         );
-        let vs = check_violations(&graphs, &RulesConfig::default());
+        let vs = check_violations(&graphs, &strict_rules());
         assert_eq!(vs.len(), 1);
         assert_eq!(vs[0].rule, "cycle.chain");
         assert_eq!(vs[0].group, "CYC");
@@ -330,7 +337,7 @@ mod tests {
             ..Default::default()
         };
         let graphs = BTreeMap::from([("files".to_string(), level)]);
-        let vs = check_violations(&graphs, &RulesConfig::default());
+        let vs = check_violations(&graphs, &strict_rules());
         assert_eq!(vs.len(), 1);
         assert_eq!(vs[0].rule, "cycle.mutual");
         // First edge in the level's order whose endpoints are both in the cycle

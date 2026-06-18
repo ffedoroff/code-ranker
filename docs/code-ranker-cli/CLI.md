@@ -250,9 +250,37 @@ code-ranker report [input] [options]
 | `--preset <ID>` | worst-violating | Principle for the `prompt` / `scorecard` formats (`ADP`, `SRP`, `CPX`, …). When omitted, the principle with the most violations is chosen. See [Recommendations](#recommendations-scorecard--prompt). |
 | `--severity <tier>` | `auto` (prompt) · all (scorecard) | Threshold tier: `info`, `warning`, or `auto`. Repeatable for `scorecard` to show several tiers; for `prompt` it sizes the default `--top`. |
 | `--top <N>` | severity-tier size (prompt) · 15 (scorecard) | How many modules the `prompt` includes / rows the `scorecard` shows. `--top 1` = the single worst module. **For cycle presets (`ADP`) `--top` counts whole cycles, not modules** — `--top 1` (the default) prints one entire cycle (biggest `chain` first) with **all** its members; `--top 2`+ prints several separate cycles and is discouraged. |
+| `--export-full-config <PATH>` | — | Instead of analyzing, write the **full effective configuration** to `PATH` and exit. See [Inspecting the effective config](#inspecting-the-effective-config). |
 
 `--preset`, `--severity`, and `--top` apply only when a `prompt` or `scorecard` format is
 selected; passing them otherwise is an error.
+
+### Inspecting the effective config
+
+`--export-full-config <PATH>` dumps the configuration code-ranker would actually use —
+no analysis runs — as one TOML document with two top-level sections:
+
+- `[project]` — the merged project config: the built-in defaults (`config/defaults.toml`,
+  baked into the binary) **deep-merged** with the discovered / `--config` file. Shows
+  every effective `ignore` / `rules` / `output` / `levels` value, including the ones you
+  did not set (inherited from the defaults).
+- `[plugin]` — the active plugin's fully-merged language config (its inheritance chain
+  `defaults.toml ⊕ [base] ⊕ <lang>.toml`): presets, calibrated thresholds, node/edge
+  kinds, the metric-engine role tables, etc.
+
+It honours `--plugin` and `--config`, so you can preview any combination:
+
+```sh
+# what `report` would use here, with my overrides folded in
+code-ranker report . --config ci/strict.toml --export-full-config /tmp/full.toml
+
+# the full Python plugin config (presets, thresholds, vocab)
+code-ranker report . --plugin python --export-full-config /tmp/python.toml
+```
+
+It is a **diagnostic view** of every parameter you can override — because the two
+sections use different schemas (and `presets` differs between the project and plugin
+shapes), the file is not meant to be fed back as a single `--config`.
 
 ```sh
 # default: snapshot + viewer in .code-ranker/

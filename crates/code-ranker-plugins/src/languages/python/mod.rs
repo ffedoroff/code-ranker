@@ -19,10 +19,20 @@ mod structure;
 static CONFIG: LazyLock<toml::Table> =
     LazyLock::new(|| crate::config::load(include_str!("config.toml")));
 
+// Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
+// central list anywhere names a language.
+inventory::submit! {
+    code_ranker_plugin_api::plugin::PluginRegistration(&PythonPlugin)
+}
+
 /// The Python language plugin (registered by the CLI).
 pub struct PythonPlugin;
 
 impl LanguagePlugin for PythonPlugin {
+    fn config(&self) -> toml::Table {
+        CONFIG.clone()
+    }
+
     fn name(&self) -> &str {
         "python"
     }
@@ -99,7 +109,7 @@ impl LanguagePlugin for PythonPlugin {
     }
 
     fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        crate::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 
     fn metric_specs(

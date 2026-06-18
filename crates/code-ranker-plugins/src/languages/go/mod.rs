@@ -24,10 +24,20 @@ mod structure;
 static CONFIG: LazyLock<toml::Table> =
     LazyLock::new(|| crate::config::load(include_str!("config.toml")));
 
+// Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
+// central list anywhere names a language.
+inventory::submit! {
+    code_ranker_plugin_api::plugin::PluginRegistration(&GoPlugin)
+}
+
 /// The Go language plugin (registered by the CLI).
 pub struct GoPlugin;
 
 impl LanguagePlugin for GoPlugin {
+    fn config(&self) -> toml::Table {
+        CONFIG.clone()
+    }
+
     fn name(&self) -> &str {
         "go"
     }
@@ -90,7 +100,7 @@ impl LanguagePlugin for GoPlugin {
     }
 
     fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        crate::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 
     fn metric_specs(

@@ -308,8 +308,13 @@ the count, though the narrowed worst-file list still ranks by the metric.
 ## 2. Language config (`<lang>.toml`) — for plugin authors
 
 A language's `<lang>.toml` **inherits** the common `defaults.toml` and overrides
-only the diffs (node-kind vocabulary, presets, default thresholds, …). Two
-override mechanisms matter here.
+only the diffs (node-kind vocabulary, presets, default thresholds, …). A language
+that belongs to a **family** inherits an extra base layer in between — the chain is
+`defaults.toml ⊕ [base].toml ⊕ <lang>.toml` (via `config::load_chain`): JavaScript
+and TypeScript inherit `ecmascript/config.toml` (the shared engine vocab); C and C++
+inherit `cfamily/config.toml`. So `c/config.toml` / `cpp/config.toml` carry only what
+truly differs, and the shared bits live once in the base. Two override mechanisms
+matter here.
 
 ### 2.1 The list-override DSL
 

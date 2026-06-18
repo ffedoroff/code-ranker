@@ -20,14 +20,31 @@ mod dialect;
 
 use crate::languages::cfamily;
 
-static CONFIG: LazyLock<toml::Table> =
-    LazyLock::new(|| crate::config::load(include_str!("config.toml")));
+// Inheritance chain `defaults.toml ⊕ cfamily/config.toml ⊕ c/config.toml`: the
+// shared C-family base carries the `#include` graph vocab and the node-kind
+// entries identical for C and C++; `c/config.toml` adds only C specifics.
+static CONFIG: LazyLock<toml::Table> = LazyLock::new(|| {
+    crate::config::load_chain(&[
+        include_str!("../cfamily/config.toml"),
+        include_str!("config.toml"),
+    ])
+});
 static CFG: LazyLock<cfamily::Cfg> = LazyLock::new(|| cfamily::Cfg::from_config(&CONFIG));
+
+// Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
+// central list anywhere names a language.
+inventory::submit! {
+    code_ranker_plugin_api::plugin::PluginRegistration(&CPlugin)
+}
 
 /// The C language plugin (registered by the CLI).
 pub struct CPlugin;
 
 impl LanguagePlugin for CPlugin {
+    fn config(&self) -> toml::Table {
+        CONFIG.clone()
+    }
+
     fn name(&self) -> &str {
         "c"
     }
@@ -87,7 +104,7 @@ impl LanguagePlugin for CPlugin {
     }
 
     fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        crate::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 
     fn metric_specs(

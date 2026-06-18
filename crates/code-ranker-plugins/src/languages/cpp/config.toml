@@ -1,56 +1,31 @@
-# C++ language config — inherits `../defaults.toml` (see `../config.rs`).
-#
-# The dependency graph (the `#include` graph) is shared with C via `../cfamily/`;
-# this config supplies the node-kind tables the metric engine keys on.
+# C++ language config — inherits `../cfamily/config.toml` (which itself inherits
+# `../defaults.toml`); see `../config.rs`'s `load_chain`. The shared C-family
+# base supplies the `#include` graph vocab and the node-kind entries identical
+# for C and C++; this file carries only what is C++-specific.
 
 doc_lang = "cpp"
 
 # C++ sources/headers. `.h` is left to the C plugin to avoid a clash.
 # C/C++ have no universal manifest, so detection is by source-file presence
-# (see `cfamily::detect`) — no `detect_markers`.
+# (see `cfamily::detect`) — no `detect_markers`. `skip_dirs` / `test_dirs` are
+# shared and inherited from `../cfamily/config.toml`.
 extensions = ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "ipp"]
-skip_dirs = ["build", "cmake-build-debug", "node_modules"]
-
-test_dirs = ["test", "tests"]
 test_suffixes = ["_test.cpp", "_test.cc", "_test.cxx"]
 
-# The `#include` dependency-graph vocabulary the shared `cfamily` scan keys on.
-# The `#` and quote/bracket delimiters stay inline as single-char preprocessor
-# syntax; the multi-char include keyword is DATA.
-[structure]
-include_directive = "include"
-
+# `default` (a plain function) is inherited from cfamily; C++ adds `method`.
 [units]
 method = "method"
-default = "function"
-
-[fields]
-declarator = "declarator"
 
 [roles]
 # Functions, methods (both `function_definition`) and lambdas are spaces.
 space_kinds.named = ["function_definition", "lambda_expression"]
 # Cyclomatic decision points: if / loops (incl. range-for) / case arms / ?: /
-# catch clauses, plus short-circuit booleans.
+# catch clauses. (The short-circuit `&&`/`||` `branch_kinds.anon` are inherited.)
 branch_kinds.named = [
     "if_statement", "for_statement", "for_range_loop", "while_statement",
     "do_statement", "case_statement", "conditional_expression", "catch_clause",
 ]
-branch_kinds.anon = ["&&", "||"]
 exit_kinds.named = ["return_statement", "co_return_statement"]
-non_arg_kinds.anon = ["(", ")", ","]
-
-[roles.one]
-amp_amp = { kind = "&&", named = false }
-pipe_pipe = { kind = "||", named = false }
-
-[roles.group]
-# tree-sitter-cpp (like -c) declares TWO named `binary_expression` symbols (the
-# ordinary one and the preprocessor-context one used in `#if A && B`); both appear
-# in real trees, so cognitive's boolean-run detection must match the whole SET,
-# not a single id (a `[roles.one]` lookup would resolve to just one and silently
-# drop `&&`/`||` cognitive nesting in the other context).
-binary_expression.named = ["binary_expression"]
 
 # ── Halstead operators / operands ─────────────────────────────────────────────
 [halstead]
@@ -73,13 +48,12 @@ operands.named = [
 ]
 operands.anon = ["nullptr"]
 
-# ── LOC breakdown ─────────────────────────────────────────────────────────────
+# ── LOC breakdown (comment_kinds inherited from cfamily) ───────────────────────
 [loc]
 noop_kinds.named = [
     "translation_unit", "compound_statement", "string_literal", "raw_string_literal",
     "char_literal", "system_lib_string", "string_content",
 ]
-comment_kinds.named = ["comment"]
 statement_kinds.named = [
     "declaration", "field_declaration", "expression_statement", "if_statement",
     "for_statement", "for_range_loop", "while_statement", "do_statement",
@@ -93,11 +67,5 @@ statement_kinds.named = [
 [specs.eta1]
 description = "Distinct operators (η₁): the count of unique operator token kinds. C++ counts the C operators plus `::`, `new` / `delete`, `throw` / `try` / `catch`, and the keywords `class namespace template typename using virtual override explicit friend operator public private protected constexpr` (alongside the C control / type keywords and the preprocessor directives)."
 
-[specs.n1]
-description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
-
 [specs.eta2]
 description = "Distinct operands (η₂): the count of unique operand texts. C++ counts identifiers (incl. field / qualified / type identifiers), literals (number, char, string, raw-string), primitive type names, and `true` / `false` / `nullptr` / `this`."
-
-[specs.n2]
-description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

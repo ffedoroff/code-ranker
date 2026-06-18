@@ -29,9 +29,19 @@ use internal::GraphBuilder;
 use strip::{rust_file_metrics, strip_cfg_test};
 use toolchain::{rust_toolchain_roots, version_string};
 
+// Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
+// central list anywhere names a language.
+inventory::submit! {
+    code_ranker_plugin_api::plugin::PluginRegistration(&RustPlugin)
+}
+
 pub struct RustPlugin;
 
 impl LanguagePlugin for RustPlugin {
+    fn config(&self) -> toml::Table {
+        CONFIG.clone()
+    }
+
     fn name(&self) -> &str {
         "rust"
     }
@@ -123,7 +133,7 @@ impl LanguagePlugin for RustPlugin {
 
     fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
         // Rust's `[report]` patches: e.g. surface the `unsafe` column / stat.
-        crate::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 
     fn analyze(&self, workspace: &Path, _level: &str, input: &PluginInput) -> Result<Graph> {

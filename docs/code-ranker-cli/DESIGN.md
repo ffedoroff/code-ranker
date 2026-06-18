@@ -1,7 +1,8 @@
 # Technical Design — Code Ranker CLI (`code-ranker-cli`)
 
 The technical design of the `code-ranker` binary: the `code-ranker-cli` crate
-(orchestrator, plugin registry/dispatch, `check` linter, `report` artifact
+(orchestrator, plugin dispatch over the plugin-api self-registered registry,
+`check` linter, `report` artifact
 writer), the recommendation engine, the CLI API contracts, and the CLI
 reference & examples. This is a component slice of the technical design — for
 the architecture overview, principles, domain model, the plugin/extraction
@@ -47,10 +48,18 @@ The shared analysis core (`analyze_input`, used by both `check` and `report`)
 either reads an embedded snapshot (`.json`/`.html` input — `analyze_from_snapshot`,
 which rejects `--plugin`/`--ignore` since there is nothing to analyze) or
 analyzes a directory (`analyze_directory`, in `pipeline.rs`). For a directory it
-loads layered config (the `config/` module — code-ranker.toml / Cargo.toml
-metadata / CLI flags);
-resolves the plugin name (CLI `--plugin` → config `plugin` → marker
-auto-detect, all under `auto`); invokes the selected built-in plugin
+loads layered config (the `config/` module): the **built-in defaults** — the
+embedded `config/defaults.toml`, the single source of every default value — are
+**deep-merged** with the discovered project config (`code-ranker.toml` in cwd /
+target, or `Cargo.toml` `[*.metadata.code-ranker]`, or an explicit `--config`),
+then the inline `--config KEY=VALUE` and `--threshold`/`--cycle-rule` flag
+overrides on top. Merging reuses `code_ranker_plugin_api::toml_merge::deep_merge`
+(the same primitive the language plugins inherit config with — so a partial config
+inherits the rest, and op-table list overrides — `{add,remove,replace,clear,…}` —
+apply to arrays); `Config::default()` itself is just `defaults.toml` parsed, so no
+default value is hardcoded in Rust. It then
+resolves the plugin name (`plugin::resolve_plugin`: CLI `--plugin` → config
+`plugin` → marker auto-detect, all under `auto`); invokes the selected built-in plugin
 (`rust` / `python` / `javascript` / `typescript` / `go` / `c` / `cpp` / `csharp`
 / `markdown`) via `plugin::analyze`, getting
 a structural `api::Graph` + the plugin's `Level`s. It then runs the orchestrator

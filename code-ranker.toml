@@ -1,45 +1,30 @@
 # code-ranker.toml — project-level configuration for code-ranker.
 # Discovery order: --config PATH > ./code-ranker.toml > <target>/code-ranker.toml >
 # Cargo.toml [workspace.metadata.code-ranker]. CLI flags always win over the file.
+#
+# This file is DEEP-MERGED on top of the binary's built-in defaults
+# (crates/code-ranker-cli/src/config/defaults.toml), so it spells out ONLY what
+# this project overrides — every unset key inherits the built-in default (e.g.
+# `[ignore]` tests/gitignore on, `[rules.cycles]` strict). CLI flags still win.
 
 # Default plugin; overridden by --plugin. `auto` (or unset) → marker detection.
 plugin = "rust"
 
 # ── Output artifacts (`report`) ──────────────────────────────────────────────
-# One section per format. `path` is a filename template; `enabled` forces the
-# format on/off. A `--output.<fmt>.path` flag overrides `path`. Placeholders:
-# {project-dir}, {ts}, {git-hash}, {git-hash-N} (first N chars of the commit).
-# Built-in defaults if unset: .code-ranker/{ts}-{git-hash-3}.{json,html}.
+# Override only the path template (the built-in default is
+# `.code-ranker/{ts}-{git-hash-3}.{json,html}`); `enabled` and the sarif/codequality
+# formats keep their built-in defaults. Placeholders: {project-dir}, {ts},
+# {git-hash}, {git-hash-N}.
 [output.json]
-# path = ".code-ranker/{project-dir}-{ts}.json"
 path = ".code-ranker/{project-dir}.json"
-# enabled = true
 
 [output.html]
-# path = ".code-ranker/{project-dir}-{ts}.html"
 path = ".code-ranker/{project-dir}.html"
-# enabled = true
-
-# ── Ignore filters (applied before cycles/metrics) ───────────────────────────
-[ignore]
-# Glob patterns (repo-relative) to drop from the graph.
-paths = []
-# Skip the language's test files (the plugin decides what counts as a test:
-# Rust `#[cfg(test)]` modules, Python `test_*.py`/`tests/`, JS/TS `*.test.*` …).
-# On by default — metrics and cycles describe production code. Set false to keep.
-tests = true
-# Strip crates that appear only in [dev-dependencies].
-dev_only_crates = false
 
 # ── Gate rules (`check`) ─────────────────────────────────────────────────────
-# Cycle checks per kind: on/off, or an integer budget (max allowed; the N+1-th
-# fails). `false` = disabled, `true`/0 = strict, `7` = allow up to 7.
-[rules.cycles]
-mutual = true
-chain = true
-
 # Per-file metric thresholds (the `file` scope is the only one). Values accept
 # `_` separators and K/M/G suffixes (e.g. 1_500, 5K, 1.5M). Unset = no limit.
+# (Cycle checks — `[rules.cycles]` — inherit the built-in strict defaults.)
 #
 # `hk` accommodates two legitimate *architectural hubs* that Henry–Kafura
 # (`sloc × (fan_in × fan_out)²`) over-penalises because it is quadratic in

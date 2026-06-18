@@ -302,7 +302,9 @@ version = "3.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "chrono",
+ "inventory",
  "serde",
+ "toml",
 ]
 
 [[package]]
@@ -314,6 +316,7 @@ dependencies = [
  "code-ranker-graph",
  "code-ranker-plugin-api",
  "ignore",
+ "inventory",
  "proc-macro2",
  "serde",
  "syn",
@@ -539,6 +542,15 @@ dependencies = [
  "hashbrown 0.17.1",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "inventory"
+version = "0.3.24"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4f0c30c76f2f4ccee3fe55a2435f691ca00c0e4bd87abe4f4a851b1d4dac39b"
+dependencies = [
+ "rustversion",
 ]
 
 [[package]]

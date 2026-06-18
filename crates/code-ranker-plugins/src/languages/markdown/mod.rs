@@ -21,10 +21,20 @@ mod structure;
 static CONFIG: LazyLock<toml::Table> =
     LazyLock::new(|| crate::config::load(include_str!("config.toml")));
 
+// Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
+// central list anywhere names a language.
+inventory::submit! {
+    code_ranker_plugin_api::plugin::PluginRegistration(&MarkdownPlugin)
+}
+
 /// The Markdown language plugin (registered by the CLI).
 pub struct MarkdownPlugin;
 
 impl LanguagePlugin for MarkdownPlugin {
+    fn config(&self) -> toml::Table {
+        CONFIG.clone()
+    }
+
     fn name(&self) -> &str {
         "markdown"
     }
@@ -60,7 +70,7 @@ impl LanguagePlugin for MarkdownPlugin {
     }
 
     fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        crate::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(&CONFIG)
     }
 }
 

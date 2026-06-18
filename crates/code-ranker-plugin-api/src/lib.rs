@@ -36,11 +36,13 @@ pub mod attrs;
 pub mod edge;
 pub mod graph;
 pub mod level;
+pub mod list_override;
 pub mod log;
 pub mod metrics;
 pub mod node;
 pub mod plugin;
 pub mod report;
+pub mod toml_merge;
 
 pub use attrs::{AttrValue, Attributes, ValueType};
 pub use edge::Edge;

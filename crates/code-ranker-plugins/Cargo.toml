@@ -23,6 +23,9 @@ which = { workspace = true }
 # (`<lang>.toml` inheriting `defaults.toml`); parsed via serde + toml.
 serde = { workspace = true }
 toml = { workspace = true }
+# Each language plugin self-registers via `inventory::submit!` (collected by
+# `code_ranker_plugin_api::registry`).
+inventory = { workspace = true }
 # One version of each tree-sitter grammar across the workspace.
 tree-sitter = { workspace = true }
 tree-sitter-rust = { workspace = true }

@@ -100,19 +100,14 @@ pub fn ecmascript_metrics(
 /// default; emitted only when `[levels] functions` is on). Declares per-language
 /// unit kinds; metric attribute specs are merged centrally by the orchestrator.
 ///
-/// `cfg` is the caller's merged config. The shared `function` / `method` kinds
-/// come from its `[node_kinds]` (inherited from `defaults.toml`); the
-/// ECMAScript-only `arrow` / `generator` kinds are read from THIS shared module's
-/// own `ecmascript/config.toml` `[node_kinds]` (via [`cfg::CONFIG`]) — kept there,
-/// the single home for ECMAScript vocab, so they are not copy-pasted into both
-/// `javascript/config.toml` and `typescript/config.toml`, nor leaked into the
-/// non-ECMAScript languages' configs via `defaults.toml`.
+/// `cfg` is the caller's merged config. The JS / TS plugins build it as the
+/// inheritance chain `defaults.toml ⊕ ecmascript/config.toml ⊕ <lang>.toml`
+/// (via `config::load_chain`), so its `[node_kinds]` already carries both the
+/// cross-language `function` / `method` (from `defaults.toml`) and the
+/// ECMAScript-only `arrow` / `generator` (from `ecmascript/config.toml`, the
+/// single home for ECMAScript vocab). No imperative merge needed here.
 pub fn ecmascript_functions_level(cfg: &toml::Table) -> Level {
-    let mut node_kinds = crate::config::node_kinds(cfg);
-    // arrow / generator are ECMAScript-only; pull just those from the shared
-    // ecmascript config (its [node_kinds] also re-lists the inherited
-    // function/method, which simply overwrite identical entries — a no-op).
-    node_kinds.extend(crate::config::node_kinds(&cfg::CONFIG));
+    let node_kinds = crate::config::node_kinds(cfg);
     Level {
         name: "functions".to_string(),
         edge_kinds: BTreeMap::new(),

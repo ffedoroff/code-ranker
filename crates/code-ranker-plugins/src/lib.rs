@@ -8,7 +8,6 @@
 pub mod config;
 pub mod engine;
 pub mod languages;
-pub mod list_override;
 pub mod walk;
 
 /// Test-only helpers shared across the per-language tests (reachable as
@@ -25,3 +24,8 @@ pub use languages::markdown::MarkdownPlugin;
 pub use languages::python::PythonPlugin;
 pub use languages::rust::RustPlugin;
 pub use languages::typescript::TypescriptPlugin;
+
+// Each plugin self-registers via `inventory::submit!` in its module; consumers get
+// the full set through `code_ranker_plugin_api::registry()` and a plugin's merged
+// config via `LanguagePlugin::config()`. No name→config map and no central list
+// here — adding a language is a self-contained module change.

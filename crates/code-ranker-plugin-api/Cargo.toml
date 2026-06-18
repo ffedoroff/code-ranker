@@ -15,3 +15,9 @@ description = "Code Ranker plugin contract: the generic entity/relation model + 
 anyhow = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
+# The merged plugin config is surfaced as a `toml::Table` (`LanguagePlugin::config`);
+# `inventory` powers the self-registering plugin registry (`registry()`). Both are
+# third-party crates — the "foundation" rule forbids depending on other code-ranker
+# crates, not external ones.
+toml = { workspace = true }
+inventory = { workspace = true }

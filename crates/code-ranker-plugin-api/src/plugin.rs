@@ -9,8 +9,9 @@
 //! dispatcher; but the *writing* (tier-2 derivation + node enrichment) and the
 //! language-agnostic derived data (cycles, Henry-Kafura, stats) are filled
 //! centrally by the orchestrator, so a plugin needs no dependency on the
-//! graph/enrichment crate. The CLI holds the registry of plugins; it talks to them
-//! ONLY through this trait and never names a concrete language.
+//! graph/enrichment crate. Plugins SELF-REGISTER via [`inventory::submit!`] into
+//! [`registry`]; the CLI works only with that array through this trait and never
+//! names a concrete language.
 
 use crate::graph::Graph;
 use crate::level::{AttributeSpec, Level, Thresholds};
@@ -84,10 +85,18 @@ pub struct Preset {
     pub connections: Vec<String>,
 }
 
-pub trait LanguagePlugin {
+pub trait LanguagePlugin: Sync {
     /// Canonical name, e.g. `"rust"`. Used by `--plugin` and recorded in the
     /// snapshot. Each plugin has exactly one name (js and ts are separate).
     fn name(&self) -> &str;
+
+    /// The plugin's fully-merged config table (its inheritance chain
+    /// `defaults.toml ⊕ [base] ⊕ <lang>.toml`). Surfaced for `--export-full-config`
+    /// so a user can inspect every effective parameter. Default: empty (a stub /
+    /// test plugin with no config file).
+    fn config(&self) -> toml::Table {
+        toml::Table::new()
+    }
 
     /// Can this plugin parse `workspace` (honoring `input`)?
     fn detect(&self, workspace: &Path, input: &PluginInput) -> bool;
@@ -190,6 +199,26 @@ pub trait LanguagePlugin {
     }
 }
 
+/// A self-registered language plugin. Each plugin in the plugins crate submits one
+/// via [`inventory::submit!`]; the binary's registry is assembled by the linker, so
+/// NO central code lists the plugins and no caller (the CLI) ever names a language.
+/// Plugins are zero-sized unit structs, so a `&'static` reference is free.
+pub struct PluginRegistration(pub &'static dyn LanguagePlugin);
+
+inventory::collect!(PluginRegistration);
+
+/// Every self-registered language plugin. The CLI works only through this array
+/// and the [`LanguagePlugin`] trait — it never names a concrete language.
+///
+/// Order is link order and is NOT significant: auto-detection treats multiple
+/// matches as an error (it never picks by position), and any user-facing listing
+/// sorts by [`LanguagePlugin::name`].
+pub fn registry() -> Vec<&'static dyn LanguagePlugin> {
+    inventory::iter::<PluginRegistration>()
+        .map(|entry| entry.0)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,6 +272,9 @@ mod tests {
         assert!(p.versions(ws, &input).is_empty(), "default: no versions");
         assert!(p.roots(ws).is_empty(), "default: no roots");
         assert!(p.thresholds().is_empty(), "default: no thresholds");
+
+        // config defaults to an empty table (a stub with no config file).
+        assert!(p.config().is_empty(), "default: empty config table");
 
         // presets defaults to none; metric_specs defaults to pass-through.
         assert!(p.presets(&input).is_empty());

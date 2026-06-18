@@ -194,5 +194,12 @@ pub(crate) enum Command {
         /// Rejected: use `--top N` instead (`--top 1` = the single worst module).
         #[arg(long, value_name = "K")]
         index: Option<usize>,
+
+        /// Instead of analyzing, write the full effective configuration to this
+        /// path and exit: `[project]` (built-in defaults ⊕ `--config`) + `[plugin]`
+        /// (the merged language config for `--plugin`). A diagnostic view of every
+        /// parameter you can override.
+        #[arg(long = "export-full-config", value_name = "PATH")]
+        export_full_config: Option<PathBuf>,
     },
 }
