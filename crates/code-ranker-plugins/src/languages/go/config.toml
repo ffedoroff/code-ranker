@@ -1,0 +1,114 @@
+# Go language config — inherits `../defaults.toml` (see `../config.rs`).
+#
+# Everything language-specific for Go that *can* be data lives here, so `mod.rs`
+# stays thin (wiring only) and the metric engine is parameterised by the node-kind
+# tables below. Go adds NO presets/thresholds/spec-overrides of its own beyond the
+# Halstead token descriptions; it inherits the common catalog from `defaults.toml`.
+
+# Principle-corpus language for doc links (`doc_base` inherited from defaults).
+doc_lang = "go"
+
+# File-collection extensions, project-detect markers, and walk skip-dirs — DATA.
+extensions = ["go"]
+detect_markers = ["go.mod"]
+skip_dirs = ["vendor", "testdata", "node_modules"]
+
+# Test-path conventions — DATA (the predicate LOGIC stays in `structure.rs`).
+# `test_suffixes` match the filename via `ends_with`; `test_dirs` match a path
+# component exactly.
+test_dirs = ["testdata"]
+test_suffixes = ["_test.go"]
+
+# Function-unit `kind` id strings the dialect's `fn_kind` emits (`method` for a
+# method_declaration, `function` otherwise). The display specs are inherited.
+[units]
+method = "method"
+default = "function"
+
+# Import / dependency-graph tree-sitter NODE-KIND strings the structure builder
+# keys on. The walk LOGIC stays in Rust; which kinds it matches is data.
+[structure]
+import_declaration = "import_declaration"
+import_spec = "import_spec"
+interpreted_string_literal = "interpreted_string_literal"
+
+# tree-sitter field-name API navigation (`child_by_field_name`).
+[fields]
+alternative = "alternative"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Node-kind tables for the generic metric engine (`crate::engine`). The walk logic
+# stays in Rust; which tree-sitter `kind` strings fill each ROLE is data here.
+# ──────────────────────────────────────────────────────────────────────────────
+
+[roles]
+# Space-creating units (+1 McCabe base path each).
+space_kinds.named = ["function_declaration", "method_declaration", "func_literal"]
+# Cyclomatic decision points: if / for / each switch-or-select case arm, plus the
+# short-circuit boolean operators. The switch/select nodes themselves are not
+# counted — only their case arms are.
+branch_kinds.named = ["if_statement", "for_statement", "expression_case", "type_case", "communication_case"]
+branch_kinds.anon = ["&&", "||"]
+# Value-returning exits.
+exit_kinds.named = ["return_statement"]
+# Punctuation children of a `parameters` node that don't count as args.
+non_arg_kinds.anon = ["(", ")", ","]
+
+# Singleton ids the dialect references directly. Identity-named kinds
+# (if_statement, for_statement, …) need no entry — only anon tokens are spelled.
+[roles.one]
+kw_else = { kind = "else", named = false }
+amp_amp = { kind = "&&", named = false }
+pipe_pipe = { kind = "||", named = false }
+
+# ── Halstead operators / operands ─────────────────────────────────────────────
+[halstead]
+operators.anon = [
+    "(", "{", "[", ",", ".", ";", ":", "+", "-", "*", "/", "%", "++", "--",
+    "+=", "-=", "*=", "/=", "%=", "=", ":=", "==", "!=", "<", ">", "<=", ">=",
+    "&&", "||", "!", "&", "|", "^", "<<", ">>", "&^", "&=", "|=", "^=", "<<=",
+    ">>=", "&^=", "<-", "...", "~", "break", "case", "chan", "const", "continue",
+    "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if",
+    "import", "interface", "map", "package", "range", "return", "select",
+    "struct", "switch", "type", "var",
+]
+operands.named = [
+    "identifier", "field_identifier", "package_identifier", "type_identifier",
+    "label_name", "blank_identifier", "int_literal", "float_literal",
+    "imaginary_literal", "rune_literal", "interpreted_string_literal",
+    "raw_string_literal", "true", "false", "nil", "iota",
+]
+
+# ── LOC breakdown ─────────────────────────────────────────────────────────────
+[loc]
+noop_kinds.named = [
+    "source_file", "block", "interpreted_string_literal", "raw_string_literal",
+    "interpreted_string_literal_content", "raw_string_literal_content",
+]
+comment_kinds.named = ["comment"]
+statement_kinds.named = [
+    "import_declaration", "const_declaration", "var_declaration", "type_declaration",
+    "expression_statement", "assignment_statement", "short_var_declaration",
+    "inc_statement", "dec_statement", "send_statement", "return_statement",
+    "go_statement", "defer_statement", "if_statement", "for_statement",
+    "expression_switch_statement", "type_switch_statement", "select_statement",
+    "labeled_statement", "break_statement", "continue_statement", "goto_statement",
+    "fallthrough_statement", "empty_statement",
+]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Halstead base counts — the exact Go operator/operand tokens counted (from the
+# `[halstead]` table above). Keep in lock-step with that table.
+# ──────────────────────────────────────────────────────────────────────────────
+
+[specs.eta1]
+description = "Distinct operators (η₁): the count of unique operator token kinds. Go counts punctuation & delimiters (`( { [ , . ; :`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % ++ -- == != < > <= >= && || ! & | ^ << >> &^ = := += -= *= /= %= &= |= ^= <<= >>= &^=`), the channel / variadic / unary tokens (`<- ... ~`), and the keywords `break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var`."
+
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.eta2]
+description = "Distinct operands (η₂): the count of unique operand texts. Go counts identifiers (incl. field / package / type identifiers, labels and the blank `_`), literals (int, float, imaginary, rune, interpreted- and raw-string), and the predeclared `true` / `false` / `nil` / `iota`."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

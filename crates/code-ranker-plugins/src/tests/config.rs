@@ -1,4 +1,5 @@
 use super::*;
+use toml::{Table, Value};
 
 /// Deep-merge recurses into tables and lets the overlay win per key.
 #[test]
@@ -392,4 +393,13 @@ fn deep_merge_patches_inherited_lists_via_op_table() {
         "op-table mutates in place"
     );
     assert_eq!(strs(&merged["ys"]), ["replaced"], "plain array replaces");
+}
+
+/// `presets` merges by id only array-vs-array; a non-array overlay replaces it.
+#[test]
+fn presets_replaced_by_non_array_overlay() {
+    let base: Table = "presets = [{ id = \"a\" }]\n".parse().unwrap();
+    let overlay: Table = "presets = \"none\"\n".parse().unwrap();
+    let merged = deep_merge(base, overlay);
+    assert_eq!(merged["presets"].as_str(), Some("none"));
 }

@@ -142,7 +142,7 @@ flowchart TD
 | Plugin — Application | Dispatch language plugins, assemble the snapshot | `code-ranker-cli` (Rust) |
 | Plugin — Domain | Generic graph model + operations (cycles/hk/stats/snapshot) | `code-ranker-plugin-api`, `code-ranker-graph`, `serde` (Rust) |
 | Plugin — Contract | The `LanguagePlugin` trait every language plugin implements; the CLI works only against it | `code-ranker-plugin-api` (Rust) |
-| Plugin — Infrastructure | Per-language analysis (one module each in `code-ranker-plugins`, behind the trait; JS/TS share the `ecmascript` module as peers) on a shared metric layer (`code-ranker-graph`) | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`ecmascript` modules), `code-ranker-graph`, `syn`, `tree-sitter` (Rust) |
+| Plugin — Infrastructure | Per-language analysis (one module each in `code-ranker-plugins`, behind the trait; JS/TS share the `ecmascript` module and C/C++ the `cfamily` module as peers) on a shared metric layer (`code-ranker-graph`) | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules, + shared `ecmascript`/`cfamily`), `code-ranker-graph`, `syn`, `tree-sitter` (Rust) |
 | Check | Analyze (or read) input, evaluate rules and (with `--baseline`) regressions, print diagnostics, exit non-zero on violation | `code-ranker-cli` (Rust) |
 | Report | Analyze (or read) input, write snapshot JSON + offline HTML viewer (a diff with `--baseline`) | `code-ranker-cli` + `code-ranker-viewer` (Rust), Graphviz WASM bundled in binary, assets embedded via `include_str!` |
 
@@ -746,11 +746,11 @@ See [§3.7 Plugin System](#37-plugin-system).
 | Consumer | Dependency | Interface |
 |----------|------------|-----------|
 | `code-ranker-cli` | `code-ranker-plugin-api` | `LanguagePlugin` trait — the only contract the CLI uses to talk to plugins |
-| `code-ranker-cli` | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript` modules) | one `Box<dyn LanguagePlugin>` each, listed in `plugin::registry()` |
+| `code-ranker-cli` | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | one `Box<dyn LanguagePlugin>` each, listed in `plugin::registry()` |
 | `code-ranker-cli` | `code-ranker-graph` | `Snapshot`/`LevelGraph`, `annotate_cycles`/`annotate_hk`/`compute_stats`, `relativize_graph`, `finalize_graph`, `coupling_specs`, `metric_specs()` (the metric attribute catalog), canonical serialization |
 | `code-ranker-cli` | `code-ranker-viewer` | `render_html_viewer()`, `extract_embedded_snapshot()` |
-| `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript` modules) | `code-ranker-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/metrics/is_test_path/versions/roots/metric_specs); generic `detect_with_marker` |
-| `code-ranker-plugins` (`rust`/`python`/`ecmascript` modules) | `code-ranker-graph` | `MetricInputs` + `write_metrics` (the neutral metric scaffolding); all measure tier-1 counts via the **one shared generic engine** (`src/engine/`), parameterized by each language's `Dialect` + `config.toml` |
+| `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | `code-ranker-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/metrics/is_test_path/versions/roots/metric_specs); generic `detect_with_marker` |
+| `code-ranker-plugins` (`rust`/`python`/`ecmascript`/`go`/`cfamily`/`csharp` modules) | `code-ranker-graph` | `MetricInputs` + `write_metrics` (the neutral metric scaffolding); all measure tier-1 counts via the **one shared generic engine** (`src/engine/`), parameterized by each language's `Dialect` + `config.toml` |
 | `code-ranker-plugins` (`javascript`/`typescript` modules) | `code-ranker-plugins` (`ecmascript` module) | shared ECMAScript walker/resolver + ECMAScript `Dialect` + `ecmascript_level` + `ecmascript_metrics`; each injects its own grammar. **Neither plugin depends on the other.** |
 | `code-ranker-graph` | `code-ranker-plugin-api` | the generic model it operates on; the metric scaffolding (modules `metrics` + `builtin`) builds `MetricInputs`/`metric_specs` on its `AttributeSpec` / `AttrValue` types |
 | `code-ranker-viewer` | `code-ranker-graph` | `Snapshot`, `to_canonical_string` |
@@ -811,7 +811,7 @@ See [§3.7 Plugin System](#37-plugin-system).
 |------------|-----------|---------|
 | `cargo_metadata` crate | `MetadataCommand::exec()` | Enumerate workspace crates and path-dependencies |
 | `syn` crate | `syn::parse_file`, `syn::visit::Visit` | Parse Rust source for module hierarchy and `use` statements |
-| `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript`) | `Parser::parse`, `Node` cursor walks | Parse source for the shared generic tier-1 metric engine (`code-ranker-plugins/src/engine/`, parameterized per language by a `Dialect`) and the JS/TS/Python plugins' graph extraction. One version of each grammar workspace-wide (`grammar_single_version` guard) |
+| `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript` / `-go` / `-c` / `-cpp` / `-c-sharp`) | `Parser::parse`, `Node` cursor walks | Parse source for the shared generic tier-1 metric engine (`code-ranker-plugins/src/engine/`, parameterized per language by a `Dialect`) and the Python / JS / TS / Go / C# plugins' graph extraction (C/C++ recover the `#include` graph by text scan, using the grammar only for metrics; Markdown is grammar-free). One version of each grammar workspace-wide (`grammar_single_version` guard) |
 | `serde` + `serde_json` | derive macros, `to_writer_pretty` | JSON serialization |
 | `clap` | derive macros | CLI argument parsing |
 | Python stdlib | `json`, `pathlib`, `argparse` | JSON processing, file I/O, CLI parsing in Python tools |
@@ -1206,7 +1206,7 @@ code-ranker/
   crates/
     code-ranker-graph/             # Rust — graph types, JSON schema, StageTime, cycles/hk/stats + language-neutral metric scaffolding (write_metrics, metric_specs; metrics/builtin.toml catalog)
     code-ranker-plugin-api/        # Rust — the LanguagePlugin trait + detect_with_marker + the MetricInputs/FunctionUnit metric contract (plugin contract)
-    code-ranker-plugins/           # Rust — all language plugins: languages/{rust,python,javascript,typescript} (+ shared languages/ecmascript) over one generic engine/ (tree-sitter metric walker); src/config.rs + src/defaults.toml; #[cfg(test)] test_support helpers
+    code-ranker-plugins/           # Rust — all language plugins: languages/{rust,python,javascript,typescript,go,c,cpp,csharp,markdown} (+ shared languages/ecmascript & languages/cfamily) over one generic engine/ (tree-sitter metric walker); src/config/ (parse/views/specs/lookup facade) + src/defaults.toml; #[cfg(test)] test_support helpers
     code-ranker-viewer/            # Rust — HTML viewer: assets + render_html_viewer
     code-ranker-cli/               # Rust — orchestrator, plugin registry/dispatch, check linter, report
       src/

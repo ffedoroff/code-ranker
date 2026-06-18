@@ -80,3 +80,53 @@ pub fn has_child_kind(node: Node, kind: u16) -> bool {
     let mut cursor = node.walk();
     node.children(&mut cursor).any(|c| c.kind_id() == kind)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn add_cloc_lines_covers_every_branch() {
+        // Comment on a code line, single row → counted as a code-comment.
+        let mut st = LocState::default();
+        st.lines.insert(5);
+        add_cloc_lines(&mut st, 5, 5);
+        assert_eq!((st.code_comment, st.only_comment), (1, 0));
+
+        // Comment starting on a code line but spanning extra rows → code-comment
+        // for the first row + only-comment for the spilled rows.
+        let mut st = LocState::default();
+        st.lines.insert(2);
+        add_cloc_lines(&mut st, 2, 4);
+        assert_eq!((st.code_comment, st.only_comment), (1, 2));
+
+        // Independent (not on a code line) comment block → all only-comment, and
+        // its end row is remembered for `check_comment_ends_on_code_line`.
+        let mut st = LocState::default();
+        add_cloc_lines(&mut st, 10, 12);
+        assert_eq!((st.code_comment, st.only_comment), (0, 3));
+        assert_eq!(st.comment_line_end, Some(12));
+    }
+
+    #[test]
+    fn check_comment_ends_on_code_line_reclassifies() {
+        // A comment block ended on row 7; code then starts on row 7 (not already a
+        // code line) → the last comment row is reclassified as a code-comment.
+        let mut st = LocState {
+            only_comment: 3,
+            comment_line_end: Some(7),
+            ..Default::default()
+        };
+        check_comment_ends_on_code_line(&mut st, 7);
+        assert_eq!((st.only_comment, st.code_comment), (2, 1));
+
+        // No match (different row) → unchanged.
+        let mut st = LocState {
+            only_comment: 3,
+            comment_line_end: Some(7),
+            ..Default::default()
+        };
+        check_comment_ends_on_code_line(&mut st, 9);
+        assert_eq!((st.only_comment, st.code_comment), (3, 0));
+    }
+}

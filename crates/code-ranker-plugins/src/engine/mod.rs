@@ -74,11 +74,9 @@ fn collect_functions<D: Dialect>(
 ) {
     if d.is_function_unit(node) {
         let inputs = measure(node, src, d, 0);
-        let name = node
-            .child_by_field_name("name")
-            .and_then(|n| n.utf8_text(src).ok())
-            .unwrap_or("<anonymous>")
-            .to_string();
+        let name = d
+            .unit_name(node, src)
+            .unwrap_or_else(|| "<anonymous>".to_string());
         out.push(FunctionUnit {
             kind: d.fn_kind(node).to_string(),
             name,

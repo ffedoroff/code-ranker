@@ -4,7 +4,7 @@
 //! `branch_kinds`, `exit_kinds`) and defers function/closure classification
 //! (args + the closures/functions split) and any extra exits to the [`Dialect`].
 
-use super::core::{Dialect, UnitKind, count_args};
+use super::core::{Dialect, UnitKind};
 use tree_sitter::Node;
 
 #[derive(Default)]
@@ -27,11 +27,11 @@ pub fn walk<D: Dialect>(node: Node, d: &D, c: &mut Counts) {
     match d.classify_unit(node) {
         Some(UnitKind::Func) => {
             c.functions += 1;
-            c.args += count_args(node, r);
+            c.args += d.args(node);
         }
         Some(UnitKind::Closure) => {
             c.closures += 1;
-            c.args += count_args(node, r);
+            c.args += d.args(node);
         }
         None => {}
     }

@@ -47,14 +47,20 @@ depends on the runtime*:
 
 ## Already wired in this workspace
 
-These four sum to ≈ 4.6 MB of the 16.5 MB release binary (≈ 28%).
-
 | Language | Crate | Version | Released | ≈ Binary |
 |---|---|---|---|---|
 | TypeScript | `tree-sitter-typescript` | 0.23.2 | 2024-11-11 | 2.7 MB |
 | Rust | `tree-sitter-rust` | 0.24.2 | 2026-03-27 | 1.1 MB |
 | Python | `tree-sitter-python` | 0.25.0 | 2025-09-11 | 440 KB |
 | JavaScript | `tree-sitter-javascript` | 0.25.0 | 2025-09-01 | 400 KB |
+| Go | `tree-sitter-go` | 0.25.0 | 2025-08-29 | 210 KB |
+| C | `tree-sitter-c` † | 0.24.2 | 2026-04-22 | 630 KB |
+| C++ | `tree-sitter-cpp` † | 0.23.4 | 2024-11-11 | 3.28 MB |
+| C# | `tree-sitter-c-sharp` † | 0.23.5 | 2026-04-14 | 5.12 MB |
+
+**Markdown** is also analyzed (its `loc` + inter-document link graph), but as
+*documentation*, not code — it has no Halstead/complexity metrics and uses a plain
+link text-scan, so it needs **no tree-sitter grammar**.
 
 ## Available grammars
 
@@ -63,9 +69,6 @@ These four sum to ≈ 4.6 MB of the 16.5 MB release binary (≈ 28%).
 | Ada | `tree-sitter-ada` | 0.1.0 | 2025-10-12 | 300 KB |
 | Assembly | `tree-sitter-asm` | 0.24.0 | 2025-02-06 | 20 KB |
 | Bash | `tree-sitter-bash` † | 0.25.1 | 2025-12-02 | 1.31 MB ★ |
-| C | `tree-sitter-c` † | 0.24.2 | 2026-04-22 | 630 KB ★ |
-| C# | `tree-sitter-c-sharp` † | 0.23.5 | 2026-04-14 | 5.12 MB ★ |
-| C++ | `tree-sitter-cpp` † | 0.23.4 | 2024-11-11 | 3.28 MB ★ |
 | Clojure | `tree-sitter-clojure` | 0.1.0 | 2025-07-07 | 85 KB |
 | CMake | `tree-sitter-cmake` | 0.7.1 | 2025-05-25 | 70 KB |
 | CSS | `tree-sitter-css` † | 0.25.0 | 2025-09-28 | 125 KB |
@@ -76,7 +79,6 @@ These four sum to ≈ 4.6 MB of the 16.5 MB release binary (≈ 28%).
 | Erlang | `tree-sitter-erlang` | 0.19.0 | 2026-06-04 | 436 KB ★ |
 | Fortran | `tree-sitter-fortran` | 0.6.0 | 2026-04-24 | 6.3 MB |
 | GLSL | `tree-sitter-glsl` | 0.2.0 | 2025-03-16 | 820 KB |
-| Go | `tree-sitter-go` † | 0.25.0 | 2025-08-29 | 210 KB ★ |
 | GraphQL | `tree-sitter-graphql` | 0.1.0 | 2025-04-30 | 55 KB |
 | Groovy | `tree-sitter-groovy` | 0.1.2 | 2024-11-19 | 950 KB |
 | Haskell | `tree-sitter-haskell` | 0.23.1 | 2024-11-10 | 3.6 MB |

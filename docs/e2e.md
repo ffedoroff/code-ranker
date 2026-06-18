@@ -1,6 +1,6 @@
 # e2e fixtures & golden snapshots
 
-Four tiny projects (one per language) exercise the `code-ranker` analyzer in the
+Nine tiny projects (one per language) exercise the `code-ranker` analyzer in the
 **files** level of the generic graph model: nodes of `kind` `"file"` /
 `"external"`, connected by `uses` (flow) and `reexports` / `contains` / `super`
 (non-flow, structural) edges — the last being the Rust `use super::*` /
@@ -14,6 +14,11 @@ crates/code-ranker-plugins/src/rust/tests/sample/
 crates/code-ranker-plugins/src/python/tests/sample/
 crates/code-ranker-plugins/src/javascript/tests/sample/
 crates/code-ranker-plugins/src/typescript/tests/sample/
+crates/code-ranker-plugins/src/go/tests/sample/
+crates/code-ranker-plugins/src/c/tests/sample/
+crates/code-ranker-plugins/src/cpp/tests/sample/
+crates/code-ranker-plugins/src/csharp/tests/sample/
+crates/code-ranker-plugins/src/markdown/tests/sample/
 ```
 
 Each project deliberately contains **both the dependency forms we DO detect and
@@ -60,7 +65,7 @@ one** golden. Known gaps the fixtures cannot fill (the construct is present in e
 
 | metric | not emitted for | why |
 |---|---|---|
-| `tloc` | Python, JavaScript, TypeScript | only the Rust analysis strips `#[cfg(test)]` items |
+| `tloc` | Python, JavaScript, TypeScript, Go | only the Rust analysis strips `#[cfg(test)]` items |
 | `items`, `unsafe` | non-Rust | emitted only by the Rust plugin (not in the central catalog) |
 
 This per-language scope is enforced by the `every_central_metric_is_exercised_per_language`
@@ -73,7 +78,8 @@ appears with a non-zero value on at least one file** (Rust covers all 26; the
 others cover all minus the rows above). Verified by iterating each committed
 golden, not by spot-check.
 
-`cyclomatic` / `cognitive` are computed for all four languages.
+`cyclomatic` / `cognitive` are computed for all eight code languages (every
+language but Markdown, which is documentation and has no complexity engine).
 
 ## One grammar version per language
 
@@ -81,7 +87,7 @@ A plugin parses each file for structure and the metric engine measures the same
 file; both must use the **same** tree-sitter grammar, or one run could parse a
 file two different ways (the version-skew class of bug). The whole workspace
 therefore pins exactly **one** version of each grammar (`tree-sitter` core plus
-`tree-sitter-{rust,python,javascript,typescript}`), shared by the plugins and the
+`tree-sitter-{rust,python,javascript,typescript,go}`), shared by the plugins and the
 in-tree metric engines. The `grammar_single_version` test
 (`crates/code-ranker-cli/tests/grammar_single_version.rs`) reads `Cargo.lock` and
 fails the build if any of those grammars resolves to more than one version — e.g.
@@ -148,7 +154,7 @@ cargo build -p code-ranker
 export CARGO_NET_OFFLINE=true
 bin=target/debug/code-ranker
 
-for lang in rust python javascript typescript; do
+for lang in rust python javascript typescript go; do
   dir="crates/code-ranker-plugins/src/$lang/tests/sample"
   "$bin" report "$dir" \
     --config "$dir/code-ranker.toml" \
@@ -163,7 +169,7 @@ churn-free, freeze that header — anonymize your home dir and zero the volatile
 fields — before committing:
 
 ```sh
-for lang in rust python javascript typescript; do
+for lang in rust python javascript typescript go; do
   f="crates/code-ranker-plugins/src/$lang/tests/sample/code-ranker-report.json"
   python3 - "$f" "$PWD" "$HOME" <<'PY'
 import sys, json
@@ -192,7 +198,7 @@ cargo build -p code-ranker
 export CARGO_NET_OFFLINE=true
 bin=target/debug/code-ranker
 
-for lang in rust python javascript typescript; do
+for lang in rust python javascript typescript go; do
   dir="crates/code-ranker-plugins/src/$lang/tests/sample"
   "$bin" check "$dir" --config "$dir/code-ranker.toml" \
     --output-format sarif > "$dir/code-ranker-check.sarif" || true
@@ -207,7 +213,7 @@ sides, so a release bump never forces a regeneration here.
 Same shape, fully deterministic (no volatile fields), so compared verbatim:
 
 ```sh
-for lang in rust python javascript typescript; do
+for lang in rust python javascript typescript go; do
   dir="crates/code-ranker-plugins/src/$lang/tests/sample"
   "$bin" check "$dir" --config "$dir/code-ranker.toml" \
     --output-format codequality > "$dir/code-ranker-check.codequality.json" || true

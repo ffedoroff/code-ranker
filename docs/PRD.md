@@ -100,7 +100,7 @@ language-specific, non-exportable, or single-level.
 
 | Term | Definition |
 |------|------------|
-| Plugin | A built-in language analyzer (`rust`, `python`, or `javascript`) compiled into the `code-ranker` binary that analyzes a workspace and produces a single file graph in-process |
+| Plugin | A built-in language analyzer (`rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`, `csharp`, `markdown`) compiled into the `code-ranker` binary that analyzes a workspace and produces a single file graph in-process |
 | Snapshot | A single self-contained JSON file combining metadata and the one `files` graph produced by a single analysis run |
 | Graph | A directed graph whose nodes are source files (`file`) and third-party libraries (`external`), and whose edges are file dependencies (`uses`, `reexports`) |
 | External node | A third-party library recorded at depth 1 — one node per library (`ext:<name>`), never expanded into its internals |
@@ -302,7 +302,7 @@ Top-level fields:
 - `command` — full command line as typed
 - `workspace` — absolute path to the directory where `code-ranker` was invoked
 - `target` — absolute path to the analyzed project
-- `plugin` — resolved built-in plugin name (`rust` / `python` / `javascript` / `typescript`)
+- `plugin` — resolved built-in plugin name (`rust` / `python` / `javascript` / `typescript` / `go`)
 - `config_file` — absolute path of the config file used; omitted when none was found
 - `versions` — `code-ranker` semver at minimum; the Rust plugin adds `rustc`
 - `roots` — named system prefixes used to relativize node ids/paths
@@ -341,9 +341,11 @@ filename makes snapshots self-organizing without a registry.
 - [x] `p1` - **ID**: `cpt-code-ranker-fr-plugin-discovery`
 
 The plugins are built into the `code-ranker` binary; the valid plugin names are
-`rust`, `python`, `javascript`, and `typescript` (JS and TS are **separate**
-plugins, no aliases). The `--plugin <name>` option (on `check` / `report`)
-selects one of these built-ins. There is no external or dynamic plugin loading.
+`rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`, `csharp`, and
+`markdown` (JS and TS are **separate** plugins, no aliases; C and C++ share the
+`cfamily` `#include`-graph module as peers). The `--plugin <name>` option (on
+`check` / `report`) selects one of these built-ins. There is no external or
+dynamic plugin loading.
 
 The plugin is resolved in the following order, stopping at the first match:
 
@@ -669,7 +671,8 @@ requires every count to mean exactly what it claims.
 
 Plugins are compiled into the `code-ranker` binary and run **in-process**
 when a command analyzes a workspace (`code-ranker check` / `code-ranker
-report`). The plugins are `rust`, `python`, `javascript`, and `typescript`,
+report`). The plugins are `rust`, `python`, `javascript`, `typescript`, `go`,
+`c`, `cpp`, `csharp`, and `markdown`,
 selected with `--plugin <name>` (see `cpt-code-ranker-fr-plugin-discovery`).
 There is no subprocess invocation, no external plugin binary, and no
 external/dynamic plugin loading.
@@ -940,7 +943,7 @@ as a self-contained HTML report.
 |------------|-------------|----------|
 | `cargo_metadata` crate | Cargo workspace enumeration (local vs. external crates) | p1 |
 | `syn` crate | Rust source parsing for the module tree and `use` statements | p1 |
-| `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript`) | Source parsing for the shared generic tier-1 metric engine (`code-ranker-plugins/src/engine/`, parameterized per language by a `Dialect` — a single faithful port of `rust-code-analysis`'s node-kind rules) and for the Python / JavaScript / TypeScript plugins | p1 |
+| `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript` / `-go` / `-c` / `-cpp` / `-c-sharp`) | Source parsing for the shared generic tier-1 metric engine (`code-ranker-plugins/src/engine/`, parameterized per language by a `Dialect` — a single faithful port of `rust-code-analysis`'s node-kind rules) and for the Python / JS / TS / Go / C# plugins' graph extraction (C/C++ recover the `#include` graph by text scan, so they use their grammar only for metrics; Markdown is grammar-free) | p1 |
 | `cel` crate | Evaluates the declarative tier-2 metric formulas (`metrics/builtin.toml`) and user `[metrics.<key>]` formulas; the metric registry engine | p1 |
 | Python 3.9+ | Runtime for the built-in Python language plugin | p3 |
 

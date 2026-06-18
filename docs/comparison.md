@@ -166,7 +166,7 @@ files, exports, types, and dependencies, and exits non-zero on findings.
 Being honest about the trade-offs:
 
 - **Language reach:** rust-code-analysis and Lizard cover far more languages out of the
-  box than code-ranker's four plugins.
+  box than code-ranker's nine plugins.
 - **Maturity of gates:** Lizard, Radon+Xenon, and knip are mature, narrowly-focused CI
   gates with years of production use.
 - **Specialized depth:** knip's dead-code analysis and cargo-modules' Rust module

@@ -1,0 +1,796 @@
+{
+  "command": "code-ranker report crates/code-ranker-plugins/src/languages/c/tests/sample --config crates/code-ranker-plugins/src/languages/c/tests/sample/code-ranker.toml --output.json.path=/tmp/c-golden.json",
+  "config_file": "crates/code-ranker-plugins/src/languages/c/tests/sample/code-ranker.toml",
+  "generated_at": "1970-01-01T00:00:00Z",
+  "git": {
+    "branch": "main",
+    "commit": "000000000000",
+    "dirty_files": 0,
+    "origin": "git@example.com:org/repo.git"
+  },
+  "graphs": {
+    "files": {
+      "attribute_groups": {
+        "complexity": {
+          "description": "Code complexity metrics",
+          "label": "Complexity"
+        },
+        "coupling": {
+          "description": "Internal coupling (Henry-Kafura)",
+          "label": "Coupling"
+        },
+        "halstead": {
+          "description": "Halstead software metrics",
+          "label": "Halstead"
+        },
+        "loc": {
+          "description": "Lines of code breakdown",
+          "label": "Lines of Code"
+        },
+        "maintainability": {
+          "description": "Maintainability index",
+          "label": "Maintainability"
+        }
+      },
+      "cycle_kinds": {},
+      "cycles": [],
+      "edge_attributes": {},
+      "edge_kinds": {
+        "uses": {
+          "description": "Import dependency — this file imports from the other.",
+          "flow": true,
+          "label": "uses"
+        }
+      },
+      "edges": [
+        {
+          "kind": "uses",
+          "line": 1,
+          "source": "{target}/main.c",
+          "target": "ext:stdio.h"
+        },
+        {
+          "kind": "uses",
+          "line": 2,
+          "source": "{target}/main.c",
+          "target": "{target}/mathx.h"
+        },
+        {
+          "kind": "uses",
+          "line": 1,
+          "source": "{target}/mathx.c",
+          "target": "{target}/mathx.h"
+        },
+        {
+          "kind": "uses",
+          "line": 5,
+          "source": "{target}/mathx.h",
+          "target": "{target}/util.h"
+        },
+        {
+          "kind": "uses",
+          "line": 1,
+          "source": "{target}/util.c",
+          "target": "{target}/util.h"
+        }
+      ],
+      "node_attributes": {
+        "args": {
+          "description": "Number of function / closure arguments.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Args",
+          "name": "Arguments",
+          "short": "Args",
+          "value_type": "int"
+        },
+        "blank": {
+          "description": "Empty or whitespace-only lines.",
+          "group": "loc",
+          "label": "Blank",
+          "name": "Blank lines",
+          "short": "Blank",
+          "value_type": "int"
+        },
+        "branches": {
+          "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Branches",
+          "name": "Decision points",
+          "short": "Branches",
+          "value_type": "int"
+        },
+        "bugs": {
+          "calc": "effort ** (2/3) / 3000",
+          "description": "Estimated delivered bugs — a rough predictor of defect density.",
+          "direction": "lower_better",
+          "formula": "effort^⅔ ÷ 3000",
+          "group": "halstead",
+          "label": "Bugs",
+          "name": "Halstead bugs",
+          "short": "H.bugs",
+          "value_type": "float"
+        },
+        "cloc": {
+          "description": "Comment-only lines (inline comments on code lines are not counted).",
+          "group": "loc",
+          "label": "Comments",
+          "name": "Comment lines",
+          "short": "Comments",
+          "value_type": "int"
+        },
+        "cognitive": {
+          "description": "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Cognitive",
+          "name": "Cognitive complexity",
+          "short": "Cognitive",
+          "value_type": "int"
+        },
+        "cyclomatic": {
+          "calc": "spaces + branches",
+          "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
+          "direction": "lower_better",
+          "formula": "spaces + branches",
+          "group": "complexity",
+          "label": "Cyclomatic",
+          "name": "Cyclomatic complexity",
+          "omit_at": 1.0,
+          "short": "Cyclomatic",
+          "value_type": "int"
+        },
+        "effort": {
+          "calc": "(eta1 / 2) * (n2 / eta2) * volume",
+          "description": "Mental effort to implement the algorithm.",
+          "direction": "lower_better",
+          "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
+          "group": "halstead",
+          "label": "Effort",
+          "name": "Halstead effort",
+          "short": "H.effort",
+          "value_type": "float"
+        },
+        "eta1": {
+          "description": "Distinct operators (η₁): the count of unique operator token kinds. C counts punctuation & delimiters (`( { [ , . ; : ->`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % ++ -- == != < > <= >= && || ! & | ^ << >> = += … ?: ~`), the keywords `break case const continue default do else enum extern for goto if inline return sizeof static struct switch typedef union volatile while auto register signed unsigned short long`, and the preprocessor directives `#define #include #if #ifdef #ifndef #else #endif #elif`.",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "η₁",
+          "name": "Unique operators",
+          "short": "η₁",
+          "value_type": "int"
+        },
+        "eta2": {
+          "description": "Distinct operands (η₂): the count of unique operand texts. C counts identifiers (incl. field / type / label identifiers), literals (number, char, string, `<system.h>` lib strings), primitive type names, and `true` / `false` / `NULL`.",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "η₂",
+          "name": "Unique operands",
+          "short": "η₂",
+          "value_type": "int"
+        },
+        "exits": {
+          "description": "Number of exit points (return/throw) in the unit.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Exits",
+          "name": "Exit points",
+          "short": "Exits",
+          "value_type": "int"
+        },
+        "external": {
+          "label": "External",
+          "value_type": "bool"
+        },
+        "fan_in": {
+          "description": "Number of nodes that depend on this one. High fan-in means broadly reused.",
+          "group": "coupling",
+          "label": "Fan-in",
+          "name": "Fan-in",
+          "short": "Fan-in",
+          "value_type": "int"
+        },
+        "fan_out": {
+          "description": "Number of nodes this one depends on. High fan-out means many dependencies. External-library edges are counted separately.",
+          "group": "coupling",
+          "label": "Fan-out",
+          "name": "Fan-out",
+          "short": "Fan-out",
+          "value_type": "int"
+        },
+        "fan_out_external": {
+          "description": "Number of distinct external libraries this node depends on.",
+          "group": "coupling",
+          "label": "Fan-out (external)",
+          "value_type": "int"
+        },
+        "hk": {
+          "abbreviate": true,
+          "calc": "sloc * (fan_in * fan_out) ** 2",
+          "description": "Henry–Kafura — combines unit size with incoming/outgoing coupling (internal edges only).",
+          "direction": "lower_better",
+          "formula": "sloc × (fan_in × fan_out)²",
+          "group": "coupling",
+          "label": "HK",
+          "name": "Henry–Kafura",
+          "short": "HK",
+          "value_type": "float"
+        },
+        "length": {
+          "calc": "n1 + n2",
+          "description": "Program length — total operator + operand occurrences.",
+          "direction": "lower_better",
+          "formula": "n1 + n2",
+          "group": "halstead",
+          "label": "Length",
+          "name": "Halstead length",
+          "short": "H.len",
+          "value_type": "float"
+        },
+        "lloc": {
+          "description": "Logical lines — counts statements, not physical lines.",
+          "group": "loc",
+          "label": "Logical",
+          "name": "Logical lines",
+          "short": "Logical",
+          "value_type": "int"
+        },
+        "loc": {
+          "label": "Lines",
+          "value_type": "int"
+        },
+        "mi": {
+          "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
+          "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
+          "direction": "higher_better",
+          "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
+          "group": "maintainability",
+          "label": "MI",
+          "name": "Maintainability index",
+          "short": "MI",
+          "value_type": "float"
+        },
+        "mi_sei": {
+          "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
+          "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
+          "direction": "higher_better",
+          "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
+          "group": "maintainability",
+          "label": "MI (SEI)",
+          "name": "Maintainability (SEI)",
+          "short": "MI SEI",
+          "value_type": "float"
+        },
+        "n1": {
+          "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "N₁",
+          "name": "Total operators",
+          "short": "N₁",
+          "value_type": "int"
+        },
+        "n2": {
+          "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
+          "direction": "lower_better",
+          "group": "halstead",
+          "label": "N₂",
+          "name": "Total operands",
+          "short": "N₂",
+          "value_type": "int"
+        },
+        "sloc": {
+          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count).",
+          "group": "loc",
+          "label": "Source",
+          "name": "Source lines",
+          "short": "SLOC",
+          "value_type": "int"
+        },
+        "spaces": {
+          "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
+          "direction": "lower_better",
+          "group": "complexity",
+          "label": "Spaces",
+          "name": "Unit count",
+          "short": "Spaces",
+          "value_type": "int"
+        },
+        "span_sloc": {
+          "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
+          "direction": "lower_better",
+          "group": "maintainability",
+          "label": "Span",
+          "name": "Line span",
+          "short": "Span",
+          "value_type": "int"
+        },
+        "time": {
+          "calc": "effort / 18",
+          "description": "Estimated implementation time, in seconds.",
+          "direction": "lower_better",
+          "formula": "effort ÷ 18",
+          "group": "halstead",
+          "label": "Time",
+          "name": "Halstead time, s",
+          "short": "H.time(s)",
+          "value_type": "float"
+        },
+        "vocabulary": {
+          "calc": "eta1 + eta2",
+          "description": "Vocabulary — distinct operators + operands.",
+          "direction": "lower_better",
+          "formula": "eta1 + eta2",
+          "group": "halstead",
+          "label": "Vocabulary",
+          "name": "Halstead vocabulary",
+          "short": "H.vocab",
+          "value_type": "float"
+        },
+        "volume": {
+          "calc": "length * Math.log2(vocabulary)",
+          "description": "Algorithm size in bits, from distinct operators and operands.",
+          "direction": "lower_better",
+          "formula": "length × log₂(vocabulary)",
+          "group": "halstead",
+          "label": "Volume",
+          "name": "Halstead volume",
+          "short": "H.vol",
+          "value_type": "float"
+        }
+      },
+      "node_kinds": {
+        "external": {
+          "external": true,
+          "fill": "#f6e2c0",
+          "label": "Library",
+          "plural": "Libraries",
+          "stroke": "#b3801f"
+        },
+        "file": {
+          "fill": "#dbe9f4",
+          "label": "File",
+          "plural": "Files",
+          "stroke": "#4d6f9c"
+        }
+      },
+      "nodes": [
+        {
+          "external": true,
+          "id": "ext:stdio.h",
+          "kind": "external",
+          "name": "stdio.h"
+        },
+        {
+          "args": 1,
+          "blank": 1,
+          "branches": 3,
+          "bugs": 0.0841,
+          "cloc": 2,
+          "cognitive": 4,
+          "cyclomatic": 5,
+          "effort": 4009.63,
+          "eta1": 16,
+          "eta2": 14,
+          "exits": 1,
+          "fan_out": 1,
+          "fan_out_external": 1,
+          "id": "{target}/main.c",
+          "kind": "file",
+          "length": 55,
+          "lloc": 9,
+          "loc": 15,
+          "mi": 96.87,
+          "mi_sei": 91.362,
+          "n1": 29,
+          "n2": 26,
+          "name": "main.c",
+          "sloc": 12,
+          "spaces": 2,
+          "span_sloc": 15,
+          "time": 222.757,
+          "vocabulary": 30,
+          "volume": 269.878
+        },
+        {
+          "args": 1,
+          "blank": 1,
+          "bugs": 0.0234,
+          "cloc": 1,
+          "cyclomatic": 2,
+          "effort": 589.382,
+          "eta1": 8,
+          "eta2": 7,
+          "exits": 1,
+          "fan_out": 1,
+          "id": "{target}/mathx.c",
+          "kind": "file",
+          "length": 22,
+          "lloc": 3,
+          "loc": 7,
+          "mi": 115.856,
+          "mi_sei": 119.28,
+          "n1": 10,
+          "n2": 12,
+          "name": "mathx.c",
+          "sloc": 5,
+          "spaces": 2,
+          "span_sloc": 7,
+          "time": 32.743,
+          "vocabulary": 15,
+          "volume": 85.951
+        },
+        {
+          "blank": 3,
+          "bugs": 0.0109,
+          "cloc": 1,
+          "effort": 188.884,
+          "eta1": 6,
+          "eta2": 5,
+          "fan_in": 2,
+          "fan_out": 1,
+          "hk": 20,
+          "id": "{target}/mathx.h",
+          "kind": "file",
+          "length": 13,
+          "lloc": 3,
+          "loc": 9,
+          "mi": 115.383,
+          "mi_sei": 115.551,
+          "n1": 6,
+          "n2": 7,
+          "name": "mathx.h",
+          "sloc": 5,
+          "spaces": 1,
+          "span_sloc": 9,
+          "time": 10.493,
+          "vocabulary": 11,
+          "volume": 44.972
+        },
+        {
+          "args": 2,
+          "blank": 1,
+          "branches": 1,
+          "bugs": 0.0274,
+          "cloc": 1,
+          "cognitive": 1,
+          "cyclomatic": 3,
+          "effort": 748.968,
+          "eta1": 8,
+          "eta2": 5,
+          "exits": 2,
+          "fan_out": 1,
+          "id": "{target}/util.c",
+          "kind": "file",
+          "length": 23,
+          "lloc": 4,
+          "loc": 9,
+          "mi": 111.606,
+          "mi_sei": 110.306,
+          "n1": 12,
+          "n2": 11,
+          "name": "util.c",
+          "sloc": 7,
+          "spaces": 2,
+          "span_sloc": 9,
+          "time": 41.609,
+          "vocabulary": 13,
+          "volume": 85.11
+        },
+        {
+          "blank": 2,
+          "bugs": 0.0126,
+          "cloc": 1,
+          "effort": 232.473,
+          "eta1": 6,
+          "eta2": 5,
+          "fan_in": 2,
+          "id": "{target}/util.h",
+          "kind": "file",
+          "length": 14,
+          "lloc": 2,
+          "loc": 7,
+          "mi": 119.069,
+          "mi_sei": 123.814,
+          "n1": 6,
+          "n2": 8,
+          "name": "util.h",
+          "sloc": 4,
+          "spaces": 1,
+          "span_sloc": 7,
+          "time": 12.915,
+          "vocabulary": 11,
+          "volume": 48.432
+        }
+      ],
+      "stats": {
+        "blank": 1.6,
+        "bugs": 0.0316,
+        "cloc": 1.2,
+        "cognitive": 2.5,
+        "cyclomatic": 3.333,
+        "effort": 1153.867,
+        "fan_in": 2,
+        "fan_out": 1,
+        "hk": 20,
+        "length": 25.4,
+        "mi": 111.756,
+        "mi_sei": 112.062,
+        "sloc": 6.6,
+        "time": 64.103,
+        "vocabulary": 16,
+        "volume": 106.868
+      },
+      "ui": {
+        "card_metrics": [
+          "hk",
+          "sloc"
+        ],
+        "columns": [
+          "kind",
+          "sloc",
+          "hk",
+          "fan_in",
+          "fan_out",
+          "volume",
+          "bugs",
+          "effort",
+          "time",
+          "length",
+          "vocabulary",
+          "cyclomatic",
+          "cognitive",
+          "mi",
+          "mi_sei",
+          "lloc",
+          "cloc",
+          "blank"
+        ],
+        "default_sort": "hk",
+        "filter_metrics": [],
+        "size_metrics": [
+          "sloc",
+          "hk"
+        ],
+        "sort_metrics": [
+          "sloc",
+          "hk",
+          "fan_in",
+          "fan_out",
+          "volume",
+          "bugs",
+          "effort",
+          "time",
+          "length",
+          "vocabulary",
+          "cyclomatic",
+          "cognitive",
+          "mi",
+          "mi_sei",
+          "lloc",
+          "cloc",
+          "blank"
+        ],
+        "summary_metrics": [
+          "sloc",
+          "hk",
+          "fan_in",
+          "fan_out",
+          "volume",
+          "bugs",
+          "effort",
+          "time",
+          "length",
+          "vocabulary",
+          "cyclomatic",
+          "cognitive",
+          "mi",
+          "mi_sei",
+          "lloc",
+          "cloc",
+          "blank"
+        ]
+      }
+    }
+  },
+  "plugin": "c",
+  "presets": [
+    {
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/reduce-complexity.md",
+      "id": "CPX",
+      "label": "CPX",
+      "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
+      "sort_metric": "cognitive",
+      "title": "CPX — Reduce Complexity"
+    },
+    {
+      "connections": [
+        "common"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/acyclic-dependencies-principle.md",
+      "id": "ADP",
+      "label": "ADP",
+      "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
+      "sort_metric": "cycle",
+      "title": "ADP — Acyclic Dependencies Principle"
+    },
+    {
+      "connections": [
+        "in",
+        "out"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-single-responsibility.md",
+      "id": "SRP",
+      "label": "SRP",
+      "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
+      "sort_metric": "sloc",
+      "title": "SRP — Single Responsibility Principle"
+    },
+    {
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-open-closed.md",
+      "id": "OCP",
+      "label": "OCP",
+      "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
+      "sort_metric": "cyclomatic",
+      "title": "OCP — Open/Closed Principle"
+    },
+    {
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-liskov-substitution.md",
+      "id": "LSP",
+      "label": "LSP",
+      "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
+      "sort_metric": "hk",
+      "title": "LSP — Liskov Substitution Principle"
+    },
+    {
+      "connections": [
+        "in"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-interface-segregation.md",
+      "id": "ISP",
+      "label": "ISP",
+      "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
+      "sort_metric": "items",
+      "title": "ISP — Interface Segregation Principle"
+    },
+    {
+      "connections": [
+        "common",
+        "out"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-dependency-inversion.md",
+      "id": "DIP",
+      "label": "DIP",
+      "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
+      "sort_metric": "fan_out",
+      "title": "DIP — Dependency Inversion Principle"
+    },
+    {
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/dry.md",
+      "id": "DRY",
+      "label": "DRY",
+      "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
+      "sort_metric": "sloc",
+      "title": "DRY — Don't Repeat Yourself"
+    },
+    {
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/kiss.md",
+      "id": "KISS",
+      "label": "KISS",
+      "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
+      "sort_metric": "cognitive",
+      "title": "KISS — Keep It Simple"
+    },
+    {
+      "connections": [
+        "common",
+        "out"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/law-of-demeter.md",
+      "id": "LoD",
+      "label": "LoD",
+      "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
+      "sort_metric": "fan_out",
+      "title": "Law of Demeter — Principle of Least Knowledge"
+    },
+    {
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/make-invalid-states-unrepresentable.md",
+      "id": "MISU",
+      "label": "MISU",
+      "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
+      "sort_metric": "cyclomatic",
+      "title": "MISU — Make Invalid States Unrepresentable"
+    },
+    {
+      "connections": [
+        "common"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/composition-over-inheritance.md",
+      "id": "CoI",
+      "label": "CoI",
+      "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
+      "sort_metric": "items",
+      "title": "CoI — Composition Over Inheritance"
+    },
+    {
+      "connections": [
+        "out"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/yagni.md",
+      "id": "YAGNI",
+      "label": "YAGNI",
+      "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
+      "sort_metric": "sloc",
+      "title": "YAGNI — You Aren't Gonna Need It"
+    },
+    {
+      "connections": [
+        "in",
+        "out"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/henry-kafura-coupling.md",
+      "id": "HK",
+      "label": "HK",
+      "prompt": "These modules carry heavy Henry-Kafura coupling — HK = sloc × (fan_in × fan_out)²,\nwhere sloc is the module's source lines of code (real code lines, excluding blanks\nand comment-only lines), fan_in is how many modules depend on it, and fan_out is how\nmany it depends on.\nA high score is a large module sitting on a busy crossroads of incoming and outgoing\ndependencies, so any change here ripples widely.\n\nFor each module below, lower the factor that dominates its HK: shrink the module by\nextracting cohesive pieces, or cut fan-in/fan-out by narrowing its public surface and\ndepending on fewer collaborators (introduce an abstraction, move a responsibility).\nKeep existing API contracts intact.",
+      "sort_metric": "hk",
+      "title": "HK — Henry-Kafura Coupling"
+    },
+    {
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/module-size.md",
+      "id": "SLOC",
+      "label": "SLOC",
+      "prompt": "These are the largest modules by source lines of code. Size alone is not a defect, but\noversized files usually bundle several responsibilities and are hard to read, test and\nreview.\n\nFor each module below, identify the distinct responsibilities it holds and propose how\nto split it into smaller, cohesive modules — each with a single clear purpose — without\nchanging external behaviour.",
+      "sort_metric": "sloc",
+      "title": "SLOC — Module Size"
+    },
+    {
+      "connections": [
+        "in"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/fan-in-afferent-coupling.md",
+      "id": "FANIN",
+      "label": "FANIN",
+      "prompt": "These modules have high fan-in: many other modules depend on them. They are\nload-bearing — a change here forces changes (or re-review) across every dependant, and\na bug here is widely felt.\n\nFor each module below, confirm its public surface is a stable, minimal contract. Narrow\nthe API to what callers actually need, split it if different callers use disjoint parts\n(see Interface Segregation), and stabilise the abstractions the rest of the codebase\nleans on.",
+      "sort_metric": "fan_in",
+      "title": "Fan-in — Afferent Coupling"
+    },
+    {
+      "connections": [
+        "out"
+      ],
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/fan-out-efferent-coupling.md",
+      "id": "FANOUT",
+      "label": "FANOUT",
+      "prompt": "These modules have high fan-out: they depend on many other modules. High efferent\ncoupling makes a module fragile (it breaks when any dependency changes) and hard to\ntest or reuse in isolation.\n\nFor each module below, reduce its direct dependencies: depend on abstractions rather\nthan concretes (see Dependency Inversion), collapse several fine-grained collaborators\nbehind one focused interface, and move logic that pulls in unrelated dependencies into\na more appropriate module.",
+      "sort_metric": "fan_out",
+      "title": "Fan-out — Efferent Coupling"
+    }
+  ],
+  "roots": {
+    "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/c/tests/sample"
+  },
+  "schema_version": "2",
+  "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/c/tests/sample",
+  "timings": [
+    {
+      "detail": "6 nodes from 5 files",
+      "ms": 0,
+      "stage": "c"
+    },
+    {
+      "detail": "5 nodes annotated",
+      "ms": 0,
+      "stage": "complexity"
+    },
+    {
+      "detail": "nodes=6 edges=5",
+      "ms": 0,
+      "stage": "projection"
+    }
+  ],
+  "versions": {
+    "code-ranker": "3.0.0-alpha.1"
+  },
+  "workspace": "/home/user/code-ranker"
+}

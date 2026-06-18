@@ -1,0 +1,7 @@
+# Self-contained config for the code-ranker "go" sample fixture.
+# Pin the plugin and keep test files in the graph (ignore.tests = false) so the
+# fixture is reproducible regardless of any repo-level config.
+plugin = "go"
+
+[ignore]
+tests = false

@@ -1,0 +1,5 @@
+# Self-contained config for the code-ranker "csharp" sample fixture.
+plugin = "csharp"
+
+[ignore]
+tests = false

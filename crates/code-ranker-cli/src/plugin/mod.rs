@@ -21,6 +21,11 @@ pub fn registry() -> Vec<Box<dyn LanguagePlugin>> {
         Box::new(code_ranker_plugins::languages::python::PythonPlugin),
         Box::new(code_ranker_plugins::languages::javascript::JavascriptPlugin),
         Box::new(code_ranker_plugins::languages::typescript::TypescriptPlugin),
+        Box::new(code_ranker_plugins::languages::go::GoPlugin),
+        Box::new(code_ranker_plugins::languages::c::CPlugin),
+        Box::new(code_ranker_plugins::languages::cpp::CppPlugin),
+        Box::new(code_ranker_plugins::languages::csharp::CsharpPlugin),
+        Box::new(code_ranker_plugins::languages::markdown::MarkdownPlugin),
     ]
 }
 

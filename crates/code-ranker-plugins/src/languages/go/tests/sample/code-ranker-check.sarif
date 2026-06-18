@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "results": [],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/ffedoroff/code-ranker",
+          "name": "code-ranker",
+          "rules": [],
+          "version": "3.0.0-alpha.1"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

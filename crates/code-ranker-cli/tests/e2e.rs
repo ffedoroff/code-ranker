@@ -619,6 +619,34 @@ fn typescript_sample_matches_golden() {
     assert_sample_matches("typescript");
 }
 
+#[test]
+fn go_sample_matches_golden() {
+    assert_sample_matches("go");
+}
+
+#[test]
+fn c_sample_matches_golden() {
+    assert_sample_matches("c");
+}
+
+#[test]
+fn cpp_sample_matches_golden() {
+    assert_sample_matches("cpp");
+}
+
+#[test]
+fn csharp_sample_matches_golden() {
+    assert_sample_matches("csharp");
+}
+
+// Markdown is documentation, not code — it produces only `loc` + the doc link
+// graph (coupling/cycles), none of the central code metrics — so it is verified
+// by its golden but is NOT in `LANGS` (the all-central-metrics invariant).
+#[test]
+fn markdown_sample_matches_golden() {
+    assert_sample_matches("markdown");
+}
+
 /// Read a committed golden SARIF document for a language's `check` output.
 fn read_check_sarif_golden(lang: &str) -> Value {
     let path = sample_dir(lang).join("code-ranker-check.sarif");
@@ -720,7 +748,16 @@ fn typescript_sample_check_codequality_matches_golden() {
 }
 
 /// Every language whose golden is committed.
-const LANGS: &[&str] = &["rust", "python", "javascript", "typescript"];
+const LANGS: &[&str] = &[
+    "rust",
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "c",
+    "cpp",
+    "csharp",
+];
 
 /// Central metrics (`metric_specs` + `coupling_specs`) the analyzer does NOT
 /// produce for a given language, so they are legitimately absent from that
@@ -731,7 +768,20 @@ const LANGS: &[&str] = &["rust", "python", "javascript", "typescript"];
 const COVERAGE_EXCEPTIONS: &[(&str, &[&str])] = &[
     // `tloc` is genuinely 0 for non-Rust: only the Rust pass strips `#[cfg(test)]`
     // items, so there are no test lines to count elsewhere.
-    ("tloc", &["python", "javascript", "typescript"]),
+    (
+        "tloc",
+        &[
+            "python",
+            "javascript",
+            "typescript",
+            "go",
+            "c",
+            "cpp",
+            "csharp",
+        ],
+    ),
+    // C has no closures/lambdas, so the `closures` counter is always 0.
+    ("closures", &["c"]),
 ];
 
 fn is_excepted(metric: &str, lang: &str) -> bool {

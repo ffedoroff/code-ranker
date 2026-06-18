@@ -1,0 +1,105 @@
+# C# language config — inherits `../defaults.toml` (see `../config.rs`).
+#
+# The dependency graph is the `using` / `namespace` graph (`structure.rs`): a file
+# declares one or more namespaces; a `using N;` edges to every file declaring `N`
+# (an unresolved namespace — `System.*`, NuGet packages — becomes an external).
+
+doc_lang = "csharp"
+
+extensions = ["cs"]
+detect_markers = []
+skip_dirs = ["bin", "obj", "node_modules"]
+
+test_dirs = ["test", "tests"]
+test_suffixes = ["Tests.cs", "Test.cs"]
+
+[units]
+method = "method"
+default = "function"
+
+# Dependency-graph node kinds the structure walk keys on.
+[structure]
+using_directive = "using_directive"
+namespace_declaration = "namespace_declaration"
+file_scoped_namespace_declaration = "file_scoped_namespace_declaration"
+# The namespace/type name nodes a `using`/`namespace` carries (the `using`'s
+# `name` field is only the alias in `using X = Y;`, so the target namespace is the
+# `qualified_name`/`identifier` child).
+qualified_name = "qualified_name"
+identifier = "identifier"
+
+[fields]
+name = "name"
+alternative = "alternative"
+
+[roles]
+# Methods / constructors / local functions are function spaces; lambdas and
+# anonymous methods are closure spaces.
+space_kinds.named = [
+    "method_declaration", "constructor_declaration", "local_function_statement",
+    "lambda_expression", "anonymous_method_expression",
+]
+# Cyclomatic decision points.
+branch_kinds.named = [
+    "if_statement", "for_statement", "foreach_statement", "while_statement",
+    "do_statement", "switch_section", "switch_expression_arm",
+    "conditional_expression", "catch_clause",
+]
+branch_kinds.anon = ["&&", "||"]
+exit_kinds.named = ["return_statement"]
+non_arg_kinds.anon = ["(", ")", ","]
+
+[roles.one]
+kw_else = { kind = "else", named = false }
+amp_amp = { kind = "&&", named = false }
+pipe_pipe = { kind = "||", named = false }
+
+# ── Halstead operators / operands ─────────────────────────────────────────────
+[halstead]
+operators.anon = [
+    "(", "{", "[", ",", ".", ";", ":", "::", "->", "=>", "+", "-", "*", "/", "%",
+    "++", "--", "+=", "-=", "*=", "/=", "%=", "=", "==", "!=", "<", ">", "<=",
+    ">=", "&&", "||", "!", "&", "|", "^", "<<", ">>", "&=", "|=", "^=", "??", "?",
+    "~", "abstract", "as", "async", "await", "base", "break", "case", "catch",
+    "class", "const", "continue", "default", "delegate", "do", "else", "enum",
+    "finally", "for", "foreach", "goto", "if", "in", "interface", "internal",
+    "is", "lock", "namespace", "new", "out", "override", "params", "private",
+    "protected", "public", "readonly", "record", "ref", "return", "sealed",
+    "sizeof", "static", "struct", "switch", "throw", "try", "typeof", "using",
+    "var", "virtual", "void", "while", "yield",
+]
+operands.named = [
+    "identifier", "integer_literal", "real_literal", "string_literal",
+    "verbatim_string_literal", "character_literal", "boolean_literal",
+    "null_literal", "predefined_type",
+]
+
+# ── LOC breakdown ─────────────────────────────────────────────────────────────
+[loc]
+noop_kinds.named = [
+    "compilation_unit", "block", "string_literal", "verbatim_string_literal",
+    "character_literal", "declaration_list",
+]
+comment_kinds.named = ["comment"]
+statement_kinds.named = [
+    "using_directive", "namespace_declaration", "class_declaration",
+    "struct_declaration", "interface_declaration", "record_declaration",
+    "enum_declaration", "method_declaration", "constructor_declaration",
+    "field_declaration", "property_declaration", "local_declaration_statement",
+    "expression_statement", "if_statement", "for_statement", "foreach_statement",
+    "while_statement", "do_statement", "switch_statement", "return_statement",
+    "break_statement", "continue_statement", "throw_statement", "try_statement",
+    "local_function_statement", "yield_statement", "lock_statement",
+]
+
+[specs.eta1]
+description = "Distinct operators (η₁): the count of unique operator token kinds. C# counts arithmetic / logical / comparison / assignment operators (`+ - * / % ++ -- && || ! == != < > <= >= = += … ?? ?. =>`), bitwise (`& | ^ << >> ~`), and the keywords `class struct interface record enum namespace using new is as async await yield return throw try catch finally if else switch case for foreach while do break continue goto var const static public private protected internal virtual override abstract sealed readonly ref out params lock`."
+
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.eta2]
+description = "Distinct operands (η₂): the count of unique operand texts. C# counts identifiers, literals (integer, real, string, verbatim-string, char, boolean), `null`, and the predefined type names (`int` / `string` / `bool` / …)."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

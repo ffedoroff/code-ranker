@@ -39,6 +39,15 @@ pub trait Dialect {
         0
     }
 
+    /// Count the parameters of a function/closure unit. Default: the direct
+    /// children of the unit's `parameters` field not in `non_arg_kinds`. The
+    /// C-family dialects override this — their parameters nest under a
+    /// `function_declarator` rather than sitting on a `parameters` field of the
+    /// unit node.
+    fn args(&self, node: Node) -> u32 {
+        count_args(node, self.roles())
+    }
+
     // ── cognitive ───────────────────────────────────────────────────────────
 
     /// The divergent cognitive handling for one node: update the running state
@@ -54,6 +63,14 @@ pub trait Dialect {
     /// The display `kind` string for a function unit (`fn`/`method`/`arrow`/…).
     /// Borrowed from the dialect's config-loaded `[units]` strings.
     fn fn_kind(&self, node: Node) -> &str;
+
+    /// The function unit's name. Default: the `name` field's text. C-family
+    /// dialects override this — the name nests under a `function_declarator`.
+    fn unit_name(&self, node: Node, src: &[u8]) -> Option<String> {
+        node.child_by_field_name("name")
+            .and_then(|n| n.utf8_text(src).ok())
+            .map(str::to_string)
+    }
 
     // ── Halstead operator / operand classification ───────────────────────────
 
