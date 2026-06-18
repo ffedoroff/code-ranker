@@ -18,8 +18,9 @@ use crate::attrs::num_attr;
 use crate::registry::{Engine, MetricDef};
 use code_ranker_plugin_api::metrics::MetricInputs;
 use code_ranker_plugin_api::{
+    PromptTemplate,
     attrs::ValueType,
-    level::{AttributeGroup, AttributeSpec, Direction},
+    level::{AttributeGroup, AttributeSpec, CycleKindSpec, Direction},
     node::Node,
 };
 use serde::Deserialize;
@@ -39,6 +40,8 @@ struct FieldDef {
     name: Option<String>,
     short: Option<String>,
     description: Option<String>,
+    /// How to fix a breach — the `fix` line in `check` diagnostics.
+    remediation: Option<String>,
     /// Executable CEL formula (derived `[fields.*]` only).
     cel: Option<String>,
     /// Pretty display formula (NOT CEL) — emitted as `AttributeSpec.formula`.
@@ -47,6 +50,8 @@ struct FieldDef {
     formula_js: Option<String>,
     direction: Option<String>,
     category: Option<String>,
+    /// Format large values with K/M suffixes (e.g. `hk`).
+    abbreviate: Option<bool>,
     #[serde(default = "crate::registry::default_omit_at")]
     omit_at: f64,
 }
@@ -97,6 +102,17 @@ struct Builtin {
     ast: BTreeMap<String, FieldDef>,
     #[serde(default)]
     fields: BTreeMap<String, FieldDef>,
+    /// Coupling/cycle specs (`fan_in` / `fan_out` / `hk` / `cycle`): display
+    /// specs only — their values are computed post-walk, not by the CEL engine.
+    #[serde(default)]
+    coupling: BTreeMap<String, FieldDef>,
+    /// Cycle-kind diagnostic vocab (`mutual` / `chain`): label + why + fix,
+    /// overlaid onto each level's cycle_kinds by the orchestrator.
+    #[serde(default)]
+    cycles: BTreeMap<String, CycleKindSpec>,
+    /// Prompt-Generator framing prose, carried into the snapshot.
+    #[serde(default)]
+    prompt: PromptTemplate,
     #[serde(default)]
     tableview: TableView,
     #[serde(default)]
@@ -194,10 +210,11 @@ fn to_spec(d: &FieldDef) -> AttributeSpec {
         name: d.name.clone().or_else(|| d.label.clone()),
         short: d.short.clone().or_else(|| d.label.clone()),
         description: d.description.as_deref().map(br),
+        remediation: d.remediation.as_deref().map(br),
         formula: d.formula_human.clone(),
         calc: d.formula_js.clone(),
         direction: direction(d.direction.as_deref()),
-        abbreviate: None,
+        abbreviate: d.abbreviate,
         group: d.category.clone(),
         thresholds: None,
         omit_at: d.omit_at,
@@ -222,6 +239,42 @@ pub fn metric_specs() -> (
         specs.insert(k.clone(), to_spec(d));
     }
     (specs, BUILTIN.categories.clone())
+}
+
+/// The coupling/cycle attribute dictionary (`fan_in` / `fan_out` /
+/// `fan_out_external` / `hk` / `cycle`) + the `coupling` group, read from
+/// `builtin.toml` `[coupling.*]`. The VALUES are computed post-walk by
+/// `annotate_hk` / `annotate_cycles`; these are the display specs only (incl. the
+/// `description` = `why` and `remediation` = `fix` shown by `check`). The
+/// orchestrator merges them into each level's `node_attributes` / groups.
+pub fn coupling_specs() -> (
+    BTreeMap<String, AttributeSpec>,
+    BTreeMap<String, AttributeGroup>,
+) {
+    let specs = BUILTIN
+        .coupling
+        .iter()
+        .map(|(k, d)| (k.clone(), to_spec(d)))
+        .collect();
+    let mut groups = BTreeMap::new();
+    if let Some(g) = BUILTIN.categories.get("coupling") {
+        groups.insert("coupling".to_string(), g.clone());
+    }
+    (specs, groups)
+}
+
+/// The cycle-kind diagnostic vocabulary (`mutual` / `chain`) from `builtin.toml`
+/// `[cycles.*]` — label + `description` (why) + `remediation` (fix). The
+/// orchestrator overlays these onto each level's `cycle_kinds`.
+pub fn cycle_specs() -> BTreeMap<String, CycleKindSpec> {
+    BUILTIN.cycles.clone()
+}
+
+/// The Prompt-Generator scaffolding prose from `builtin.toml` `[prompt]` — the
+/// language-neutral framing carried in the snapshot so the CLI `prompt` format
+/// and the HTML viewer render the same text.
+pub fn prompt_template() -> PromptTemplate {
+    BUILTIN.prompt.clone()
 }
 
 /// The metric keys aggregated into the per-graph `stats` block via the mean

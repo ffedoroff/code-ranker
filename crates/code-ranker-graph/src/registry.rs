@@ -49,6 +49,8 @@ pub struct MetricDef {
     pub name: Option<String>,
     pub short: Option<String>,
     pub description: Option<String>,
+    /// How to fix a breach — the `fix` line in `check` diagnostics.
+    pub remediation: Option<String>,
     /// Human-readable formula shown in the viewer (display only).
     pub formula_pretty: Option<String>,
     /// JS expression the viewer re-runs with the node's values to show the live
@@ -140,6 +142,7 @@ impl MetricDef {
             name: self.name.clone(),
             short: self.short.clone(),
             description: self.description.clone(),
+            remediation: self.remediation.clone(),
             formula: self.formula_pretty.clone(),
             // Node-scope metric: default the live-derivation JS to the CEL formula
             // (valid JS for arithmetic; the viewer no-ops if it can't run it). A

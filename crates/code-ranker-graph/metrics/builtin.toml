@@ -59,6 +59,10 @@ description = "Lines of code breakdown"
 label = "Maintainability"
 description = "Maintainability index"
 
+[categories.coupling]
+label = "Coupling"
+description = "Internal coupling (Henry-Kafura)"
+
 # ── ast (tier-1, measured directly from the AST) ──────────────────────────────
 # Halstead base counts — emitted so the derived formulas (length, vocabulary,
 # effort, volume, …) can render their live "formula with this node's numbers" line
@@ -133,6 +137,7 @@ That nesting penalty is the point — deeply indented logic is what actually str
 Summed across every function in the file."""
 direction = "lower_better"
 category = "complexity"
+remediation = "Extract nested blocks into named helpers, use early returns to cut nesting depth, and avoid mixing several control structures in one function. For an average breach, target the worst nodes first (--top)."
 
 [ast.exits]
 value_type = "int"
@@ -223,6 +228,7 @@ formula_js = "spaces + branches"
 direction = "lower_better"
 category = "complexity"
 omit_at = 1.0
+remediation = "Split the function, replace branching with polymorphism or a lookup table, and pull guard clauses to the top to flatten nesting. For an average breach, simplify the worst offenders first (--top)."
 
 [fields.effort]
 value_type = "float"
@@ -306,6 +312,82 @@ formula_human = "length × log₂(vocabulary)"
 formula_js = "length * Math.log2(vocabulary)"
 direction = "lower_better"
 category = "halstead"
+
+# ── coupling (computed post-walk by annotate_hk / annotate_cycles) ────────────
+# Spec-only entries: the VALUES are derived by the graph crate's coupling/cycle
+# pass over the flow edges, so these carry NO `cel`. `fan_in` / `fan_out` are
+# neutral (a high count is dual — broad reuse vs. bottleneck); `hk` folds unit
+# size with both coupling directions. `description` is the `why` and `remediation`
+# the `fix` shown by `check` (data, not Rust).
+[coupling.fan_in]
+value_type = "int"
+label = "Fan-in"
+description = "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately."
+category = "coupling"
+remediation = "If the fan-in is unintended, split the unit so each caller depends only on the slice it uses; otherwise stabilize the interface so high fan-in is safe."
+
+[coupling.fan_out]
+value_type = "int"
+label = "Fan-out"
+description = "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation."
+category = "coupling"
+remediation = "Group related dependencies behind a facade, inject collaborators instead of reaching for them, or move logic closer to the data it uses to cut outgoing edges."
+
+[coupling.fan_out_external]
+value_type = "int"
+label = "Fan-out (external)"
+description = "Number of distinct external libraries this node depends on."
+category = "coupling"
+
+[coupling.hk]
+value_type = "float"
+label = "HK"
+name = "Henry–Kafura"
+short = "HK"
+description = "Henry-Kafura — sloc × (fan_in × fan_out)² — flags units that are both highly connected and large: change-amplifiers whose edits ripple widely across the system."
+formula_human = "sloc × (fan_in × fan_out)²"
+formula_js = "sloc * (fan_in * fan_out) ** 2"
+direction = "lower_better"
+category = "coupling"
+abbreviate = true
+remediation = "Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk."
+
+[coupling.cycle]
+value_type = "str"
+label = "Cycle"
+short = "Cycle"
+description = "Cycle kind this node participates in."
+
+# ── cycle kinds (computed by annotate_cycles) ─────────────────────────────────
+# Diagnostic vocab for dependency-cycle kinds — `description` is the `why` and
+# `remediation` the `fix` shown by `check`; the orchestrator overlays these onto
+# each level's `cycle_kinds`. Language-agnostic, like coupling.
+[cycles.mutual]
+label = "Mutual"
+description = "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling."
+remediation = "Move the shared types into a third, lower-level unit both depend on; invert one direction behind a trait/interface; or merge the two if they are really one concept."
+
+[cycles.chain]
+label = "Chain"
+description = "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries."
+remediation = "Find the edge that closes the loop — usually one 'back' dependency pointing upward — and invert or remove it, or introduce an abstraction layer between the units."
+
+# ── prompt scaffolding (Prompt-Generator framing) ─────────────────────────────
+# The language-neutral prose the prompt wraps a preset in — DATA, not code.
+# Carried in the snapshot so the CLI `prompt` format and the HTML viewer's Prompt
+# Generator render identical text from this one source. `{id}` is substituted
+# with the active preset id at render time.
+[prompt]
+intro = "I want to apply this to some modules in my system."
+doc_note = "Download and read the full principle to understand it in detail. If you cannot download it, **stop the task immediately**."
+task = [
+    "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
+    "- If you find more serious violations elsewhere during research, mention them in the report too.",
+    "- Show a summary of the report in chat.",
+    "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`.",
+]
+focus = "**Focus the research and report primarily on the modules below.**"
+cycle_note = "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects."
 
 # ── table view ────────────────────────────────────────────────────────────────
 # `columns` is the node-table column order, left to right. It is one flat list:

@@ -57,7 +57,7 @@ pub use level::{
 pub use metrics::{FunctionUnit, MetricInputs};
 pub use node::{Node, NodeId};
 pub use plugin::{LanguagePlugin, PluginInput, PluginRegistration, registry};
-pub use preset::Preset;
+pub use preset::{Preset, PromptTemplate};
 pub use report::{ListPatch, ReportOverride};
 
 use std::collections::BTreeMap;
@@ -90,26 +90,23 @@ pub fn default_node_kinds() -> BTreeMap<String, NodeKindSpec> {
     ])
 }
 
-/// The generic cycle-kind vocabulary (`mutual` / `chain`).
+/// The generic cycle-kind keys (`mutual` / `chain`) a file-based plugin's level
+/// declares. The diagnostic vocabulary (label / `description` = why /
+/// `remediation` = fix) is **data, not code**: it is filled centrally by the
+/// orchestrator from `code-ranker-graph`'s `cycle_specs` (the `builtin.toml`
+/// `[cycles.*]` catalog), so no cycle prose lives here.
 pub fn default_cycle_kinds() -> BTreeMap<String, CycleKindSpec> {
-    let k = |label: &str, desc: &str| CycleKindSpec {
-        label: Some(label.to_string()),
-        description: Some(desc.to_string()),
-    };
-    BTreeMap::from([
-        (
-            "mutual".to_string(),
-            k(
-                "Mutual",
-                "Two nodes that directly depend on each other (A ↔ B).",
-            ),
-        ),
-        (
-            "chain".to_string(),
-            k(
-                "Chain",
-                "Three or more nodes forming a dependency cycle (A → B → C → A).",
-            ),
-        ),
-    ])
+    ["mutual", "chain"]
+        .into_iter()
+        .map(|k| {
+            (
+                k.to_string(),
+                CycleKindSpec {
+                    label: None,
+                    description: None,
+                    remediation: None,
+                },
+            )
+        })
+        .collect()
 }

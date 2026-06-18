@@ -1,5 +1,5 @@
 {
-  "command": "code-ranker report crates/code-ranker-plugins/src/languages/cpp/tests/sample --config crates/code-ranker-plugins/src/languages/cpp/tests/sample/code-ranker.toml --output.json.path=/tmp/cpp-golden.json",
+  "command": "code-ranker report crates/code-ranker-plugins/src/languages/cpp/tests/sample --config crates/code-ranker-plugins/src/languages/cpp/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/cpp/tests/sample/code-ranker-report.json",
   "config_file": "crates/code-ranker-plugins/src/languages/cpp/tests/sample/code-ranker.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
@@ -135,6 +135,7 @@
           "group": "complexity",
           "label": "Cognitive",
           "name": "Cognitive complexity",
+          "remediation": "Extract nested blocks into named helpers, use early returns to cut nesting depth, and avoid mixing several control structures in one function. For an average breach, target the worst nodes first (--top).",
           "short": "Cognitive",
           "value_type": "int"
         },
@@ -147,6 +148,7 @@
           "label": "Cyclomatic",
           "name": "Cyclomatic complexity",
           "omit_at": 1.0,
+          "remediation": "Split the function, replace branching with polymorphism or a lookup table, and pull guard clauses to the top to flatten nesting. For an average breach, simplify the worst offenders first (--top).",
           "short": "Cyclomatic",
           "value_type": "int"
         },
@@ -193,18 +195,20 @@
           "value_type": "bool"
         },
         "fan_in": {
-          "description": "Number of nodes that depend on this one. High fan-in means broadly reused.",
+          "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
           "group": "coupling",
           "label": "Fan-in",
           "name": "Fan-in",
+          "remediation": "If the fan-in is unintended, split the unit so each caller depends only on the slice it uses; otherwise stabilize the interface so high fan-in is safe.",
           "short": "Fan-in",
           "value_type": "int"
         },
         "fan_out": {
-          "description": "Number of nodes this one depends on. High fan-out means many dependencies. External-library edges are counted separately.",
+          "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
           "group": "coupling",
           "label": "Fan-out",
           "name": "Fan-out",
+          "remediation": "Group related dependencies behind a facade, inject collaborators instead of reaching for them, or move logic closer to the data it uses to cut outgoing edges.",
           "short": "Fan-out",
           "value_type": "int"
         },
@@ -212,17 +216,20 @@
           "description": "Number of distinct external libraries this node depends on.",
           "group": "coupling",
           "label": "Fan-out (external)",
+          "name": "Fan-out (external)",
+          "short": "Fan-out (external)",
           "value_type": "int"
         },
         "hk": {
           "abbreviate": true,
           "calc": "sloc * (fan_in * fan_out) ** 2",
-          "description": "Henry–Kafura — combines unit size with incoming/outgoing coupling (internal edges only).",
+          "description": "Henry-Kafura — sloc × (fan_in × fan_out)² — flags units that are both highly connected and large: change-amplifiers whose edits ripple widely across the system.",
           "direction": "lower_better",
           "formula": "sloc × (fan_in × fan_out)²",
           "group": "coupling",
           "label": "HK",
           "name": "Henry–Kafura",
+          "remediation": "Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk.",
           "short": "HK",
           "value_type": "float"
         },
@@ -246,7 +253,9 @@
           "value_type": "int"
         },
         "loc": {
+          "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
           "label": "Lines",
+          "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
           "value_type": "int"
         },
         "mi": {
@@ -777,6 +786,18 @@
       "title": "Fan-out — Efferent Coupling"
     }
   ],
+  "prompt": {
+    "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
+    "doc_note": "Download and read the full principle to understand it in detail. If you cannot download it, **stop the task immediately**.",
+    "focus": "**Focus the research and report primarily on the modules below.**",
+    "intro": "I want to apply this to some modules in my system.",
+    "task": [
+      "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
+      "- If you find more serious violations elsewhere during research, mention them in the report too.",
+      "- Show a summary of the report in chat.",
+      "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
+    ]
+  },
   "roots": {
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/cpp/tests/sample"
   },

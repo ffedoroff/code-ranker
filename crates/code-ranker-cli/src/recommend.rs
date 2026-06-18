@@ -444,7 +444,15 @@ mod tests {
             sort_metric: "cycle".into(),
             connections: vec!["common".into()],
         }];
-        let md = compose_prompt(&level, &presets, "ADP", Severity::Auto, None).unwrap();
+        let md = compose_prompt(
+            &level,
+            &presets,
+            &code_ranker_graph::prompt_template(),
+            "ADP",
+            Severity::Auto,
+            None,
+        )
+        .unwrap();
         assert!(md.contains("# ADP — Acyclic"), "title heading: {md}");
         assert!(md.contains("## Summary\n\nthe DAG rule"), "summary body");
         assert!(
@@ -526,7 +534,15 @@ mod tests {
             sort_metric: "sloc".into(),
             connections: vec![],
         }];
-        let md = compose_prompt(&level, &presets, "SRP", Severity::Warning, Some(1)).unwrap();
+        let md = compose_prompt(
+            &level,
+            &presets,
+            &code_ranker_graph::prompt_template(),
+            "SRP",
+            Severity::Warning,
+            Some(1),
+        )
+        .unwrap();
         assert!(
             md.contains("## Modules ordered by SLOC"),
             "ordered heading: {md}"
@@ -553,7 +569,15 @@ mod tests {
             sort_metric: "cycle".into(),
             connections: vec![],
         }];
-        let err = compose_prompt(&level, &presets, "NOPE", Severity::Auto, None).unwrap_err();
+        let err = compose_prompt(
+            &level,
+            &presets,
+            &code_ranker_graph::prompt_template(),
+            "NOPE",
+            Severity::Auto,
+            None,
+        )
+        .unwrap_err();
         assert!(format!("{err}").contains("unknown --preset 'NOPE'"));
     }
 
@@ -847,7 +871,15 @@ mod tests {
     #[test]
     fn compose_prompt_lists_multiple_cycles() {
         let level = two_cycle_level();
-        let md = compose_prompt(&level, &[adp_preset()], "ADP", Severity::Auto, Some(2)).unwrap();
+        let md = compose_prompt(
+            &level,
+            &[adp_preset()],
+            &code_ranker_graph::prompt_template(),
+            "ADP",
+            Severity::Auto,
+            Some(2),
+        )
+        .unwrap();
         assert!(
             md.contains("## 2 dependency cycles"),
             "multi-cycle header: {md}"

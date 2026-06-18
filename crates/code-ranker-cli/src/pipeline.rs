@@ -324,6 +324,7 @@ pub(crate) fn analyze_directory(
         timings,
         graphs,
         presets,
+        code_ranker_graph::prompt_template(),
     );
 
     Ok(Analyzed {
@@ -516,9 +517,12 @@ fn assemble_level(
     let mut node_kinds = spec.node_kinds;
     node_kinds.retain(|k, _| present_node_kinds.contains(k.as_str()));
 
-    // Prune cycle kinds to kinds actually present in the cycle groups.
+    // Cycle-kind vocabulary (label / why / fix) is central + data-driven
+    // (`builtin.toml` `[cycles.*]`): overlay it onto the kinds the plugin's level
+    // declares, then prune to kinds actually present in the cycle groups.
     let present_cycle_kinds: BTreeSet<&str> = cycles.iter().map(|c| c.kind.as_str()).collect();
     let mut cycle_kinds = spec.cycle_kinds;
+    cycle_kinds.extend(code_ranker_graph::cycle_specs());
     cycle_kinds.retain(|k, _| present_cycle_kinds.contains(k.as_str()));
 
     let ui = build_ui(

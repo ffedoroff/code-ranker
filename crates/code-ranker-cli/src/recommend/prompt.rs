@@ -8,7 +8,7 @@ use super::{
 };
 use anyhow::{Result, bail};
 use code_ranker_graph::level_graph::LevelGraph;
-use code_ranker_plugin_api::{Preset, node::Node};
+use code_ranker_plugin_api::{Preset, PromptTemplate, node::Node};
 
 /// Compose the AI prompt for one principle — the same Markdown the HTML viewer's
 /// Prompt Generator produces: intent + summary + principle link + task checklist,
@@ -16,6 +16,7 @@ use code_ranker_plugin_api::{Preset, node::Node};
 pub fn compose_prompt(
     level: &LevelGraph,
     presets: &[Preset],
+    tmpl: &PromptTemplate,
     preset_id: &str,
     sev: Severity,
     top: Option<usize>,
@@ -52,31 +53,27 @@ pub fn compose_prompt(
     let mut parts: Vec<String> = Vec::new();
 
     // 1. Principle intent + summary + link + task protocol.
+    // Scaffolding prose (intro / doc-note / task protocol / focus) is DATA from
+    // the snapshot's `prompt` template; only the Markdown skeleton + the preset's
+    // own title/summary/url are assembled here.
     let mut head = String::new();
     head.push_str(&format!("# {}\n\n", preset.title));
-    head.push_str("I want to apply this to some modules in my system.\n\n");
-    head.push_str("## Summary\n\n");
+    head.push_str(&tmpl.intro);
+    head.push_str("\n\n## Summary\n\n");
     head.push_str(&preset.prompt);
     head.push_str("\n\n");
     if let Some(url) = &preset.doc_url {
         head.push_str(&format!("**Full principle:** [{url}]({url})\n\n"));
-        head.push_str(
-            "Download and read the full principle to understand it in detail. \
-             If you cannot download it, **stop the task immediately**.\n\n",
-        );
+        head.push_str(&tmpl.doc_note);
+        head.push_str("\n\n");
     }
     head.push_str("## Task\n\n");
-    head.push_str(
-        "- Prepare a precise, detailed estimate and a report of where the modules below violate it.\n",
-    );
-    head.push_str(
-        "- If you find more serious violations elsewhere during research, mention them in the report too.\n",
-    );
-    head.push_str("- Show a summary of the report in chat.\n");
-    head.push_str(&format!(
-        "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{preset_id}.md`.\n\n",
-    ));
-    head.push_str("**Focus the research and report primarily on the modules below.**");
+    for line in &tmpl.task {
+        head.push_str(&line.replace("{id}", preset_id));
+        head.push('\n');
+    }
+    head.push('\n');
+    head.push_str(&tmpl.focus);
     parts.push(head);
 
     // 2. The offending modules, ordered by the preset's metric (or listed as a
@@ -91,11 +88,10 @@ pub fn compose_prompt(
                     g.kind,
                     members.len()
                 ));
-                s.push_str(
-                    "This is **one** dependency cycle; every module in it is listed below so the \
-                     whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several \
-                     separate cycles at once and obscures how each one connects.\n\n",
-                );
+                if !tmpl.cycle_note.is_empty() {
+                    s.push_str(&tmpl.cycle_note);
+                    s.push_str("\n\n");
+                }
                 for n in members {
                     s.push_str(&format!("- `{}`\n", clean_path(&n.id)));
                 }

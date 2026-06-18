@@ -158,10 +158,13 @@ function openExportPopup(level, restore) {
     const preset = snapshotPresets().find(p => p.id === id);
     if (!preset) return '';
     const { title, prompt: summary, doc_url: url } = preset;
+    // Scaffolding prose is DATA from the snapshot's `prompt` template — the same
+    // source the CLI `prompt` format reads, so the two render identical text.
+    const t = snapshotPrompt();
     const lines = [
       `# ${title}`,
       '',
-      'I want to apply this to some modules in my system.',
+      t.intro || '',
       '',
       '## Summary',
       '',
@@ -172,18 +175,12 @@ function openExportPopup(level, restore) {
       lines.push(
         `**Full principle:** [${url}](${url})`,
         '',
-        'Download and read the full principle to understand it in detail. If you cannot download it, **stop the task immediately**.',
+        t.doc_note || '',
         '');
     }
-    lines.push(
-      '## Task',
-      '',
-      '- Prepare a precise, detailed estimate and a report of where the modules below violate it.',
-      '- If you find more serious violations elsewhere during research, mention them in the report too.',
-      '- Show a summary of the report in chat.',
-      `- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named \`.code-ranker/<YYYYMMDD-HHMMSS>-${id}.md\` (e.g. \`.code-ranker/20260601-191019-${id}.md\`).`,
-      '',
-      '**Focus the research and report primarily on the modules below.**');
+    lines.push('## Task', '');
+    for (const line of (t.task || [])) lines.push(line.replaceAll('{id}', id));
+    lines.push('', t.focus || '');
     return lines.join('\n');
   };
 

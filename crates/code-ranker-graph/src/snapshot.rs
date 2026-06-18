@@ -53,6 +53,10 @@ pub struct Snapshot {
     /// Prompt-Generator presets (refactoring principles), language-adapted.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<Preset>,
+    /// Prompt-Generator scaffolding prose (language-neutral framing), so the CLI
+    /// `prompt` format and the HTML viewer render the same text from one source.
+    #[serde(default)]
+    pub prompt: code_ranker_plugin_api::PromptTemplate,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +83,7 @@ impl Snapshot {
         timings: Vec<StageTime>,
         graphs: BTreeMap<String, LevelGraph>,
         presets: Vec<Preset>,
+        prompt: code_ranker_plugin_api::PromptTemplate,
     ) -> Self {
         Self {
             schema_version: SCHEMA_VERSION.to_string(),
@@ -94,6 +99,7 @@ impl Snapshot {
             timings,
             graphs,
             presets,
+            prompt,
         }
     }
 }

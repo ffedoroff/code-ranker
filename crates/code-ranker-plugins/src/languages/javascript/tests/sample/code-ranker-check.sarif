@@ -73,7 +73,7 @@
                 "group": "CYC"
               },
               "shortDescription": {
-                "text": "Chain dependency cycle"
+                "text": "Chain"
               }
             },
             {
@@ -86,11 +86,11 @@
                 "group": "CYC"
               },
               "shortDescription": {
-                "text": "Mutual dependency cycle"
+                "text": "Mutual"
               }
             }
           ],
-          "version": "2.0.0"
+          "version": "3.0.0-alpha.1"
         }
       }
     }

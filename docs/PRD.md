@@ -324,6 +324,11 @@ Top-level fields:
   `edges`, `cycles`, `stats`, and a computed `ui` block (column/sort/size order
   and an optional `grouping` telling the viewer how to cluster nodes — e.g.
   `{ "key": "crate" }`)
+- `presets` — the Prompt-Generator principle catalog (`id` / `title` / `prompt` /
+  `sort_metric` / `connections` / …), language-adapted; omitted when empty
+- `prompt` — the language-neutral Prompt-Generator **scaffolding** (`intro` /
+  `doc_note` / `task` / `focus` / `cycle_note`), so the CLI `prompt` format and
+  the HTML viewer render the same prompt from one source
 
 `code-ranker report` and `code-ranker check` (with `--baseline`) read
 snapshot files and embed the top-level metadata in the generated HTML as a

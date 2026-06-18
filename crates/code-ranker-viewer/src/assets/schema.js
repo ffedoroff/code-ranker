@@ -71,6 +71,9 @@ function cycleKindDesc(level, kind)  { return levelSpec(level).cycle_kinds?.[kin
 function levelUi(level)        { return levelSpec(level).ui || {}; }
 function attributeGroups(level){ return levelSpec(level).attribute_groups || {}; }
 function snapshotPresets()     { return specSnap()?.presets || []; }
+// Prompt-Generator scaffolding prose (intro / doc_note / task / focus / cycle_note),
+// carried in the snapshot so this matches the CLI `prompt` format from one source.
+function snapshotPrompt()      { return specSnap()?.prompt || {}; }
 
 // ── Live metric computation (eval) ─────────────────────────────────────────
 // Build a function from a `calc` expression (bare attribute names + Math) and

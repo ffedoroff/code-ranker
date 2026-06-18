@@ -69,7 +69,11 @@ the concern groups below (CPX / SIZ / CPL). A threshold is a `value > limit` gat
 so it suits "lower is better" metrics; an unknown metric name is a config error.
 The most-used ones (`cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`, `loc`)
 carry a full why/fix rationale below; the rest report the breach with the same
-group and message shape.
+group and message shape. The `why` / `fix` copy is **data-driven**: it is read
+from each metric's `description` / `remediation` spec (the metric catalog
+`code-ranker-graph/metrics/builtin.toml` and the per-language configs), and cycle
+rules from the `[cycles.*]` catalog — the tables below mirror that data, they do
+not define it.
 
 **Value syntax.** A threshold value accepts `_` digit separators and a `K` / `M` /
 `G` multiplier suffix (×10³ / ×10⁶ / ×10⁹, case-insensitive): `5K` = 5 000,

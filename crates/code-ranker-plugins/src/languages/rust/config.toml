@@ -323,12 +323,15 @@ label = "Version"
 [node_attributes.items]
 value_type = "int"
 label = "Items"
+description = "Number of top-level items (`fn` / `struct` / `enum` / `impl` / `trait` / `mod` / `const` / …) defined in the file — a structural size signal complementary to line counts."
+remediation = "Split the file by responsibility into focused modules; move large impls or trait clusters into their own files."
 
 [node_attributes.unsafe]
 value_type = "int"
 label = "Unsafe"
 short = "Unsafe"
 description = "Count of `unsafe` blocks and `unsafe fn`/`impl`/`trait` declarations in production code (test items are excluded). Syntactic count: `unsafe` inside a macro body is not seen, and the figure is not type-checked."
+remediation = "Encapsulate each `unsafe` block behind a safe, documented abstraction with checked invariants; minimize the unsafe surface and cover it with tests."
 direction = "lower_better"
 
 [edge_attributes.visibility]

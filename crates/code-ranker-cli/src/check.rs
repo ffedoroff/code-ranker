@@ -73,7 +73,25 @@ pub(crate) fn run_check(
         None => &findings[..],
     };
 
-    emit_diagnostics(shown, total, &plugin, &project, output_format, verdict);
+    // Diagnostic copy (why / fix / title) is resolved from the active snapshot's
+    // `files`-level specs — the metric `description`/`remediation` and cycle-kind
+    // vocab — so no rule prose lives in the CLI.
+    let files = a.snapshot.graphs.get("files");
+    let empty_na: BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec> = BTreeMap::new();
+    let empty_ck: BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec> = BTreeMap::new();
+    let node_attributes = files.map(|g| &g.node_attributes).unwrap_or(&empty_na);
+    let cycle_kinds = files.map(|g| &g.cycle_kinds).unwrap_or(&empty_ck);
+
+    emit_diagnostics(
+        shown,
+        total,
+        &plugin,
+        &project,
+        output_format,
+        verdict,
+        node_attributes,
+        cycle_kinds,
+    );
 
     // Surface the current measured values as ready-to-paste config blocks only on
     // request (`--suggest-config`), human output only — machine formats stay pure.
@@ -95,6 +113,7 @@ pub(crate) fn run_check(
 /// Render check diagnostics to stdout in the requested format. With a baseline,
 /// `verdict` (improved/degraded/neutral) is included: a trailing line in `human`,
 /// a wrapping object in `json`.
+#[allow(clippy::too_many_arguments)]
 fn emit_diagnostics(
     violations: &[config::Violation],
     total: usize,
@@ -102,10 +121,19 @@ fn emit_diagnostics(
     project: &str,
     format: OutputFormat,
     verdict: Option<&str>,
+    node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
+    cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
 ) {
     match format {
         OutputFormat::Human => {
-            print_human_diagnostics(violations, total, plugin, project);
+            print_human_diagnostics(
+                violations,
+                total,
+                plugin,
+                project,
+                node_attributes,
+                cycle_kinds,
+            );
             if let Some(v) = verdict {
                 println!("\nBaseline verdict: {v}");
             }
@@ -135,7 +163,10 @@ fn emit_diagnostics(
                 );
             }
         }
-        OutputFormat::Sarif => println!("{}", sarif_document(violations)),
+        OutputFormat::Sarif => println!(
+            "{}",
+            sarif_document(violations, node_attributes, cycle_kinds)
+        ),
         OutputFormat::Codequality => println!("{}", codequality_document(violations)),
     }
 }
@@ -169,6 +200,8 @@ fn print_human_diagnostics(
     total: usize,
     plugin: &str,
     project: &str,
+    node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
+    cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
 ) {
     if total == 0 {
         println!("✓ code-ranker check: no violations in {project} ({plugin} plugin).");
@@ -188,15 +221,19 @@ fn print_human_diagnostics(
     println!("Full rule reference: {DOCS_URL}/code-ranker-cli/ERRORS.md\n");
 
     for v in violations {
-        let doc = config::rule_doc(&v.rule);
+        let doc = config::rule_doc(&v.rule, node_attributes, cycle_kinds);
         println!("{}  ·  {}  ·  {} graph", v.rule, v.group, v.graph);
         if !v.location.is_empty() {
             println!("  where  {}", v.location);
         }
         println!("  issue  {}", v.message);
-        if let Some(d) = doc {
-            println!("  why    {}", d.why);
-            println!("  fix    {}", d.fix);
+        if let Some(d) = &doc {
+            if let Some(why) = &d.why {
+                println!("  why    {why}");
+            }
+            if let Some(fix) = &d.fix {
+                println!("  fix    {fix}");
+            }
         }
         let tune = config::rule_tuning(&v.rule);
         if !tune.is_empty() {
@@ -340,7 +377,11 @@ fn group_digits(n: u64) -> String {
 /// Each result carries a `partialFingerprints` entry keyed on `(rule, location)` (no
 /// line number) so a consumer matches the same finding across runs even when code
 /// shifts — the same identity `check --baseline` uses internally.
-pub(crate) fn sarif_document(violations: &[config::Violation]) -> String {
+pub(crate) fn sarif_document(
+    violations: &[config::Violation],
+    node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
+    cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
+) -> String {
     // Distinct fired rule ids, first-seen order, so each results.ruleId resolves.
     let mut seen: Vec<&config::Violation> = Vec::new();
     for v in violations {
@@ -351,11 +392,16 @@ pub(crate) fn sarif_document(violations: &[config::Violation]) -> String {
     let rules: Vec<serde_json::Value> = seen
         .iter()
         .map(|v| {
-            let doc = config::rule_doc(&v.rule);
+            let doc = config::rule_doc(&v.rule, node_attributes, cycle_kinds);
+            let title = doc
+                .as_ref()
+                .and_then(|d| d.title.clone())
+                .unwrap_or_else(|| v.rule.clone());
+            let why = doc.as_ref().and_then(|d| d.why.clone()).unwrap_or_default();
             serde_json::json!({
                 "id": v.rule,
-                "shortDescription": { "text": doc.map(|d| d.title).unwrap_or(v.rule.as_str()) },
-                "fullDescription": { "text": doc.map(|d| d.why).unwrap_or("") },
+                "shortDescription": { "text": title },
+                "fullDescription": { "text": why },
                 "helpUri": format!(
                     "{DOCS_URL}/code-ranker-cli/ERRORS.md#group-{}",
                     v.group.to_lowercase()
@@ -484,7 +530,11 @@ mod tests {
 
     #[test]
     fn sarif_attaches_physical_location_from_violation() {
-        let doc = sarif_document(&[viol("{target}/src/x.rs", Some(7))]);
+        let doc = sarif_document(
+            &[viol("{target}/src/x.rs", Some(7))],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
         let loc = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"];
         assert_eq!(loc["artifactLocation"]["uri"], "src/x.rs");
@@ -493,7 +543,7 @@ mod tests {
 
     #[test]
     fn sarif_omits_location_when_no_path() {
-        let doc = sarif_document(&[viol("", None)]);
+        let doc = sarif_document(&[viol("", None)], &BTreeMap::new(), &BTreeMap::new());
         let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
         assert!(v["runs"][0]["results"][0].get("locations").is_none());
     }
@@ -521,7 +571,11 @@ mod tests {
 
     #[test]
     fn sarif_partial_fingerprint_is_rule_and_location() {
-        let doc = sarif_document(&[viol("{target}/src/x.rs", Some(7))]);
+        let doc = sarif_document(
+            &[viol("{target}/src/x.rs", Some(7))],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
         let fp = &v["runs"][0]["results"][0]["partialFingerprints"];
         assert_eq!(
@@ -534,8 +588,16 @@ mod tests {
     fn sarif_partial_fingerprint_is_stable_across_line_shifts() {
         // The same finding at a different line keeps the same fingerprint, so a
         // code shift does not reopen it for the consumer.
-        let at_7 = sarif_document(&[viol("{target}/src/x.rs", Some(7))]);
-        let at_42 = sarif_document(&[viol("{target}/src/x.rs", Some(42))]);
+        let at_7 = sarif_document(
+            &[viol("{target}/src/x.rs", Some(7))],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
+        let at_42 = sarif_document(
+            &[viol("{target}/src/x.rs", Some(42))],
+            &BTreeMap::new(),
+            &BTreeMap::new(),
+        );
         let fp = |doc: &str| -> String {
             let v: serde_json::Value = serde_json::from_str(doc).unwrap();
             v["runs"][0]["results"][0]["partialFingerprints"]["codeRankerRuleLocation/v1"]

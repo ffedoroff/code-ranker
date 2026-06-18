@@ -81,9 +81,13 @@ pub struct AttributeSpec {
     /// Short label for narrow table headers (falls back to `label`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub short: Option<String>,
-    /// Long human description (tooltip body).
+    /// Long human description (tooltip body); the `why` line in `check` diagnostics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// How to fix a breach of this metric — the `fix` line in `check` diagnostics.
+    /// Data, not code: lives in the metric catalog / language config, not the CLI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
     /// Human-readable formula, e.g. `"sloc × (fan_in × fan_out)²"` (display only).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub formula: Option<String>,
@@ -128,6 +132,7 @@ impl AttributeSpec {
             name: None,
             short: None,
             description: None,
+            remediation: None,
             formula: None,
             calc: None,
             direction: Direction::Neutral,
@@ -154,6 +159,7 @@ pub struct SpecRow {
     pub name: &'static str,
     pub short: &'static str,
     pub description: &'static str,
+    pub remediation: &'static str,
     pub formula: &'static str,
     pub calc: &'static str,
     pub direction: Direction,
@@ -171,6 +177,7 @@ impl Default for SpecRow {
             name: "",
             short: "",
             description: "",
+            remediation: "",
             formula: "",
             calc: "",
             direction: Direction::Neutral,
@@ -189,6 +196,7 @@ impl SpecRow {
             name: opt(self.name),
             short: opt(self.short),
             description: opt(self.description),
+            remediation: opt(self.remediation),
             formula: opt(self.formula),
             calc: opt(self.calc),
             direction: self.direction,
@@ -240,6 +248,10 @@ pub struct CycleKindSpec {
     pub label: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// How to fix this cycle kind — the `fix` line in `check` diagnostics. Data,
+    /// not code: lives in the shared `defaults.toml` `[cycle_kinds]`, not the CLI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
 }
 
 /// How the viewer should cluster nodes in the diagram. Exactly one of `key`

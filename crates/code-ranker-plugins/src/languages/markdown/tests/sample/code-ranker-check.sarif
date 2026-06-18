@@ -65,7 +65,7 @@
           "rules": [
             {
               "fullDescription": {
-                "text": ""
+                "text": "Links to a local file (not a URL or `#anchor`) that does not exist on disk. A documentation-quality signal — gate it to zero in `check`."
               },
               "helpUri": "https://github.com/ffedoroff/code-ranker/blob/main/docs/code-ranker-cli/ERRORS.md#group-cpx",
               "id": "threshold.file.broken_links",
@@ -73,7 +73,7 @@
                 "group": "CPX"
               },
               "shortDescription": {
-                "text": "threshold.file.broken_links"
+                "text": "Broken links"
               }
             },
             {
@@ -86,7 +86,7 @@
                 "group": "CYC"
               },
               "shortDescription": {
-                "text": "Chain dependency cycle"
+                "text": "Chain"
               }
             }
           ],

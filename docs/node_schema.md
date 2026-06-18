@@ -8,10 +8,14 @@ either a source `file` or a third-party `external` library.
 The model is a **generic property graph**: a node has a free-form string `kind`,
 a `name`, and a **flat attribute map** (no nested `complexity` / `coupling` /
 `loc` / `halstead` objects). Every metric's label, formula, live derivation
-(`calc`), direction, calibrated thresholds and no-signal value (`omit_at`) are
+(`calc`), direction, calibrated thresholds, no-signal value (`omit_at`), the
+`description` (the diagnostic *why*) and `remediation` (the diagnostic *fix*) are
 described by the level's
 `node_attributes` dictionary, so a consumer can render any metric without
 hardcoding it — see the main [DESIGN](DESIGN.md) §3.1/§3.7 and [PRD](PRD.md) §7.3.
+(`check`'s `why` / `fix` lines are read from these spec fields — and, for cycle
+rules, from the level's `cycle_kinds` `description` / `remediation` — so no rule
+prose is hardcoded in the CLI.)
 
 ## Full example
 

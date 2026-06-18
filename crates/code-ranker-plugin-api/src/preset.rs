@@ -10,6 +10,32 @@
 
 use serde::{Deserialize, Serialize};
 
+/// The language-neutral **prompt scaffolding** the Prompt-Generator wraps a
+/// [`Preset`] in — the framing prose around a principle (intro, the doc-read
+/// note, the task protocol, the focus line, and the dependency-cycle note).
+/// **Data, not code**: it lives in the metric catalog (`builtin.toml [prompt]`)
+/// and is carried in the snapshot, so the CLI's `prompt` format and the HTML
+/// viewer's Prompt Generator render the same text from one source. `{id}` in a
+/// `task` line is substituted with the active preset id at render time.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PromptTemplate {
+    /// One-line intent shown under the principle title.
+    #[serde(default)]
+    pub intro: String,
+    /// Shown after the `doc_url` link: read the full principle first.
+    #[serde(default)]
+    pub doc_note: String,
+    /// The task-protocol bullet lines (one entry per bullet).
+    #[serde(default)]
+    pub task: Vec<String>,
+    /// The closing emphasis line.
+    #[serde(default)]
+    pub focus: String,
+    /// Note prepended to a single dependency-cycle's module list.
+    #[serde(default)]
+    pub cycle_note: String,
+}
+
 /// A Prompt-Generator preset (a refactoring principle): a ready-to-paste AI
 /// instruction plus how the UI seeds the node selection for it. Each plugin
 /// builds its own set from config via [`LanguagePlugin::presets`](crate::plugin::LanguagePlugin::presets)

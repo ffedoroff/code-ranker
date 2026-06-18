@@ -122,6 +122,8 @@ label = "Path"
 [node_attributes.loc]
 value_type = "int"
 label = "Lines"
+description = "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse."
+remediation = "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top)."
 
 [node_attributes.visibility]
 value_type = "str"

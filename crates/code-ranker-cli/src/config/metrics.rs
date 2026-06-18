@@ -7,8 +7,8 @@
 //! here, so a new registry metric is thresholdable automatically.
 
 /// A per-file metric that can carry a threshold: its `key`, the concern `group`
-/// (one of `CPX` / `CPL` / `SIZ`, matching the [`super::rules::RULES`] groups),
-/// and the human `label` used in the breach message.
+/// (one of `CPX` / `CPL` / `SIZ`, the concern codes [`super::rules::rule_group`]
+/// returns), and the human `label` used in the breach message.
 pub struct ThresholdMetric {
     pub key: String,
     pub group: &'static str,

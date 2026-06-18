@@ -154,6 +154,7 @@ mod tests {
             Vec::new(),
             BTreeMap::new(),
             Vec::new(),
+            Default::default(),
         )
     }
 

@@ -140,7 +140,20 @@ pub(crate) fn run_report(
             .or(a.output.sarif.path.as_deref())
             .expect("output.sarif.path from built-in defaults");
         let dest = render_name(tpl, &target, commit, generated_at);
-        let mut sarif = crate::check::sarif_document(&a.violations);
+        // Diagnostic copy (rule titles / descriptions) is resolved from the
+        // reported snapshot's `files`-level specs — no rule prose in the CLI.
+        let files = a.snapshot.graphs.get("files");
+        let empty_na: std::collections::BTreeMap<
+            String,
+            code_ranker_plugin_api::level::AttributeSpec,
+        > = Default::default();
+        let empty_ck: std::collections::BTreeMap<
+            String,
+            code_ranker_plugin_api::level::CycleKindSpec,
+        > = Default::default();
+        let na = files.map(|g| &g.node_attributes).unwrap_or(&empty_na);
+        let ck = files.map(|g| &g.cycle_kinds).unwrap_or(&empty_ck);
+        let mut sarif = crate::check::sarif_document(&a.violations, na, ck);
         sarif.push('\n');
         write_artifact(&dest, &sarif, "sarif")?;
     }
@@ -218,7 +231,14 @@ fn write_recommendations(
                 "--output.prompt takes a single --severity (info | warning | auto); the scorecard accepts several"
             ),
         };
-        let md = recommend::compose_prompt(level, &snap.presets, &preset_id, sev, reco.top)?;
+        let md = recommend::compose_prompt(
+            level,
+            &snap.presets,
+            &snap.prompt,
+            &preset_id,
+            sev,
+            reco.top,
+        )?;
         let dest =
             render_name(prompt_tpl, target, commit, generated_at).replace("{preset}", &preset_id);
         write_artifact(&dest, &md, "prompt")?;

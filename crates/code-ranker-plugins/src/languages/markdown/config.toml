@@ -30,12 +30,14 @@ value_type = "int"
 label = "Headings"
 short = "H"
 description = "Number of ATX headings (`#` … `######`) — the document's section count."
+remediation = "Split the document into focused pages, or group sections under fewer top-level headings."
 
 [node_attributes.max_depth]
 value_type = "int"
 label = "Max heading depth"
 short = "H-depth"
 description = "Deepest heading level used (1 = only `#`, 6 = down to `######`). A proxy for how deeply the document is nested."
+remediation = "Flatten the section hierarchy — promote deeply nested headings, or split them into separate documents."
 direction = "lower_better"
 
 [node_attributes.code_lines]
@@ -43,18 +45,21 @@ value_type = "int"
 label = "Code lines"
 short = "Code"
 description = "Lines inside fenced code blocks (```), i.e. how much embedded code the document carries."
+remediation = "Move long embedded code into referenced example files, or trim snippets to the essential lines."
 
 [node_attributes.links]
 value_type = "int"
 label = "Links"
 short = "Links"
 description = "Total inline Markdown links `[text](dest)` (local files, URLs and anchors alike)."
+remediation = "Group related references, or split the document so each page carries a focused set of links."
 
 [node_attributes.broken_links]
 value_type = "int"
 label = "Broken links"
 short = "Broken"
 description = "Links to a local file (not a URL or `#anchor`) that does not exist on disk. A documentation-quality signal — gate it to zero in `check`."
+remediation = "Fix or remove each dead link — correct the path, restore the target file, or drop the reference."
 direction = "lower_better"
 
 # Surface the doc metrics in the table (Markdown has none of the code columns).
