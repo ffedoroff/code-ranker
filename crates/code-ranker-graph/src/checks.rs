@@ -1011,7 +1011,11 @@ mod tests {
                 .is_some()
         );
         // A file with no `.` → empty ext, stem == name.
-        assert!(compiled(r#"ext == "" && stem == "README""#).eval(&n, &g).is_some());
+        assert!(
+            compiled(r#"ext == "" && stem == "README""#)
+                .eval(&n, &g)
+                .is_some()
+        );
         // Message formatting: fractional float (2dp), whole float (no point), bool,
         // and an unmatched `{` left verbatim.
         let check = compile(

@@ -71,6 +71,28 @@ pub(crate) struct Node {
     /// `bat (bin)`. `None` for crate / external nodes. A package can expose
     /// several crates (a lib and one or more bins), so this is per-target.
     pub crate_label: Option<String>,
+    /// Syntactic facts from the file's production AST (test items excluded),
+    /// each a sorted comma-joined set — for config `[rules.checks]` predicates
+    /// (`contains(derives, "Serialize")`, `contains(macros, "println")`, …).
+    pub facts: Facts,
+}
+
+/// Per-file syntactic fact sets, emitted as comma-joined string node attributes.
+/// Empty (`None`) sets are not emitted. Collected over the production AST only.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Facts {
+    /// `#[derive(...)]` names (last path segment), e.g. `Serialize,Debug`.
+    pub derives: Option<String>,
+    /// Macro invocation names (last path segment), e.g. `println,vec`.
+    pub macros: Option<String>,
+    /// Attribute names other than `derive` (last path segment), e.g. `tokio,serde`.
+    pub attrs: Option<String>,
+    /// Qualified paths referenced (≥2 segments), e.g. `http::StatusCode,std::fmt`.
+    pub imports: Option<String>,
+    /// Names of types defined in the file (struct / enum / type alias).
+    pub types: Option<String>,
+    /// Names of traits defined in the file.
+    pub traits: Option<String>,
 }
 
 #[derive(Debug, Clone)]

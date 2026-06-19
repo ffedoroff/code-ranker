@@ -37,6 +37,26 @@ fn attr_key(key: &'static str) -> &'static str {
     key
 }
 
+/// Emit the file's syntactic fact sets (`derives`/`macros`/`attrs`/`imports`/
+/// `types`/`traits`) as comma-joined string attributes. Empty sets carry no key.
+fn emit_facts(
+    attrs: &mut code_ranker_plugin_api::attrs::Attributes,
+    facts: &super::internal::Facts,
+) {
+    for (key, value) in [
+        ("derives", &facts.derives),
+        ("macros", &facts.macros),
+        ("attrs", &facts.attrs),
+        ("imports", &facts.imports),
+        ("types", &facts.types),
+        ("traits", &facts.traits),
+    ] {
+        if let Some(v) = value {
+            attrs.insert(attr_key(key).to_string(), AttrValue::Str(v.clone()));
+        }
+    }
+}
+
 /// The crate-root source filename (`lib.rs`) preferred when a crate node owns
 /// several root module files — DATA from `config.toml` (`crate_root_file`); the
 /// tie-break LOGIC (prefer this file) stays in [`collapse_to_files`].
@@ -143,6 +163,7 @@ pub(crate) fn collapse_to_files(full: InternalGraph) -> Graph {
                                 AttrValue::Str(krate.clone()),
                             );
                         }
+                        emit_facts(&mut attrs, &node.facts);
                         v.insert(Node {
                             id: fid,
                             kind: code_ranker_plugin_api::node::FILE.into(),
@@ -188,6 +209,7 @@ pub(crate) fn collapse_to_files(full: InternalGraph) -> Graph {
                                     AttrValue::Str(krate.clone()),
                                 );
                             }
+                            emit_facts(&mut n.attrs, &node.facts);
                         }
                     }
                 }

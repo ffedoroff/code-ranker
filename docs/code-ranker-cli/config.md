@@ -114,6 +114,9 @@ code. Where `[rules.thresholds.file]` only does `metric > limit`, a check is any
 boolean expression over a rich context:
 
 - **node values** — any attribute key (`tloc`, `sloc`, `loc`, `unsafe`, `cyclomatic`, …);
+  the Rust plugin also emits syntactic-fact strings (production code only) usable
+  via `contains`/`matches`: `derives` / `macros` / `attrs` / `imports` (comma-joined
+  "uses X" sets) and `types` / `traits` (names defined in the file);
 - **path fields** — `path` / `name` / `stem` / `ext` / `dir`;
 - **edges (lists)** — `deps` / `rdeps` (dependency neighbour labels; an external
   crate is `ext:<name>`), plus `depends_on(s)` / `depended_on_by(s)`;

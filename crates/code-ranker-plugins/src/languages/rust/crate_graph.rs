@@ -22,6 +22,7 @@ pub(crate) fn contribute(metadata: &Metadata, builder: &mut GraphBuilder) {
             item_count: None,
             unsafe_count: None,
             crate_label: None,
+            facts: Default::default(),
         });
     }
 

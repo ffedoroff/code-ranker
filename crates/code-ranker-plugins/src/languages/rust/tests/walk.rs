@@ -249,3 +249,36 @@ extern \"C\" {}\n\
         "non-test items are not flagged"
     );
 }
+
+/// `FactsCollector` gathers derive / macro / attr names and the names of types
+/// (struct / enum / type alias) and traits defined in a file.
+#[test]
+fn facts_collector_gathers_all_kinds() {
+    let src = r#"
+        #[derive(Debug, serde::Serialize)]
+        #[tokio::main]
+        #[allow(dead_code)]
+        struct Foo;
+        enum Bar { A }
+        type Alias = u32;
+        trait Doer { fn go(&self); }
+        fn f() { println!("x"); let _ = vec![1]; }
+    "#;
+    let file = syn::parse_file(src).unwrap();
+    let mut fc = FactsCollector::default();
+    for item in &file.items {
+        syn::visit::Visit::visit_item(&mut fc, item);
+    }
+    // derive names use the last path segment (`serde::Serialize` → `Serialize`).
+    assert!(fc.derives.contains("Debug") && fc.derives.contains("Serialize"));
+    assert!(fc.macros.contains("println") && fc.macros.contains("vec"));
+    // non-derive attribute, last segment (`tokio::main` → `main`).
+    assert!(fc.attrs.contains("main"));
+    // struct + enum + type alias all land in `types`.
+    assert!(fc.types.contains("Foo") && fc.types.contains("Bar") && fc.types.contains("Alias"));
+    assert!(fc.traits.contains("Doer"));
+    // `derive` itself is never recorded as a plain attribute, and noise
+    // attributes (`allow`/`doc`/`cfg`/…) are skipped.
+    assert!(!fc.attrs.contains("derive"));
+    assert!(!fc.attrs.contains("allow"));
+}

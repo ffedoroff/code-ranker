@@ -109,6 +109,85 @@ impl<'ast> syn::visit::Visit<'ast> for UnsafeCounter {
     }
 }
 
+/// Collects per-file syntactic facts for config `[rules.checks]`: derive names,
+/// macro-invocation names, attribute names (non-derive), and the names of types
+/// and traits defined in the file. Driven over production items only (test items
+/// are skipped by the caller), so a `#[cfg(test)]`-only derive never counts.
+#[derive(Default)]
+pub(super) struct FactsCollector {
+    pub(super) derives: std::collections::BTreeSet<String>,
+    pub(super) macros: std::collections::BTreeSet<String>,
+    pub(super) attrs: std::collections::BTreeSet<String>,
+    pub(super) types: std::collections::BTreeSet<String>,
+    pub(super) traits: std::collections::BTreeSet<String>,
+}
+
+impl<'ast> syn::visit::Visit<'ast> for FactsCollector {
+    fn visit_attribute(&mut self, attr: &'ast syn::Attribute) {
+        if attr
+            .path()
+            .is_ident(crate::languages::rust::cfg::SYN_DERIVE.as_str())
+        {
+            if let Ok(paths) = attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+            ) {
+                for p in &paths {
+                    if let Some(seg) = p.segments.last() {
+                        self.derives.insert(seg.ident.to_string());
+                    }
+                }
+            }
+        } else if let Some(seg) = attr.path().segments.last() {
+            let name = seg.ident.to_string();
+            // Skip ubiquitous noise attributes — they carry no rule signal.
+            if !matches!(
+                name.as_str(),
+                "doc" | "allow" | "warn" | "deny" | "cfg" | "cfg_attr"
+            ) {
+                self.attrs.insert(name);
+            }
+        }
+        syn::visit::visit_attribute(self, attr);
+    }
+
+    fn visit_macro(&mut self, mac: &'ast syn::Macro) {
+        if let Some(seg) = mac.path.segments.last() {
+            self.macros.insert(seg.ident.to_string());
+        }
+        syn::visit::visit_macro(self, mac);
+    }
+
+    fn visit_item_struct(&mut self, i: &'ast syn::ItemStruct) {
+        self.types.insert(i.ident.to_string());
+        syn::visit::visit_item_struct(self, i);
+    }
+
+    fn visit_item_enum(&mut self, i: &'ast syn::ItemEnum) {
+        self.types.insert(i.ident.to_string());
+        syn::visit::visit_item_enum(self, i);
+    }
+
+    fn visit_item_type(&mut self, i: &'ast syn::ItemType) {
+        self.types.insert(i.ident.to_string());
+        syn::visit::visit_item_type(self, i);
+    }
+
+    fn visit_item_trait(&mut self, i: &'ast syn::ItemTrait) {
+        self.traits.insert(i.ident.to_string());
+        syn::visit::visit_item_trait(self, i);
+    }
+}
+
+/// A sorted set → a comma-joined string, or `None` when empty (so an empty fact
+/// emits no node attribute).
+fn joined(set: &std::collections::BTreeSet<String>) -> Option<String> {
+    if set.is_empty() {
+        None
+    } else {
+        Some(set.iter().cloned().collect::<Vec<_>>().join(","))
+    }
+}
+
 fn convert_visibility(v: &SynVis) -> Visibility {
     match v {
         SynVis::Public(_) => Visibility::Public,
@@ -168,15 +247,22 @@ pub(super) fn walk_file(
     // with how `sloc`/complexity exclude tests).
     let mut collector = CratePathCollector::default();
     let mut unsafe_counter = UnsafeCounter::default();
+    let mut facts = FactsCollector::default();
     for item in &parsed.items {
         if ignore_tests && is_test_item(item) {
             continue;
         }
         syn::visit::Visit::visit_item(&mut collector, item);
         syn::visit::Visit::visit_item(&mut unsafe_counter, item);
+        syn::visit::Visit::visit_item(&mut facts, item);
     }
 
-    // Annotate the parent module node with LOC, item_count and unsafe count.
+    // `imports` = the qualified paths (≥2 segments) the file references — reuse
+    // the bare-path collector that already drives the dependency edges.
+    let imports: std::collections::BTreeSet<String> =
+        collector.paths.iter().map(|segs| segs.join("::")).collect();
+
+    // Annotate the parent module node with LOC, item_count, unsafe count + facts.
     if let Some(node) = builder
         .nodes_mut()
         .iter_mut()
@@ -186,6 +272,14 @@ pub(super) fn walk_file(
         node.item_count = Some(item_count);
         node.unsafe_count = Some(unsafe_counter.count);
         node.path = file_path.display().to_string();
+        node.facts = super::super::internal::Facts {
+            derives: joined(&facts.derives),
+            macros: joined(&facts.macros),
+            attrs: joined(&facts.attrs),
+            imports: joined(&imports),
+            types: joined(&facts.types),
+            traits: joined(&facts.traits),
+        };
     }
 
     for path in collector.paths {
@@ -320,6 +414,7 @@ fn process_mod(
         item_count: None,
         unsafe_count: None,
         crate_label: Some(crate_label(pkg, target)),
+        facts: Default::default(),
     });
     builder.add_edge(Edge {
         from: parent_mod_id.clone(),

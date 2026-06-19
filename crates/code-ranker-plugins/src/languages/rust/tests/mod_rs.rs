@@ -78,6 +78,7 @@ fn module_node(
         item_count: Some(items),
         unsafe_count: Some(unsafe_count),
         crate_label: Some(krate.into()),
+        facts: Default::default(),
     }
 }
 

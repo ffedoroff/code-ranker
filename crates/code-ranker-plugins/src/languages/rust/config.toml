@@ -334,6 +334,39 @@ description = "Count of `unsafe` blocks and `unsafe fn`/`impl`/`trait` declarati
 remediation = "Encapsulate each `unsafe` block behind a safe, documented abstraction with checked invariants; minimize the unsafe surface and cover it with tests."
 direction = "lower_better"
 
+# Syntactic fact sets (comma-joined, production code only) — for config
+# `[rules.checks]` predicates via `contains(...)` / `matches(...)`. String-valued
+# so they never join the numeric table/scorecard surfaces.
+[node_attributes.derives]
+value_type = "str"
+label = "Derives"
+description = "Names of the `#[derive(...)]` traits used in the file (e.g. `Serialize,Debug`), production code only."
+
+[node_attributes.macros]
+value_type = "str"
+label = "Macros"
+description = "Names of macros invoked in the file (e.g. `println,vec`), production code only."
+
+[node_attributes.attrs]
+value_type = "str"
+label = "Attributes"
+description = "Names of attributes (other than `derive`) applied in the file (e.g. `tokio,serde`), production code only."
+
+[node_attributes.imports]
+value_type = "str"
+label = "Imports"
+description = "Qualified paths the file references (≥2 segments, e.g. `http::StatusCode,std::fmt`), production code only."
+
+[node_attributes.types]
+value_type = "str"
+label = "Types"
+description = "Names of types defined in the file (struct / enum / type alias)."
+
+[node_attributes.traits]
+value_type = "str"
+label = "Traits"
+description = "Names of traits defined in the file."
+
 [edge_attributes.visibility]
 value_type = "str"
 label = "Visibility"

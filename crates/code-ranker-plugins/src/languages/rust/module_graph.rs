@@ -64,6 +64,7 @@ pub(crate) fn contribute(
                 item_count: None,
                 unsafe_count: None,
                 crate_label: Some(crate_label(pkg, target)),
+                facts: Default::default(),
             });
             builder.add_edge(Edge {
                 from: crate_id.clone(),

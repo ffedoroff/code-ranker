@@ -64,8 +64,9 @@ what an absent cell means (e.g. treat it as that value when sorting); when the
 field is absent, the value is `0`.
 
 Python / JS / TS file nodes carry the same keys minus `crate` / `items` /
-`unsafe` (Rust-only); their `external` nodes carry neither `version` nor `path`
-(no on-disk package is resolved).
+`unsafe` and the syntactic-fact strings `derives` / `macros` / `attrs` /
+`imports` / `types` / `traits` (all Rust-only); their `external` nodes carry
+neither `version` nor `path` (no on-disk package is resolved).
 
 ---
 
@@ -157,6 +158,17 @@ with `sloc` and the complexity metrics. **Omitted when zero**, so files with no
 `unsafe` carry no key. Rust-only and **syntactic**: `unsafe` produced inside a
 macro body is not seen (macros are not expanded), and the count is not
 type-checked. `direction: lower_better`.
+
+### `derives` / `macros` / `attrs` / `imports` / `types` / `traits` — string, optional (Rust file nodes)
+
+Syntactic **fact sets** the Rust plugin emits per file from its **production**
+AST (test items excluded), each a sorted comma-joined string — fuel for config
+`[rules.checks]` predicates (`contains(derives, "Serialize")`, `matches(...)`),
+not numeric surfaces. `derives` = `#[derive(...)]` names; `macros` = macro
+invocation names; `attrs` = attribute names other than `derive`; `imports` =
+qualified paths referenced (≥2 segments, e.g. `http::StatusCode`); `types` /
+`traits` = names of types / traits defined in the file. **Omitted when empty.**
+Rust-only and syntactic (no macro expansion, no type resolution).
 
 ### `visibility` — string, optional
 

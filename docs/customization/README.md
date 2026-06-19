@@ -318,6 +318,7 @@ string — **plus** derived path fields and a small standard library:
 | In scope | What it is |
 |---|---|
 | any attribute key | the node's value (`tloc`, `sloc`, `loc`, `unsafe`, `fan_in`, …) |
+| `derives` `macros` `attrs` `imports` `types` `traits` | Rust-plugin syntactic facts — comma-joined strings (production code only); check via `contains(derives, "Serialize")` / `matches(...)`. `derives`/`macros`/`attrs`/`imports` are "uses X" sets; `types`/`traits` are names defined in the file |
 | `path` | repo-relative file path, e.g. `crates/a/src/handler.rs` |
 | `name` | basename, e.g. `handler.rs` |
 | `stem` | basename without the final extension, e.g. `handler` |

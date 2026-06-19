@@ -1,12 +1,12 @@
 {
   "command": "code-ranker report crates/code-ranker-plugins/src/languages/rust/tests/sample --config crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker-report.json",
   "config_file": "crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker.toml",
-  "generated_at": "1970-01-01T00:00:00Z",
+  "generated_at": "2026-06-19T17:17:39.418451Z",
   "git": {
-    "branch": "main",
-    "commit": "000000000000",
-    "dirty_files": 0,
-    "origin": "git@example.com:org/repo.git"
+    "branch": "feat/config-custom-checks",
+    "commit": "434336b99f71",
+    "dirty_files": 6,
+    "origin": "git@github.com:ffedoroff/code-ranker.git"
   },
   "graphs": {
     "files": {
@@ -365,6 +365,11 @@
           "short": "Args",
           "value_type": "int"
         },
+        "attrs": {
+          "description": "Names of attributes (other than `derive`) applied in the file (e.g. `tokio,serde`), production code only.",
+          "label": "Attributes",
+          "value_type": "str"
+        },
         "blank": {
           "description": "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
           "group": "loc",
@@ -443,6 +448,11 @@
           "remediation": "Split the function, replace branching with polymorphism or a lookup table, and pull guard clauses to the top to flatten nesting. For an average breach, simplify the worst offenders first (--top).",
           "short": "Cyclomatic",
           "value_type": "int"
+        },
+        "derives": {
+          "description": "Names of the `#[derive(...)]` traits used in the file (e.g. `Serialize,Debug`), production code only.",
+          "label": "Derives",
+          "value_type": "str"
         },
         "effort": {
           "calc": "(eta1 / 2) * (n2 / eta2) * volume",
@@ -533,6 +543,11 @@
           },
           "value_type": "float"
         },
+        "imports": {
+          "description": "Qualified paths the file references (≥2 segments, e.g. `http::StatusCode,std::fmt`), production code only.",
+          "label": "Imports",
+          "value_type": "str"
+        },
         "items": {
           "description": "Number of top-level items (`fn` / `struct` / `enum` / `impl` / `trait` / `mod` / `const` / …) defined in the file — a structural size signal complementary to line counts.",
           "label": "Items",
@@ -567,6 +582,11 @@
           "label": "Lines",
           "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
           "value_type": "int"
+        },
+        "macros": {
+          "description": "Names of macros invoked in the file (e.g. `println,vec`), production code only.",
+          "label": "Macros",
+          "value_type": "str"
         },
         "mi": {
           "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
@@ -660,6 +680,11 @@
           "name": "Test lines",
           "short": "TLOC",
           "value_type": "int"
+        },
+        "types": {
+          "description": "Names of types defined in the file (struct / enum / type alias).",
+          "label": "Types",
+          "value_type": "str"
         },
         "unsafe": {
           "description": "Count of `unsafe` blocks and `unsafe fn`/`impl`/`trait` declarations in production code (test items are excluded). Syntactic count: `unsafe` inside a macro body is not seen, and the figure is not type-checked.",
@@ -813,6 +838,7 @@
           "spaces": 2,
           "span_sloc": 8,
           "time": 2.729,
+          "types": "Widget",
           "visibility": "public",
           "vocabulary": 7,
           "volume": 19.651
@@ -824,6 +850,7 @@
           "crate": "rust-sample",
           "cycle": "mutual",
           "cyclomatic": 2,
+          "derives": "Serialize",
           "effort": 4413.97,
           "eta1": 15,
           "eta2": 17,
@@ -833,6 +860,7 @@
           "fan_out_external": 1,
           "hk": 224,
           "id": "{target}/src/a.rs",
+          "imports": "HashMap::new,helpers::offset",
           "items": 2,
           "kind": "file",
           "length": 69,
@@ -847,6 +875,7 @@
           "spaces": 2,
           "span_sloc": 30,
           "time": 245.22,
+          "types": "Alpha",
           "visibility": "public",
           "vocabulary": 32,
           "volume": 345
@@ -868,11 +897,13 @@
           "fan_out_external": 1,
           "hk": 81,
           "id": "{target}/src/b.rs",
+          "imports": "once_cell::sync::Lazy,once_cell::sync::Lazy::new",
           "items": 2,
           "kind": "file",
           "length": 45,
           "lloc": 2,
           "loc": 28,
+          "macros": "println,pull_in_c",
           "mi": 88.195,
           "mi_sei": 97.249,
           "n1": 28,
@@ -887,6 +918,7 @@
           "volume": 213.969
         },
         {
+          "attrs": "test",
           "blank": 3,
           "bugs": 0.00867,
           "cloc": 9,
@@ -902,6 +934,7 @@
           "kind": "file",
           "length": 16,
           "loc": 32,
+          "macros": "assert_eq",
           "mi": 101.118,
           "mi_sei": 113.588,
           "n1": 11,
@@ -1150,6 +1183,7 @@
           "spaces": 1,
           "span_sloc": 11,
           "time": 0.277,
+          "types": "Hub",
           "visibility": "public",
           "vocabulary": 4,
           "volume": 10
@@ -1180,6 +1214,7 @@
           "spaces": 2,
           "span_sloc": 12,
           "time": 5.765,
+          "types": "Widget",
           "visibility": "public",
           "vocabulary": 11,
           "volume": 41.513
@@ -1209,6 +1244,7 @@
           "spaces": 2,
           "span_sloc": 14,
           "time": 8.585,
+          "types": "Bough",
           "visibility": "public",
           "vocabulary": 9,
           "volume": 41.209
@@ -1231,6 +1267,7 @@
           "sloc": 2,
           "spaces": 1,
           "span_sloc": 11,
+          "types": "Pip",
           "visibility": "public",
           "vocabulary": 2,
           "volume": 3
@@ -1260,6 +1297,7 @@
           "spaces": 2,
           "span_sloc": 22,
           "time": 8.585,
+          "types": "Nest",
           "visibility": "public",
           "vocabulary": 9,
           "volume": 41.209
@@ -1289,24 +1327,29 @@
           "spaces": 2,
           "span_sloc": 15,
           "time": 3.119,
+          "types": "Chick",
           "visibility": "public",
           "vocabulary": 7,
           "volume": 22.458
         },
         {
+          "attrs": "test",
           "blank": 2,
           "bugs": 0.0051,
           "cloc": 9,
           "crate": "rust-sample",
+          "derives": "Serialize",
           "effort": 60,
           "eta1": 5,
           "eta2": 3,
           "fan_out_external": 1,
           "id": "{target}/src/derives.rs",
+          "imports": "crate::derives::OnlyDerived,serde::Serialize",
           "items": 2,
           "kind": "file",
           "length": 8,
           "loc": 23,
+          "macros": "assert_eq",
           "mi": 110.373,
           "mi_sei": 130.238,
           "n1": 5,
@@ -1317,6 +1360,7 @@
           "span_sloc": 15,
           "time": 3.333,
           "tloc": 8,
+          "types": "OnlyDerived",
           "visibility": "public",
           "vocabulary": 8,
           "volume": 24
@@ -1381,6 +1425,7 @@
           "volume": 41.513
         },
         {
+          "attrs": "macro_use,path,test",
           "blank": 7,
           "bugs": 0.0355,
           "cloc": 34,
@@ -1392,11 +1437,13 @@
           "exits": 1,
           "fan_out": 3,
           "id": "{target}/src/lib.rs",
+          "imports": "foo::run",
           "items": 14,
           "kind": "file",
           "length": 46,
           "lloc": 1,
           "loc": 71,
+          "macros": "assert_eq,make_answer",
           "mi": 76.137,
           "mi_sei": 80.309,
           "n1": 25,
@@ -1424,6 +1471,7 @@
           "kind": "file",
           "length": 25,
           "loc": 22,
+          "macros": "macro_rules",
           "mi": 97.153,
           "mi_sei": 102.903,
           "n1": 18,
@@ -1743,25 +1791,25 @@
     ]
   },
   "roots": {
-    "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
-    "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample"
+    "registry": "/Users/roman/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
+    "target": "/Users/roman/work/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample"
   },
   "schema_version": "3",
-  "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample",
+  "target": "/Users/roman/work/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample",
   "timings": [
     {
       "detail": "27 nodes from 25 files",
-      "ms": 0,
+      "ms": 411,
       "stage": "rust"
     },
     {
       "detail": "25 nodes annotated",
-      "ms": 0,
+      "ms": 63,
       "stage": "complexity"
     },
     {
       "detail": "nodes=27 edges=48",
-      "ms": 0,
+      "ms": 43,
       "stage": "projection"
     }
   ],
@@ -1769,5 +1817,5 @@
     "code-ranker": "3.0.0-alpha.1",
     "rustc": "1.96.0"
   },
-  "workspace": "/home/user/code-ranker"
+  "workspace": "/Users/roman/work/code-ranker"
 }

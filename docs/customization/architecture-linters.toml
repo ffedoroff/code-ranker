@@ -52,3 +52,58 @@ when    = '(in_contract || in_domain || in_infra) && deps.exists(d, contains(d, 
 message = "a non-API file references the api/rest (DTO) layer (DE0202)"
 group   = "ARCH"
 fix     = "Map the DTO to a domain/contract type at the API boundary instead of importing it inward."
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Group A/B — syntactic facts (Rust plugin emits per-file, production code only):
+#   derives / macros / attrs / imports  — comma-joined "use X" sets (forbid-style)
+#   types / traits                       — names defined in the file (naming rules)
+# Check via contains(...) / matches(...). These reproduce the symbol-level lints
+# that edges alone could not.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── DE0101: no serde derives in the contract layer ────────────────────────────
+[rules.checks.de0101_no_serde_in_contract]
+when    = 'in_contract && (contains(derives, "Serialize") || contains(derives, "Deserialize"))'
+message = "contract type derives serde (DE0101): {derives}"
+group   = "ARCH"
+fix     = "Keep serialization in API-layer DTOs; contract models stay format-agnostic."
+
+# ── DE0102: no ToSchema (utoipa) derive in the contract layer ─────────────────
+[rules.checks.de0102_no_toschema_in_contract]
+when    = 'in_contract && contains(derives, "ToSchema")'
+message = "contract type derives ToSchema (DE0102): {derives}"
+group   = "ARCH"
+
+# ── DE0104: no api_dto attribute macro in the contract layer ──────────────────
+[rules.checks.de0104_no_api_dto_in_contract]
+when    = 'in_contract && contains(attrs, "api_dto")'
+message = "contract uses the api_dto macro (DE0104)"
+group   = "ARCH"
+
+# ── DE0110 / DE0902: no schema_for! macro ─────────────────────────────────────
+[rules.checks.de0110_no_schema_for]
+when    = 'contains(macros, "schema_for")'
+message = "uses the `schema_for!` macro (DE0110)"
+group   = "ARCH"
+
+# ── DE1301: no print macros in production code ────────────────────────────────
+[rules.checks.de1301_no_print_macros]
+when    = 'contains(macros, "println") || contains(macros, "print") || contains(macros, "eprintln") || contains(macros, "eprint")'
+message = "uses a print macro in production code (DE1301): {macros}"
+group   = "STYLE"
+fix     = "Use the logging facade (`tracing`/`log`) instead of print macros."
+
+# ── DE0201: DTO types must live only under api/rest ───────────────────────────
+# A `*Dto` type defined outside the API layer (approx: `contains` substring match).
+[rules.checks.de0201_dtos_only_in_api_rest]
+when    = 'contains(types, "Dto") && !contains(path, "/api/rest/")'
+message = "a `*Dto` type is defined outside api/rest (DE0201): {types}"
+group   = "ARCH"
+
+# ── DE0503: SDK client traits must use the `Client` suffix ────────────────────
+# A trait named `*Api` / `*PluginApi` in a `*-sdk` crate (matches a name token).
+[rules.checks.de0503_plugin_client_suffix]
+when    = 'contains(path, "-sdk/") && matches(traits, "Api(,|$)")'
+message = "an SDK trait uses an `*Api` suffix instead of `*Client` (DE0503): {traits}"
+group   = "ARCH"
