@@ -25,9 +25,9 @@ function buildDiagramSVG(node, level) {
   const trunc    = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
   const nameOf   = n => trunc(n.name || n.id.split('::').pop() || n.id, 18);
 
-  // Card-metric keys driven by ui.card_metrics (e.g. ["hk","sloc"]).
+  // Card-metric keys driven by ui.card (e.g. ["hk","sloc"]).
   const ui          = levelUi(level);
-  const cardMetrics = ui.card_metrics || [];
+  const cardMetrics = ui.card || [];
   const primaryKey   = cardMetrics[0] ?? null;
   const secondaryKey = cardMetrics[1] ?? null;
 

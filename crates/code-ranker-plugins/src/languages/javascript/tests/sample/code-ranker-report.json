@@ -717,7 +717,7 @@
         "volume": 148.217
       },
       "ui": {
-        "card_metrics": [
+        "card": [
           "hk",
           "sloc"
         ],
@@ -743,14 +743,14 @@
           "blank"
         ],
         "default_sort": "cycle",
-        "filter_metrics": [
+        "filter": [
           "cycle"
         ],
-        "size_metrics": [
+        "size": [
           "sloc",
           "hk"
         ],
-        "sort_metrics": [
+        "sort": [
           "cycle",
           "sloc",
           "hk",
@@ -770,7 +770,7 @@
           "cloc",
           "blank"
         ],
-        "summary_metrics": [
+        "summary": [
           "sloc",
           "hk",
           "fan_in",
@@ -980,7 +980,7 @@
   "roots": {
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/javascript/tests/sample"
   },
-  "schema_version": "2",
+  "schema_version": "3",
   "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/javascript/tests/sample",
   "timings": [
     {

@@ -1,0 +1,88 @@
+# DE1101 "tests in separate files" — the inline-bulk trigger as a config check,
+# plus the report surfacing (column / card / stats / SVG map / preset) for the
+# test/source RATIO, the way `custom-field-example.toml` does it. No Rust.
+#
+# "Inline test code" is the built-in `tloc`, measured from the AST (syn) — it can't
+# be fooled by `{`/`}` inside strings/comments the way the original's line-based
+# brace counter can. Test files (`tests/`, `*_tests.rs`) are dropped by the default
+# `ignore.tests = true`, so the check and the ratio metric see production files
+# only — the ratio isn't skewed by the all-test files.
+#
+# Scope vs the dylint original: this is the `max_inline_test_lines` (>100) trigger.
+# The companion-file trigger (forbid inline tests when a `<stem>_tests.rs` exists)
+# is omitted — it would need `ignore.tests = false` to see the sibling test files
+# as nodes, which then pollutes the test/source ratio with those all-test files.
+# The test-module *name* / `#[path]` checks are not expressible in config at all
+# (they read declarations inside the source, which the engine doesn't model).
+#
+#   code-ranker check  . --config docs/customization/linters-example.toml
+#   code-ranker report . --config docs/customization/linters-example.toml --output.html
+#   code-ranker report . --config docs/customization/linters-example.toml \
+#     --output.scorecard --preset DE1101 --severity warning --top 1
+plugin = "rust"
+
+
+# ── The gate: a production file carries more than 100 lines of inline test code ─
+# (Test files are already excluded by `ignore.tests = true`, so `tloc` here is the
+# inline test bulk of production files only.)
+[rules.checks.de1101_tests_in_separate_files]
+when = "tloc > 100"
+message = "{tloc} lines of inline test code in a production file (DE1101)"
+group   = "TST"
+why     = "Tests in separate files keep production files small, keep test code out of LOC counts, and ease navigation for humans and LLMs."
+fix     = "Move the inline `#[cfg(test)]` tests into a sibling `{stem}_tests.rs` module."
+
+
+# ── The report side: surface the test/source RATIO as a metric ────────────────
+# The raw inline-test line count is the built-in `tloc` (no custom metric needed —
+# `inline_test_loc = "tloc"` would just be an alias). What's worth surfacing is the
+# PROPORTION: `tloc / sloc`. In a metric formula the inputs are floats, so plain
+# `/` is real division (no `.double()`, unlike a `[rules.checks]` predicate). The
+# guard drops it to 0 on files with no source, so `not_empty` / the map filter see
+# only files that actually carry inline tests. `warning`/`info` are the two-tier
+# badges the scorecard / viewer use (distinct from the `check` gate above); `group`
+# files it under the SIZE concern.
+[metrics.inline_test_ratio]
+formula        = "sloc > 0.0 ? tloc / sloc : 0.0"
+formula_pretty = "tloc / sloc"
+label          = "Test/source"
+name           = "Inline test-to-source ratio"
+short          = "T/S"
+description    = "Inline test lines per production source line; >1 means the file is more test than code."
+direction      = "lower_better"
+group          = "loc"
+warning        = 1.0
+info           = 0.5
+
+# A one-number project health signal into the JSON `stats` block: the worst
+# test/source ratio across the files that carry inline tests (`not_empty`).
+[metrics.inline_test_ratio_max]
+scope          = "graph"
+formula        = "agg('inline_test_ratio', 'max', 'not_empty')"
+formula_pretty = "max( inline_test_ratio )"
+label          = "Test/source (worst file)"
+
+# Surface it: the raw `tloc` count + the `inline_test_ratio` as table columns after
+# `sloc`; the RATIO on the node card, as an SVG circle-size mode, and as a map
+# filter that isolates the files carrying inline tests (its `not_empty` population).
+# The SVG status bar (node hover) reads the card list, so the ratio shows there too.
+[report]
+columns = { after = { sloc = ["tloc", "inline_test_ratio"] } }
+card    = { add = ["inline_test_ratio"] }
+stats   = { add = ["inline_test_ratio_max"] }
+size    = { add = ["inline_test_ratio"] }
+filter  = { add = ["inline_test_ratio"] }
+
+# A Prompt-Generator preset / scorecard lens ranking files worst-first by the
+# test/source ratio. `--preset DE1101` ranks by `sort_metric`.
+[presets.DE1101]
+title       = "DE1101 — Move inline tests into separate files"
+sort_metric = "inline_test_ratio"
+prompt      = """
+These production files carry inline `#[cfg(test)]` test code. Move each inline test
+module into a sibling `<stem>_tests.rs` file (e.g. `#[cfg(test)] #[path = "<stem>_tests.rs"]
+mod <stem>_tests;`), keeping coverage identical, so the production file reads on its own.
+"""
+
+[output.html]
+path = ".code-ranker/{project-dir}.html"

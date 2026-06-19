@@ -13,7 +13,7 @@
 #                       operand tokens it counts) via its `[specs.<key>]`.
 #   - `[fields.*]`      the derived metrics: each is a `cel` formula over the AST
 #                       inputs (and earlier fields), with its display spec.
-#   - `[tableview]` / `[cardview]` / `[report.json.aggregate]`  the views that
+#   - `[report]` (+ `[report.stats]`)  the views that
 #                       reference the metric keys above.
 #
 # Spec fields on a measured `[ast.<key>]` / derived `[fields.<key>]` entry:
@@ -389,38 +389,29 @@ task = [
 focus = "**Focus the research and report primarily on the modules below.**"
 cycle_note = "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects."
 
-# ── table view ────────────────────────────────────────────────────────────────
-# `columns` is the node-table column order, left to right. It is one flat list:
-# the metric fields plus the non-field tokens (`kind`, `cycle`) and the
-# coupling/structural keys (`fan_in`, `fan_out`, `hk`). The orchestrator prunes it
-# to the keys actually present on an internal node.
-# `default_sort` is the initial sort, most-significant key first; a leading `-`
-# means descending, otherwise ascending. Every column stays sortable in the UI —
-# this only sets the opening order.
-[tableview]
+# ── report views ──────────────────────────────────────────────────────────────
+# ONE section, with the SAME key names a project's `[report]` override uses and
+# the same names that reach the JSON `ui` block and the viewer — so the vocabulary
+# matches end to end (catalog → ReportOverride → LevelUi → ui → JS). Each list is
+# pruned by the orchestrator to the keys actually present on an internal node.
+#   columns       node-table column order, left to right (one flat list; may
+#                 include non-field tokens `kind`/`cycle` and coupling keys).
+#   default_sort  initial sort, most-significant first; leading `-` = descending.
+#                 Every column stays sortable in the UI — this only sets the open order.
+#   card          ordered metrics shown as the big numbers on a node's card.
+#   size          attribute keys the SVG map offers as circle-size modes.
+#   filter        attribute keys the SVG map offers as on/off node filters (keep
+#                 only nodes where the metric has signal).
+# A language/project extends any list via its own `[report]` (e.g.
+# `size = { add = [...] }`).
+[report]
 columns = [
     "kind", "cycle", "sloc", "hk", "fan_in", "fan_out", "volume", "bugs",
     "effort", "time", "length", "vocabulary", "cyclomatic", "cognitive", "mi",
     "mi_sei", "lloc", "cloc", "blank", "tloc",
 ]
 default_sort = ["-cycle", "-hk", "-sloc"]
-
-# ── card view ─────────────────────────────────────────────────────────────────
-# `featured` is the ordered list of metrics shown as the big numbers on a node's
-# card: the first is the primary number, the second the secondary, … The list
-# may include non-field keys (e.g. the coupling metric `hk`). The orchestrator
-# prunes it to the keys actually present.
-[cardview]
-featured = ["hk", "sloc"]
-
-# ── map view ──────────────────────────────────────────────────────────────────
-# The SVG map's interactive controls, as DATA so the viewer hardcodes none of it.
-# `size` = the attribute keys offered as circle-size modes (the node area scales
-# with the metric); `filter` = the keys offered as on/off node filters (keep only
-# nodes where the metric has signal). A language/project extends either via its
-# `[report] size = { add = [...] }` / `[report] filter = { add = [...] }`. The
-# orchestrator prunes both to keys actually present on an internal node.
-[mapview]
+card = ["hk", "sloc"]
 size = ["sloc", "hk"]
 filter = ["cycle"]
 
@@ -438,7 +429,7 @@ filter = ["cycle"]
 #
 # The first block reproduces today's aggregates: the per-file mean of each tracked
 # metric with zero/floor values excluded (= avg over `not_empty`).
-[report.json.aggregate]
+[report.stats]
 blank = "agg('blank', 'avg', 'not_empty')"
 bugs = "agg('bugs', 'avg', 'not_empty')"
 cloc = "agg('cloc', 'avg', 'not_empty')"

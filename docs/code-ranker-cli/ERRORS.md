@@ -26,6 +26,10 @@ code-ranker has **no severity levels**. A rule is either *active* or not:
   count and forbid adding more (e.g. `chain=7`).
 - **Threshold rules** are inactive until you set a number. Once set, any file
   over the limit is a violation.
+- **Custom checks** (`[rules.checks.<id>]`) are inactive until you define one.
+  Each is a CEL boolean predicate over a file node; when true the file is a
+  `check.<id>` violation. See `docs/code-ranker-cli/config.md` and
+  `docs/customization/README.md` §1.8.
 
 Any violation of any active rule fails `check` with a non-zero exit code. There
 is no warning tier — if something should not fail the build, turn the rule off or
@@ -55,6 +59,15 @@ The limit is checked **per file** — any single file over the limit is a violat
 | `threshold.file.<metric>` | a single file exceeds | `--threshold file.cognitive=25` |
 
 So `file.loc` caps any one file.
+
+## Custom checks
+
+A custom check defined in `[rules.checks.<id>]` fires the rule id `check.<id>`
+(e.g. `check.de1101`). Its `message` / `why` / `fix` come from the check
+definition itself (not the metric specs), and its `group` is the check's
+free-form concern label (default `LNT`). A `when` predicate that fails to compile
+is itself reported as a `check.<id>` violation, so a typo fails the gate loudly
+rather than silently skipping the rule.
 
 ```bash
 code-ranker check --threshold file.loc=400 --threshold file.cognitive=25

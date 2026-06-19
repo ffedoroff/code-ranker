@@ -176,7 +176,7 @@ function recomputeAll() {
 }
 
 // Build the map's size-mode + filter buttons for a level entirely from its
-// `ui.size_metrics` / `ui.filter_metrics` (the viewer hardcodes none): the ■ box
+// `ui.size` / `ui.filter` (the viewer hardcodes none): the ■ box
 // mode plus one circle-size button per size key, and one node-filter button per
 // filter key. Labels/titles come from the metric specs. Active state mirrors
 // window.nodeSizeMode / window.nodeFilter. Clicks are handled by delegation in
@@ -187,7 +187,7 @@ function renderMapControls(section, level) {
   const mode = window.nodeSizeMode || null;
   const filt = window.nodeFilter || null;
   if (metricRow) {
-    const sizes = levelUi(level).size_metrics || [];
+    const sizes = levelUi(level).size || [];
     let html = `<button class="size-mode-btn${mode === null ? ' active' : ''}" `
              + `data-size="dot" title="Default box mode">■</button>`;
     for (const k of sizes) {
@@ -198,7 +198,7 @@ function renderMapControls(section, level) {
     metricRow.innerHTML = html;
   }
   if (filterRow) {
-    const filters = levelUi(level).filter_metrics || [];
+    const filters = levelUi(level).filter || [];
     filterRow.innerHTML = filters.map(k => {
       const title = k === 'cycle'
         ? 'Show only nodes in dependency cycles (+ their connections)'

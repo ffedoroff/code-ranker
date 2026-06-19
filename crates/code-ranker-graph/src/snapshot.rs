@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 /// The snapshot schema version this build produces and can read back. A
 /// `--baseline` (or snapshot input) with a different version is rejected with a
 /// structured error rather than silently mis-parsed.
-pub const SCHEMA_VERSION: &str = "2";
+pub const SCHEMA_VERSION: &str = "3";
 
 /// Per-stage timing in milliseconds, in execution order.
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -17,7 +17,7 @@ function dotId(id) {
 const METRIC_BASE_DIAM = 0.3, METRIC_BASE_LOC = 100, METRIC_BASE_HK = 1000;
 function metricNodeVal(n, mode) {
   if (!n || !mode) return 0;
-  // The size-mode key IS the attribute key (data-driven from `ui.size_metrics`).
+  // The size-mode key IS the attribute key (data-driven from `ui.size`).
   // `loc` is the one historical alias (→ sloc) kept for older shared links.
   if (mode === 'loc') return Number(n.sloc ?? n.loc ?? 0);
   return Number(n[mode] ?? 0);
@@ -72,7 +72,7 @@ function buildDOT(nodes, edges, level, viewport) {
   const activeDig  = drillGroup === null ? (window.dig || 0) : (window.drillDig ?? 0);
   const gOf        = grouperForDig(level, activeDig);
   const cycleOf    = window.CYCLES?.[level]?.nodeCycleStatus;
-  // Node filter (data-driven from `ui.filter_metrics`): when a key is active keep
+  // Node filter (data-driven from `ui.filter`): when a key is active keep
   // only nodes where that metric has signal. `cycle` is special (uses the cycle
   // membership set); any other key keeps nodes whose attribute value is non-zero.
   const isCyc      = id => !!(cycleOf && cycleOf.has(id));

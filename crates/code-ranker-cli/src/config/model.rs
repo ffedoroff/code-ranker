@@ -175,6 +175,18 @@ pub struct IgnoreConfig {
 pub struct RulesConfig {
     pub cycles: CycleRules,
     pub thresholds: ThresholdRules,
+    /// Custom config-defined checks (`[rules.checks.<id>]`): a CEL boolean `when`
+    /// predicate over each file node's values (numeric / string attributes plus
+    /// derived `path`/`name`/`stem`/`ext`/`dir`, the dependency lists
+    /// `deps`/`rdeps`, and the file collections `files`/`siblings`) and a
+    /// `message`. Empty by default → no extra checks. Lets a project write a
+    /// linter rule entirely in config (see `code_ranker_graph::CheckDef`).
+    pub checks: BTreeMap<String, code_ranker_graph::CheckDef>,
+    /// Reusable named CEL helpers (`[rules.defs]`, `name = "<cel expr>"`),
+    /// expanded into a check's `when` before compilation. A helper may reference
+    /// an earlier helper. Empty by default. Lets a project name a shared
+    /// vocabulary (e.g. `is_domain = 'contains(path, "/domain/")'`).
+    pub defs: BTreeMap<String, String>,
 }
 
 /// A cycle check: disabled, or enabled with a maximum allowed count.

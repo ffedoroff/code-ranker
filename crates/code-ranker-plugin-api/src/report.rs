@@ -98,16 +98,16 @@ fn dedup(list: Vec<String>) -> Vec<String> {
 /// global default untouched.
 #[derive(Debug, Clone, Default)]
 pub struct ReportOverride {
-    /// The node-table column order (`[tableview].columns`).
+    /// The node-table column order (`[report].columns`).
     pub columns: ListPatch,
-    /// The card-featured metrics (`[cardview].featured`).
+    /// The card-featured metrics (`[report].card`).
     pub card: ListPatch,
     /// The JSON report's aggregate `stats` keys.
     pub stats: ListPatch,
-    /// Metrics the SVG map offers as circle-size modes (`ui.size_metrics`), on top
+    /// Metrics the SVG map offers as circle-size modes (`ui.size`), on top
     /// of the built-in `loc` / `hk` modes.
     pub size: ListPatch,
-    /// Metrics the SVG map offers as on/off node filters (`ui.filter_metrics`) —
+    /// Metrics the SVG map offers as on/off node filters (`ui.filter`) —
     /// keep only nodes where the metric has signal — alongside the built-in `cycle`.
     pub filter: ListPatch,
 }

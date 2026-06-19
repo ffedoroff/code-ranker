@@ -547,8 +547,8 @@ fn assemble_level(
     }
 }
 
-/// Build the `ui` block from the data-driven view sections (`[tableview]` /
-/// `[cardview]`), dropping anything not present on an internal node
+/// Build the `ui` block from the data-driven `[report]` view section, dropping
+/// anything not present on an internal node
 /// (`present_internal_keys`) — external-only keys stay in the dictionary but
 /// never reach a render list. `kind` is always a column.
 fn build_ui(
@@ -569,7 +569,7 @@ fn build_ui(
         .fold(v.columns.clone(), |acc, ov| ov.columns.apply(&acc));
     let card_base = report_overrides
         .iter()
-        .fold(v.featured.clone(), |acc, ov| ov.card.apply(&acc));
+        .fold(v.card.clone(), |acc, ov| ov.card.apply(&acc));
     let size_base = report_overrides
         .iter()
         .fold(v.size.clone(), |acc, ov| ov.size.apply(&acc));
@@ -577,11 +577,11 @@ fn build_ui(
         .iter()
         .fold(v.filter.clone(), |acc, ov| ov.filter.apply(&acc));
     let columns = pick(&cols_base);
-    let card_metrics = pick(&card_base);
+    let card = pick(&card_base);
     // Map controls: prune to keys present on an internal node. `cycle` is a
     // string attribute (a cycle kind), valid as a filter but never a size mode.
-    let size_metrics = pick(&size_base);
-    let filter_metrics = pick(&filter_base);
+    let size = pick(&size_base);
+    let filter = pick(&filter_base);
     // Default sort: a signed-rank list (order = priority, leading `-` =
     // descending). Strip the sign and pick the first key present. Every column
     // stays sortable in the UI — this only sets the opening order.
@@ -592,10 +592,10 @@ fn build_ui(
         .find(|k| has(k))
         .map(|k| k.to_string());
     // Sortable = every column except the `kind` label.
-    let sort_metrics: Vec<String> = columns.iter().filter(|k| *k != "kind").cloned().collect();
+    let sort: Vec<String> = columns.iter().filter(|k| *k != "kind").cloned().collect();
     // Summary rows = the numeric metric columns (exclude the `kind` label and the
     // categorical `cycle`).
-    let summary_metrics: Vec<String> = columns
+    let summary: Vec<String> = columns
         .iter()
         .filter(|k| *k != "kind" && *k != "cycle")
         .cloned()
@@ -610,12 +610,12 @@ fn build_ui(
     });
     LevelUi {
         default_sort,
-        sort_metrics,
-        size_metrics,
-        filter_metrics,
-        card_metrics,
+        sort,
+        size,
+        filter,
+        card,
         columns,
-        summary_metrics,
+        summary,
         grouping,
     }
 }

@@ -255,14 +255,14 @@ required.
 - [x] `p1` - **ID**: `cpt-code-ranker-fr-snapshot-meta`
 
 Each `code-ranker report` run produces a single `.json` file
-(`schema_version: "2"`). The file combines metadata and the `graphs` map (one
+(`schema_version: "3"`). The file combines metadata and the `graphs` map (one
 entry per analysis level — today only `files`) in one document. Each level
 bundles its semantics dictionaries with the structural graph and computed data
 (see §7.3 for the full shape):
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "generated_at": "2026-05-22T11:22:33Z",
   "command": "code-ranker report /path/to/axum-api --plugin rust",
   "workspace": "/Users/alice/projects/code-ranker",
@@ -297,7 +297,7 @@ bundles its semantics dictionaries with the structural graph and computed data
 
 Top-level fields:
 
-- `schema_version` — `"2"` (the generic property-graph format)
+- `schema_version` — `"3"` (the generic property-graph format)
 - `generated_at` — ISO-8601 timestamp
 - `command` — full command line as typed
 - `workspace` — absolute path to the directory where `code-ranker` was invoked
@@ -621,7 +621,7 @@ subcommand at 10k nodes.
 - [x] `p1` - **ID**: `cpt-code-ranker-nfr-portability`
 
 JSON snapshot artifacts MUST conform to the Graph JSON Schema
-(`schema_version: "2"`) and MUST be readable by the report generator and
+(`schema_version: "3"`) and MUST be readable by the report generator and
 baseline comparison without migration within a major schema version. Generated
 HTML reports MUST open correctly in Chrome, Firefox, and Safari without
 installation.
@@ -722,7 +722,7 @@ can render any language/metric set without hardcoding names.
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "generated_at":   "<ISO-8601>",
   "command":        "<full command line>",
   "workspace":      "<absolute-path>",
@@ -745,8 +745,8 @@ can render any language/metric set without hardcoding names.
       "attribute_groups": { "<group>": { "label": "…", "description": "…" } },
       "node_kinds":       { "<kind>": { "label": "…", "plural": "…", "fill": "#…", "stroke": "#…", "external": true } },
       "cycle_kinds":      { "<kind>": { "label": "…", "description": "…" } },
-      "ui":               { "default_sort": "…", "sort_metrics": [...], "size_metrics": [...],
-                            "card_metrics": [...], "columns": [...], "summary_metrics": [...] },
+      "ui":               { "default_sort": "…", "sort": [...], "size": [...],
+                            "card": [...], "columns": [...], "summary": [...] },
       "nodes": [...], "edges": [...], "cycles": [...], "stats": { ... }
     }
   },
@@ -942,7 +942,7 @@ as a self-contained HTML report.
   snapshots; the verdict (`improved` / `degraded` / `neutral`) is present
 - [x] All P1 tools operate with zero outbound network calls
 - [x] Generated HTML reports contain no external resource references
-- [x] JSON artifacts conform to the Graph JSON Schema (`schema_version: "2"`)
+- [x] JSON artifacts conform to the Graph JSON Schema (`schema_version: "3"`)
 - [x] A `--baseline` comparison exits non-zero with a structured error on
   schema version mismatch
 - [ ] Every metric value equals the true count of what it measures — no false

@@ -291,6 +291,7 @@ dependencies = [
  "cel",
  "chrono",
  "code-ranker-plugin-api",
+ "regex",
  "serde",
  "serde_json",
  "toml",

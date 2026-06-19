@@ -227,13 +227,21 @@ fn print_human_diagnostics(
             println!("  where  {}", v.location);
         }
         println!("  issue  {}", v.message);
-        if let Some(d) = &doc {
-            if let Some(why) = &d.why {
-                println!("  why    {why}");
-            }
-            if let Some(fix) = &d.fix {
-                println!("  fix    {fix}");
-            }
+        // A custom check carries its own copy on the violation; metric/cycle rules
+        // resolve it from the snapshot specs. Prefer the violation's own copy.
+        let why = v
+            .why
+            .clone()
+            .or_else(|| doc.as_ref().and_then(|d| d.why.clone()));
+        let fix = v
+            .fix
+            .clone()
+            .or_else(|| doc.as_ref().and_then(|d| d.fix.clone()));
+        if let Some(why) = why {
+            println!("  why    {why}");
+        }
+        if let Some(fix) = fix {
+            println!("  fix    {fix}");
         }
         let tune = config::rule_tuning(&v.rule);
         if !tune.is_empty() {
@@ -249,9 +257,9 @@ fn print_human_diagnostics(
     // Tail breakdown by concern group so the end of the output summarizes at a glance.
     let mut counts: Vec<(&str, usize)> = Vec::new();
     for v in violations {
-        match counts.iter_mut().find(|(g, _)| *g == v.group) {
+        match counts.iter_mut().find(|(g, _)| *g == v.group.as_str()) {
             Some((_, n)) => *n += 1,
-            None => counts.push((v.group, 1)),
+            None => counts.push((v.group.as_str(), 1)),
         }
     }
     let breakdown = counts
@@ -397,7 +405,11 @@ pub(crate) fn sarif_document(
                 .as_ref()
                 .and_then(|d| d.title.clone())
                 .unwrap_or_else(|| v.rule.clone());
-            let why = doc.as_ref().and_then(|d| d.why.clone()).unwrap_or_default();
+            let why = doc
+                .as_ref()
+                .and_then(|d| d.why.clone())
+                .or_else(|| v.why.clone())
+                .unwrap_or_default();
             serde_json::json!({
                 "id": v.rule,
                 "shortDescription": { "text": title },
@@ -494,12 +506,14 @@ mod tests {
     fn viol(location: &str, line: Option<u32>) -> config::Violation {
         config::Violation {
             rule: "threshold.file.loc".into(),
-            group: "SIZ",
+            group: "SIZ".into(),
             graph: "files",
             location: location.into(),
             line,
             message: "source loc 1318 exceeds limit 150".into(),
             weight: 8.78,
+            why: None,
+            fix: None,
         }
     }
 

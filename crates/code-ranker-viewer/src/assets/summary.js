@@ -138,9 +138,9 @@ function buildSummary() {
   // plain counts. The display order is the `LAYOUT` section tree at the bottom —
   // edit THAT (sections and their `rows`) to move rows around. ──
   const level0       = levels[0];
-  // summary_metrics is the snapshot's curated, already-pruned metric order (Rust
+  // summary is the snapshot's curated, already-pruned metric order (Rust
   // assemble_level keeps only keys present on internal nodes — render verbatim).
-  const summaryKeys  = levelUi(level0).summary_metrics || [];
+  const summaryKeys  = levelUi(level0).summary || [];
 
   // A per-metric row. The active summary stat (window._summaryStat — avg by
   // default, set by the header radio) picks what each cell shows: `sum` aggregates
@@ -245,7 +245,7 @@ function buildSummary() {
     { title: 'Halstead',   rows: ['metric:volume', 'metric:bugs', 'metric:effort', 'metric:time', 'metric:length', 'metric:vocabulary'] },
   ];
 
-  // One metric builder per key referenced (LAYOUT ∪ summary_metrics); metricRow
+  // One metric builder per key referenced (LAYOUT ∪ summary); metricRow
   // itself returns '' for keys absent from this snapshot.
   const laidOutRows = LAYOUT.flatMap(s => s.rows || []);
   const metricKeys  = new Set([

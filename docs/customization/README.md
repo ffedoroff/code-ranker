@@ -13,7 +13,7 @@ There are two places config lives — know which one you want:
 
 | Layer | File | Who edits it | What it controls |
 |---|---|---|---|
-| **Project** | `code-ranker.toml` (in your repo) | you, per project | custom `[metrics]`, `[rules]` thresholds/cycles, `[report]` views, `[presets]`, `[ignore]`, `[levels]`, plugin/output |
+| **Project** | `code-ranker.toml` (in your repo) | you, per project | custom `[metrics]`, `[rules]` thresholds/cycles/**checks**, `[report]` views, `[presets]`, `[ignore]`, `[levels]`, plugin/output |
 | **Language** | `<lang>.toml` (shipped in the binary) | a language plugin author | the node-kind vocabulary, presets, default thresholds, and the **report list overrides** (`[report]`) |
 
 Custom metrics and thresholds are **project** config (runtime). The report
@@ -304,6 +304,95 @@ For the `--severity` counts to be meaningful the metric should carry `warning` /
 `info` thresholds (§1.1); without them the scorecard falls back to `hk`'s tiers for
 the count, though the narrowed worst-file list still ranks by the metric.
 
+### 1.8 Custom checks — `[rules.checks.<id>]` (write a linter rule in config)
+
+`[rules.thresholds.file]` only expresses `metric > limit`. A **custom check** is
+the general form: a CEL **boolean** `when` predicate over each file node, plus a
+`message`. When the predicate is true for a file, `check` reports a violation
+pinned to that file — a config-only linter rule, no Rust.
+
+The predicate sees more than one number. Every node value is in scope under its
+own key — numeric (`tloc`, `sloc`, `loc`, `cyclomatic`, `unsafe`, …), boolean, or
+string — **plus** derived path fields and a small standard library:
+
+| In scope | What it is |
+|---|---|
+| any attribute key | the node's value (`tloc`, `sloc`, `loc`, `unsafe`, `fan_in`, …) |
+| `path` | repo-relative file path, e.g. `crates/a/src/handler.rs` |
+| `name` | basename, e.g. `handler.rs` |
+| `stem` | basename without the final extension, e.g. `handler` |
+| `ext` | final extension, e.g. `rs` |
+| `dir` | everything before the basename, e.g. `crates/a/src` |
+| `ends_with(s, x)` `starts_with(s, x)` `contains(s, x)` | substring tests → bool |
+| `matches(s, re)` | full regex match → bool (a bad pattern never panics) |
+| `n.double()` | cast an integer attribute to float — CEL's bare `/` is integer division and rejects mixed int/float, so `tloc.double() / sloc.double()` is how you take a ratio |
+
+Because `check` runs as a **second pass over the fully-built graph**, the
+predicate can also reach the *edges* and the *file set* — not just the node
+itself:
+
+| Graph in scope | What it is |
+|---|---|
+| `deps` | list of labels this file depends on (a path like `crates/a/infra.rs`, or `ext:<crate>` for an external dependency) |
+| `rdeps` | list of labels that depend on this file (reverse edges) |
+| `files` | list of every project file path (bound only when referenced) |
+| `siblings` | list of files in the same folder (excluding this one) |
+| `depends_on(s)` / `depended_on_by(s)` | does any out- / in-neighbour label contain `s` → bool |
+| `file_exists(p)` | is `p` one of the project files → bool |
+| `.size()` `.exists(x, …)` `.all(x, …)` `.filter(x, …)` | CEL list macros over any list above |
+
+```toml
+[rules.checks.test_source_ratio]
+# Flag files whose inline test code outweighs their production code — but only on
+# files over 100 lines (small files are noise). `.double()` makes `/` a real
+# (float) division; bare int `/` would truncate the ratio to 0.
+when    = "loc > 100 && sloc > 0 && tloc.double() / sloc.double() > 0.5"
+message = "{tloc} inline test lines vs {sloc} source lines ({loc}-line file) — test/source ratio too high"
+group   = "TST"          # concern label in diagnostics (free-form; default "LNT")
+why     = "When inline tests outgrow the production code, the file is dominated by test bulk."
+fix     = "Move the inline `#[cfg(test)]` tests into a sibling test module."
+
+[rules.checks.no_direct_sqlx]
+# A dependency/layer rule over the edges: this file must not import the sqlx crate.
+when    = 'depends_on("ext:sqlx")'
+message = "depends directly on the `sqlx` crate"
+group   = "DEP"
+
+# Reusable named helpers, expanded into a check's `when` (a helper may use an
+# earlier one). Add reuse/readability, not new power.
+[rules.defs]
+is_test_file = 'ends_with(name, "_tests.rs") || contains(path, "/tests/")'
+```
+
+- **`when`** is required — any CEL boolean expression (`&&` / `||` / `!` / `? :`,
+  comparisons, the functions/lists above, and `[rules.defs]` helpers). Evaluated
+  per file node; a predicate that errors or yields a non-boolean simply doesn't
+  fire (never panics). A `when` that fails to *compile* (or a cyclic `defs` set)
+  becomes a loud violation so a typo can't pass silently.
+- **`message`** is required; `why` / `fix` / `title` are optional diagnostic copy.
+  All four interpolate `{key}` from the node's values (any attribute or a derived
+  path field).
+- **`group`** is a free-form concern label (shown in the diagnostic and the
+  summary breakdown); it defaults to `LNT`.
+
+Each fired check is a `check.<id>` rule in every output format (human, JSON,
+GitHub annotations, SARIF, Code Quality) and counts toward the gate's exit code,
+exactly like a threshold or cycle violation. A runnable example —
+[`linters-example.toml`](./linters-example.toml) next to this doc — reproduces the
+dylint **DE1101 "tests in separate files"** lint in a single check, folding both
+of its triggers (inline test bulk over 100 lines, or a companion `*_tests.rs`
+already present) and its `tests/` / `*_tests.rs` exemptions into one `when`:
+
+```sh
+code-ranker check . --config docs/customization/linters-example.toml
+```
+
+> **What a check can't see.** The predicate reads the node's *measured values*,
+> its *path*, and its *graph edges* — but not source text. So rules about
+> declarations *inside* a file (a `derive`, a macro call, an attribute, a type or
+> trait name) aren't expressible: nothing in the node models them. Metrics, path,
+> and dependency/collection rules are the sweet spot.
+
 ---
 
 ## 2. Language config (`<lang>.toml`) — for plugin authors
@@ -385,11 +474,11 @@ patches the aggregate keys averaged into the JSON `stats` block; `size` and
 ## 3. Viewer integration — sizing & filtering the SVG map by a metric
 
 The **table, node card, and JSON stats** reflect your custom metrics via the `ui`
-lists (`columns`, `card_metrics`, `summary_metrics`) that `[report]` patches (§1.6 /
+lists (`columns`, `card`, `summary`) that `[report]` patches (§1.6 /
 §2.2). The **SVG map** is driven the same way — its size-mode and filter buttons are
 built entirely from two more `ui` lists, so the viewer hardcodes none of them:
 
-- **Circle sizing by a metric — `[report] size`.** Each key in `ui.size_metrics`
+- **Circle sizing by a metric — `[report] size`.** Each key in `ui.size`
   becomes a button on the map; clicking it draws every node as a circle whose area
   scales with that metric (re-click to return to box mode). The built-in modes are
   `sloc` and `hk`; add your own:
@@ -404,7 +493,7 @@ built entirely from two more `ui` lists, so the viewer hardcodes none of them:
   both spread sensibly.
 
 - **Filter the map to a metric's population — `[report] filter`.** Each key in
-  `ui.filter_metrics` becomes an on/off toggle that keeps only the nodes where that
+  `ui.filter` becomes an on/off toggle that keeps only the nodes where that
   metric has signal — exactly how the built-in `cycle` filter isolates cycle
   members. So filtering on `tsr_big` (zero on small files; see §1.3) shows only the
   `loc > 300` files that feed the aggregate:
@@ -436,6 +525,11 @@ aggregate       [metrics.k] scope="graph" formula="agg('m','reducer','population
   populations   not_empty (signal only)  |  all (missing = floor)
   "where cond"  put the predicate in a node metric: cond ? value : 0  → not_empty drops the rest
 check threshold [rules.thresholds.file] k = <limit>   (K/M/G suffixes; built-ins AND custom metrics)
+custom check    [rules.checks.ID] when="<CEL bool>" message="…"  (runs as a 2nd pass over the built graph)
+  node in scope any attribute key  ·  path/name/stem/ext/dir  ·  ends_with/starts_with/contains/matches  ·  n.double()
+  graph in scope deps/rdeps (edge label lists)  ·  files/siblings  ·  depends_on/depended_on_by/file_exists  ·  list macros .size()/.exists/.all/.filter
+  copy          message/why/fix/title  (interpolate {key})  ·  group (free-form, default LNT)
+  helpers       [rules.defs] name="<cel expr>"  expanded into when (reuse; a helper may use an earlier one)
 list patch      key = { clear=true, remove=[..], replace={old="new"},
                         after={anchor=[..]}, before={anchor=[..]}, prepend=[..], add=[..] }
 report views    [report] columns|card|stats = <list patch>   (works in <lang>.toml AND code-ranker.toml)

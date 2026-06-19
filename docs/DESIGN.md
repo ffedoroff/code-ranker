@@ -285,9 +285,9 @@ keys it understands, described per level by the semantics dictionaries.
 | Preset | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-ranker-cli/src/presets.rs`) and a plugin's `presets(input)` hook may pass through / edit / extend it. Stored top-level in the snapshot. Prompt-generator domain data — lives in its own module, not the parser contract. | `crates/code-ranker-plugin-api/src/preset.rs` |
 | PromptTemplate | The language-neutral prompt **scaffolding** the Prompt-Generator wraps a `Preset` in: `intro`, `doc_note`, `task` (bullet lines), `focus`, `cycle_note` (`{id}` substituted at render). Data, not code — sourced from `builtin.toml [prompt]` (`code-ranker-graph`'s `prompt_template()`), carried top-level in the snapshot so the CLI `prompt` format and the viewer's Prompt Generator render the same text from one source. | `crates/code-ranker-plugin-api/src/preset.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"mutual"` for a 2-node SCC, `"chain"` for 3+), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-ranker-graph/src/level_graph.rs` |
-| LevelUi | Computed UI hints: `default_sort`, `sort_metrics`, `size_metrics`, `card_metrics`, `columns`, `summary_metrics` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-ranker-graph/src/level_graph.rs` |
+| LevelUi | Computed UI hints: `default_sort`, `sort`, `size`, `card`, `columns`, `summary` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-ranker-graph/src/level_graph.rs` |
-| Snapshot | The `.json` artifact: `schema_version: "2"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, top-level `presets: Vec<Preset>`, and `prompt: PromptTemplate` (the Prompt-Generator scaffolding prose, read by both the CLI and the viewer). Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-ranker-graph/src/snapshot.rs` |
+| Snapshot | The `.json` artifact: `schema_version: "3"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, top-level `presets: Vec<Preset>`, and `prompt: PromptTemplate` (the Prompt-Generator scaffolding prose, read by both the CLI and the viewer). Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-ranker-graph/src/snapshot.rs` |
 | StageTime | Per-stage timing entry: `stage`, `ms`, `detail`. Stored in `Snapshot.timings` in execution order. | `crates/code-ranker-graph/src/snapshot.rs` |
 
 **Relationships**:
@@ -749,7 +749,7 @@ See [§3.7 Plugin System](#37-plugin-system).
 
 - **Location**: defined by `Snapshot`, `Node`, `Edge` structs in
   `crates/code-ranker-graph/src/`
-- **Versioning**: `schema_version: "2"`; additive fields are minor;
+- **Versioning**: `schema_version: "3"`; additive fields are minor;
   breaking changes require a major-version bump
 
 ### 3.4 Internal Dependencies
@@ -976,7 +976,7 @@ dictionaries with the structural graph and the computed cycles/stats:
 
 ```json
 {
-  "schema_version": "2",
+  "schema_version": "3",
   "generated_at":   "2026-05-22T11:22:33Z",
   "command":        "code-ranker report /path/to/axum-api --plugin rust",
   "workspace":      "/Users/alice/projects/code-ranker",
@@ -997,7 +997,7 @@ dictionaries with the structural graph and the computed cycles/stats:
       "attribute_groups": { "complexity": { "label": "Complexity", "description": "…" }, … },
       "node_kinds":       { "file": { "label": "File", "fill": "#dbe9f4", "stroke": "#4d6f9c" }, "external": { "external": true, … } },
       "cycle_kinds":      { "mutual": { "label": "Mutual", "description": "…" } },
-      "ui":               { "default_sort": "hk", "columns": [...], "summary_metrics": [...], "sort_metrics": [...], "size_metrics": [...], "card_metrics": [...] },
+      "ui":               { "default_sort": "hk", "columns": [...], "summary": [...], "sort": [...], "size": [...], "card": [...] },
       "nodes": [
         { "id": "{target}/src/a.rs", "kind": "file", "name": "a.rs", "sloc": 30, "cyclomatic": 1, "hk": 480, "cycle": "mutual", "visibility": "public", … },
         { "id": "ext:serde", "kind": "external", "name": "serde", "external": true, "version": "1.0.228", "path": "{registry}/serde-1.0.228" }

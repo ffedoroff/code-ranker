@@ -1,0 +1,54 @@
+# Architecture / dependency linters — reproduced from cyberfabric's dylint suite
+# on the code-ranker engine, PURE CONFIG (no Rust), using the graph edges.
+#
+# These all key on `depends_on(s)` — true when a file has an out-edge whose target
+# label contains `s`: a file path ("/infrastructure/") or an external crate
+# ("ext:sqlx"). This is exactly what the dylint originals check via `use` analysis,
+# at module/crate granularity. "Layer" is identified by path; tune the substrings
+# to your repo's actual folder names (or crate names) under `[rules.defs]`.
+#
+#   code-ranker check . --config docs/customization/architecture-linters.toml
+plugin = "rust"
+
+# Layer predicates — name them once, reuse below. (Adjust the path fragments to
+# match your repo's gear/layer layout.)
+[rules.defs]
+in_domain   = 'contains(path, "/domain/")'
+in_contract = 'contains(path, "/contract/")'
+in_api      = 'contains(path, "/api/")'
+in_infra    = 'contains(path, "/infra")'   # /infra or /infrastructure
+
+# ── DE0706: no direct sqlx ────────────────────────────────────────────────────
+# The original forbids `use sqlx::…` / sqlx types anywhere; here it's an edge to
+# the `sqlx` crate. Add `&& !contains(path, "<allowed>")` to whitelist a file.
+[rules.checks.de0706_no_direct_sqlx]
+when    = 'depends_on("ext:sqlx")'
+message = "depends directly on the `sqlx` crate (DE0706)"
+group   = "SEC"
+fix     = "Go through Sea-ORM / SecORM instead of importing sqlx directly."
+
+# ── DE0708: no non-FIPS hashers ───────────────────────────────────────────────
+# Forbid the non-FIPS hash crates outside an allow-list (here: a `crypto/` path).
+[rules.checks.de0708_no_non_fips_hasher]
+when    = '(depends_on("ext:sha2") || depends_on("ext:sha1") || depends_on("ext:md5")) && !contains(path, "/crypto/")'
+message = "imports a non-FIPS hash crate (sha2/sha1/md5) (DE0708)"
+group   = "SEC"
+fix     = "Use a FIPS-validated hasher; add the file to the crypto allow-list if justified."
+
+# ── DE0301: no infrastructure in the domain layer ─────────────────────────────
+# A domain file must not depend on an infrastructure module/crate.
+[rules.checks.de0301_no_infra_in_domain]
+when    = 'in_domain && deps.exists(d, contains(d, "/infra"))'
+message = "a domain file depends on infrastructure (DE0301)"
+group   = "ARCH"
+why     = "The domain layer must stay transport/infrastructure-agnostic."
+fix     = "Depend on a domain abstraction; keep infrastructure behind a port/adapter."
+
+# ── DE0202: DTOs not referenced outside the API layer ─────────────────────────
+# A non-API file (contract/domain/infra) must not depend on an api/rest module
+# (where DTOs live).
+[rules.checks.de0202_dtos_not_referenced_outside_api]
+when    = '(in_contract || in_domain || in_infra) && deps.exists(d, contains(d, "/api/rest"))'
+message = "a non-API file references the api/rest (DTO) layer (DE0202)"
+group   = "ARCH"
+fix     = "Map the DTO to a domain/contract type at the API boundary instead of importing it inward."

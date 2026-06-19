@@ -102,7 +102,7 @@ cluster of its real file nodes.
 Cycle membership MUST be **visible at every level**: file nodes and edges in a
 dependency cycle are drawn red, and a collapsed group (crate/folder) is marked
 when it contains cycle members. **Node-filter** toggles (next to the size
-controls) are built from the snapshot's `ui.filter_metrics` — the built-in
+controls) are built from the snapshot's `ui.filter` — the built-in
 `cycle` plus any a project adds via `[report] filter` — and reduce the map to only
 the nodes where the active filter metric has signal; for `cycle` that is the nodes
 in a cycle and the edges between them (callers/dependencies clusters kept). Cycle
@@ -232,7 +232,7 @@ extends to the **Fan-in / Fan-out** overlay sections of a drilled group:
 their crate chips and arrows each hide on the side where that caller/dependency
 does not exist, exactly like internal nodes/edges.
 **Current is shown by default.** The display mode is controlled by **size-mode
-buttons built from the snapshot's `ui.size_metrics`** — `■` (box/label mode) plus
+buttons built from the snapshot's `ui.size`** — `■` (box/label mode) plus
 one button per offered metric: the built-in `SLOC` / `HK`, and any a project adds
 via `[report] size` — reflected in the `mode=` URL parameter. In a metric mode
 **every node is a sized circle** — never a box; a built-in metric uses its
