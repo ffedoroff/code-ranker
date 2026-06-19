@@ -45,8 +45,9 @@ read for its embedded snapshot — no analysis, source tree, or toolchain
 required. Analysis-only flags (`--plugin`, `--ignore`) are rejected with a
 snapshot input.
 
-- `check` is the linter: it evaluates cycle rules and thresholds, prints
-  diagnostics, exits non-zero on any violation, and writes **no files**.
+- `check` is the linter: it evaluates cycle rules, thresholds, and custom
+  `[rules.checks]` predicates, prints diagnostics, exits non-zero on any
+  violation, and writes **no files**.
   With `--baseline <snapshot>` it switches to a **relative gate** that
   fails only on *new* violations versus the baseline (pre-existing ones
   tolerated) and emits a verdict (`improved` / `degraded` / `neutral`); a
@@ -150,6 +151,10 @@ loc        = 800
 sloc       = 600             # any per-file metric the engine emits is accepted
 hk         = 500_000
 cyclomatic = 10
+
+[rules.checks.de1101]        # custom check: a CEL bool predicate per file node →
+when    = "tloc > 100"       #   a `check.<id>` violation (config-only linter)
+message = "{tloc} lines of inline test code in a production file"
 
 [output.json]                # default JSON snapshot destination (report command)
 path    = "{project-dir}-{ts}.json"   # placeholders: {project-dir} {ts} {git-hash} {git-hash-N}

@@ -101,7 +101,7 @@ bumps; that is why a single shared version is safe.
   config (plugin pinned, `ignore.tests = false` to override the **on-by-default**
   test skipping so test files stay in the graph and the fixture exercises them).
 - `crates/code-ranker-plugins/src/<lang>/tests/sample/code-ranker-report.json` — the **golden**
-  JSON report (`schema_version: "2"`). The graph is already relativized to the
+  JSON report (`schema_version: "3"`). The graph is already relativized to the
   `{target}` placeholder (machine-independent). The header (`generated_at`,
   `command`, `git`, versions, absolute paths, `timings`) is kept frozen /
   anonymized in the committed file, and normalized only at comparison time.

@@ -1488,7 +1488,7 @@
         "volume": 80.044
       },
       "ui": {
-        "card_metrics": [
+        "card": [
           "hk",
           "sloc"
         ],
@@ -1511,17 +1511,17 @@
           "unsafe"
         ],
         "default_sort": "cycle",
-        "filter_metrics": [
+        "filter": [
           "cycle"
         ],
         "grouping": {
           "key": "crate"
         },
-        "size_metrics": [
+        "size": [
           "sloc",
           "hk"
         ],
-        "sort_metrics": [
+        "sort": [
           "cycle",
           "sloc",
           "hk",
@@ -1538,7 +1538,7 @@
           "tloc",
           "unsafe"
         ],
-        "summary_metrics": [
+        "summary": [
           "sloc",
           "hk",
           "fan_in",
@@ -1746,7 +1746,7 @@
     "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample"
   },
-  "schema_version": "2",
+  "schema_version": "3",
   "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample",
   "timings": [
     {

@@ -150,7 +150,7 @@ function setupPanZoom(frame, svg) {
     wrap.addEventListener('mouseleave', () => wrap.classList.remove('show-zoom'));
 
     // The size-mode + filter buttons are built per render (renderMapControls)
-    // from the level's `ui.size_metrics` / `ui.filter_metrics`, so handle clicks
+    // from the level's `ui.size` / `ui.filter`, so handle clicks
     // by DELEGATION on the controls container (one listener, survives rebuilds).
     // Metric row: ■ (data-size="dot" → null) toggles back to box mode; any other
     //   data-size key is the attribute the circle area scales with. Filter row:

@@ -696,10 +696,12 @@ function statusLineFor(node, level) {
     const gv = nodeAttr(node, gk);
     if (gv != null && gv !== '') parts.push(`${gk}: ${gv}`);
   }
-  const hkV = nodeAttr(node, 'hk') ?? node.hk;
-  if (hkV != null) parts.push(`hk: ${fmtMetricShort(Number(hkV))}`);
-  const slocV = nodeAttr(node, 'sloc') ?? nodeAttr(node, 'loc') ?? node.sloc ?? node.loc;
-  if (slocV != null) parts.push(`sloc: ${fmtMetricShort(Number(slocV))}`);
+  // Featured metrics come from the JSON `ui.card` list (data-driven — respects a
+  // project `[report] card` override), not a hardcoded `hk`/`sloc` set.
+  for (const k of (levelUi(level)?.card || [])) {
+    const v = nodeAttr(node, k);
+    if (v != null) parts.push(`${attrShort(level, k) || k}: ${fmtMetricShort(Number(v))}`);
+  }
   if (node.fan_in  != null) parts.push(`fan-in: ${node.fan_in}`);
   if (node.fan_out != null) parts.push(`fan-out: ${node.fan_out}`);
   return parts.join('  ·  ');

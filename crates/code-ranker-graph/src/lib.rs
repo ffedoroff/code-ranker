@@ -11,6 +11,7 @@
 
 pub mod attrs;
 pub mod builtin;
+pub mod checks;
 pub mod cycles;
 pub mod finalize;
 pub mod hk;
@@ -34,6 +35,7 @@ pub use builtin::{
     Views, coupling_specs, cycle_specs, metric_specs, prompt_template, stat_keys, views,
     write_metrics,
 };
+pub use checks::{CheckCompileError, CheckDef, CheckHit, CompiledCheck, GraphView};
 pub use registry::{Engine, MetricDef, Populations, RegistryError, Scope, apply_to_node};
 pub use relativize::{relativize_graph, relativize_level};
 pub use serialize::{to_canonical_string, to_canonical_string_pretty};

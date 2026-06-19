@@ -33,38 +33,6 @@ function renderDescTooltip(label, desc, formula, calc) {
   return `<div class="tt-title">${escHtml(label)}</div>${f}${c}<div class="tt-desc">${descHtml}</div>`;
 }
 
-// Hover tooltip for a node on the main map: title + the basic fields a developer
-// wants at a glance — path, the grouping field (e.g. `crate`) when present, then
-// `hk` and `sloc`. Reuses the shared `#tt` element (and its 300 ms delay).
-function renderNodeTooltip(node, level) {
-  const rows = [];
-  const path = (node.path || node.id || '').replace(/^\{[^}]+\}\//, '');
-  if (path) rows.push(['path', path]);
-  const gk = levelUi(level).grouping?.key;
-  if (gk) {
-    const gv = nodeAttr(node, gk);
-    if (gv != null && gv !== '') rows.push([(attrLabel(level, gk) || gk).toLowerCase(), String(gv)]);
-  }
-  for (const k of ['hk', 'sloc']) {
-    const v = nodeAttr(node, k);
-    if (v != null) rows.push([k, String(v)]);
-  }
-  const body = rows.map(([k, v]) => `<b>${escHtml(k)}:</b> ${escHtml(v)}`).join('<br>');
-  return `<div class="tt-title">${escHtml(node.name || node.id)}</div>` +
-         (body ? `<div class="tt-desc">${body}</div>` : '');
-}
-
-function renderGroupTooltip(stats) {
-  const rows = [
-    ['files', String(stats.files)],
-    ['sloc',  stats.sloc > 0 ? fmtMetricShort(stats.sloc) : null],
-    ['hk',    stats.hk   > 0 ? fmtMetricShort(stats.hk)   : null],
-  ].filter(([, v]) => v !== null);
-  const body = rows.map(([k, v]) => `<b>${k}:</b> ${escHtml(v)}`).join('<br>');
-  return `<div class="tt-title">${escHtml(stats.name)}</div>` +
-         (body ? `<div class="tt-desc">${body}</div>` : '');
-}
-
 function setupTooltip() {
   const tt = document.getElementById('tt');
   let current = null;

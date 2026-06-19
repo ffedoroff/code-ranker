@@ -1,6 +1,6 @@
 //! The metric catalog, read from `metrics/builtin.toml`: `[categories.*]`,
 //! `[ast.*]` (tier-1 measured), `[fields.*]` (derived, each a `cel` formula), and
-//! the view sections `[tableview]` / `[cardview]` / `[report.json.aggregate]`.
+//! the `[report]` view section (+ `[report.stats]` aggregate formulas).
 //! The crate root re-exports the accessors below; the tier-1 input types
 //! (`MetricInputs` / `FunctionUnit`) come from `code-ranker-plugin-api`.
 //!
@@ -10,7 +10,7 @@
 //! - `name` / `short` fall back to `label` (a field only spells out what differs);
 //! - `\n` in a description (TOML multiline) is encoded as `<br>` on the wire;
 //! - the `stats` block is produced by [`crate::stats::compute_stats`] over the
-//!   keys whose `[report.json.aggregate]` entry is a plain mean
+//!   keys whose `[report.stats]` entry is a plain mean
 //!   (`agg('<k>','avg','not_empty')`); the richer aggregate formulas are parsed
 //!   and available but not yet wired into the built-in stats.
 
@@ -56,42 +56,32 @@ struct FieldDef {
     omit_at: f64,
 }
 
+/// The `[report]` view section of `builtin.toml` — the SAME shape (and key names)
+/// the project-side `[report]` override uses, so the vocabulary matches end to
+/// end (catalog → `ReportOverride` → `LevelUi` → JSON `ui` → viewer): `columns`,
+/// `card`, `size`, `filter` (+ the `default_sort` signed-rank list), and the
+/// `[report.stats]` aggregate formulas.
 #[derive(Debug, Clone, Default, Deserialize)]
-struct TableView {
+#[serde(deny_unknown_fields)]
+struct ReportView {
+    /// Node-table column order (may include non-field tokens like `kind`/`cycle`).
     #[serde(default)]
     columns: Vec<String>,
     /// Signed-rank default sort: order = priority, leading `-` = descending.
     #[serde(default)]
     default_sort: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct CardView {
+    /// Card-featured metrics (the big numbers on a node's card).
     #[serde(default)]
-    featured: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct MapView {
+    card: Vec<String>,
     /// Attribute keys the SVG map offers as circle-size modes (default `sloc`/`hk`).
     #[serde(default)]
     size: Vec<String>,
     /// Attribute keys the SVG map offers as on/off node filters (default `cycle`).
     #[serde(default)]
     filter: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct Report {
+    /// `output key → graph-scope CEL formula` for the report's `stats` block.
     #[serde(default)]
-    json: ReportJson,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-struct ReportJson {
-    /// `output key → graph-scope CEL formula` (the `stats` block of the report).
-    #[serde(default)]
-    aggregate: BTreeMap<String, String>,
+    stats: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,13 +104,7 @@ struct Builtin {
     #[serde(default)]
     prompt: PromptTemplate,
     #[serde(default)]
-    tableview: TableView,
-    #[serde(default)]
-    cardview: CardView,
-    #[serde(default)]
-    mapview: MapView,
-    #[serde(default)]
-    report: Report,
+    report: ReportView,
 }
 
 static BUILTIN: LazyLock<Builtin> =
@@ -159,21 +143,22 @@ fn derived_def(cel: &str, omit_at: f64) -> MetricDef {
 pub struct Views {
     pub columns: Vec<String>,
     pub default_sort: Vec<String>,
-    pub featured: Vec<String>,
+    pub card: Vec<String>,
     /// Map circle-size modes (attribute keys); built-in default `sloc`/`hk`.
     pub size: Vec<String>,
     /// Map node-filter keys; built-in default `cycle`.
     pub filter: Vec<String>,
 }
 
-/// The canonical view orders (table columns + default sort, card featured).
+/// The canonical view orders (table columns + default sort, card metrics, map
+/// size/filter), all from the single `[report]` section of `builtin.toml`.
 pub fn views() -> Views {
     Views {
-        columns: BUILTIN.tableview.columns.clone(),
-        default_sort: BUILTIN.tableview.default_sort.clone(),
-        featured: BUILTIN.cardview.featured.clone(),
-        size: BUILTIN.mapview.size.clone(),
-        filter: BUILTIN.mapview.filter.clone(),
+        columns: BUILTIN.report.columns.clone(),
+        default_sort: BUILTIN.report.default_sort.clone(),
+        card: BUILTIN.report.card.clone(),
+        size: BUILTIN.report.size.clone(),
+        filter: BUILTIN.report.filter.clone(),
     }
 }
 
@@ -278,26 +263,25 @@ pub fn prompt_template() -> PromptTemplate {
 }
 
 /// The metric keys aggregated into the per-graph `stats` block via the mean
-/// (`compute_stats`). Derived from `[report.json.aggregate]`: the keys whose
+/// (`compute_stats`). Derived from `[report.stats]`: the keys whose
 /// formula is a plain mean of their own metric over `not_empty`
 /// (`agg('<k>', 'avg', 'not_empty')`). The richer aggregate formulas (percentiles,
 /// `all` population, …) are parsed but not yet wired into the built-in stats.
 pub fn stat_keys() -> Vec<String> {
     BUILTIN
         .report
-        .json
-        .aggregate
+        .stats
         .iter()
         .filter(|(k, formula)| **formula == format!("agg('{k}', 'avg', 'not_empty')"))
         .map(|(k, _)| k.clone())
         .collect()
 }
 
-/// All `[report.json.aggregate]` formulas (`output key → graph-scope CEL`). Parsed
-/// and available for the future graph-scope aggregate engine; not yet driving the
+/// All `[report.stats]` formulas (`output key → graph-scope CEL`). Parsed and
+/// available for the future graph-scope aggregate engine; not yet driving the
 /// built-in `stats` block (see [`stat_keys`]).
 pub fn aggregate_formulas() -> BTreeMap<String, String> {
-    BUILTIN.report.json.aggregate.clone()
+    BUILTIN.report.stats.clone()
 }
 
 /// Write all built-in metrics for one unit onto `node`: the tier-1 measured

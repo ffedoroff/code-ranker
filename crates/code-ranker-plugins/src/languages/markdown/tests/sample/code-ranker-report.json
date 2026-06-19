@@ -205,7 +205,7 @@
         "hk": 74.666
       },
       "ui": {
-        "card_metrics": [
+        "card": [
           "hk"
         ],
         "columns": [
@@ -220,13 +220,13 @@
           "broken_links"
         ],
         "default_sort": "cycle",
-        "filter_metrics": [
+        "filter": [
           "cycle"
         ],
-        "size_metrics": [
+        "size": [
           "hk"
         ],
-        "sort_metrics": [
+        "sort": [
           "cycle",
           "hk",
           "fan_in",
@@ -236,7 +236,7 @@
           "links",
           "broken_links"
         ],
-        "summary_metrics": [
+        "summary": [
           "hk",
           "fan_in",
           "fan_out",
@@ -264,7 +264,7 @@
   "roots": {
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/markdown/tests/sample"
   },
-  "schema_version": "2",
+  "schema_version": "3",
   "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/markdown/tests/sample",
   "timings": [
     {

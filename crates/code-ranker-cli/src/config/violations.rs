@@ -3,6 +3,7 @@
 
 use super::ignore::is_external;
 use super::model::{MetricThresholds, RulesConfig};
+use code_ranker_graph::CheckHit;
 use code_ranker_graph::level_graph::LevelGraph;
 use code_ranker_plugin_api::{attrs::AttrValue, node::Node};
 use std::collections::{BTreeMap, HashMap};
@@ -19,7 +20,10 @@ fn attr_num(node: &Node, key: &str) -> Option<f64> {
 #[derive(Debug, serde::Serialize)]
 pub struct Violation {
     pub rule: String,
-    pub group: &'static str,
+    /// Concern-group code (`SIZ` / `CPL` / `CPX` / `CYC`, or a custom check's
+    /// free-form label). A `String` because custom `[rules.checks]` carry their
+    /// own group, not one of a fixed built-in set.
+    pub group: String,
     pub graph: &'static str,
     pub location: String,
     /// 1-based line within `location`'s file to pin the diagnostic at (the edge
@@ -28,6 +32,13 @@ pub struct Violation {
     pub line: Option<u32>,
     pub message: String,
     pub weight: f64,
+    /// Diagnostic copy carried by the violation itself (custom checks set these;
+    /// metric/cycle rules leave them `None` and resolve copy from specs via
+    /// [`super::rules::rule_doc`]).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fix: Option<String>,
 }
 
 impl Violation {
@@ -87,13 +98,60 @@ fn check_level_violations(
         );
     }
 
+    // Compile the custom `[rules.checks]` once (with `[rules.defs]` helpers
+    // expanded in). A predicate that fails to compile becomes a locationless
+    // violation so the gate fails loudly with the reason, rather than silently
+    // skipping a misspelled check.
+    let mut checks = Vec::new();
+    for (id, def) in &rules.checks {
+        match code_ranker_graph::checks::compile(id, def, &rules.defs) {
+            Ok(c) => checks.push(c),
+            Err(e) => push(
+                vs,
+                name,
+                &format!("check.{id}"),
+                String::new(),
+                None,
+                e.to_string(),
+                f64::INFINITY,
+                "LNT",
+            ),
+        }
+    }
+    // A read-only view of the fully-built level (edges + file set), shared by
+    // every check's predicate — this is the "second pass" over the materialized
+    // graph. Built once; cheap to share.
+    let graph = code_ranker_graph::GraphView::build(level);
+
     let bucket = &rules.thresholds.file;
     for node in &level.nodes {
         if is_external(node) {
             continue;
         }
         check_node_metrics(vs, name, "file", bucket, node, level);
+        for check in &checks {
+            if let Some(hit) = check.eval(node, &graph) {
+                push_check(vs, name, node.id.clone(), hit);
+            }
+        }
     }
+}
+
+/// Turn a fired custom check into a violation. Boolean checks carry no breach
+/// magnitude, so they share a uniform weight (ranked below magnitude-scaled
+/// metric breaches by `check`'s worst-first sort).
+fn push_check(vs: &mut Vec<Violation>, graph: &'static str, location: String, hit: CheckHit) {
+    vs.push(Violation {
+        rule: format!("check.{}", hit.id),
+        group: hit.group,
+        graph,
+        location,
+        line: None,
+        message: hit.message,
+        weight: 1.0,
+        why: hit.why,
+        fix: hit.fix,
+    });
 }
 
 /// The concern group for a threshold key: a registry metric carries its own; a
@@ -202,7 +260,7 @@ fn push_threshold(
     metric: &str,
     value: f64,
     limit: f64,
-    group: &'static str,
+    group: &str,
 ) {
     let ratio = if limit > 0.0 {
         value / limit
@@ -231,16 +289,18 @@ fn push(
     line: Option<u32>,
     message: String,
     weight: f64,
-    group: &'static str,
+    group: &str,
 ) {
     vs.push(Violation {
         rule: id.to_string(),
-        group,
+        group: group.to_string(),
         graph,
         location,
         line,
         message,
         weight,
+        why: None,
+        fix: None,
     });
 }
 
@@ -413,5 +473,69 @@ mod tests {
         assert_eq!(vs.len(), 1);
         assert_eq!(vs[0].rule, "threshold.file.loc");
         assert_eq!(vs[0].group, "SIZ");
+    }
+
+    fn check_def(when: &str, message: &str, group: Option<&str>) -> code_ranker_graph::CheckDef {
+        code_ranker_graph::CheckDef {
+            when: when.into(),
+            message: message.into(),
+            group: group.map(str::to_string),
+            why: None,
+            fix: None,
+            title: None,
+        }
+    }
+
+    #[test]
+    fn custom_check_fires_with_path_predicate_and_carries_group() {
+        // A DE1101-style check: inline tests (tloc>0) in a production file, but
+        // sibling *_tests.rs files are exempt via the path predicate.
+        let prod = {
+            let mut n = file_node("{target}/src/handler.rs", &[("tloc", AttrValue::Int(40))]);
+            n.attrs
+                .insert("path".into(), AttrValue::Str("src/handler.rs".into()));
+            n
+        };
+        let test_file = {
+            let mut n = file_node(
+                "{target}/src/handler_tests.rs",
+                &[("tloc", AttrValue::Int(40))],
+            );
+            n.attrs
+                .insert("path".into(), AttrValue::Str("src/handler_tests.rs".into()));
+            n
+        };
+        let graphs = level_with(vec![prod, test_file], vec![]);
+        let mut rules = RulesConfig::default();
+        rules.checks.insert(
+            "de1101".into(),
+            check_def(
+                r#"tloc > 0 && !ends_with(name, "_tests.rs")"#,
+                "{path}: {tloc} inline test lines",
+                Some("TST"),
+            ),
+        );
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 1, "only the production file fires");
+        assert_eq!(vs[0].rule, "check.de1101");
+        assert_eq!(vs[0].group, "TST");
+        assert_eq!(vs[0].message, "src/handler.rs: 40 inline test lines");
+        assert!(vs[0].location.contains("handler.rs"));
+    }
+
+    #[test]
+    fn bad_custom_check_predicate_becomes_a_loud_violation() {
+        let graphs = level_with(
+            vec![file_node("a.rs", &[("tloc", AttrValue::Int(1))])],
+            vec![],
+        );
+        let mut rules = RulesConfig::default();
+        rules
+            .checks
+            .insert("broken".into(), check_def("tloc >", "m", None));
+        let vs = check_violations(&graphs, &rules);
+        assert_eq!(vs.len(), 1);
+        assert_eq!(vs[0].rule, "check.broken");
+        assert!(vs[0].message.contains("invalid `when` predicate"));
     }
 }

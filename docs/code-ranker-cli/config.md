@@ -62,6 +62,15 @@ cognitive  = 25
 hk         = 500_000         # `_` separators; or a suffix: hk = 5M (bare or "5M")
 fan_out    = 50
 
+[rules.defs]                 # reusable named CEL helpers (expanded into checks)
+is_test_file = 'ends_with(name, "_tests.rs") || contains(path, "/tests/")'
+
+[rules.checks.de1101]        # a custom linter: CEL bool predicate per file node
+when    = "tloc > 100 && !is_test_file"   # node values + path/deps/files + helpers
+message = "{tloc} lines of inline test code in a production file"
+group   = "TST"              # free-form concern label (default "LNT")
+# why / fix / title          # optional diagnostic copy; {key} interpolated
+
 [output.json]                # `report` JSON snapshot artifact
 path = "{project-dir}-{ts}.json"   # default if unset: .code-ranker/{ts}-{git-hash-3}.json
 # enabled = false            # keep the path but don't write JSON unless re-selected
@@ -94,6 +103,37 @@ formula   = "agg('cyclomatic', 'p90', 'not_empty')"
 
 The threshold scope is always `file` — a single source file on the one graph
 code-ranker builds.
+
+### `[rules.checks.<id>]` — custom checks (config-only linters)
+
+A custom check is the general form of a `check` rule: a CEL **boolean** `when`
+predicate evaluated per file node (a second pass over the fully-built graph). When
+it is true, `check` reports a `check.<id>` violation pinned to that file — like a
+threshold or cycle violation, in every output format, counting toward the exit
+code. Where `[rules.thresholds.file]` only does `metric > limit`, a check is any
+boolean expression over a rich context:
+
+- **node values** — any attribute key (`tloc`, `sloc`, `loc`, `unsafe`, `cyclomatic`, …);
+- **path fields** — `path` / `name` / `stem` / `ext` / `dir`;
+- **edges (lists)** — `deps` / `rdeps` (dependency neighbour labels; an external
+  crate is `ext:<name>`), plus `depends_on(s)` / `depended_on_by(s)`;
+- **file collections** — `files` / `siblings`, plus `file_exists(p)`;
+- **string fns** — `ends_with` / `starts_with` / `contains` / `matches(regex)`;
+- **CEL list macros** — `.size()` / `.exists(x, …)` / `.all(x, …)` / `.filter(x, …)`;
+- `n.double()` to take a real ratio (CEL `/` is integer division on ints).
+
+Fields: `when` (required), `message` (required), and optional `group` (free-form
+concern label, default `LNT`) / `why` / `fix` / `title` diagnostic copy — all of
+which interpolate `{key}` from the node's values. A `when` that fails to compile
+becomes a loud `check.<id>` violation (a typo can't pass silently).
+
+### `[rules.defs]` — reusable named helpers
+
+`name = "<cel expr>"` entries expanded into a check's `when` before compilation (a
+helper may reference an earlier one; a reference cycle is a hard error). They add
+reuse/readability, not new power. See **`docs/customization/README.md` §1.8** for
+the full walkthrough and **`docs/customization/{linters-example,architecture-linters}.toml`**
+for runnable examples (inline-test bulk; forbidden dependency / layer rules).
 
 ### `[levels]` — opt-in graph levels
 

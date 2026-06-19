@@ -5,7 +5,7 @@ function warningTypeCount(level) {
   // Count over the active side, so the badge tracks Baseline/Current like the rest.
   const nodes = ((typeof activeGraph === 'function' ? activeGraph(level).nodes : window.DIFF?.[level]?.nodes) || [])
     .filter(n => !isExternalNode(n, level));
-  const sortMetrics = levelUi(level).sort_metrics || [];
+  const sortMetrics = levelUi(level).sort || [];
   let count = sortMetrics.filter(m => {
     if (m === 'cycle') return false; // handled separately below
     const th = attrThresholds(level, m);
@@ -90,7 +90,7 @@ function openExportPopup(level, restore) {
   if (!overlay) {
     const presets     = snapshotPresets();
     const ui          = levelUi(level);
-    const sortMetrics = ui.sort_metrics || ['hk'];
+    const sortMetrics = ui.sort || ['hk'];
 
     const sortOptions = sortMetrics.map(m => {
       const label = m === 'cycle' ? 'in a cycle' : attrShort(level, m);
