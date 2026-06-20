@@ -36,22 +36,21 @@ pub fn load(
             files.push(e);
         }
     }
-    let explicit = files.first().copied().map(Path::new);
+    let explicit: Vec<&Path> = files.iter().map(|f| Path::new(*f)).collect();
 
-    // Discover the user's config (if any) as a raw table, then DEEP-MERGE it over
-    // the built-in defaults: the binary always carries a complete default config,
-    // and a project file / `--config` overrides only the keys it spells out (see
-    // `defaults.toml`). The merge reuses the plugins' `deep_merge`, so op-table
-    // list overrides work here too.
-    let (user, source_file) = discover_user_table(workspace, explicit)?;
+    // Discover the user's config layers as raw tables, then DEEP-MERGE them over
+    // the built-in defaults IN ORDER (left to right, later wins): the binary always
+    // carries a complete default config, and each file overrides only the keys it
+    // spells out (see `defaults.toml`). The merge reuses the plugins' `deep_merge`,
+    // so op-table list overrides (`{add,remove,replace,…}`) compose across layers.
+    // Multiple `--config FILE` flags layer in command-line order; with explicit
+    // files, auto-discovery of `code-ranker.toml` is skipped.
+    let (layers, source_file) = discover_user_tables(workspace, &explicit)?;
     match &source_file {
         Some(p) => log::line(&format!("config: {p}")),
         None => log::line("config: built-in defaults (no config file found)"),
     }
-    let merged = match user {
-        Some(t) => deep_merge(builtin_table(), t),
-        None => builtin_table(),
-    };
+    let merged = layers.into_iter().fold(builtin_table(), deep_merge);
     let mut config: Config = merged
         .clone()
         .try_into()
@@ -96,16 +95,27 @@ fn validate_thresholds(cfg: &Config) -> Result<()> {
 
 /// Discover the user's config as a raw [`Table`] (NOT yet deserialized into
 /// [`Config`]) so the caller can deep-merge it over the built-in defaults.
-/// Discovery order: explicit `--config PATH` > `./code-ranker.toml` >
-/// `<workspace>/code-ranker.toml` > `Cargo.toml [*.metadata.code-ranker]`. Returns
-/// `(None, None)` when nothing is found (→ pure built-in defaults).
-fn discover_user_table(
+/// The config layers to merge over the built-in defaults, in apply order (later
+/// wins), plus a human label of the source(s) for the log line.
+///
+/// With explicit `--config FILE` paths, every file is read and returned in
+/// command-line order (auto-discovery is skipped). Otherwise discovery returns a
+/// single layer: `./code-ranker.toml` > `<workspace>/code-ranker.toml` >
+/// `Cargo.toml [*.metadata.code-ranker]`. Returns `(vec![], None)` when nothing is
+/// found (→ pure built-in defaults).
+fn discover_user_tables(
     workspace: &Path,
-    explicit: Option<&Path>,
-) -> Result<(Option<Table>, Option<String>)> {
-    if let Some(path) = explicit {
-        let table = read_table(path)?;
-        return Ok((Some(table), Some(path.display().to_string())));
+    explicit: &[&Path],
+) -> Result<(Vec<Table>, Option<String>)> {
+    if !explicit.is_empty() {
+        let mut layers = Vec::with_capacity(explicit.len());
+        let mut labels = Vec::with_capacity(explicit.len());
+        for path in explicit {
+            layers.push(read_table(path)?);
+            labels.push(path.display().to_string());
+        }
+        // Joined left-to-right so the log shows the merge order at a glance.
+        return Ok((layers, Some(labels.join(" ⊕ "))));
     }
 
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -115,17 +125,17 @@ fn discover_user_table(
         if p.exists() {
             let table = read_table(&p)?;
             let canonical = p.canonicalize().unwrap_or(p);
-            return Ok((Some(table), Some(canonical.display().to_string())));
+            return Ok((vec![table], Some(canonical.display().to_string())));
         }
     }
 
     for dir in [cwd.as_path(), workspace] {
         if let Some((table, src)) = table_from_cargo_toml(dir)? {
-            return Ok((Some(table), Some(src)));
+            return Ok((vec![table], Some(src)));
         }
     }
 
-    Ok((None, None))
+    Ok((Vec::new(), None))
 }
 
 /// Read and parse a `code-ranker.toml` file into a raw [`Table`] (the
@@ -323,6 +333,38 @@ mod tests {
         assert_eq!(
             loaded.source_file.as_deref(),
             Some(cfg.display().to_string()).as_deref()
+        );
+    }
+
+    #[test]
+    fn load_layers_multiple_config_files_in_order_last_wins() {
+        // Two `--config FILE` layers + an inline override; later wins at each step.
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base.toml");
+        let over = dir.path().join("over.toml");
+        std::fs::write(&base, "[rules.thresholds.file]\nhk = 100\nsloc = 800\n").unwrap();
+        std::fs::write(&over, "[rules.thresholds.file]\nhk = 5\n").unwrap();
+
+        let loaded = load(
+            dir.path(),
+            &[
+                base.display().to_string(),
+                over.display().to_string(),
+                "rules.thresholds.file.sloc=1".to_string(), // inline, applied last
+            ],
+            &[],
+            &[],
+            &[],
+        )
+        .unwrap();
+        let t = &loaded.config.rules.thresholds.file;
+        // `over.toml` overrode `hk`; `base.toml`'s `sloc` then beaten by the inline.
+        assert_eq!(t.get("hk"), Some(5.0));
+        assert_eq!(t.get("sloc"), Some(1.0));
+        // The log label joins the files in apply order.
+        assert_eq!(
+            loaded.source_file.as_deref(),
+            Some(format!("{} ⊕ {}", base.display(), over.display())).as_deref()
         );
     }
 

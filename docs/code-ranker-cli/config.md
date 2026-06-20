@@ -8,7 +8,7 @@ Settings are merged from multiple sources. **Higher priority wins** for the same
 |---|---|---|
 | 1 | CLI flags | `--ignore '**/tests/**'` |
 | 2 | `--config KEY=VALUE` inline override | `--config rules.thresholds.file.hk=200000` |
-| 3 | `--config <file>` | `--config ci/code-ranker.toml` |
+| 3 | `--config <file>` (**repeatable** — see below) | `--config base.toml --config over.toml` |
 | 4 | `code-ranker.toml` in cwd | `./code-ranker.toml` |
 | 5 | `code-ranker.toml` in the analyzed target directory | `<target>/code-ranker.toml` |
 | 6 | `Cargo.toml` metadata | `[workspace.metadata.code-ranker]` |
@@ -16,6 +16,24 @@ Settings are merged from multiple sources. **Higher priority wins** for the same
 
 For `ignore.paths` and CLI `--ignore`: lists are **merged** (union), not replaced.  
 For cycle rules and thresholds: CLI **overrides** the file value.
+
+### Multiple `--config` files
+
+`--config <file>` is **repeatable**. Files are deep-merged over the built-in
+defaults **in command-line order, last wins**:
+
+```sh
+code-ranker check . --config base.toml --config team.toml --config rules.thresholds.file.hk=200000
+#                    └── built-in defaults ⊕ base.toml ⊕ team.toml ⊕ inline KEY=VALUE ──┘
+```
+
+So a shared `base.toml` can set the house rules and a `team.toml` (or a CI-only
+file) layer tweaks on top — `team.toml` wins per key, and inline `KEY=VALUE`
+overrides win over every file. Because the merge is the same `deep_merge` used
+everywhere, list keys can be **patched** across layers, not just replaced
+(`paths = { add = [...] }` in a later file extends an earlier list). **Passing any
+`--config` file disables auto-discovery** of `code-ranker.toml` (rows 4–6); inline
+`KEY=VALUE` alone does not — discovery still runs and the override applies on top.
 
 The **built-in defaults are the merge base, always** — they ship inside the binary
 (`config/defaults.toml`) and are **deep-merged** with your config, so a partial
@@ -25,9 +43,61 @@ overrides per key; arrays can also be patched in place with an op-table
 (`paths = { add = ["x/**"], remove = ["y/**"] }`) instead of replaced wholesale.
 Run [`--export-full-config`](#--export-full-config-path) to see every effective value.
 
+### The full layer stack (with sources)
+
+Config arrives in **two independent stacks**, both compiled into the binary as the
+base and then overridable. `--export-full-config` dumps the effective result of
+both (`[plugin]` = the language stack, `[project]` = the project stack).
+
+**1. Language stack** — the node-kind vocabulary, per-language metric specs,
+default thresholds, and `[report]` view overrides. Selected by `--plugin` (or
+auto-detected). Built by `config::load_chain` as
+`base ⊕ [family] ⊕ <lang>`, each layer deep-merged over the last:
+
+| Layer | Applies to | Source (GitHub `main`) |
+|---|---|---|
+| **base** — common vocabulary & defaults | every language | [`crates/code-ranker-plugins/src/defaults.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/defaults.toml) |
+| **family** (optional middle layer) | JS/TS → [`ecmascript/config.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/ecmascript/config.toml) · C/C++ → [`cfamily/config.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/cfamily/config.toml) | the shared engine vocab |
+| **`<lang>`** — only what differs | the chosen plugin | [`languages/<lang>/config.toml`](https://github.com/ffedoroff/code-ranker/tree/main/crates/code-ranker-plugins/src/languages) — e.g. [`rust`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/rust/config.toml), [`python`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/python/config.toml), [`go`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/go/config.toml) |
+
+The shared **metric catalog** (built-in derived metrics, aggregates, the default
+`[report]` columns/card/size/filter) is layered under the language `[report]`:
+[`crates/code-ranker-graph/metrics/builtin.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-graph/metrics/builtin.toml).
+
+**2. Project stack** — `[rules]`, `[metrics]`, `[presets]`, `[ignore]`,
+`[levels]`, output, and a project `[report]` patch. This is what `--config` and
+`code-ranker.toml` set:
+
+| Order | Layer | Source |
+|---|---|---|
+| base | built-in project defaults | [`crates/code-ranker-cli/src/config/defaults.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-cli/src/config/defaults.toml) |
+| ⊕ | auto-discovered `code-ranker.toml` *(skipped if any `--config` file is passed)* | your repo |
+| ⊕ | `--config file1` ⊕ `file2` ⊕ … | **in command-line order, last wins** |
+| ⊕ | `--config KEY=VALUE` inline | after all files |
+| ⊕ | CLI flags (`--threshold`, `--cycle-rule`, `--ignore`) | last |
+
+So the **complete order**, base → most-specific: language `base` ⊕ `[family]` ⊕
+`<lang>` for the plugin side; project `defaults.toml` ⊕ discovered/`--config`
+files (in order) ⊕ inline ⊕ CLI flags for the rules side. A project `[report]`
+patch layers on top of the language `[report]`, which layers on the catalog — so
+the three `[report]` sources compose (catalog → language → project).
+
 ---
 
-## Config file: `code-ranker.toml`
+## Config file: `code-ranker-rust-example.toml`
+
+> **This is an annotated EXAMPLE, not a required file.** It shows the available
+> keys (with Rust-flavoured values) so you can copy the bits you need. Two things
+> to keep in mind:
+>
+> - **Filename.** For auto-discovery the file must be named **`code-ranker.toml`**
+>   (in the cwd or the analyzed target). Any other name — like this
+>   `code-ranker-rust-example.toml` — only works when passed explicitly with
+>   `--config <path>`.
+> - **Partial is fine.** Every key has a built-in default (see
+>   [the layer stack](#the-full-layer-stack-with-sources)), so a real config spells
+>   out **only what it changes**. The block below is exhaustive purely to document
+>   the options — you would never write all of it.
 
 ```toml
 # Default plugin. Overridden by --plugin.

@@ -39,7 +39,10 @@ pub(crate) struct AnalyzeArgs {
     #[arg(long)]
     pub(crate) plugin: Option<String>,
 
-    /// Config file path, or inline `KEY=VALUE` override (repeatable; inline wins).
+    /// Config file path, or inline `KEY=VALUE` override. Repeatable: files layer
+    /// in command-line order (later wins) over the built-in defaults; passing any
+    /// file skips auto-discovery of `code-ranker.toml`. Inline `KEY=VALUE`
+    /// overrides apply last, after all files.
     #[arg(long, value_name = "PATH | KEY=VALUE")]
     pub(crate) config: Vec<String>,
 

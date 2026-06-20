@@ -87,7 +87,7 @@ are ignored when reading one.
 | Flag | Meaning |
 |---|---|
 | `--plugin <name\|auto>` | Plugin to use: `rust`, `python`, or `javascript` (covers TypeScript). `auto` (default) resolves the language automatically — see [Plugin resolution](#plugin-resolution). |
-| `--config <PATH \| KEY=VALUE>` | Repeatable. Load config from a file path, **or** override one setting inline (`KEY=VALUE`); inline values win. See [Config](#config). |
+| `--config <PATH \| KEY=VALUE>` | Repeatable. Load config from a file path, **or** override one setting inline (`KEY=VALUE`). Multiple files layer in command-line order (**last wins**) over the built-in defaults; inline `KEY=VALUE` applies after all files; passing any file disables auto-discovery of `code-ranker.toml`. See [Config](#config). |
 | `--ignore <glob>` | Repeatable. Glob to exclude paths from analysis. Merged with config-file globs. |
 | `--git.<field> <VALUE>` | Override one of the snapshot's git metadata fields instead of reading it from `git`. See [Git metadata overrides](#git-metadata-overrides). |
 
@@ -612,7 +612,8 @@ Settings merge from several sources; **higher priority wins**:
 
 1. CLI flags (`--threshold`, `--ignore`, `--output.<fmt>.path`, …)
 2. `--config KEY=VALUE` inline overrides
-3. `--config <file>`
+3. `--config <file>` — repeatable; multiple files layer in command-line order
+   (last wins), and any file disables the `code-ranker.toml` auto-discovery below
 4. `code-ranker.toml` (cwd, then workspace root)
 5. `Cargo.toml` metadata (`[workspace.metadata.code-ranker]`)
 6. Built-in defaults
