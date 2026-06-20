@@ -145,39 +145,51 @@ code-ranker check . --top 1
 
 ---
 
-## 4. Focused checks — gate a subset of files
+## 4. Focused checks — gate a subset of files or rules
 
-> `--focus` analyzes the whole project (the dependency graph needs it) but reports and
-> gates **only** the given files/folders. A folder matches everything beneath it.
+> The whole project is always analyzed (the dependency graph needs it); `--focus-path`
+> / `--focus-rule` only restrict what is reported and counted toward the exit code.
 
 **Gate only the file you are refactoring.**
 
 ```sh
-code-ranker check . --focus crates/code-ranker-plugin-api/src/plugin.rs
+code-ranker check . --focus-path crates/code-ranker-plugin-api/src/plugin.rs
 ```
 
 **Gate only one subsystem/folder.**
 
 ```sh
-code-ranker check . --focus crates/code-ranker-cli/src/
+code-ranker check . --focus-path crates/code-ranker-cli/src/
 ```
 
 **Gate two specific paths at once.**
 
 ```sh
-code-ranker check . --focus crates/a/src/lib.rs --focus crates/b/src/
+code-ranker check . --focus-path crates/a/src/lib.rs --focus-path crates/b/src/
 ```
 
 **Gate only the files changed in this PR (vs `main`).**
 
 ```sh
-code-ranker check . $(git diff --name-only origin/main | sed 's/^/--focus /')
+code-ranker check . $(git diff --name-only origin/main | sed 's/^/--focus-path /')
+```
+
+**List only one rule's / group's violations.**
+
+```sh
+code-ranker check . --focus-rule check.inline_tests_too_large   # or: --focus-rule TST
+```
+
+**Intersect a rule with a folder.**
+
+```sh
+code-ranker check . --focus-path crates/code-ranker-graph --focus-rule TST
 ```
 
 **Combine a focused scope with a metric budget.**
 
 ```sh
-code-ranker check . --focus crates/code-ranker-plugin-api/src/plugin.rs --threshold file.hk=200000
+code-ranker check . --focus-path crates/code-ranker-plugin-api/src/plugin.rs --threshold file.hk=200000
 ```
 
 ---

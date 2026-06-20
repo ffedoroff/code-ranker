@@ -30,7 +30,7 @@ path = ".code-ranker/{project-dir}.html"
 # (`sloc × (fan_in × fan_out)²`) over-penalises because it is quadratic in
 # coupling — reducing them would be metric-gaming, not real decoupling, so they
 # are accepted by design:
-#   - `code-ranker-plugin-api/src/plugin.rs` (~0.48M) — the `LanguagePlugin` trait,
+#   - `code-ranker-plugin-api/src/plugin.rs` (~0.31M) — the `LanguagePlugin` trait,
 #     depended on by every plugin by definition (fan_in grows with each language);
 #   - `code-ranker-cli/src/pipeline.rs` (~0.26M) — the orchestrator, which by
 #     definition wires every subsystem (high fan-out).
@@ -38,12 +38,27 @@ path = ".code-ranker/{project-dir}.html"
 # split into a `config/` facade over concern submodules (parse/views/specs/lookup);
 # the resolver follows the `pub use` re-exports to the defining file, so each
 # plugin's fan_in now lands on the concern it uses and the hottest config file is
-# ~25K — no longer a hub. The 1M ceiling leaves ~2× headroom above plugin.rs.
+# ~25K — no longer a hub. The 320K ceiling sits just above plugin.rs (~3% headroom).
 # Raise it only when a NEW, unexpected hub appears — and prefer splitting a
 # genuinely-too-big module (as config.rs was) over bumping it.
 [rules.thresholds.file]
-hk = "1M"
-cyclomatic = 200
-cognitive = 100
+hk = 500000
+cyclomatic = 110
+cognitive = 60
 #fan_out = 18
 sloc = 800
+
+# ── Custom checks (config-only linters) ──────────────────────────────────────
+# Reusable CEL helper: is this file already a dedicated test file?
+[rules.defs]
+is_test_file = 'name.endsWith("_test.rs") || name.endsWith("_tests.rs") || path.contains("/tests/")'
+
+# Flag production files with a large inline `#[cfg(test)]` block — split the tests
+# into a sibling `{stem}_test.rs` so they don't bloat the production file's
+# size/coupling metrics. `tloc` is the file's inline test lines.
+[rules.checks.inline_tests_too_large]
+when    = "tloc > 100 && !is_test_file"
+message = "{tloc} inline test lines — split them into a sibling `{stem}_test.rs`"
+group   = "TST"
+why     = "A large inline `#[cfg(test)]` block bloats the production file and inflates its size/coupling metrics."
+fix     = "Move the `#[cfg(test)] mod tests` into a separate `{stem}_test.rs` file."

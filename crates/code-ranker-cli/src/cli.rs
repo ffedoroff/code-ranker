@@ -91,13 +91,20 @@ pub(crate) enum Command {
         #[arg(long = "threshold", value_name = "file.METRIC=N")]
         thresholds: Vec<String>,
 
-        /// Restrict the gate and the report to these files/folders (repeatable).
-        /// The whole project is still analyzed (the dependency graph needs it),
-        /// but only violations located under one of these paths are reported and
-        /// counted toward the exit code. Paths are repo-relative (matching the
-        /// reported `where`); a folder matches everything beneath it.
-        #[arg(long = "focus", value_name = "PATH")]
-        focus: Vec<String>,
+        /// Restrict the gate to these files/folders (repeatable). The whole project
+        /// is still analyzed (the dependency graph needs it), but only violations
+        /// located under one of these paths are reported and counted toward the exit
+        /// code. Paths are repo-relative (matching the reported `where`); a folder
+        /// matches everything beneath it.
+        #[arg(long = "focus-path", value_name = "PATH")]
+        focus_path: Vec<String>,
+
+        /// Restrict the gate to these rules / concern groups (repeatable). Matches a
+        /// full rule id (`threshold.file.hk`, `check.inline_tests_too_large`), the
+        /// bare id (`inline_tests_too_large`), or a group (`TST`, `CPL`). Combine with
+        /// `--focus-path` to intersect (a violation must match both).
+        #[arg(long = "focus-rule", value_name = "RULE|GROUP")]
+        focus_rule: Vec<String>,
 
         /// Baseline snapshot (`.json`/`.html`). Switches the gate to relative mode:
         /// fail only on regressions (new violations) against the baseline, not on

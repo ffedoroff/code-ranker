@@ -149,7 +149,8 @@ code-ranker check [input] [options]
 | `--threshold <file.METRIC=N>` | Hard limit on a per-file metric — a breach fails the check. Scope is always `file` (a single file). METRIC: any per-file metric the engine emits (`loc`, `sloc`, `cyclomatic`, `cognitive`, `mi`, `volume`, `bugs`, `hk`, `fan_in`, `fan_out`, …); an unknown name errors. Repeatable. See [ERRORS.md](ERRORS.md#threshold-scopes). |
 | `--cycle-rule <KIND=on\|off\|N>` | Configure a cycle check. KIND: `mutual`, `chain`. Value: `on` (any cycle fails), `off` (ignored), or `N` (allow up to N cycles of that kind — e.g. `chain=7` forbids an 8th). Defaults: `mutual`/`chain` on. |
 | `--baseline <snapshot>` | Compare `[input]` (current) against this baseline snapshot (`.json` or `.html`) and switch to a **relative gate**: fail only on *new* violations vs the baseline; pre-existing ones are tolerated. See [`--baseline`](#--baseline-comparison). |
-| `--focus <path>` | Restrict the gate to these files/folders. The whole project is still analyzed (the dependency graph needs it), but a violation outside the focused paths is dropped — neither reported nor counted toward the exit code. A folder matches everything beneath it. Repeatable. See [`--focus`](#--focus-scoping). |
+| `--focus-path <path>` | Restrict the gate to these files/folders. The whole project is still analyzed (the dependency graph needs it), but a violation outside the focused paths is dropped — neither reported nor counted toward the exit code. A folder matches everything beneath it. Repeatable. See [`--focus`](#--focus-scoping). |
+| `--focus-rule <rule\|group>` | Restrict the gate to these rules / concern groups. Matches a full rule id (`threshold.file.hk`, `check.inline_tests_too_large`), the bare id (`inline_tests_too_large`), or a group (`TST`, `CPL`). Repeatable; combine with `--focus-path` to intersect (a violation must match both). See [`--focus`](#--focus-scoping). |
 | `--output-format <fmt>` | Diagnostics format: `human` (default), `json`, `github`, `sarif`, `codequality`, `prompt`. Use `github` for GitHub PR annotations, `sarif` for GitHub code scanning / GitLab ≥18.11, `codequality` for the GitLab Code Quality MR widget, `json` for generic tooling, `prompt` for a Markdown AI fix-prompt built from the gate's own violations — one command both gates and (on failure) prints the prompt, tied exactly to what failed. |
 | `--top <N>` | Report only the `N` worst violations (ranked worst-first) and suppress the rest. A reporting limit only — it does **not** change the exit code. Default: all. |
 | `--exit-zero` | Return exit code 0 even when violations exist. Useful in non-blocking CI checks. |
@@ -168,22 +169,33 @@ single worst thing to fix (handy for handing one focused fix to a human or an AI
 ### `--focus` scoping
 
 A single file can't be linted in isolation — the Rust plugin needs the whole crate
-graph to compute coupling and cycles. `--focus` bridges that gap: the **whole project
-is analyzed**, but only violations whose location falls under one of the focused paths
-are reported, and **only those count toward the exit code**. Unlike `--top` (a display
-limit), `--focus` scopes the gate itself — `check` passes when the focused paths are
-clean, even if the rest of the project has violations. A focus entry matches a file
-exactly or, treated as a folder, anything beneath it; a leading `./` and a trailing `/`
-are ignored. Locationless violations (e.g. a cycle whose breaking edge can't be placed)
-can't be attributed to a path and are dropped under `--focus`. Combine with `--top` to
-rank within the focused set. Repeatable.
+graph to compute coupling and cycles. The `--focus-*` flags bridge that gap: the **whole
+project is analyzed**, but only violations within the focus are reported, and **only
+those count toward the exit code**. Unlike `--top` (a display limit), focus scopes the
+gate itself — `check` passes when the focus is clean, even if the rest of the project has
+violations.
+
+- **`--focus-path <path>`** — keep violations under a file/folder. An entry matches a file
+  exactly or, treated as a folder, anything beneath it; a leading `./` and a trailing `/`
+  are ignored. Locationless violations (e.g. a cycle whose breaking edge can't be placed)
+  can't be attributed to a path and are dropped.
+- **`--focus-rule <rule|group>`** — keep violations of a rule or concern group. Matches a
+  full rule id (`threshold.file.hk`, `check.inline_tests_too_large`), the bare id
+  (`inline_tests_too_large`), or a group (`TST`, `CPL`).
+
+Both are repeatable. With both set they **intersect** — a violation must match a path
+*and* a rule. Combine with `--top` to rank within the focused set.
 
 ```sh
 # gate only the file you're refactoring — the rest of the repo can't fail this run
-code-ranker check . --focus crates/code-ranker-plugin-api/src/plugin.rs
+code-ranker check . --focus-path crates/code-ranker-plugin-api/src/plugin.rs
 
-# focus a whole folder (matches everything beneath it)
-code-ranker check . --focus crates/code-ranker-cli/src/
+# list only one custom linter's hits (rule id, bare id, or its group all work)
+code-ranker check . --focus-rule check.inline_tests_too_large
+code-ranker check . --focus-rule TST
+
+# intersect: that rule, but only under one folder
+code-ranker check . --focus-path crates/code-ranker-graph --focus-rule TST
 ```
 
 ```sh

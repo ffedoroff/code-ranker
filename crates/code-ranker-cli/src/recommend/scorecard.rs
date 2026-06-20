@@ -90,12 +90,23 @@ pub fn render_scorecard(
     if let Some(m) = narrow {
         let known = m == "cycle" || level.node_attributes.contains_key(m);
         if !known {
-            // List the ranking axes the presets actually use (plus `cycle`) — the
-            // meaningful narrowing values, not every node attribute.
-            let mut metrics: Vec<&str> = presets.iter().map(|p| p.sort_metric.as_str()).collect();
+            // The narrow-able ranking axes: metrics that carry a calibrated
+            // threshold or a fix-prompt doc (`remediation`), plus the `cycle`
+            // pseudo-metric — derived from the data, not the preset catalog (so a
+            // metric stays listed even when no preset ranks by it).
+            let mut metrics: Vec<&str> = level
+                .node_attributes
+                .iter()
+                .filter(|(_, s)| {
+                    s.thresholds.is_some()
+                        || s.remediation
+                            .as_deref()
+                            .is_some_and(|r| r.contains("/principles/"))
+                })
+                .map(|(k, _)| k.as_str())
+                .collect();
             metrics.push("cycle");
             metrics.sort_unstable();
-            metrics.dedup();
             anyhow::bail!(
                 "unknown --metric '{m}'. Known metrics: {}",
                 metrics.join(", ")
