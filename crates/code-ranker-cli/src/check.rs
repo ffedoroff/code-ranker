@@ -6,10 +6,12 @@ use crate::analyze::{analyze_input, load_snapshot_any, project_name};
 use crate::cli::{AnalyzeArgs, OutputFormat};
 use crate::config;
 use anyhow::Result;
-use code_ranker_graph::level_graph::LevelGraph;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 use std::path::Path;
+
+mod values;
+use values::print_current_values;
 
 /// Base URL for the published docs. Diagnostics pointers (`ref` lines, SARIF
 /// `helpUri`) use absolute URLs so they're clickable from a terminal, a CI log,
@@ -23,7 +25,8 @@ pub(crate) fn run_check(
     args: &AnalyzeArgs,
     cycle_rules: &[String],
     thresholds: &[String],
-    focus: &[String],
+    focus_path: &[String],
+    focus_rule: &[String],
     baseline: Option<&Path>,
     output_format: OutputFormat,
     top: Option<usize>,
@@ -66,16 +69,21 @@ pub(crate) fn run_check(
         }
     };
 
-    // `--focus`: scope the gate to the given files/folders. The whole project is
-    // analyzed (the dependency graph needs it), but a violation outside the
-    // focused paths is dropped entirely — so it is neither reported nor counted
-    // toward the exit code. A locationless violation (e.g. a cycle whose breaking
-    // edge couldn't be placed) can't be attributed to a path, so it is dropped too.
-    if !focus.is_empty() {
+    // Scope the gate. `--focus-path` keeps violations under the given files/folders;
+    // `--focus-rule` keeps violations of the given rule ids or concern groups. The
+    // whole project is still analyzed, but a violation outside an active focus is
+    // dropped — neither reported nor counted toward the exit code. With both set, a
+    // violation must satisfy both (path AND rule). A locationless violation can't be
+    // attributed to a path, so `--focus-path` drops it too.
+    if !focus_path.is_empty() {
         findings.retain(|v| {
-            violation_rel_path(&v.location).is_some_and(|rel| focus_matches(rel, focus))
+            violation_rel_path(&v.location).is_some_and(|rel| path_matches(rel, focus_path))
         });
     }
+    if !focus_rule.is_empty() {
+        findings.retain(|v| rule_matches(v, focus_rule));
+    }
+    let scope_note = focus_scope_note(focus_path, focus_rule);
 
     let total = findings.len();
     // Rank worst-first by breach magnitude; `--top` limits only what is
@@ -102,7 +110,7 @@ pub(crate) fn run_check(
         &project,
         output_format,
         verdict,
-        focus,
+        &scope_note,
         node_attributes,
         cycle_kinds,
     );
@@ -135,7 +143,7 @@ fn emit_diagnostics(
     project: &str,
     format: OutputFormat,
     verdict: Option<&str>,
-    focus: &[String],
+    scope_note: &str,
     node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
 ) {
@@ -146,7 +154,7 @@ fn emit_diagnostics(
                 total,
                 plugin,
                 project,
-                focus,
+                scope_note,
                 node_attributes,
                 cycle_kinds,
             );
@@ -278,16 +286,43 @@ fn violation_rel_path(location: &str) -> Option<&str> {
         .filter(|rel| !rel.is_empty())
 }
 
-/// Whether a violation's repo-relative path falls under one of the `--focus`
-/// paths. A focus entry matches a file exactly or, treated as a folder, anything
+/// Whether a violation's repo-relative path falls under one of the `--focus-path`
+/// entries. An entry matches a file exactly or, treated as a folder, anything
 /// beneath it (`crates/a/src` matches `crates/a/src/x.rs`). Leading `./` and a
-/// trailing `/` on a focus entry are ignored so `./crates/a/` and `crates/a` are
+/// trailing `/` on an entry are ignored so `./crates/a/` and `crates/a` are
 /// equivalent.
-fn focus_matches(rel: &str, focus: &[String]) -> bool {
+fn path_matches(rel: &str, focus: &[String]) -> bool {
     focus.iter().any(|f| {
         let f = f.trim_start_matches("./").trim_end_matches('/');
         !f.is_empty() && (rel == f || rel.starts_with(&format!("{f}/")))
     })
+}
+
+/// Whether a violation matches one of the `--focus-rule` entries. An entry matches
+/// the full rule id (`threshold.file.hk`, `check.inline_tests_too_large`), the bare
+/// id after the last dot (`inline_tests_too_large`), or the concern group (`TST`,
+/// `CPL`) — so `--focus-rule TST` and `--focus-rule inline_tests_too_large` both work.
+fn rule_matches(v: &config::Violation, focus: &[String]) -> bool {
+    focus
+        .iter()
+        .any(|r| v.rule == *r || v.group == *r || v.rule.rsplit('.').next() == Some(r.as_str()))
+}
+
+/// The trailing "(focused on …)" note for the human header, covering whichever of
+/// `--focus-path` / `--focus-rule` are active (empty when neither is).
+fn focus_scope_note(focus_path: &[String], focus_rule: &[String]) -> String {
+    let mut parts = Vec::new();
+    if !focus_path.is_empty() {
+        parts.push(format!("path {}", focus_path.join(", ")));
+    }
+    if !focus_rule.is_empty() {
+        parts.push(format!("rule {}", focus_rule.join(", ")));
+    }
+    if parts.is_empty() {
+        String::new()
+    } else {
+        format!(" (focused on {})", parts.join("; "))
+    }
 }
 
 /// GitHub workflow-command location params (`file=rel,line=N,`) for a violation,
@@ -308,16 +343,10 @@ fn print_human_diagnostics(
     total: usize,
     plugin: &str,
     project: &str,
-    focus: &[String],
+    scope_note: &str,
     node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
 ) {
-    // A trailing scope note so the count is never mistaken for the whole project.
-    let scope_note = if focus.is_empty() {
-        String::new()
-    } else {
-        format!(" (focused on {})", focus.join(", "))
-    };
     if total == 0 {
         println!("✓ code-ranker check: no violations in {project} ({plugin} plugin){scope_note}.");
         return;
@@ -388,110 +417,6 @@ fn print_human_diagnostics(
         "total"
     };
     println!("Summary ({scope}): {breakdown}");
-}
-
-/// The six threshold metrics, in display order.
-const METRICS: [&str; 6] = ["cyclomatic", "cognitive", "hk", "fan_in", "fan_out", "loc"];
-
-/// Print the current measured values per scope as ready-to-paste `code-ranker.toml`
-/// threshold blocks: the per-unit worst value (`single`) and the graph-wide
-/// average (`avg`). Lets a user pin today's numbers as a baseline that passes.
-fn print_current_values(graphs: &BTreeMap<String, LevelGraph>, cycles: &config::CycleRules) {
-    let Some(level) = graphs.get("files") else {
-        return;
-    };
-    println!();
-    println!("Current config — copy the blocks below into code-ranker.toml:");
-
-    // Cycle budgets: today's count per kind (paste to forbid adding more).
-    println!();
-    println!(
-        "# cycles: max allowed count per kind (today's count — raise only to allow more; false = off)"
-    );
-    println!("[rules.cycles]");
-    for (key, kind, rule) in [
-        ("mutual", "mutual", cycles.mutual),
-        ("chain", "chain", cycles.chain),
-    ] {
-        if rule.is_off() {
-            println!("{key:<12}= false");
-        } else {
-            let n = level.cycles.iter().filter(|c| c.kind == kind).count();
-            println!("{key:<12}= {n}");
-        }
-    }
-
-    // Thresholds: measured per-file maxima to pin as a baseline.
-    println!();
-    println!("# thresholds: the worst single file (max) per metric");
-    print_scope_values("file", level);
-}
-
-/// Emit a `[rules.thresholds.<scope>]` block with the per-file metric maxima,
-/// read from the flat node `attrs`.
-fn print_scope_values(scope: &str, level: &LevelGraph) {
-    let attr = |n: &code_ranker_plugin_api::node::Node, key: &str| -> f64 {
-        match n.attrs.get(key) {
-            Some(code_ranker_plugin_api::attrs::AttrValue::Int(i)) => *i as f64,
-            Some(code_ranker_plugin_api::attrs::AttrValue::Float(f)) => *f,
-            _ => 0.0,
-        }
-    };
-    let mut max = [0f64; 6];
-    let mut any = false;
-    for n in &level.nodes {
-        if n.kind == "external" {
-            continue;
-        }
-        any = true;
-        max[0] = max[0].max(attr(n, "cyclomatic"));
-        max[1] = max[1].max(attr(n, "cognitive"));
-        max[2] = max[2].max(attr(n, "hk"));
-        max[3] = max[3].max(attr(n, "fan_in"));
-        max[4] = max[4].max(attr(n, "fan_out"));
-        max[5] = max[5].max(attr(n, "loc"));
-    }
-    if !any {
-        return;
-    }
-    print_toml_block(&format!("[rules.thresholds.{scope}]"), &max, false);
-}
-
-/// Print one TOML table, one `metric = value` line per non-zero metric. With
-/// `round_up`, fractional values (averages) are ceiled so a strict `>` check
-/// still passes at the printed limit.
-fn print_toml_block(header: &str, vals: &[f64; 6], round_up: bool) {
-    let rows: Vec<(&str, u64)> = METRICS
-        .iter()
-        .zip(vals)
-        .filter_map(|(name, &v)| {
-            let n = if round_up { v.ceil() } else { v.round() } as u64;
-            (n > 0).then_some((*name, n))
-        })
-        .collect();
-    if rows.is_empty() {
-        return;
-    }
-    println!();
-    println!("{header}");
-    for (name, v) in rows {
-        println!("{name:<12}= {}", group_digits(v));
-    }
-}
-
-/// Format an integer with `_` thousands separators (e.g. 512712 → "512_712"),
-/// matching the human number syntax accepted by `--threshold` / the config.
-fn group_digits(n: u64) -> String {
-    let s = n.to_string();
-    let len = s.len();
-    let mut out = String::with_capacity(len + len / 3);
-    for (i, ch) in s.chars().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            out.push('_');
-        }
-        out.push(ch);
-    }
-    out
 }
 
 /// Minimal SARIF 2.1.0 document. `ruleId` is the dotted rule id (e.g.
@@ -615,148 +540,5 @@ pub(crate) fn codequality_document(violations: &[config::Violation]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn viol(location: &str, line: Option<u32>) -> config::Violation {
-        config::Violation {
-            rule: "threshold.file.loc".into(),
-            group: "SIZ".into(),
-            graph: "files",
-            location: location.into(),
-            line,
-            message: "source loc 1318 exceeds limit 150".into(),
-            weight: 8.78,
-            why: None,
-            fix: None,
-        }
-    }
-
-    #[test]
-    fn focus_matches_file_exactly_and_folder_prefix() {
-        let focus = vec![
-            "crates/a/src/plugin.rs".to_string(),
-            "crates/b/src".to_string(),
-        ];
-        // Exact file match.
-        assert!(focus_matches("crates/a/src/plugin.rs", &focus));
-        // Folder matches everything beneath it.
-        assert!(focus_matches("crates/b/src/registry.rs", &focus));
-        // Outside the focused paths.
-        assert!(!focus_matches("crates/c/src/lib.rs", &focus));
-        // A folder must match on a path boundary, not a bare prefix.
-        assert!(!focus_matches("crates/b/src_extra.rs", &focus));
-    }
-
-    #[test]
-    fn focus_matches_ignores_leading_dot_slash_and_trailing_slash() {
-        let focus = vec!["./crates/a/".to_string()];
-        assert!(focus_matches("crates/a/src/x.rs", &focus));
-        assert!(focus_matches("crates/a", &focus));
-    }
-
-    #[test]
-    fn annotation_location_maps_target_path_with_line() {
-        assert_eq!(
-            annotation_location("{target}/crates/a/src/x.rs", Some(42)),
-            "file=crates/a/src/x.rs,line=42,"
-        );
-    }
-
-    #[test]
-    fn annotation_location_defaults_missing_line_to_one() {
-        // Whole-file metrics carry no line → annotation pins to line 1.
-        assert_eq!(
-            annotation_location("{target}/src/x.rs", None),
-            "file=src/x.rs,line=1,"
-        );
-    }
-
-    #[test]
-    fn annotation_location_empty_without_a_file_path() {
-        // Locationless (cycle fallback) and non-`{target}` ids stay general.
-        assert_eq!(annotation_location("", Some(5)), "");
-        assert_eq!(annotation_location("ext:serde", None), "");
-        assert_eq!(annotation_location("{target}/", Some(1)), "");
-    }
-
-    #[test]
-    fn sarif_attaches_physical_location_from_violation() {
-        let doc = sarif_document(
-            &[viol("{target}/src/x.rs", Some(7))],
-            &BTreeMap::new(),
-            &BTreeMap::new(),
-        );
-        let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        let loc = &v["runs"][0]["results"][0]["locations"][0]["physicalLocation"];
-        assert_eq!(loc["artifactLocation"]["uri"], "src/x.rs");
-        assert_eq!(loc["region"]["startLine"], 7);
-    }
-
-    #[test]
-    fn sarif_omits_location_when_no_path() {
-        let doc = sarif_document(&[viol("", None)], &BTreeMap::new(), &BTreeMap::new());
-        let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        assert!(v["runs"][0]["results"][0].get("locations").is_none());
-    }
-
-    #[test]
-    fn codequality_issue_has_fingerprint_path_and_line() {
-        let doc = codequality_document(&[viol("{target}/src/x.rs", Some(7))]);
-        let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        let issue = &v[0];
-        assert_eq!(issue["check_name"], "threshold.file.loc");
-        assert_eq!(issue["severity"], "major");
-        assert_eq!(issue["location"]["path"], "src/x.rs");
-        assert_eq!(issue["location"]["lines"]["begin"], 7);
-        // Stable identity = rule:location, no line (so a shift does not reopen it).
-        assert_eq!(issue["fingerprint"], "threshold.file.loc:{target}/src/x.rs");
-    }
-
-    #[test]
-    fn codequality_whole_file_metric_defaults_line_to_one() {
-        // A whole-file metric has no line → CodeClimate needs one, default 1.
-        let doc = codequality_document(&[viol("{target}/src/x.rs", None)]);
-        let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        assert_eq!(v[0]["location"]["lines"]["begin"], 1);
-    }
-
-    #[test]
-    fn sarif_partial_fingerprint_is_rule_and_location() {
-        let doc = sarif_document(
-            &[viol("{target}/src/x.rs", Some(7))],
-            &BTreeMap::new(),
-            &BTreeMap::new(),
-        );
-        let v: serde_json::Value = serde_json::from_str(&doc).unwrap();
-        let fp = &v["runs"][0]["results"][0]["partialFingerprints"];
-        assert_eq!(
-            fp["codeRankerRuleLocation/v1"],
-            "threshold.file.loc:{target}/src/x.rs"
-        );
-    }
-
-    #[test]
-    fn sarif_partial_fingerprint_is_stable_across_line_shifts() {
-        // The same finding at a different line keeps the same fingerprint, so a
-        // code shift does not reopen it for the consumer.
-        let at_7 = sarif_document(
-            &[viol("{target}/src/x.rs", Some(7))],
-            &BTreeMap::new(),
-            &BTreeMap::new(),
-        );
-        let at_42 = sarif_document(
-            &[viol("{target}/src/x.rs", Some(42))],
-            &BTreeMap::new(),
-            &BTreeMap::new(),
-        );
-        let fp = |doc: &str| -> String {
-            let v: serde_json::Value = serde_json::from_str(doc).unwrap();
-            v["runs"][0]["results"][0]["partialFingerprints"]["codeRankerRuleLocation/v1"]
-                .as_str()
-                .unwrap()
-                .to_owned()
-        };
-        assert_eq!(fp(&at_7), fp(&at_42));
-    }
-}
+#[path = "check_test.rs"]
+mod tests;
