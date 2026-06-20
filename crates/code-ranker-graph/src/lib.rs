@@ -16,6 +16,7 @@ pub mod cycles;
 pub mod finalize;
 pub mod hk;
 pub mod level_graph;
+pub(crate) mod nodepath;
 pub mod registry;
 pub mod relativize;
 pub mod serialize;

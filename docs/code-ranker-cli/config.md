@@ -63,7 +63,7 @@ hk         = 500_000         # `_` separators; or a suffix: hk = 5M (bare or "5M
 fan_out    = 50
 
 [rules.defs]                 # reusable named CEL helpers (expanded into checks)
-is_test_file = 'ends_with(name, "_tests.rs") || contains(path, "/tests/")'
+is_test_file = 'name.endsWith("_tests.rs") || path.contains("/tests/")'
 
 [rules.checks.de1101]        # a custom linter: CEL bool predicate per file node
 when    = "tloc > 100 && !is_test_file"   # node values + path/deps/files + helpers
@@ -121,7 +121,8 @@ boolean expression over a rich context:
 - **edges (lists)** — `deps` / `rdeps` (dependency neighbour labels; an external
   crate is `ext:<name>`), plus `depends_on(s)` / `depended_on_by(s)`;
 - **file collections** — `files` / `siblings`, plus `file_exists(p)`;
-- **string fns** — `ends_with` / `starts_with` / `contains` / `matches(regex)`;
+- **string fns** — CEL's own `contains` / `startsWith` / `endsWith` / `matches`
+  (regex), callable as methods (`path.endsWith("_tests.rs")`) or functions;
 - **CEL list macros** — `.size()` / `.exists(x, …)` / `.all(x, …)` / `.filter(x, …)`;
 - `n.double()` to take a real ratio (CEL `/` is integer division on ints).
 
@@ -135,8 +136,8 @@ becomes a loud `check.<id>` violation (a typo can't pass silently).
 `name = "<cel expr>"` entries expanded into a check's `when` before compilation (a
 helper may reference an earlier one; a reference cycle is a hard error). They add
 reuse/readability, not new power. See **`docs/customization/README.md` §1.8** for
-the full walkthrough and **`docs/customization/{linters-example,architecture-linters}.toml`**
-for runnable examples (inline-test bulk; forbidden dependency / layer rules).
+the full walkthrough and **`docs/customization/cel-reference.md`** for the complete
+CEL reference (language, built-in functions, what is in scope in checks vs metrics).
 
 ### `[levels]` — opt-in graph levels
 

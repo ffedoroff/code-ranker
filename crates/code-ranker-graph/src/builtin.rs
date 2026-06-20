@@ -321,7 +321,9 @@ pub fn write_metrics(node: &mut Node, i: &MetricInputs) {
     }
 
     let (defs, engine) = &*DERIVED;
-    for (key, value) in engine.eval_node(&inputs_map(i)) {
+    // Built-in derived metrics are pure arithmetic over the tier-1 counts — no
+    // path/string inputs needed.
+    for (key, value) in engine.eval_node(&inputs_map(i), &BTreeMap::new()) {
         let omit = defs.get(&key).map(|d| d.omit_at).unwrap_or(0.0);
         let a = num_attr(value);
         if a == num_attr(omit) {

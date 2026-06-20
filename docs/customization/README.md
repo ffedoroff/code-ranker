@@ -311,6 +311,10 @@ the general form: a CEL **boolean** `when` predicate over each file node, plus a
 `message`. When the predicate is true for a file, `check` reports a violation
 pinned to that file — a config-only linter rule, no Rust.
 
+> **Full CEL reference:** [`cel-reference.md`](./cel-reference.md) documents the
+> language, every built-in function, and exactly what is in scope here vs in a
+> `[metrics]` formula — written for both humans and AI agents.
+
 The predicate sees more than one number. Every node value is in scope under its
 own key — numeric (`tloc`, `sloc`, `loc`, `cyclomatic`, `unsafe`, …), boolean, or
 string — **plus** derived path fields and a small standard library:
@@ -324,8 +328,8 @@ string — **plus** derived path fields and a small standard library:
 | `stem` | basename without the final extension, e.g. `handler` |
 | `ext` | final extension, e.g. `rs` |
 | `dir` | everything before the basename, e.g. `crates/a/src` |
-| `ends_with(s, x)` `starts_with(s, x)` `contains(s, x)` | substring tests → bool |
-| `matches(s, re)` | full regex match → bool (a bad pattern never panics) |
+| `s.contains(x)` `s.startsWith(x)` `s.endsWith(x)` | CEL-native substring tests → bool |
+| `s.matches(re)` | CEL-native regex match → bool |
 | `n.double()` | cast an integer attribute to float — CEL's bare `/` is integer division and rejects mixed int/float, so `tloc.double() / sloc.double()` is how you take a ratio |
 
 Because `check` runs as a **second pass over the fully-built graph**, the
@@ -362,7 +366,7 @@ group   = "DEP"
 # Reusable named helpers, expanded into a check's `when` (a helper may use an
 # earlier one). Add reuse/readability, not new power.
 [rules.defs]
-is_test_file = 'ends_with(name, "_tests.rs") || contains(path, "/tests/")'
+is_test_file = 'name.endsWith("_tests.rs") || path.contains("/tests/")'
 ```
 
 - **`when`** is required — any CEL boolean expression (`&&` / `||` / `!` / `? :`,
@@ -378,15 +382,8 @@ is_test_file = 'ends_with(name, "_tests.rs") || contains(path, "/tests/")'
 
 Each fired check is a `check.<id>` rule in every output format (human, JSON,
 GitHub annotations, SARIF, Code Quality) and counts toward the gate's exit code,
-exactly like a threshold or cycle violation. A runnable example —
-[`linters-example.toml`](./linters-example.toml) next to this doc — reproduces the
-dylint **DE1101 "tests in separate files"** lint in a single check, folding both
-of its triggers (inline test bulk over 100 lines, or a companion `*_tests.rs`
-already present) and its `tests/` / `*_tests.rs` exemptions into one `when`:
-
-```sh
-code-ranker check . --config docs/customization/linters-example.toml
-```
+exactly like a threshold or cycle violation. The snippets above are
+copy-pasteable into a project `code-ranker.toml` as-is.
 
 > **What a check can't see.** The predicate reads the node's *measured values*,
 > its *path*, and its *graph edges* — but not source text. So rules about
@@ -527,7 +524,7 @@ aggregate       [metrics.k] scope="graph" formula="agg('m','reducer','population
   "where cond"  put the predicate in a node metric: cond ? value : 0  → not_empty drops the rest
 check threshold [rules.thresholds.file] k = <limit>   (K/M/G suffixes; built-ins AND custom metrics)
 custom check    [rules.checks.ID] when="<CEL bool>" message="…"  (runs as a 2nd pass over the built graph)
-  node in scope any attribute key  ·  path/name/stem/ext/dir  ·  ends_with/starts_with/contains/matches  ·  n.double()
+  node in scope any attribute key  ·  path/name/stem/ext/dir  ·  CEL-native contains/startsWith/endsWith/matches  ·  n.double()
   graph in scope deps/rdeps (edge label lists)  ·  files/siblings  ·  depends_on/depended_on_by/file_exists  ·  list macros .size()/.exists/.all/.filter
   copy          message/why/fix/title  (interpolate {key})  ·  group (free-form, default LNT)
   helpers       [rules.defs] name="<cel expr>"  expanded into when (reuse; a helper may use an earlier one)

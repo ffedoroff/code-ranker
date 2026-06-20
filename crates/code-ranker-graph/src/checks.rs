@@ -5,17 +5,20 @@
 //! `message`. The predicate is evaluated **per node** over everything the node
 //! carries: its numeric / boolean / string attributes (`tloc`, `unsafe`,
 //! `cyclomatic`, …) **plus** derived path strings (`path`, `name`, `stem`,
-//! `ext`, `dir`) and a small string standard library (`ends_with`,
-//! `starts_with`, `contains`, `matches`). When the predicate is `true`, the
-//! check fires and produces a [`CheckHit`] the CLI turns into a violation.
+//! `ext`, `dir`). String predicates use CEL's own stdlib (`contains`,
+//! `startsWith`, `endsWith`, `matches` regex, `size`, `double`, …); on top of it
+//! we register only the graph-aware functions (`depends_on` / `depended_on_by` /
+//! `file_exists`). When the predicate is `true`, the check fires and produces a
+//! [`CheckHit`] the CLI turns into a violation.
 //!
 //! This is what lets a project express a custom linter — e.g. "no inline tests
-//! in a production file" (`tloc > 0 && !ends_with(path, "_tests.rs")`) — entirely
+//! in a production file" (`tloc > 0 && !path.endsWith("_tests.rs")`) — entirely
 //! in `code-ranker.toml`, with no Rust change. It complements
 //! `[rules.thresholds.file]` (which only does `metric > limit`) with an arbitrary
 //! boolean expression and a path-aware, string-aware context.
 
 use crate::level_graph::LevelGraph;
+use crate::nodepath::{node_path, split_path};
 use cel::{Context, Program, Value};
 use code_ranker_plugin_api::{attrs::AttrValue, node::EXTERNAL, node::Node};
 use serde::Deserialize;
@@ -133,8 +136,17 @@ impl CompiledCheck {
     /// `true`). A predicate that errors or yields a non-boolean value does
     /// **not** fire — a check never panics on a node.
     pub fn eval(&self, node: &Node, graph: &GraphView) -> Option<CheckHit> {
+        // `Context::default()` already provides the CEL string stdlib
+        // (`contains` / `startsWith` / `endsWith` / `matches` regex / `size` /
+        // `double` / …). On top we add the same math host functions the metric
+        // engine uses (`pow` / `log2` / `sqrt` / …) and the graph-aware functions,
+        // so a predicate can do real arithmetic over node values.
         let mut ctx = Context::default();
-        register_stdlib(&mut ctx);
+        crate::registry::register_math(&mut ctx);
+        // `agg(metric, reducer, population)` over the whole project, so a predicate
+        // can use a relative threshold (this node vs the project distribution).
+        // Memoized across nodes (see `GraphView::register_agg`).
+        graph.register_agg(&mut ctx);
         register_graph_fns(&mut ctx, graph, &node.id);
         bind_node(&mut ctx, node);
         self.bind_collections(&mut ctx, node, graph);
@@ -209,32 +221,6 @@ fn bind_node(ctx: &mut Context, node: &Node) {
     let _ = ctx.add_variable("dir", parts.dir);
 }
 
-/// The string standard library available to a `when` predicate. Free-function
-/// form (`ends_with(path, "_tests.rs")`) so it composes with the CEL operators
-/// (`&&`, `||`, `!`, `? :`, comparisons) without method-resolution surprises.
-/// For float division in a proportion check, CEL's own `.double()` method casts
-/// an integer attribute (`tloc.double() / sloc.double()`), since bare `/` is
-/// integer division and rejects mixed int/float.
-fn register_stdlib(ctx: &mut Context) {
-    ctx.add_function("ends_with", |s: Arc<String>, suffix: Arc<String>| -> bool {
-        s.ends_with(suffix.as_str())
-    });
-    ctx.add_function(
-        "starts_with",
-        |s: Arc<String>, prefix: Arc<String>| -> bool { s.starts_with(prefix.as_str()) },
-    );
-    ctx.add_function("contains", |s: Arc<String>, sub: Arc<String>| -> bool {
-        s.contains(sub.as_str())
-    });
-    // `matches(s, re)` — full regex match test. A malformed pattern never panics;
-    // it simply doesn't match (so a typo can't crash the run).
-    ctx.add_function("matches", |s: Arc<String>, re: Arc<String>| -> bool {
-        regex::Regex::new(re.as_str())
-            .map(|r| r.is_match(s.as_str()))
-            .unwrap_or(false)
-    });
-}
-
 /// Register the graph-aware predicate functions for `node_id`, bound to the
 /// fully-built level: `depends_on(s)` / `depended_on_by(s)` (does this node have
 /// an out- / in-dependency whose label contains `s` — e.g. `"ext:sqlx"` or
@@ -266,7 +252,18 @@ pub struct GraphView {
     files: Arc<Vec<String>>,
     files_set: Arc<HashSet<String>>,
     by_dir: HashMap<String, Vec<String>>,
+    /// Value populations over all internal nodes, so a predicate can compare a
+    /// node against the project distribution via `agg(metric, reducer, pop)` —
+    /// e.g. a relative threshold `cyclomatic.double() > agg('cyclomatic','p90','not_empty')`.
+    pops: Arc<crate::registry::Populations>,
+    /// Memoized `agg(key, reducer, population)` results. The value is identical
+    /// for every node in a run (the population is the whole project), so each
+    /// distinct call is reduced (sorted) once, not once per file.
+    agg_cache: AggCache,
 }
+
+/// Cache keyed by `(metric, reducer, population)` → the reduced scalar.
+type AggCache = Arc<std::sync::Mutex<HashMap<(String, String, String), f64>>>;
 
 impl GraphView {
     /// Build the view from a fully-enriched level (nodes carry their `path`
@@ -275,12 +272,17 @@ impl GraphView {
         let mut label: HashMap<String, String> = HashMap::new();
         let mut files: Vec<String> = Vec::new();
         let mut by_dir: HashMap<String, Vec<String>> = HashMap::new();
+        let mut rows: Vec<BTreeMap<String, f64>> = Vec::new();
+        let mut metric_keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for n in &level.nodes {
             let l = label_of(n);
             label.insert(n.id.clone(), l.clone());
             if n.kind != EXTERNAL {
                 files.push(l.clone());
                 by_dir.entry(split_path(&l).dir).or_default().push(l);
+                let row = numeric_attrs(n);
+                metric_keys.extend(row.keys().cloned());
+                rows.push(row);
             }
         }
         sort_dedup(&mut files);
@@ -288,6 +290,23 @@ impl GraphView {
             sort_dedup(v);
         }
         let files_set: HashSet<String> = files.iter().cloned().collect();
+
+        // Aggregate populations over internal nodes, using each metric's declared
+        // `omit_at` floor (from the level specs) so `not_empty` matches the metric
+        // engine's semantics.
+        let keys: Vec<String> = metric_keys.into_iter().collect();
+        let omit_at: BTreeMap<String, f64> = keys
+            .iter()
+            .map(|k| {
+                let floor = level
+                    .node_attributes
+                    .get(k)
+                    .map(|s| s.omit_at)
+                    .unwrap_or(0.0);
+                (k.clone(), floor)
+            })
+            .collect();
+        let pops = crate::registry::Populations::build(&rows, &keys, &omit_at);
 
         let mut out: HashMap<String, Vec<String>> = HashMap::new();
         let mut inc: HashMap<String, Vec<String>> = HashMap::new();
@@ -313,7 +332,32 @@ impl GraphView {
             files: Arc::new(files),
             files_set: Arc::new(files_set),
             by_dir,
+            pops: Arc::new(pops),
+            agg_cache: Arc::new(std::sync::Mutex::new(HashMap::new())),
         }
+    }
+
+    /// Register the memoizing `agg(key, reducer, population)` host function on
+    /// `ctx`, sharing this view's populations + cache.
+    fn register_agg(&self, ctx: &mut Context) {
+        let pops = self.pops.clone();
+        let cache = self.agg_cache.clone();
+        ctx.add_function(
+            "agg",
+            move |key: Arc<String>, reducer: Arc<String>, population: Arc<String>| -> f64 {
+                let k = (
+                    key.as_str().to_string(),
+                    reducer.as_str().to_string(),
+                    population.as_str().to_string(),
+                );
+                if let Some(v) = cache.lock().unwrap().get(&k) {
+                    return *v;
+                }
+                let v = pops.reduce_for(&key, &reducer, &population);
+                cache.lock().unwrap().insert(k, v);
+                v
+            },
+        );
     }
 
     fn deps(&self, id: &str) -> Vec<String> {
@@ -340,6 +384,23 @@ impl GraphView {
             .map(|v| v.iter().filter(|f| f.as_str() != path).cloned().collect())
             .unwrap_or_default()
     }
+}
+
+/// A node's numeric attributes as a name→f64 map (for the aggregate populations).
+fn numeric_attrs(node: &Node) -> BTreeMap<String, f64> {
+    let mut m = BTreeMap::new();
+    for (k, v) in node.attrs.iter() {
+        match v {
+            AttrValue::Int(i) => {
+                m.insert(k.clone(), *i as f64);
+            }
+            AttrValue::Float(f) => {
+                m.insert(k.clone(), *f);
+            }
+            _ => {}
+        }
+    }
+    m
 }
 
 fn sort_dedup(v: &mut Vec<String>) {
@@ -429,49 +490,6 @@ fn word_positions<'a>(s: &'a str, word: &'a str) -> impl Iterator<Item = usize> 
         }
         None
     })
-}
-
-/// The node's repo-relative path: its `path` string attribute when present, else
-/// its id with the `{target}/` analysis prefix stripped.
-fn node_path(node: &Node) -> String {
-    if let Some(AttrValue::Str(p)) = node.attrs.get("path") {
-        return p.clone();
-    }
-    node.id
-        .strip_prefix("{target}/")
-        .unwrap_or(&node.id)
-        .to_string()
-}
-
-struct PathParts {
-    /// Final path segment (basename), e.g. `handler.rs`.
-    name: String,
-    /// Basename without its final extension, e.g. `handler` (`handler_tests` for
-    /// `handler_tests.rs` — only the last `.ext` is removed).
-    stem: String,
-    /// Final extension without the dot, e.g. `rs` (empty if none).
-    ext: String,
-    /// Everything before the basename, e.g. `crates/a/src` (empty at the root).
-    dir: String,
-}
-
-fn split_path(path: &str) -> PathParts {
-    let name = path.rsplit('/').next().unwrap_or(path).to_string();
-    let dir = match path.rfind('/') {
-        Some(i) => path[..i].to_string(),
-        None => String::new(),
-    };
-    let (stem, ext) = match name.rfind('.') {
-        // A leading dot (dotfile) is not an extension separator.
-        Some(i) if i > 0 => (name[..i].to_string(), name[i + 1..].to_string()),
-        _ => (name.clone(), String::new()),
-    };
-    PathParts {
-        name,
-        stem,
-        ext,
-        dir,
-    }
 }
 
 /// Fill `{key}` placeholders in a message from the node's values. `{` / `}` are
@@ -600,7 +618,7 @@ mod tests {
         );
         // Inline tests in a production (non-_tests) file.
         assert!(
-            compiled(r#"tloc > 0 && !ends_with(path, "_tests.rs")"#)
+            compiled(r#"tloc > 0 && !path.endsWith("_tests.rs")"#)
                 .eval(&n, &GraphView::default())
                 .is_some()
         );
@@ -616,7 +634,7 @@ mod tests {
             ],
         );
         assert!(
-            compiled(r#"tloc > 0 && !ends_with(path, "_tests.rs")"#)
+            compiled(r#"tloc > 0 && !path.endsWith("_tests.rs")"#)
                 .eval(&t, &GraphView::default())
                 .is_none()
         );
@@ -677,6 +695,43 @@ mod tests {
                 .eval(&n, &GraphView::default())
                 .is_none()
         );
+    }
+
+    #[test]
+    fn agg_enables_relative_thresholds() {
+        // Three files with cyclomatic 1 / 5 / 100 — only the outlier is above the
+        // project's own p90, a threshold no fixed number could express portably.
+        let n = |id: &str, c: i64| node(id, &[("cyclomatic", AttrValue::Int(c))]);
+        let level = LevelGraph {
+            nodes: vec![n("a.rs", 1), n("b.rs", 5), n("c.rs", 100)],
+            ..Default::default()
+        };
+        let view = GraphView::build(&level);
+        let check = compiled("cyclomatic.double() > agg('cyclomatic', 'p90', 'not_empty')");
+        assert!(
+            check.eval(&level.nodes[2], &view).is_some(),
+            "outlier fires"
+        );
+        assert!(
+            check.eval(&level.nodes[0], &view).is_none(),
+            "low file does not"
+        );
+        // A 'max' aggregate is the project max — nothing strictly exceeds it.
+        assert!(
+            compiled("cyclomatic.double() > agg('cyclomatic', 'max', 'not_empty')")
+                .eval(&level.nodes[2], &view)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn math_host_functions_are_available_in_predicates() {
+        let n = node("x", &[("hk", AttrValue::Int(64))]);
+        let g = GraphView::default();
+        // `pow`, `sqrt`, `log2` etc. — the same math the metric engine has.
+        assert!(compiled("sqrt(hk.double()) == 8.0").eval(&n, &g).is_some());
+        assert!(compiled("log2(hk.double()) == 6.0").eval(&n, &g).is_some());
+        assert!(compiled("pow(2.0, 3.0) == 8.0").eval(&n, &g).is_some());
     }
 
     #[test]
@@ -1004,9 +1059,9 @@ mod tests {
         let g = GraphView::default();
         // Float + Bool attributes bind and compare in a predicate.
         assert!(compiled("mi > 70.0 && flag").eval(&n, &g).is_some());
-        // starts_with / contains string functions.
+        // Native CEL string methods (startsWith / contains).
         assert!(
-            compiled(r#"starts_with(path, "READ") && contains(path, "ME")"#)
+            compiled(r#"path.startsWith("READ") && path.contains("ME")"#)
                 .eval(&n, &g)
                 .is_some()
         );

@@ -510,7 +510,7 @@ mod tests {
         rules.checks.insert(
             "de1101".into(),
             check_def(
-                r#"tloc > 0 && !ends_with(name, "_tests.rs")"#,
+                r#"tloc > 0 && !name.endsWith("_tests.rs")"#,
                 "{path}: {tloc} inline test lines",
                 Some("TST"),
             ),

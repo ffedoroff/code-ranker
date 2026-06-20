@@ -166,6 +166,7 @@ impl MetricDef {
 /// present are used as inputs.
 pub fn apply_to_node(node: &mut Node, defs: &BTreeMap<String, MetricDef>, engine: &Engine) {
     let mut attrs: BTreeMap<String, f64> = BTreeMap::new();
+    let mut strings: BTreeMap<String, String> = BTreeMap::new();
     for (k, v) in &node.attrs {
         match v {
             AttrValue::Int(i) => {
@@ -174,10 +175,18 @@ pub fn apply_to_node(node: &mut Node, defs: &BTreeMap<String, MetricDef>, engine
             AttrValue::Float(f) => {
                 attrs.insert(k.clone(), *f);
             }
-            _ => {}
+            AttrValue::Str(s) => {
+                strings.insert(k.clone(), s.clone());
+            }
+            AttrValue::Bool(_) => {}
         }
     }
-    for (key, value) in engine.eval_node(&attrs) {
+    // Derived path fields (`path`/`name`/`stem`/`ext`/`dir`) so a formula can
+    // branch on the file's location, the same vars `[rules.checks]` sees.
+    for (k, v) in crate::nodepath::path_fields(node) {
+        strings.insert(k.to_string(), v);
+    }
+    for (key, value) in engine.eval_node(&attrs, &strings) {
         let omit = defs.get(&key).map(|d| d.omit_at).unwrap_or(0.0);
         let a = num_attr(value);
         if a == num_attr(omit) {
@@ -241,20 +250,29 @@ impl Engine {
         !self.graph_programs.is_empty()
     }
 
-    /// Evaluate every node-scope metric over `attrs` (a node's numeric values),
-    /// returning only the **newly computed** keys. A formula that errors or
-    /// yields a non-finite value contributes nothing (the metric is omitted for
-    /// that node), mirroring the viewer's `evalCalc` and `omit_at` semantics.
-    pub fn eval_node(&self, attrs: &BTreeMap<String, f64>) -> BTreeMap<String, f64> {
-        // One context per node: the host functions ([`register_stdlib`]) and the
+    /// Evaluate every node-scope metric over `attrs` (a node's numeric values)
+    /// plus `strings` (its string values + derived path fields, so a formula can
+    /// branch on `path`/`name`/… e.g. `path.contains("/generated/") ? 0.0 : hk`).
+    /// Returns only the **newly computed** keys. A formula that errors or yields a
+    /// non-finite value contributes nothing (the metric is omitted for that node),
+    /// mirroring the viewer's `evalCalc` and `omit_at` semantics.
+    pub fn eval_node(
+        &self,
+        attrs: &BTreeMap<String, f64>,
+        strings: &BTreeMap<String, String>,
+    ) -> BTreeMap<String, f64> {
+        // One context per node: the host functions ([`register_math`]) and the
         // node's inputs are set up once, then each computed metric is fed back
         // into the SAME context so later (dependency-ordered) formulas read it —
         // no per-formula context rebuild or function re-registration. The compiled
         // `Program`s are reused as-is (see [`Engine::compile`]).
         let mut ctx = Context::default();
-        register_stdlib(&mut ctx);
+        register_math(&mut ctx);
         for (k, v) in attrs {
             let _ = ctx.add_variable(k.as_str(), *v);
+        }
+        for (k, v) in strings {
+            let _ = ctx.add_variable(k.as_str(), v.clone());
         }
         let mut produced: BTreeMap<String, f64> = BTreeMap::new();
         for (key, program) in &self.node_programs {
@@ -276,7 +294,7 @@ impl Engine {
         // reducer (`agg`) are registered once, and each aggregate is fed back so
         // a later aggregate can reference it. Programs are compiled once.
         let mut ctx = Context::default();
-        register_stdlib(&mut ctx);
+        register_math(&mut ctx);
         register_agg(&mut ctx, std::sync::Arc::new(pops.clone()));
         let mut produced: BTreeMap<String, f64> = BTreeMap::new();
         for (key, program) in &self.graph_programs {
@@ -322,6 +340,21 @@ pub struct Populations {
 }
 
 impl Populations {
+    /// Reduce one metric's population to a scalar, as the `agg(key, reducer,
+    /// population)` host function does. Unknown key / empty population / unknown
+    /// reducer → `NaN`. Pure (no interior state), so a caller may memoize the
+    /// result — it is identical for every node in a run.
+    pub(crate) fn reduce_for(&self, key: &str, reducer: &str, population: &str) -> f64 {
+        let table = match population {
+            "all" => &self.all,
+            _ => &self.not_empty,
+        };
+        table
+            .get(key)
+            .and_then(|vals| reduce(vals, reducer))
+            .unwrap_or(f64::NAN)
+    }
+
     /// Build both populations from each applicable node's present numeric
     /// attributes (`rows`), the set of metric `keys`, and each key's `omit_at`.
     /// Aggregation is over true computed values: a node missing a key contributes
@@ -351,19 +384,12 @@ impl Populations {
 /// `reducer` is `sum`/`avg`/`mean`/`min`/`max`/`count`/`median`/`p<q>`;
 /// `population` is `all`/`not_empty`. An empty population or unknown reducer
 /// yields `NaN` (→ the metric is omitted), never a panic.
-fn register_agg(ctx: &mut Context, pops: std::sync::Arc<Populations>) {
+pub(crate) fn register_agg(ctx: &mut Context, pops: std::sync::Arc<Populations>) {
     use std::sync::Arc;
     ctx.add_function(
         "agg",
         move |key: Arc<String>, reducer: Arc<String>, population: Arc<String>| -> f64 {
-            let table = match population.as_str() {
-                "all" => &pops.all,
-                _ => &pops.not_empty,
-            };
-            table
-                .get(key.as_str())
-                .and_then(|vals| reduce(vals, reducer.as_str()))
-                .unwrap_or(f64::NAN)
+            pops.reduce_for(&key, &reducer, &population)
         },
     );
 }
@@ -440,11 +466,11 @@ fn exec_f64(program: &Program, ctx: &Context) -> Option<f64> {
     }
 }
 
-/// Register the host standard library available to every formula. Today that is
-/// the math CEL lacks (each the exact `f64` op the Rust engines use, so a
-/// transcribed formula is bit-identical); future non-math helpers belong here
-/// too — hence the general name.
-fn register_stdlib(ctx: &mut Context) {
+/// Register the math host functions CEL itself lacks (each the exact `f64` op the
+/// Rust engines use, so a transcribed formula is bit-identical). Shared by the
+/// metric engine and the `[rules.checks]` predicate context (see
+/// [`crate::checks`]) so both speak the same arithmetic.
+pub(crate) fn register_math(ctx: &mut Context) {
     ctx.add_function("log2", |x: f64| x.log2());
     ctx.add_function("ln", |x: f64| x.ln());
     ctx.add_function("log10", |x: f64| x.log10());
@@ -553,7 +579,7 @@ mod tests {
         );
         let eng = Engine::compile(&defs).unwrap();
         let attrs = BTreeMap::from([("sloc".to_string(), 40.0), ("cloc".to_string(), 10.0)]);
-        let out = eng.eval_node(&attrs);
+        let out = eng.eval_node(&attrs, &BTreeMap::new());
         assert_eq!(out.get("comment_ratio"), Some(&25.0));
     }
 
@@ -570,7 +596,7 @@ mod tests {
             ("length".to_string(), 87.0),
             ("vocabulary".to_string(), 23.0),
         ]);
-        let out = eng.eval_node(&attrs);
+        let out = eng.eval_node(&attrs, &BTreeMap::new());
         let expect = 87.0_f64 * 23.0_f64.log2();
         assert_eq!(out.get("volume"), Some(&expect));
     }
@@ -582,7 +608,7 @@ mod tests {
         defs.insert("double_len".to_string(), def("length * 2.0"));
         let eng = Engine::compile(&defs).unwrap();
         let attrs = BTreeMap::from([("n1".to_string(), 3.0), ("n2".to_string(), 4.0)]);
-        let out = eng.eval_node(&attrs);
+        let out = eng.eval_node(&attrs, &BTreeMap::new());
         assert_eq!(out.get("length"), Some(&7.0));
         assert_eq!(out.get("double_len"), Some(&14.0));
     }
@@ -699,7 +725,7 @@ mod tests {
         // references a missing variable → execution error → omitted, no panic.
         defs.insert("x".to_string(), def("missing_var + 1.0"));
         let eng = Engine::compile(&defs).unwrap();
-        let out = eng.eval_node(&BTreeMap::new());
+        let out = eng.eval_node(&BTreeMap::new(), &BTreeMap::new());
         assert!(!out.contains_key("x"));
     }
 }
@@ -754,7 +780,10 @@ mod cover_tests {
             },
         );
         let eng = Engine::compile(&defs).unwrap();
-        assert_eq!(eng.eval_node(&BTreeMap::new()).get("two"), Some(&2.0));
+        assert_eq!(
+            eng.eval_node(&BTreeMap::new(), &BTreeMap::new()).get("two"),
+            Some(&2.0)
+        );
     }
 
     #[test]
@@ -886,5 +915,39 @@ mod cover_tests {
         let zeng = Engine::compile(&zdefs).unwrap();
         apply_to_node(&mut node, &zdefs, &zeng);
         assert!(!node.attrs.contains_key("ratio"));
+    }
+
+    #[test]
+    fn apply_to_node_exposes_path_to_formula() {
+        // A metric can branch on the file's path; bool attrs are ignored as inputs.
+        let mut defs = BTreeMap::new();
+        defs.insert(
+            "gated".to_string(),
+            MetricDef {
+                formula: r#"path.contains("/generated/") ? 0.0 : 5.0"#.to_string(),
+                value_type: "float".to_string(),
+                ..Default::default()
+            },
+        );
+        let eng = Engine::compile(&defs).unwrap();
+        let mut node = Node {
+            id: "n".into(),
+            kind: "file".into(),
+            name: "n".into(),
+            parent: None,
+            attrs: Default::default(),
+        };
+        node.attrs
+            .insert("path".into(), AttrValue::Str("src/lib.rs".into()));
+        node.attrs.insert("flag".into(), AttrValue::Bool(true)); // ignored input
+        apply_to_node(&mut node, &defs, &eng);
+        // `num_attr` normalizes a whole float to Int.
+        assert_eq!(node.attrs.get("gated"), Some(&AttrValue::Int(5)));
+
+        node.attrs
+            .insert("path".into(), AttrValue::Str("src/generated/api.rs".into()));
+        apply_to_node(&mut node, &defs, &eng);
+        // In `/generated/` the metric is 0 → omitted.
+        assert!(!node.attrs.contains_key("gated"));
     }
 }

@@ -20,7 +20,6 @@ code-ranker-viewer = { path = "crates/code-ranker-viewer", version = "3.0.0-alph
 anyhow = "1.0"
 cel = "0.13"
 globset = "0.4"
-regex = "1"
 toml = "1"
 # Distributed, self-registering plugin inventory: each language plugin submits
 # itself; the binary collects them with no central list naming a language.
