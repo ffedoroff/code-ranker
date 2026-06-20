@@ -20,7 +20,7 @@
         "chain": {
           "description": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries.",
           "label": "Chain",
-          "remediation": "Find the edge that closes the loop — usually one 'back' dependency pointing upward — and invert or remove it, or introduce an abstraction layer between the units."
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Cycles.md"
         }
       },
       "cycles": [
@@ -94,7 +94,7 @@
           "group": "coupling",
           "label": "Fan-in",
           "name": "Fan-in",
-          "remediation": "If the fan-in is unintended, split the unit so each caller depends only on the slice it uses; otherwise stabilize the interface so high fan-in is safe.",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Fan-in.md",
           "short": "Fan-in",
           "value_type": "int"
         },
@@ -103,7 +103,7 @@
           "group": "coupling",
           "label": "Fan-out",
           "name": "Fan-out",
-          "remediation": "Group related dependencies behind a facade, inject collaborators instead of reaching for them, or move logic closer to the data it uses to cut outgoing edges.",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Fan-out.md",
           "short": "Fan-out",
           "value_type": "int"
         },
@@ -123,7 +123,7 @@
           "group": "coupling",
           "label": "HK",
           "name": "Henry–Kafura",
-          "remediation": "Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk.",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/HK.md",
           "short": "HK",
           "value_type": "float"
         },

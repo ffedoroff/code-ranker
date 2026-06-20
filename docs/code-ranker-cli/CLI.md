@@ -10,6 +10,9 @@ code-ranker <command> [input] [options]
 goes through an explicit subcommand, there is no default action. Run
 `code-ranker <command> --help` for per-command flags, `code-ranker --version` for the version.
 
+Looking for a copy-paste recipe? See [USE-CASES.md](USE-CASES.md) — one scenario, one
+exact command per entry (triage, CI gates, focused checks, baselines, AI prompts, …).
+
 > **Offline & private.** code-ranker always runs entirely on your machine. It makes **no
 > network calls**, sends **no telemetry or analytics**, and **never uploads your code or
 > analysis results** anywhere. Generated HTML reports are self-contained — no CDN, no
@@ -146,7 +149,8 @@ code-ranker check [input] [options]
 | `--threshold <file.METRIC=N>` | Hard limit on a per-file metric — a breach fails the check. Scope is always `file` (a single file). METRIC: any per-file metric the engine emits (`loc`, `sloc`, `cyclomatic`, `cognitive`, `mi`, `volume`, `bugs`, `hk`, `fan_in`, `fan_out`, …); an unknown name errors. Repeatable. See [ERRORS.md](ERRORS.md#threshold-scopes). |
 | `--cycle-rule <KIND=on\|off\|N>` | Configure a cycle check. KIND: `mutual`, `chain`. Value: `on` (any cycle fails), `off` (ignored), or `N` (allow up to N cycles of that kind — e.g. `chain=7` forbids an 8th). Defaults: `mutual`/`chain` on. |
 | `--baseline <snapshot>` | Compare `[input]` (current) against this baseline snapshot (`.json` or `.html`) and switch to a **relative gate**: fail only on *new* violations vs the baseline; pre-existing ones are tolerated. See [`--baseline`](#--baseline-comparison). |
-| `--output-format <fmt>` | Diagnostics format: `human` (default), `json`, `github`, `sarif`, `codequality`. Use `github` for GitHub PR annotations, `sarif` for GitHub code scanning / GitLab ≥18.11, `codequality` for the GitLab Code Quality MR widget, `json` for generic tooling. |
+| `--focus <path>` | Restrict the gate to these files/folders. The whole project is still analyzed (the dependency graph needs it), but a violation outside the focused paths is dropped — neither reported nor counted toward the exit code. A folder matches everything beneath it. Repeatable. See [`--focus`](#--focus-scoping). |
+| `--output-format <fmt>` | Diagnostics format: `human` (default), `json`, `github`, `sarif`, `codequality`, `prompt`. Use `github` for GitHub PR annotations, `sarif` for GitHub code scanning / GitLab ≥18.11, `codequality` for the GitLab Code Quality MR widget, `json` for generic tooling, `prompt` for a Markdown AI fix-prompt built from the gate's own violations — one command both gates and (on failure) prints the prompt, tied exactly to what failed. |
 | `--top <N>` | Report only the `N` worst violations (ranked worst-first) and suppress the rest. A reporting limit only — it does **not** change the exit code. Default: all. |
 | `--exit-zero` | Return exit code 0 even when violations exist. Useful in non-blocking CI checks. |
 | `--suggest-config` | After the findings, also print the project's current values as a ready-to-paste `code-ranker.toml` baseline (cycle counts + per-file thresholds). Off by default; `human` output only. |
@@ -160,6 +164,27 @@ breaches by how far they exceed the limit (largest overage first), cycles by siz
 (largest SCC first). It is a **reporting limit only**: the exit code is unchanged, so
 `check` still fails when an unshown violation exists. Use `--top 1` to surface just the
 single worst thing to fix (handy for handing one focused fix to a human or an AI agent).
+
+### `--focus` scoping
+
+A single file can't be linted in isolation — the Rust plugin needs the whole crate
+graph to compute coupling and cycles. `--focus` bridges that gap: the **whole project
+is analyzed**, but only violations whose location falls under one of the focused paths
+are reported, and **only those count toward the exit code**. Unlike `--top` (a display
+limit), `--focus` scopes the gate itself — `check` passes when the focused paths are
+clean, even if the rest of the project has violations. A focus entry matches a file
+exactly or, treated as a folder, anything beneath it; a leading `./` and a trailing `/`
+are ignored. Locationless violations (e.g. a cycle whose breaking edge can't be placed)
+can't be attributed to a path and are dropped under `--focus`. Combine with `--top` to
+rank within the focused set. Repeatable.
+
+```sh
+# gate only the file you're refactoring — the rest of the repo can't fail this run
+code-ranker check . --focus crates/code-ranker-plugin-api/src/plugin.rs
+
+# focus a whole folder (matches everything beneath it)
+code-ranker check . --focus crates/code-ranker-cli/src/
+```
 
 ```sh
 # lint the current project, fail the build on any violation
@@ -247,13 +272,15 @@ code-ranker report [input] [options]
 |---|---|---|
 | `--output.<fmt>.path <path>` | `json` + `html` in `.code-ranker/` | Which artifacts to emit and where. `<fmt>` is `json`, `html`, `prompt`, or `scorecard`. Repeatable, one per format. See [Output paths](#output-paths). |
 | `--baseline <snapshot>` | — | Baseline snapshot (`.json` or `.html`). Turns the HTML into a diff (baseline vs current) with a verdict, and names it `…-diff.html`. See [`--baseline`](#--baseline-comparison). |
-| `--preset <ID>` | worst-violating | Principle for the `prompt` / `scorecard` formats (`ADP`, `SRP`, `CPX`, …). When omitted, the principle with the most violations is chosen. See [Recommendations](#recommendations-scorecard--prompt). |
-| `--severity <tier>` | `auto` (prompt) · all (scorecard) | Threshold tier: `info`, `warning`, or `auto`. Repeatable for `scorecard` to show several tiers; for `prompt` it sizes the default `--top`. |
-| `--top <N>` | severity-tier size (prompt) · 15 (scorecard) | How many modules the `prompt` includes / rows the `scorecard` shows. `--top 1` = the single worst module. **For cycle presets (`ADP`) `--top` counts whole cycles, not modules** — `--top 1` (the default) prints one entire cycle (biggest `chain` first) with **all** its members; `--top 2`+ prints several separate cycles and is discouraged. |
+| `--metric <NAME>` | all principles | Narrow the `scorecard` to one ranking axis: `hk`, `cycle`, `sloc`, `cognitive`, `cyclomatic`, `fan_in`, `fan_out`, `items`. Without it the scorecard spans every principle. `scorecard` only. See [Recommendations](#recommendations-scorecard--prompt). |
+| `--severity <tier>` | all tiers | Threshold tier for the `scorecard`: `info`, `warning`, or `auto`. Repeatable to show several tiers. |
+| `--top <N>` | 15 (scorecard) | `scorecard`: how many rows; `--top 1` = the single worst module. With `--metric cycle`, `--top 1` prints one entire cycle (biggest `chain` first) with **all** its members. `prompt`: **must be `--top 1`** — the prompt is auto-targeted at the single worst module. |
 | `--export-full-config <PATH>` | — | Instead of analyzing, write the **full effective configuration** to `PATH` and exit. See [Inspecting the effective config](#inspecting-the-effective-config). |
 
-`--preset`, `--severity`, and `--top` apply only when a `prompt` or `scorecard` format is
-selected; passing them otherwise is an error.
+`--metric`, `--severity`, and `--top` apply only when a `prompt` or `scorecard` format is
+selected; passing them otherwise is an error. `--output.prompt` additionally **requires
+`--top 1`** (it is auto-targeted at the single worst module); `--metric` / `--severity`
+are `scorecard`-only.
 
 ### Inspecting the effective config
 
@@ -298,11 +325,11 @@ code-ranker report . --baseline .code-ranker/main.json --output.html.path=diff.h
 # console triage overview — what to fix first
 code-ranker report . --output.scorecard
 
-# AI prompt for the worst-violating principle, to stdout
-code-ranker report . --output.prompt.path=stdout
+# narrow the triage to one axis (coupling)
+code-ranker report . --output.scorecard --metric hk --top 5
 
-# AI prompt for the single worst SRP module
-code-ranker report . --preset SRP --top 1 --output.prompt.path=stdout
+# AI fix-prompt for the single worst module (auto-targeted), to stdout
+code-ranker report . --output.prompt.path=stdout --top 1
 ```
 
 The HTML is **self-contained**: the snapshot data is embedded inline, so the single file
@@ -384,7 +411,7 @@ path = "dist/{project-dir}-{ts}.codequality.json"
 | `{ts}` | The run's `generated_at` as a local timestamp, `YYYYMMDD-HHMMSS`. One value per run, shared by every artifact. | `20260526-114144` |
 | `{git-hash}` | The 12-char short commit hash (zeros if not a git repo). | `a3f9c21b4d5e` |
 | `{git-hash-N}` | The first `N` chars of the commit hash. | `{git-hash-3}` → `a3f` |
-| `{preset}` | The active `--preset` id (`prompt` / `scorecard` only). | `SRP` |
+| `{preset}` | The principle id of the auto-targeted prompt (`prompt` only). | `SRP` |
 
 So the default `{ts}-{git-hash-3}.json` yields `20260526-114144-a3f.json`. When `[input]`
 is a **snapshot**, `{git-hash}` / `{ts}` are read from the snapshot's embedded metadata —
@@ -399,11 +426,12 @@ Two `report` output formats turn the snapshot's calibrated metric thresholds int
 refactoring guidance:
 
 - **`scorecard`** — a console triage overview answering *"what do I fix first?"*
-- **`prompt`** — a ready-to-paste AI prompt for one principle, the same one the HTML
-  viewer's Prompt Generator produces.
+- **`prompt`** — a ready-to-paste AI fix-prompt, **auto-targeted at the single worst
+  module** (the same Markdown the HTML viewer's Prompt Generator produces).
 
-Both rank modules with the same engine and share three flags: `--preset`, `--severity`,
-and `--top`.
+Both rank modules with the same engine. The `scorecard` is steered by `--metric` (narrow
+to one axis), `--severity` (which tier), and `--top` (how many rows). The `prompt` takes
+no axis flag — it auto-targets the single worst module — and **requires `--top 1`**.
 
 > **Advisory, not a gate.** Unlike [`check`](#check), these never fail the build and carry
 > no exit code. `check` enforces the rules *you* configure; `scorecard` / `prompt` surface
@@ -430,26 +458,19 @@ show several tiers at once; with none given it shows all tiers.
 Cycle-based principles (e.g. `ADP`) have **no numeric threshold** — every module in a
 dependency cycle counts, ranked by HK, and `--severity` is ignored for them.
 
-### Presets (principles)
+### Ranking axes (`--metric`)
 
-`--preset <ID>` selects the principle. The catalog comes from the snapshot's `presets`
-(the same set as the HTML viewer's Prompt Generator): `ADP`, `SRP`, `CPX`, `OCP`, `LSP`,
-`ISP`, `DIP`, `DRY`, `KISS`, `LoD`, `MISU`, `CoI`, `YAGNI`. Each preset fixes its own
-ranking metric (ADP → cycles, SRP → SLOC, OCP → cyclomatic, …) and the connection lists
-embedded in its prompt — so there is no separate metric/connection flag to set.
+The `scorecard` ranks modules by a metric. `--metric <NAME>` narrows it to one axis:
+`hk` (Henry-Kafura coupling), `cycle` (dependency cycles — the ADP view), `sloc` (module
+size), `cognitive` / `cyclomatic` (complexity), `fan_in` / `fan_out` (coupling direction),
+`items` (interface size). An unknown name errors with the list of known metrics.
 
-The **Rust** plugin adds four metric-lens presets that rank by a single
-coupling/size metric rather than a design principle: `HK` (Henry-Kafura
-coupling → `hk`), `SLOC` (module size → `sloc`), `FANIN` (afferent coupling →
-`fan_in`), `FANOUT` (efferent coupling → `fan_out`). They appear in
-`snapshot.presets` for Rust targets and as buttons in the viewer, and their
-prompt docs live under `principles/rust/`. Because the catalog is data-driven,
-any preset id in `snapshot.presets` is valid for `--preset`; an unknown id
-errors with the list of known ids.
-
-`--preset` is **optional**: when omitted, the principle with the most violations is chosen
-— the one with the largest count of modules over `warning` (tie-break: over `info`), i.e.
-the top row of the scorecard.
+Without `--metric` the scorecard spans all principles (one row each). The principle
+*catalog* still lives in the snapshot's `presets` (shared with the HTML viewer's Prompt
+Generator and used for the prompt's prose) — but it is **no longer selected from the CLI**:
+the `prompt` auto-targets the single worst module's principle, and the `scorecard` narrows
+by metric. `cycle` has **no numeric threshold** — every module in a dependency cycle
+counts, ranked by HK, and `--severity` is ignored for it.
 
 ### `scorecard` — triage overview
 
@@ -461,7 +482,7 @@ modules overall:
 code-ranker report . --output.scorecard                     # all tiers, ~15 rows
 code-ranker report . --output.scorecard --severity warning --top 20
 code-ranker report . --output.scorecard.path=triage.txt     # to a file instead
-code-ranker report . --output.scorecard --preset SRP        # narrow to one principle
+code-ranker report . --output.scorecard --metric sloc       # narrow to one axis
 ```
 
 ```text
@@ -477,38 +498,31 @@ WORST MODULES
  2 ⚠ snapshot.rs     sloc 1.8K +hk
  3 ⓘ plugin/rust.rs  fan_out 14
 
-→ code-ranker report . --preset SRP --output.prompt.path=…
+→ code-ranker report . --output.prompt.path=… --top 1
 ```
 
-`--top N` caps the worst-modules list (default ~15); `--preset <ID>` narrows the whole
-report to a single principle.
+`--top N` caps the worst-modules list (default ~15); `--metric <NAME>` narrows the
+scorecard to a single ranking axis.
 
-### `prompt` — AI prompt for one principle
+### `prompt` — AI fix-prompt for the worst module
 
 Defaults to the file `.code-ranker/{ts}-{git-hash-3}-{preset}.md` (use
-`--output.prompt.path=stdout` to pipe it). It emits the same Markdown the HTML viewer's
-Prompt Generator produces: the principle's intent and summary, a link to the full
-principle doc, a task checklist, the ranked list of offending modules (each annotated with
-its metric value), and the relevant connection lists.
+`--output.prompt.path=stdout` to pipe it). It is **auto-targeted**: it emits the Markdown
+fix-prompt for the **single worst module** — its principle's intent and summary, a link to
+the full principle doc, a task checklist, the offending module annotated with its metric
+value, and the relevant connection lists. The `{preset}` in the default filename is the
+auto-selected principle id.
+
+It **requires `--top 1`** (prompts are long, and the prompt always describes exactly one
+module). There is no principle selection and no `--index`.
 
 ```sh
-# worst-violating principle (preset auto-picked), to stdout
-code-ranker report . --output.prompt.path=stdout
+# fix-prompt for the single worst module, to stdout
+code-ranker report . --output.prompt.path=stdout --top 1
 
-# a specific principle, default module count (the warning-tier size)
-code-ranker report . --preset ADP --output.prompt.path=adp.md
-
-# just the single worst SRP module
-code-ranker report . --preset SRP --top 1 --output.prompt.path=stdout
+# the same, saved to a file (name carries the auto-selected principle id)
+code-ranker report . --output.prompt --top 1
 ```
-
-`--top N` sets how many modules go into the prompt; without it the count is the size of
-the active severity tier (matching the viewer's recommended count). For the cycle preset
-**`ADP`, `--top N` counts whole cycles** instead: `--top 1` (the default) emits one entire
-cycle — the biggest `chain`, else the biggest `mutual` — with **all** its members listed
-(so the loop is visible as a unit); `--top 2`+ emits several separate cycles and is
-discouraged. There is **no `--index`** — `--top 1` already yields the single worst
-module/cycle, so passing `--index` is rejected with a hint to use `--top`.
 
 ## `--baseline` (comparison)
 
@@ -569,9 +583,9 @@ when `[input]` is a directory):
 
 The HTML report is **self-contained**: the viewer app (Dagre graph layout, pan/zoom,
 a sortable node table for the single Files view, and the prompt-generator panel whose
-preset buttons are read from `snapshot.presets` — ADP / SRP / OCP / LSP / ISP / DIP / DRY /
-KISS / LoD / MISU / CoI / YAGNI / CPX, plus the Rust plugin's HK / SLOC / FANIN / FANOUT
-metric lenses) **and the snapshot data** are all embedded in
+preset buttons are read from `snapshot.presets` — the 13 design principles ADP / SRP /
+OCP / LSP / ISP / DIP / DRY / KISS / LoD / MISU / CoI / YAGNI / CPX) **and the snapshot
+data** are all embedded in
 the one file. External library nodes render in a distinct amber colour with dashed
 edges. No network, no telemetry — `open` it straight from disk.
 

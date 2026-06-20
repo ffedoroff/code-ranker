@@ -6,8 +6,7 @@
 #   code-ranker report . --config docs/customization/custom-field-example.toml --output.json --output.html
 #   code-ranker check  . --config docs/customization/custom-field-example.toml
 #   code-ranker report . --config docs/customization/custom-field-example.toml \
-#     --output.scorecard --preset TSR --severity warning --top 1
-plugin = "rust"
+#     --output.scorecard --metric tsr --severity warning --top 1
 
 # Per-file test-to-source ratio (guarded against divide-by-zero). Every spec field
 # below is optional, but they drive the UI: `name` is the tooltip title, `short`
@@ -74,7 +73,7 @@ size    = { add = ["tsr"] }
 filter  = { add = ["tsr_big"] }
 
 # A project-defined Prompt-Generator preset (a refactoring lens over the custom
-# metric). Makes `--preset TSR` / the scorecard rank files by `tsr`. The id is the
+# metric). Makes `--metric tsr` / the scorecard rank files by `tsr`. The id is the
 # table key; `label` / `title` default to it.
 [presets.TSR]
 title       = "TSR — Trim inline test bulk"
@@ -84,7 +83,3 @@ These files carry more test lines than source lines. Move their inline `#[cfg(te
 modules into sibling `tests/` files (or `#[path]`-included test modules), keeping the
 test coverage identical, so the production code reads on its own.
 """
-
-[output.html]
-# path = ".code-ranker/{project-dir}-{ts}.html"
-path = ".code-ranker/{project-dir}.html"

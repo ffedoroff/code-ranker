@@ -126,7 +126,7 @@
           "group": "complexity",
           "label": "Cognitive",
           "name": "Cognitive complexity",
-          "remediation": "Extract nested blocks into named helpers, use early returns to cut nesting depth, and avoid mixing several control structures in one function. For an average breach, target the worst nodes first (--top).",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Cognitive.md",
           "short": "Cognitive",
           "value_type": "int"
         },
@@ -139,7 +139,7 @@
           "label": "Cyclomatic",
           "name": "Cyclomatic complexity",
           "omit_at": 1.0,
-          "remediation": "Split the function, replace branching with polymorphism or a lookup table, and pull guard clauses to the top to flatten nesting. For an average breach, simplify the worst offenders first (--top).",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Cyclomatic.md",
           "short": "Cyclomatic",
           "value_type": "int"
         },
@@ -190,7 +190,7 @@
           "group": "coupling",
           "label": "Fan-in",
           "name": "Fan-in",
-          "remediation": "If the fan-in is unintended, split the unit so each caller depends only on the slice it uses; otherwise stabilize the interface so high fan-in is safe.",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Fan-in.md",
           "short": "Fan-in",
           "value_type": "int"
         },
@@ -199,7 +199,7 @@
           "group": "coupling",
           "label": "Fan-out",
           "name": "Fan-out",
-          "remediation": "Group related dependencies behind a facade, inject collaborators instead of reaching for them, or move logic closer to the data it uses to cut outgoing edges.",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Fan-out.md",
           "short": "Fan-out",
           "value_type": "int"
         },
@@ -220,7 +220,7 @@
           "group": "coupling",
           "label": "HK",
           "name": "Henry–Kafura",
-          "remediation": "Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk.",
+          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/HK.md",
           "short": "HK",
           "value_type": "float"
         },
@@ -606,7 +606,7 @@
   "plugin": "c",
   "presets": [
     {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/reduce-complexity.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/CPX.md",
       "id": "CPX",
       "label": "CPX",
       "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
@@ -617,7 +617,7 @@
       "connections": [
         "common"
       ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/acyclic-dependencies-principle.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/ADP.md",
       "id": "ADP",
       "label": "ADP",
       "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
@@ -629,7 +629,7 @@
         "in",
         "out"
       ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-single-responsibility.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/SRP.md",
       "id": "SRP",
       "label": "SRP",
       "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
@@ -637,7 +637,7 @@
       "title": "SRP — Single Responsibility Principle"
     },
     {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-open-closed.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/OCP.md",
       "id": "OCP",
       "label": "OCP",
       "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
@@ -645,7 +645,7 @@
       "title": "OCP — Open/Closed Principle"
     },
     {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-liskov-substitution.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/LSP.md",
       "id": "LSP",
       "label": "LSP",
       "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
@@ -656,7 +656,7 @@
       "connections": [
         "in"
       ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-interface-segregation.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/ISP.md",
       "id": "ISP",
       "label": "ISP",
       "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
@@ -668,7 +668,7 @@
         "common",
         "out"
       ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/solid-dependency-inversion.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/DIP.md",
       "id": "DIP",
       "label": "DIP",
       "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
@@ -676,7 +676,7 @@
       "title": "DIP — Dependency Inversion Principle"
     },
     {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/dry.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/DRY.md",
       "id": "DRY",
       "label": "DRY",
       "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
@@ -684,7 +684,7 @@
       "title": "DRY — Don't Repeat Yourself"
     },
     {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/kiss.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/KISS.md",
       "id": "KISS",
       "label": "KISS",
       "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
@@ -696,7 +696,7 @@
         "common",
         "out"
       ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/law-of-demeter.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/LoD.md",
       "id": "LoD",
       "label": "LoD",
       "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
@@ -704,7 +704,7 @@
       "title": "Law of Demeter — Principle of Least Knowledge"
     },
     {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/make-invalid-states-unrepresentable.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/MISU.md",
       "id": "MISU",
       "label": "MISU",
       "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
@@ -715,7 +715,7 @@
       "connections": [
         "common"
       ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/composition-over-inheritance.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/CoI.md",
       "id": "CoI",
       "label": "CoI",
       "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
@@ -726,54 +726,12 @@
       "connections": [
         "out"
       ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/yagni.md",
+      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/YAGNI.md",
       "id": "YAGNI",
       "label": "YAGNI",
       "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
       "sort_metric": "sloc",
       "title": "YAGNI — You Aren't Gonna Need It"
-    },
-    {
-      "connections": [
-        "in",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/henry-kafura-coupling.md",
-      "id": "HK",
-      "label": "HK",
-      "prompt": "These modules carry heavy Henry-Kafura coupling — HK = sloc × (fan_in × fan_out)²,\nwhere sloc is the module's source lines of code (real code lines, excluding blanks\nand comment-only lines), fan_in is how many modules depend on it, and fan_out is how\nmany it depends on.\nA high score is a large module sitting on a busy crossroads of incoming and outgoing\ndependencies, so any change here ripples widely.\n\nFor each module below, lower the factor that dominates its HK: shrink the module by\nextracting cohesive pieces, or cut fan-in/fan-out by narrowing its public surface and\ndepending on fewer collaborators (introduce an abstraction, move a responsibility).\nKeep existing API contracts intact.",
-      "sort_metric": "hk",
-      "title": "HK — Henry-Kafura Coupling"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/module-size.md",
-      "id": "SLOC",
-      "label": "SLOC",
-      "prompt": "These are the largest modules by source lines of code. Size alone is not a defect, but\noversized files usually bundle several responsibilities and are hard to read, test and\nreview.\n\nFor each module below, identify the distinct responsibilities it holds and propose how\nto split it into smaller, cohesive modules — each with a single clear purpose — without\nchanging external behaviour.",
-      "sort_metric": "sloc",
-      "title": "SLOC — Module Size"
-    },
-    {
-      "connections": [
-        "in"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/fan-in-afferent-coupling.md",
-      "id": "FANIN",
-      "label": "FANIN",
-      "prompt": "These modules have high fan-in: many other modules depend on them. They are\nload-bearing — a change here forces changes (or re-review) across every dependant, and\na bug here is widely felt.\n\nFor each module below, confirm its public surface is a stable, minimal contract. Narrow\nthe API to what callers actually need, split it if different callers use disjoint parts\n(see Interface Segregation), and stabilise the abstractions the rest of the codebase\nleans on.",
-      "sort_metric": "fan_in",
-      "title": "Fan-in — Afferent Coupling"
-    },
-    {
-      "connections": [
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/principles/c/fan-out-efferent-coupling.md",
-      "id": "FANOUT",
-      "label": "FANOUT",
-      "prompt": "These modules have high fan-out: they depend on many other modules. High efferent\ncoupling makes a module fragile (it breaks when any dependency changes) and hard to\ntest or reuse in isolation.\n\nFor each module below, reduce its direct dependencies: depend on abstractions rather\nthan concretes (see Dependency Inversion), collapse several fine-grained collaborators\nbehind one focused interface, and move logic that pulls in unrelated dependencies into\na more appropriate module.",
-      "sort_metric": "fan_out",
-      "title": "Fan-out — Efferent Coupling"
     }
   ],
   "prompt": {

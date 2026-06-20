@@ -643,7 +643,7 @@ mod tests {
             "hk breach listed: {sc}"
         );
         assert!(
-            sc.contains("→ code-ranker report . --preset"),
+            sc.contains("→ code-ranker report . --output.prompt.path=… --top 1"),
             "next-step hint"
         );
     }
@@ -687,7 +687,7 @@ mod tests {
             &[srp_preset()],
             &[Severity::Warning],
             Some(2),
-            Some("SRP"),
+            Some("sloc"),
         )
         .unwrap();
         assert!(sc.contains("WORST MODULES"), "modules section: {sc}");
@@ -732,7 +732,7 @@ mod tests {
             &[adp_preset()],
             &[Severity::Warning],
             None,
-            Some("ADP"),
+            Some("cycle"),
         )
         .unwrap();
         assert!(
@@ -745,9 +745,9 @@ mod tests {
         );
     }
 
-    /// An unknown `--preset` (narrow) is a hard error naming the known presets.
+    /// An unknown `--metric` (narrow) is a hard error naming the known metrics.
     #[test]
-    fn scorecard_unknown_narrow_preset_errors() {
+    fn scorecard_unknown_narrow_metric_errors() {
         let level = level_with(vec![file_node("{target}/a.rs", &[])]);
         let err = render_scorecard(
             "rust",
@@ -755,15 +755,18 @@ mod tests {
             &[srp_preset()],
             &[Severity::Auto],
             None,
-            Some("ZZZ"),
+            Some("zzz"),
         )
         .unwrap_err()
         .to_string();
         assert!(
-            err.contains("unknown --preset 'ZZZ'"),
-            "names bad id: {err}"
+            err.contains("unknown --metric 'zzz'"),
+            "names bad metric: {err}"
         );
-        assert!(err.contains("SRP"), "lists known presets: {err}");
+        assert!(
+            err.contains("sloc") && err.contains("cycle"),
+            "lists known metrics: {err}"
+        );
     }
 
     /// Info-tier breaches: a node over the info line (but under warning) is shown
@@ -901,7 +904,7 @@ mod tests {
             &[adp_preset()],
             &[Severity::Warning],
             Some(2),
-            Some("ADP"),
+            Some("cycle"),
         )
         .unwrap();
         assert!(
@@ -920,7 +923,7 @@ mod tests {
             &[adp_preset()],
             &[Severity::Warning],
             None,
-            Some("ADP"),
+            Some("cycle"),
         )
         .unwrap();
         assert!(sc.contains("(none)"), "empty modules list: {sc}");

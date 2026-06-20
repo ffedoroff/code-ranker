@@ -137,7 +137,7 @@ That nesting penalty is the point — deeply indented logic is what actually str
 Summed across every function in the file."""
 direction = "lower_better"
 category = "complexity"
-remediation = "Extract nested blocks into named helpers, use early returns to cut nesting depth, and avoid mixing several control structures in one function. For an average breach, target the worst nodes first (--top)."
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Cognitive.md"
 
 [ast.exits]
 value_type = "int"
@@ -228,7 +228,7 @@ formula_js = "spaces + branches"
 direction = "lower_better"
 category = "complexity"
 omit_at = 1.0
-remediation = "Split the function, replace branching with polymorphism or a lookup table, and pull guard clauses to the top to flatten nesting. For an average breach, simplify the worst offenders first (--top)."
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Cyclomatic.md"
 
 [fields.effort]
 value_type = "float"
@@ -324,14 +324,14 @@ value_type = "int"
 label = "Fan-in"
 description = "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately."
 category = "coupling"
-remediation = "If the fan-in is unintended, split the unit so each caller depends only on the slice it uses; otherwise stabilize the interface so high fan-in is safe."
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Fan-in.md"
 
 [coupling.fan_out]
 value_type = "int"
 label = "Fan-out"
 description = "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation."
 category = "coupling"
-remediation = "Group related dependencies behind a facade, inject collaborators instead of reaching for them, or move logic closer to the data it uses to cut outgoing edges."
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Fan-out.md"
 
 [coupling.fan_out_external]
 value_type = "int"
@@ -350,7 +350,7 @@ formula_js = "sloc * (fan_in * fan_out) ** 2"
 direction = "lower_better"
 category = "coupling"
 abbreviate = true
-remediation = "Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk."
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/HK.md"
 
 [coupling.cycle]
 value_type = "str"
@@ -365,12 +365,12 @@ description = "Cycle kind this node participates in."
 [cycles.mutual]
 label = "Mutual"
 description = "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling."
-remediation = "Move the shared types into a third, lower-level unit both depend on; invert one direction behind a trait/interface; or merge the two if they are really one concept."
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Cycles.md"
 
 [cycles.chain]
 label = "Chain"
 description = "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries."
-remediation = "Find the edge that closes the loop — usually one 'back' dependency pointing upward — and invert or remove it, or introduce an abstraction layer between the units."
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/Cycles.md"
 
 # ── prompt scaffolding (Prompt-Generator framing) ─────────────────────────────
 # The language-neutral prose the prompt wraps a preset in — DATA, not code.

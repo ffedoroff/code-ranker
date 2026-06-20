@@ -9,7 +9,7 @@ use toml::Table;
 
 /// One `[[presets]]` entry as read from config. Mirrors the data shape of the
 /// CLI's generic preset catalog; the plugin turns it into a
-/// `code_ranker_plugin_api::Preset`, deriving `doc_url` from a `slug`.
+/// `code_ranker_plugin_api::Preset`, deriving `doc_url` from its `id`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PresetCfg {
     pub id: String,
@@ -17,7 +17,6 @@ pub struct PresetCfg {
     pub sort_metric: String,
     #[serde(default)]
     pub connections: Vec<String>,
-    pub slug: String,
     pub prompt: String,
 }
 
@@ -53,7 +52,7 @@ fn string_field<'a>(cfg: &'a Table, key: &str) -> Option<&'a str> {
 /// Build the fully-resolved [`Preset`] list from a merged config: the common
 /// catalog (from `defaults.toml`) plus any language-specific presets, in that
 /// order (the merge-by-`id` already yields it). Each `doc_url` resolves to
-/// `{doc_base}/{doc_lang}/{slug}.md` and `label` is the `id`.
+/// `{doc_base}/{doc_lang}/{id}.md` and `label` is the `id`.
 ///
 /// `doc_base` (the host/repo prefix, common) lives in `defaults.toml`; each
 /// `<lang>.toml` supplies `doc_lang` (its principle-corpus language). If either
@@ -64,9 +63,7 @@ pub fn resolved_presets(cfg: &Table) -> Vec<Preset> {
     presets(cfg)
         .into_iter()
         .map(|p| Preset {
-            doc_url: base
-                .zip(lang)
-                .map(|(b, l)| format!("{b}/{l}/{}.md", p.slug)),
+            doc_url: base.zip(lang).map(|(b, l)| format!("{b}/{l}/{}.md", p.id)),
             label: p.id.clone(),
             id: p.id,
             title: p.title,

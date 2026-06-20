@@ -27,7 +27,8 @@ pub(crate) struct ReportOutputs {
 
 /// Recommendation knobs for the `prompt` / `scorecard` formats.
 pub(crate) struct ReportReco {
-    pub(crate) preset: Option<String>,
+    /// Narrow the `scorecard` to one ranking axis (metric name). `scorecard` only.
+    pub(crate) metric: Option<String>,
     pub(crate) severity: Vec<String>,
     pub(crate) top: Option<usize>,
     pub(crate) index: Option<usize>,
@@ -64,10 +65,24 @@ pub(crate) fn run_report(
     }
     if !want_prompt
         && !want_scorecard
-        && (reco.preset.is_some() || !reco.severity.is_empty() || reco.top.is_some())
+        && (reco.metric.is_some() || !reco.severity.is_empty() || reco.top.is_some())
     {
         anyhow::bail!(
-            "--preset/--severity/--top apply only with --output.prompt or --output.scorecard"
+            "--metric/--severity/--top apply only with --output.prompt or --output.scorecard"
+        );
+    }
+    // `--metric` / `--severity` steer the scorecard only.
+    if reco.metric.is_some() && !want_scorecard {
+        anyhow::bail!("--metric applies only to --output.scorecard");
+    }
+    if !reco.severity.is_empty() && !want_scorecard {
+        anyhow::bail!("--severity applies only to --output.scorecard");
+    }
+    // The prompt is auto-targeted at the single worst module: it requires exactly
+    // `--top 1` (prompts are long; for a broader view use --output.scorecard).
+    if want_prompt && reco.top != Some(1) {
+        anyhow::bail!(
+            "--output.prompt requires --top 1 (it is auto-targeted at the single worst module)"
         );
     }
 
@@ -218,25 +233,17 @@ fn write_recommendations(
         .context("snapshot has no `files` level to build recommendations from")?;
 
     if want_prompt {
-        let preset_id = match &reco.preset {
-            Some(p) => p.clone(),
-            None => recommend::worst_preset(level, &snap.presets)
-                .context("no presets in the snapshot to recommend from")?,
-        };
-        // The prompt takes a single tier; default `auto`.
-        let sev = match reco.severity.as_slice() {
-            [] => recommend::Severity::Auto,
-            [one] => recommend::parse_severity(one)?,
-            _ => anyhow::bail!(
-                "--output.prompt takes a single --severity (info | warning | auto); the scorecard accepts several"
-            ),
-        };
+        // Auto-targeted: no CLI principle selector — the prompt always describes
+        // the worst-violating principle's single worst module (`--top 1`, validated
+        // up front). `Auto` tier is irrelevant once `top = 1`.
+        let preset_id = recommend::worst_preset(level, &snap.presets)
+            .context("no presets in the snapshot to recommend from")?;
         let md = recommend::compose_prompt(
             level,
             &snap.presets,
             &snap.prompt,
             &preset_id,
-            sev,
+            recommend::Severity::Auto,
             reco.top,
         )?;
         let dest =
@@ -259,7 +266,7 @@ fn write_recommendations(
             &snap.presets,
             &severities,
             reco.top,
-            reco.preset.as_deref(),
+            reco.metric.as_deref(),
         )?;
         let dest = render_name(scorecard_tpl, target, commit, generated_at);
         write_artifact(&dest, &txt, "scorecard")?;

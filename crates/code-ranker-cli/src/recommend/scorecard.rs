@@ -4,7 +4,7 @@
 
 use super::{
     Severity, attr_short, clean_path, file_count, fmt_val, in_cycle, is_internal, num, reco_for,
-    top_cycle_groups, worst_preset,
+    top_cycle_groups,
 };
 use anyhow::Result;
 use code_ranker_graph::level_graph::LevelGraph;
@@ -84,21 +84,26 @@ pub fn render_scorecard(
         .iter()
         .any(|s| matches!(s, Severity::Info | Severity::Auto));
 
-    // Narrowing focuses the whole report on one principle.
-    let shown_presets: Vec<&Preset> = match narrow {
-        Some(id) => {
-            let p = presets.iter().find(|p| p.id == id).ok_or_else(|| {
-                anyhow::anyhow!(
-                    "unknown --preset '{id}'. Known presets: {}",
-                    presets
-                        .iter()
-                        .map(|p| p.id.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            })?;
-            vec![p]
+    // Narrowing focuses the scorecard on one ranking axis (a metric, e.g. `hk`,
+    // `cycle`, `sloc`). Validate it, then keep the presets that rank by it for the
+    // table; the worst-modules list ranks by the metric directly.
+    if let Some(m) = narrow {
+        let known = m == "cycle" || level.node_attributes.contains_key(m);
+        if !known {
+            // List the ranking axes the presets actually use (plus `cycle`) — the
+            // meaningful narrowing values, not every node attribute.
+            let mut metrics: Vec<&str> = presets.iter().map(|p| p.sort_metric.as_str()).collect();
+            metrics.push("cycle");
+            metrics.sort_unstable();
+            metrics.dedup();
+            anyhow::bail!(
+                "unknown --metric '{m}'. Known metrics: {}",
+                metrics.join(", ")
+            );
         }
+    }
+    let shown_presets: Vec<&Preset> = match narrow {
+        Some(m) => presets.iter().filter(|p| p.sort_metric == m).collect(),
         None => presets.iter().collect(),
     };
 
@@ -154,46 +159,50 @@ pub fn render_scorecard(
     }
     rows.sort_by(|a, b| b.warn.cmp(&a.warn).then(b.info.cmp(&a.info)));
 
-    if rows.is_empty() {
+    if rows.is_empty() && narrow.is_none() {
         out.push_str("No threshold breaches for the selected severity.\n");
         return Ok(out);
     }
 
-    let id_w = rows.iter().map(|r| r.id.len()).max().unwrap_or(6).max(6);
-    let name_w = rows
-        .iter()
-        .map(|r| r.name.len())
-        .max()
-        .unwrap_or(9)
-        .clamp(9, 34);
-    let clip = |s: &str, w: usize| -> String {
-        if s.len() > w {
-            format!("{}…", &s[..w.saturating_sub(1)])
-        } else {
-            s.to_string()
-        }
-    };
-    let mut header = format!("{:<id_w$}  {:<name_w$}", "PRESET", "PRINCIPLE");
-    if want_warning {
-        header.push_str("  ⚠");
-    }
-    if want_info {
-        header.push_str("  ⓘ");
-    }
-    header.push_str("  TOP MODULE");
-    out.push_str(&header);
-    out.push('\n');
-    for r in &rows {
-        let mut line = format!("{:<id_w$}  {:<name_w$}", r.id, clip(&r.name, name_w));
+    // The per-principle table (skipped when narrowed to a metric no preset ranks
+    // by — the worst-modules list below carries the ranking instead).
+    if !rows.is_empty() {
+        let id_w = rows.iter().map(|r| r.id.len()).max().unwrap_or(6).max(6);
+        let name_w = rows
+            .iter()
+            .map(|r| r.name.len())
+            .max()
+            .unwrap_or(9)
+            .clamp(9, 34);
+        let clip = |s: &str, w: usize| -> String {
+            if s.len() > w {
+                format!("{}…", &s[..w.saturating_sub(1)])
+            } else {
+                s.to_string()
+            }
+        };
+        let mut header = format!("{:<id_w$}  {:<name_w$}", "PRESET", "PRINCIPLE");
         if want_warning {
-            line.push_str(&format!("  {:>1}", r.warn));
+            header.push_str("  ⚠");
         }
         if want_info {
-            line.push_str(&format!("  {:>1}", r.info));
+            header.push_str("  ⓘ");
         }
-        line.push_str(&format!("  {}", r.top));
-        out.push_str(&line);
+        header.push_str("  TOP MODULE");
+        out.push_str(&header);
         out.push('\n');
+        for r in &rows {
+            let mut line = format!("{:<id_w$}  {:<name_w$}", r.id, clip(&r.name, name_w));
+            if want_warning {
+                line.push_str(&format!("  {:>1}", r.warn));
+            }
+            if want_info {
+                line.push_str(&format!("  {:>1}", r.info));
+            }
+            line.push_str(&format!("  {}", r.top));
+            out.push_str(&line);
+            out.push('\n');
+        }
     }
 
     // ── Worst modules ────────────────────────────────────────────────────────
@@ -211,10 +220,9 @@ pub fn render_scorecard(
     }
     let mut mod_rows: Vec<ModRow> = Vec::new();
 
-    if narrow.is_some() {
-        // Narrowed: the chosen principle's ranked modules.
-        let preset = shown_presets[0];
-        if preset.sort_metric == "cycle" {
+    if let Some(m) = narrow {
+        // Narrowed: the chosen metric's ranked modules.
+        if m == "cycle" {
             // ADP: `--top` counts CYCLES (default 1 — the biggest chain). List
             // every member of each selected cycle so the whole loop is visible.
             let groups = top_cycle_groups(level, top.unwrap_or(1));
@@ -244,15 +252,13 @@ pub fn render_scorecard(
                 }
             }
         } else {
-            let reco = reco_for(level, &preset.sort_metric);
+            let reco = reco_for(level, m);
             for n in reco.sorted.iter().take(limit) {
-                let head = match num(n, &preset.sort_metric) {
-                    Some(v) if v != 0.0 => format!(
-                        "{} {}",
-                        attr_short(level, &preset.sort_metric),
-                        fmt_val(level, &preset.sort_metric, v)
-                    ),
-                    _ => attr_short(level, &preset.sort_metric).to_string(),
+                let head = match num(n, m) {
+                    Some(v) if v != 0.0 => {
+                        format!("{} {}", attr_short(level, m), fmt_val(level, m, v))
+                    }
+                    _ => attr_short(level, m).to_string(),
                 };
                 mod_rows.push(ModRow {
                     warning_icon: true,
@@ -333,14 +339,7 @@ pub fn render_scorecard(
     }
 
     // ── Next-step hint ───────────────────────────────────────────────────────
-    let hint_preset = narrow
-        .map(str::to_string)
-        .or_else(|| worst_preset(level, presets));
-    if let Some(p) = hint_preset {
-        out.push_str(&format!(
-            "\n→ code-ranker report . --preset {p} --output.prompt.path=…\n"
-        ));
-    }
+    out.push_str("\n→ code-ranker report . --output.prompt.path=… --top 1\n");
 
     Ok(out)
 }

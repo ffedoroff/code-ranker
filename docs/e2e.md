@@ -257,7 +257,7 @@ edge forms close a cycle and which do not — a `reexports` + back-`uses` pair
 (`reex_hub` / `reex_spoke`), a `super` glob where the child really uses a parent
 item (`sup_parent` — a genuine but deprioritized cycle), and one where it does not
 (`sup_loose` — benign scope-sugar). None are cycles today (only `uses` is flow);
-the full reasoning is in [what-is-cycle.md](../principles/rust/what-is-cycle.md).
+the full reasoning is in [cycles.md](cycles.md).
 
 **Inline tests excluded from metrics** (`lib.rs`, `c.rs`, `derives.rs` carry
 `#[cfg(test)] mod tests`): the Rust metric step strips test items first, so those

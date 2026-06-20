@@ -106,9 +106,9 @@ controls) are built from the snapshot's `ui.filter` — the built-in
 `cycle` plus any a project adds via `[report] filter` — and reduce the map to only
 the nodes where the active filter metric has signal; for `cycle` that is the nodes
 in a cycle and the edges between them (callers/dependencies clusters kept). Cycle
-data is sourced solely from the backend (`graph.cycles`); per-language thresholds
-are kept in
-`principles/<lang>/metric-thresholds.md`.
+data is sourced solely from the backend (`graph.cycles`); the per-metric
+`info` / `warning` colour thresholds are language-calibrated and carried in the
+snapshot's `node_attributes` (see the CLI **Severity tiers** reference).
 
 **Rationale**: A flat per-file map does not scale to large workspaces. Semantic
 zoom lets a developer start at the crate level and drill toward the files that
@@ -141,13 +141,13 @@ output formats, so the guidance is reachable without opening the HTML
   overall, then a hint to the prompt for the worst principle). Defaults to
   `stdout`.
 
-Both share three flags: `--preset <ID>` (a principle from the snapshot's
-`presets`; **optional** — when omitted the principle with the most violations
-is chosen), `--severity <info|warning|auto>` (the tier; repeatable for the
-scorecard, single for the prompt; `auto` = warning-if-any-else-info), and
-`--top <N>` (how many modules; `--top 1` = the single worst). These flags apply
-only with a `prompt` / `scorecard` format; an explicit `--index` is rejected
-with a hint to use `--top`.
+The `scorecard` is narrowed by `--metric <NAME>` (one ranking axis: `hk`, `cycle`,
+`sloc`, `cognitive`, …; without it the table spans all principles) and `--severity
+<info|warning|auto>` (the tier; repeatable; `auto` = warning-if-any-else-info), and
+capped by `--top <N>`. The `prompt` is **auto-targeted at the single worst module**
+and **requires `--top 1`** — there is no CLI principle selector. These flags apply
+only with a `prompt` / `scorecard` format; an explicit `--index` is rejected with a
+hint to use `--top`.
 
 The CLI side of this engine is documented in
 [`code-ranker-cli/DESIGN.md`](../code-ranker-cli/DESIGN.md#code-ranker-cli-recommendation-engine)

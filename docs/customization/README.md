@@ -168,9 +168,9 @@ code-ranker report . --config docs/customization/custom-field-example.toml --out
 # gate on the custom-metric threshold (exits non-zero on a breach):
 code-ranker check . --config docs/customization/custom-field-example.toml
 
-# triage scorecard ranked by the custom `TSR` preset (warning tier, worst file):
+# triage scorecard ranked by the custom `tsr` metric (warning tier, worst file):
 code-ranker report . --config docs/customization/custom-field-example.toml \
-  --output.scorecard --preset TSR --severity warning --top 1
+  --output.scorecard --metric tsr --severity warning --top 1
 
 # or send the JSON to an explicit path / stdout:
 code-ranker report . --config docs/customization/custom-field-example.toml --output.json.path=-
@@ -274,7 +274,7 @@ patched list), so listing a metric the current language doesn't emit is harmless
 A **preset** is a refactoring lens: it ranks files by one metric and ships a
 ready-to-paste AI prompt. The plugin catalog has the usual SOLID / complexity
 presets; add your own (over a custom metric) with `[presets.<ID>]` — the table key
-is the preset id. It feeds the `--preset` recommendation, the `scorecard`, and the
+is the preset id. It feeds the `scorecard` (narrow to it with `--metric`), the `prompt`, and the
 viewer's Prompt-Generator buttons:
 
 ```toml
@@ -293,11 +293,11 @@ default to the id. A project preset with the **same id** as a plugin preset
 overrides it; a new id appends. Run it:
 
 ```sh
-# scorecard narrowed to the preset, warning tier, worst file:
-code-ranker report . --config code-ranker.toml --output.scorecard --preset TSR --severity warning --top 1
+# scorecard narrowed to the metric, warning tier, worst file:
+code-ranker report . --config code-ranker.toml --output.scorecard --metric tsr --severity warning --top 1
 
-# or generate the refactoring prompt for the worst files:
-code-ranker report . --config code-ranker.toml --preset TSR --output.prompt
+# or generate the auto-targeted refactoring prompt (single worst module):
+code-ranker report . --config code-ranker.toml --output.prompt --top 1
 ```
 
 For the `--severity` counts to be meaningful the metric should carry `warning` /
@@ -532,5 +532,5 @@ list patch      key = { clear=true, remove=[..], replace={old="new"},
                         after={anchor=[..]}, before={anchor=[..]}, prepend=[..], add=[..] }
 report views    [report] columns|card|stats = <list patch>   (works in <lang>.toml AND code-ranker.toml)
 map controls    [report] size|filter = <list patch>   (SVG circle-size modes / node filters; built-ins sloc,hk / cycle)
-preset          [presets.ID] sort_metric="k" title="…" prompt="…"   (--preset ID / scorecard / prompt)
+preset          [presets.ID] sort_metric="k" title="…" prompt="…"   (scorecard --metric k / prompt)
 ```

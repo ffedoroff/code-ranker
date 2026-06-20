@@ -181,12 +181,13 @@ the snapshot's `graphs` map under `"files"`.
   The **`prompt` / `scorecard`** formats are the refactoring-guidance outputs
   (`write_recommendations` → the `recommend` module, the console counterpart of
   the viewer's Prompt Generator): `prompt` emits the LLM Markdown for one
-  principle, `scorecard` a console triage table. They share `--preset`
-  (optional; default = `recommend::worst_preset`), `--severity` (`info` /
-  `warning` / `auto`; repeatable for the scorecard, single for the prompt) and
-  `--top`; these knobs are validated up front (rejected without a
-  prompt/scorecard format, and an explicit `--index` is rejected with a hint to
-  use `--top`). See [§1 `code-ranker-cli` recommendation engine](#code-ranker-cli-recommendation-engine).
+  principle, `scorecard` a console triage table. The `scorecard` is narrowed by
+  `--metric` (one ranking axis) and `--severity` (`info` / `warning` / `auto`;
+  repeatable) and capped by `--top`. The `prompt` is **auto-targeted at the single
+  worst module** and requires `--top 1` — there is no CLI principle selector. These
+  knobs are validated up front (rejected without a prompt/scorecard format,
+  `--output.prompt` requires `--top 1`, and an explicit `--index` is rejected with a
+  hint to use `--top`). See [§1 `code-ranker-cli` recommendation engine](#code-ranker-cli-recommendation-engine).
 
 **Responsibility boundary**: holds no domain logic; no analysis, no
 rendering, no rules. Its sole job is argument parsing, plugin
@@ -208,8 +209,8 @@ the snapshot). Functions:
   mirrors the viewer's `recoFor`. The pseudo-metric `"cycle"` ranks the cycle
   members (by HK) and both counts equal that set's size.
 - `worst_preset(level, presets)` — the principle with the most violations
-  (`warning` count, tie-broken by `info`, then catalog order), used when
-  `--preset` is omitted.
+  (`warning` count, tie-broken by `info`, then catalog order), used to auto-target
+  the `prompt` (which has no CLI principle selector) at the worst hotspot.
 - `compose_prompt(level, presets, preset_id, severity, top)` — the same Markdown
   the viewer emits (`composePrompt` + `buildContent`): intent + summary +
   principle-doc link + task checklist, then the ranked offending modules, then

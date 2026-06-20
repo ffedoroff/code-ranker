@@ -482,8 +482,8 @@ fn rust_sample_scorecard_triage() {
         "the two cycle members are listed as cycle breaches: {stdout}"
     );
     assert!(
-        stdout.contains("--preset ADP --output.prompt.path"),
-        "next-step hint points at the worst principle: {stdout}"
+        stdout.contains("--output.prompt.path=… --top 1"),
+        "next-step hint points at the auto-prompt: {stdout}"
     );
 }
 
@@ -493,7 +493,8 @@ fn rust_sample_scorecard_triage() {
 /// outranks the 2-node `a ⇄ b` mutual, so it is the cycle shown.
 #[test]
 fn rust_sample_prompt_auto_picks_worst_principle() {
-    let (ok, stdout, stderr) = run_report_capture("rust", &["--output.prompt.path=stdout"]);
+    let (ok, stdout, stderr) =
+        run_report_capture("rust", &["--output.prompt.path=stdout", "--top", "1"]);
     assert!(ok, "prompt run failed: {stderr}");
     assert!(
         stdout.starts_with("# ADP — Acyclic Dependencies Principle"),
@@ -519,60 +520,65 @@ fn rust_sample_prompt_auto_picks_worst_principle() {
     );
 }
 
-/// An explicit metric principle (`SRP`, ranked by SLOC) with `--top 1` yields the
-/// single worst module in an "ordered by" section.
+/// `--metric` narrows the scorecard to one ranking axis. `--metric cycle` shows
+/// the dependency-cycle members (the ADP view) without the full principle table.
 #[test]
-fn rust_sample_prompt_explicit_preset_top1() {
-    let (ok, stdout, stderr) = run_report_capture(
-        "rust",
-        &[
-            "--preset",
-            "SRP",
-            "--top",
-            "1",
-            "--output.prompt.path=stdout",
-        ],
-    );
-    assert!(ok, "prompt run failed: {stderr}");
+fn rust_sample_scorecard_narrow_metric() {
+    let (ok, stdout, stderr) =
+        run_report_capture("rust", &["--output.scorecard", "--metric", "cycle"]);
+    assert!(ok, "narrowed scorecard run failed: {stderr}");
     assert!(
-        stdout.starts_with("# SRP — Single Responsibility Principle"),
-        "explicit preset honoured: {stdout}"
+        stdout.contains("scorecard  (rust, 25 files)"),
+        "header present: {stdout}"
     );
     assert!(
-        stdout.contains("## Modules ordered by"),
-        "metric ordering section: {stdout}"
-    );
-    // lib.rs is the largest file in the sample (production SLOC 19 — its
-    // `#[cfg(test)] mod tests` is excluded from the metric).
-    assert!(
-        stdout.contains("- `src/lib.rs` (SLOC: 19)"),
-        "the single worst SLOC module: {stdout}"
+        stdout.contains("WORST MODULES") && stdout.contains("src/a.rs"),
+        "cycle members ranked under the narrowed metric: {stdout}"
     );
 }
 
+/// An unknown `--metric` is a hard error naming the known metrics.
 #[test]
-fn rust_sample_prompt_metric_lens_preset() {
-    // Rust-only metric-lens preset (HK ranks by Henry-Kafura coupling). Added by
-    // the Rust plugin's `presets()` hook, so it must be a valid `--preset` id and
-    // rank modules by `hk`.
-    let (ok, stdout, stderr) = run_report_capture(
-        "rust",
-        &[
-            "--preset",
-            "HK",
-            "--top",
-            "1",
-            "--output.prompt.path=stdout",
-        ],
-    );
-    assert!(ok, "HK prompt run failed: {stderr}");
+fn rust_sample_scorecard_unknown_metric() {
+    let (ok, _stdout, stderr) =
+        run_report_capture("rust", &["--output.scorecard", "--metric", "nope"]);
+    assert!(!ok, "unknown metric must fail");
     assert!(
-        stdout.starts_with("# HK — Henry-Kafura Coupling"),
-        "metric-lens preset honoured: {stdout}"
+        stderr.contains("unknown --metric 'nope'"),
+        "actionable error: {stderr}"
+    );
+}
+
+/// `check --output-format prompt` gates AND, on failure, prints a Markdown
+/// fix-prompt built from the gate's own violations (the cycle here). One command,
+/// no `||`, exit non-zero.
+#[test]
+fn rust_sample_check_prompt_format() {
+    let (ok, stdout, stderr) = run_check_capture("rust", &["--output-format", "prompt"]);
+    assert!(!ok, "gate still fails on the cycle: {stderr}");
+    assert!(
+        stdout.starts_with("# Fix") && stdout.contains("code-ranker violation"),
+        "markdown prompt heading: {stdout}"
     );
     assert!(
-        stdout.contains("## Modules ordered by") && stdout.contains("(HK:"),
-        "modules ranked by HK: {stdout}"
+        stdout.contains("cycle") && stdout.contains("a.rs"),
+        "describes the failing cycle: {stdout}"
+    );
+    assert!(
+        stdout.contains("**Fix:**") && stdout.contains("## Task"),
+        "carries fix guidance and a task section: {stdout}"
+    );
+}
+
+/// `--output.prompt` is auto-targeted at the single worst module, so it requires
+/// exactly `--top 1`; without it the run errors with a pointer to the scorecard.
+#[test]
+fn rust_sample_prompt_requires_top1() {
+    let (ok, _stdout, stderr) = run_report_capture("rust", &["--output.prompt.path=stdout"]);
+    assert!(!ok, "prompt without --top 1 must fail");
+    assert!(
+        stderr.contains("--output.prompt requires --top 1"),
+        "actionable error: {stderr}"
     );
 }
 
@@ -591,8 +597,8 @@ fn rust_sample_report_rejects_index() {
 /// The recommendation knobs only apply with a `prompt` / `scorecard` format.
 #[test]
 fn rust_sample_report_rejects_stray_reco_flags() {
-    let (ok, _stdout, stderr) = run_report_capture("rust", &["--preset", "ADP"]);
-    assert!(!ok, "--preset without a prompt/scorecard format must fail");
+    let (ok, _stdout, stderr) = run_report_capture("rust", &["--metric", "hk"]);
+    assert!(!ok, "--metric without a prompt/scorecard format must fail");
     assert!(
         stderr.contains("apply only with --output.prompt or --output.scorecard"),
         "actionable error: {stderr}"

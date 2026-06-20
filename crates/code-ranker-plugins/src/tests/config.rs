@@ -88,25 +88,18 @@ fn load_rust_exposes_sections() {
 
     let ps = presets(&cfg);
     let ids: Vec<&str> = ps.iter().map(|p| p.id.as_str()).collect();
-    // The full catalog is inherited from `defaults.toml`: 13 design principles
-    // then the 4 universal metric lenses. Rust adds no own presets.
+    // The full catalog is inherited from `defaults.toml`: 13 design principles.
+    // The metric-lens presets (HK/SLOC/FANIN/FANOUT) were removed — each metric
+    // now carries its own prompt doc. Rust adds no own presets.
     assert_eq!(
         ids,
         [
             "CPX", "ADP", "SRP", "OCP", "LSP", "ISP", "DIP", "DRY", "KISS", "LoD", "MISU", "CoI",
-            "YAGNI", "HK", "SLOC", "FANIN", "FANOUT"
+            "YAGNI"
         ]
     );
-    let hk = ps.iter().find(|p| p.id == "HK").unwrap();
-    assert_eq!(hk.sort_metric, "hk");
-    assert_eq!(hk.connections, ["in", "out"]);
-    assert_eq!(hk.slug, "henry-kafura-coupling");
-    // The multiline prompt has no leading/trailing newline.
-    assert!(
-        hk.prompt
-            .starts_with("These modules carry heavy Henry-Kafura")
-    );
-    assert!(hk.prompt.ends_with("Keep existing API contracts intact."));
+    let kiss = ps.iter().find(|p| p.id == "KISS").unwrap();
+    assert_eq!(kiss.sort_metric, "cognitive");
 
     let th = thresholds(&cfg);
     assert_eq!(th["hk"].info, 150_000.0);
@@ -324,50 +317,37 @@ fn string_list_reads_data_lists_verbatim() {
 
 /// The common catalog lives in `defaults.toml` and is inherited by every
 /// language; `resolved_presets` returns it (catalog first, language presets
-/// appended) with each `doc_url` resolved to `{doc_base}/{doc_lang}/{slug}.md`
+/// appended) with each `doc_url` resolved to `{doc_base}/{doc_lang}/{id}.md`
 /// and `label = id`.
 #[test]
 fn resolved_presets_inherit_catalog_and_resolve_doc_urls() {
     let rust = resolved_presets(&load(include_str!("../languages/rust/config.toml")));
     let ids: Vec<&str> = rust.iter().map(|p| p.id.as_str()).collect();
-    // The full catalog in `defaults.toml` order: 13 design principles followed by
-    // the 4 universal metric lenses. All come from `defaults.toml` now (inherited
-    // by every language); Rust adds no own presets.
+    // The full catalog in `defaults.toml` order: 13 design principles. All come
+    // from `defaults.toml` (inherited by every language); Rust adds no own presets.
+    // (The metric-lens presets were removed — metrics carry their own docs now.)
     assert_eq!(
         ids,
         [
             "CPX", "ADP", "SRP", "OCP", "LSP", "ISP", "DIP", "DRY", "KISS", "LoD", "MISU", "CoI",
-            "YAGNI", "HK", "SLOC", "FANIN", "FANOUT"
+            "YAGNI"
         ]
     );
-    // doc_url = {doc_base}/{doc_lang}/{slug}.md; label = id.
+    // doc_url = {doc_base}/{doc_lang}/{id}.md; label = id.
     let cpx = &rust[0];
     assert_eq!(cpx.label, "CPX");
     assert_eq!(
         cpx.doc_url.as_deref(),
-        Some(
-            "https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/reduce-complexity.md"
-        )
-    );
-    let hk = rust.iter().find(|p| p.id == "HK").unwrap();
-    assert_eq!(
-        hk.doc_url.as_deref(),
-        Some(
-            "https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/henry-kafura-coupling.md"
-        )
+        Some("https://github.com/ffedoroff/code-ranker/blob/main/principles/rust/CPX.md")
     );
 
-    // Languages with no own presets inherit the full 17-entry catalog (13 design
-    // principles + 4 universal metric lenses), and JS shares the TypeScript corpus.
+    // Languages with no own presets inherit the full 13-entry catalog, and JS
+    // shares the TypeScript corpus.
     let py = resolved_presets(&load(include_str!("../languages/python/config.toml")));
-    assert_eq!(py.len(), 17);
+    assert_eq!(py.len(), 13);
     assert!(py[0].doc_url.as_deref().unwrap().contains("/python/"));
-    assert!(
-        py.iter().any(|p| p.id == "HK"),
-        "metric lenses inherited too"
-    );
     let js = resolved_presets(&load(include_str!("../languages/javascript/config.toml")));
-    assert_eq!(js.len(), 17);
+    assert_eq!(js.len(), 13);
     assert!(js[0].doc_url.as_deref().unwrap().contains("/typescript/"));
 }
 

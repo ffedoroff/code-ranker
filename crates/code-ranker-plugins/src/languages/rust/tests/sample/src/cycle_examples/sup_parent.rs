@@ -6,7 +6,7 @@
 //! cycle. code-ranker records the upward edge as `super` (non-flow) and so does
 //! NOT report it: a deliberate **low-priority** miss (a file-split module looping
 //! back on itself), deprioritized vs. obvious cross-module cycles like a ⇄ b —
-//! not a claim that the dependency isn't real. See principles/rust/what-is-cycle.md.
+//! not a claim that the dependency isn't real. See docs/cycles.md.
 
 // contains sup_parent → child: file-backed submodule declaration (non-flow).
 pub mod child;

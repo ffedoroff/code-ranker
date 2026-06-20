@@ -359,7 +359,7 @@ on both sides scores far higher than a large but isolated one.
 
 External-only dependencies don't count (they land in `fan_out_external`), and a
 node with no internal coupling on one side (`fan_in` or `fan_out` = 0) gets
-`hk = 0`, which is dropped. See [henry-kafura-coupling.md](henry-kafura-coupling.md)
+`hk = 0`, which is dropped. See [HK.md](HK.md)
 for the full rationale.
 
 ### Project averages (the `stats` block)
@@ -407,5 +407,4 @@ for the derivations.
 
 ## Related
 
-- [Henry-Kafura coupling](henry-kafura-coupling.md) — how `sloc` feeds `hk`.
-- [Module size](module-size.md) — what a healthy `sloc` looks like.
+- [Henry-Kafura coupling](HK.md) — how `sloc` feeds `hk`.

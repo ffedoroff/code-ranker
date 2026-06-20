@@ -294,7 +294,7 @@ Edges live in `graphs.files.edges`, each a flat object:
 | `uses` | yes | solid | yes |
 | `reexports` | no | dashed¹ | no — a `pub use` facade is not a dependency |
 | `contains` | no | dashed¹ | no — structural module ownership (`mod foo;`), kept as metadata |
-| `super` | no | dashed¹ | no — a glob `use super::*` / `use crate::<ancestor>::*` namespace pull (Rust). Usually scope-sugar; but when the child really uses a parent item via the glob it is a real back-dependency (a low-priority cycle), kept non-flow because the two are indistinguishable without name resolution — see [principles/rust/what-is-cycle.md](../principles/rust/what-is-cycle.md) |
+| `super` | no | dashed¹ | no — a glob `use super::*` / `use crate::<ancestor>::*` namespace pull (Rust). Usually scope-sugar; but when the child really uses a parent item via the glob it is a real back-dependency (a low-priority cycle), kept non-flow because the two are indistinguishable without name resolution — see [cycles.md](cycles.md) |
 
 ¹ Non-flow edges are drawn **dashed** on the map and shown only while a leaf node (an individual file, or a collapsed folder/group box) is hovered.
 

@@ -24,6 +24,8 @@ pub(crate) enum OutputFormat {
     Github,
     Sarif,
     Codequality,
+    /// Markdown AI fix-prompt built from the gate's own violations.
+    Prompt,
 }
 
 /// Common input + analysis options shared by `check` and `report`.
@@ -88,6 +90,14 @@ pub(crate) enum Command {
         /// K/M/G suffixes (e.g. file.cognitive=25, file.hk=5M, file.loc=1_500).
         #[arg(long = "threshold", value_name = "file.METRIC=N")]
         thresholds: Vec<String>,
+
+        /// Restrict the gate and the report to these files/folders (repeatable).
+        /// The whole project is still analyzed (the dependency graph needs it),
+        /// but only violations located under one of these paths are reported and
+        /// counted toward the exit code. Paths are repo-relative (matching the
+        /// reported `where`); a folder matches everything beneath it.
+        #[arg(long = "focus", value_name = "PATH")]
+        focus: Vec<String>,
 
         /// Baseline snapshot (`.json`/`.html`). Switches the gate to relative mode:
         /// fail only on regressions (new violations) against the baseline, not on
@@ -179,18 +189,19 @@ pub(crate) enum Command {
         #[arg(long = "output.scorecard.path", value_name = "PATH")]
         output_scorecard_path: Option<String>,
 
-        /// Principle for the prompt/scorecard formats (e.g. ADP, SRP, CPX). When
-        /// omitted, the principle with the most violations is chosen.
-        #[arg(long, value_name = "ID")]
-        preset: Option<String>,
+        /// Narrow the scorecard to one ranking axis: hk | cycle | sloc |
+        /// cognitive | cyclomatic | fan_in | fan_out | items. Without it the
+        /// scorecard spans every principle. `scorecard` only.
+        #[arg(long = "metric", value_name = "NAME")]
+        metric: Option<String>,
 
-        /// Threshold tier driving the prompt/scorecard: info | warning | auto.
-        /// Repeatable for the scorecard (show several tiers); single for the prompt.
+        /// Threshold tier driving the scorecard: info | warning | auto.
+        /// Repeatable to show several tiers. `scorecard` only.
         #[arg(long = "severity", value_name = "TIER")]
         severity: Vec<String>,
 
-        /// Modules the prompt includes / rows the scorecard shows (`--top 1` =
-        /// the single worst module). Prompt/scorecard only.
+        /// Rows the scorecard shows (`--top 1` = the single worst module).
+        /// `--output.prompt` requires exactly `--top 1`. Prompt/scorecard only.
         #[arg(long)]
         top: Option<usize>,
 

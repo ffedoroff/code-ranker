@@ -252,8 +252,8 @@ is validated at load — a typo, or a metric you never defined, is a hard error)
 ### `[presets.<ID>]` — project Prompt-Generator presets
 
 A preset is a refactoring lens: it ranks files by one metric and ships a
-ready-to-paste AI prompt, surfaced by `--preset` / the `scorecard` / the viewer's
-Prompt-Generator buttons. The plugin catalog ships the SOLID/complexity presets;
+ready-to-paste AI prompt, surfaced by the `scorecard` / `prompt` outputs and the
+viewer's Prompt-Generator buttons. The plugin catalog ships the SOLID/complexity presets;
 a project adds its own (e.g. over a custom metric) here. The table key is the id;
 a same-id project preset overrides the plugin's, a new id appends.
 

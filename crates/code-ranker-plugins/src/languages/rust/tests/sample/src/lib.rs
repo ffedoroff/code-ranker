@@ -26,7 +26,7 @@ pub mod complex;
 // the `chain` cycle kind, next to the 2-node `mutual` cycle from `a ⇄ b`.
 pub mod chain;
 // `cycle_examples` — self-contained demo of which edge forms close a cycle and
-// which do not (uses/contains/reexports/super); see principles/rust/what-is-cycle.md.
+// which do not (uses/contains/reexports/super); see docs/cycles.md.
 pub mod cycle_examples;
 pub mod derives;
 mod foo;

@@ -8,6 +8,7 @@ use crate::config;
 use anyhow::Result;
 use code_ranker_graph::level_graph::LevelGraph;
 use std::collections::{BTreeMap, HashSet};
+use std::fmt::Write as _;
 use std::path::Path;
 
 /// Base URL for the published docs. Diagnostics pointers (`ref` lines, SARIF
@@ -22,6 +23,7 @@ pub(crate) fn run_check(
     args: &AnalyzeArgs,
     cycle_rules: &[String],
     thresholds: &[String],
+    focus: &[String],
     baseline: Option<&Path>,
     output_format: OutputFormat,
     top: Option<usize>,
@@ -64,6 +66,17 @@ pub(crate) fn run_check(
         }
     };
 
+    // `--focus`: scope the gate to the given files/folders. The whole project is
+    // analyzed (the dependency graph needs it), but a violation outside the
+    // focused paths is dropped entirely — so it is neither reported nor counted
+    // toward the exit code. A locationless violation (e.g. a cycle whose breaking
+    // edge couldn't be placed) can't be attributed to a path, so it is dropped too.
+    if !focus.is_empty() {
+        findings.retain(|v| {
+            violation_rel_path(&v.location).is_some_and(|rel| focus_matches(rel, focus))
+        });
+    }
+
     let total = findings.len();
     // Rank worst-first by breach magnitude; `--top` limits only what is
     // reported, never the exit code.
@@ -89,6 +102,7 @@ pub(crate) fn run_check(
         &project,
         output_format,
         verdict,
+        focus,
         node_attributes,
         cycle_kinds,
     );
@@ -121,6 +135,7 @@ fn emit_diagnostics(
     project: &str,
     format: OutputFormat,
     verdict: Option<&str>,
+    focus: &[String],
     node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
 ) {
@@ -131,6 +146,7 @@ fn emit_diagnostics(
                 total,
                 plugin,
                 project,
+                focus,
                 node_attributes,
                 cycle_kinds,
             );
@@ -168,7 +184,87 @@ fn emit_diagnostics(
             sarif_document(violations, node_attributes, cycle_kinds)
         ),
         OutputFormat::Codequality => println!("{}", codequality_document(violations)),
+        OutputFormat::Prompt => {
+            print!(
+                "{}",
+                render_prompt(violations, total, project, node_attributes, cycle_kinds)
+            )
+        }
     }
+}
+
+/// A self-contained Markdown AI fix-prompt built from the **gate's own violations**
+/// (`--output-format prompt`). Because it is derived from the same violations that
+/// failed the gate (the configured `rules.thresholds` / `rules.cycles`), it always
+/// describes exactly what failed — no principle selection, no tier mismatch. Empty
+/// when the gate passes, so an agent reads it as "nothing to do".
+fn render_prompt(
+    violations: &[config::Violation],
+    total: usize,
+    project: &str,
+    node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
+    cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
+) -> String {
+    if total == 0 {
+        return String::new();
+    }
+    let mut s = String::new();
+    let _ = writeln!(s, "# Fix {total} code-ranker violation(s) in {project}\n");
+    let _ = writeln!(
+        s,
+        "The modules below violate the rules configured in `code-ranker.toml`. Fix each \
+         one, keeping existing behavior and public APIs intact.\n"
+    );
+    for v in violations {
+        let doc = config::rule_doc(&v.rule, node_attributes, cycle_kinds);
+        let title = doc
+            .as_ref()
+            .and_then(|d| d.title.clone())
+            .unwrap_or_else(|| v.rule.clone());
+        let _ = writeln!(s, "## {title} ({})", v.group);
+        // Prefer the repo-relative path; fall back to any non-`{target}` id.
+        let module = violation_rel_path(&v.location)
+            .map(str::to_string)
+            .or_else(|| (!v.location.is_empty()).then(|| v.location.clone()));
+        if let Some(m) = module {
+            match v.line {
+                Some(l) => {
+                    let _ = writeln!(s, "- **Module:** `{m}` (line {l})");
+                }
+                None => {
+                    let _ = writeln!(s, "- **Module:** `{m}`");
+                }
+            }
+        }
+        let _ = writeln!(s, "- **Issue:** {}", v.message);
+        let why = v
+            .why
+            .clone()
+            .or_else(|| doc.as_ref().and_then(|d| d.why.clone()));
+        let fix = v
+            .fix
+            .clone()
+            .or_else(|| doc.as_ref().and_then(|d| d.fix.clone()));
+        if let Some(why) = why {
+            let _ = writeln!(s, "- **Why:** {why}");
+        }
+        if let Some(fix) = fix {
+            let _ = writeln!(s, "- **Fix:** {fix}");
+        }
+        let _ = writeln!(
+            s,
+            "- **Reference:** {DOCS_URL}/code-ranker-cli/ERRORS.md#group-{}",
+            v.group.to_lowercase()
+        );
+        let _ = writeln!(s);
+    }
+    let _ = writeln!(s, "## Task\n");
+    let _ = writeln!(
+        s,
+        "Address each finding above. After the fix, re-run `code-ranker check .` until the \
+         gate passes."
+    );
+    s
 }
 
 /// The repo-relative path inside a violation `location` (`{target}/rel` →
@@ -180,6 +276,18 @@ fn violation_rel_path(location: &str) -> Option<&str> {
     location
         .strip_prefix("{target}/")
         .filter(|rel| !rel.is_empty())
+}
+
+/// Whether a violation's repo-relative path falls under one of the `--focus`
+/// paths. A focus entry matches a file exactly or, treated as a folder, anything
+/// beneath it (`crates/a/src` matches `crates/a/src/x.rs`). Leading `./` and a
+/// trailing `/` on a focus entry are ignored so `./crates/a/` and `crates/a` are
+/// equivalent.
+fn focus_matches(rel: &str, focus: &[String]) -> bool {
+    focus.iter().any(|f| {
+        let f = f.trim_start_matches("./").trim_end_matches('/');
+        !f.is_empty() && (rel == f || rel.starts_with(&format!("{f}/")))
+    })
 }
 
 /// GitHub workflow-command location params (`file=rel,line=N,`) for a violation,
@@ -200,15 +308,22 @@ fn print_human_diagnostics(
     total: usize,
     plugin: &str,
     project: &str,
+    focus: &[String],
     node_attributes: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     cycle_kinds: &BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
 ) {
+    // A trailing scope note so the count is never mistaken for the whole project.
+    let scope_note = if focus.is_empty() {
+        String::new()
+    } else {
+        format!(" (focused on {})", focus.join(", "))
+    };
     if total == 0 {
-        println!("✓ code-ranker check: no violations in {project} ({plugin} plugin).");
+        println!("✓ code-ranker check: no violations in {project} ({plugin} plugin){scope_note}.");
         return;
     }
 
-    println!("code-ranker check — {total} violation(s) in {project} ({plugin} plugin)");
+    println!("code-ranker check — {total} violation(s) in {project} ({plugin} plugin){scope_note}");
     if violations.len() < total {
         println!(
             "  showing the {} worst by severity; run without --top to see all",
@@ -515,6 +630,29 @@ mod tests {
             why: None,
             fix: None,
         }
+    }
+
+    #[test]
+    fn focus_matches_file_exactly_and_folder_prefix() {
+        let focus = vec![
+            "crates/a/src/plugin.rs".to_string(),
+            "crates/b/src".to_string(),
+        ];
+        // Exact file match.
+        assert!(focus_matches("crates/a/src/plugin.rs", &focus));
+        // Folder matches everything beneath it.
+        assert!(focus_matches("crates/b/src/registry.rs", &focus));
+        // Outside the focused paths.
+        assert!(!focus_matches("crates/c/src/lib.rs", &focus));
+        // A folder must match on a path boundary, not a bare prefix.
+        assert!(!focus_matches("crates/b/src_extra.rs", &focus));
+    }
+
+    #[test]
+    fn focus_matches_ignores_leading_dot_slash_and_trailing_slash() {
+        let focus = vec!["./crates/a/".to_string()];
+        assert!(focus_matches("crates/a/src/x.rs", &focus));
+        assert!(focus_matches("crates/a", &focus));
     }
 
     #[test]

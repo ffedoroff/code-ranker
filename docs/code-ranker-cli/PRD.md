@@ -347,7 +347,7 @@ code-ranker check  [input] [--plugin <name|auto>] [--threshold ...] [--cycle-rul
 
 # Steps 1+2 — analyze (or read) the input and write a snapshot and/or HTML viewer
 # (also the AI prompt / console scorecard via --output.prompt / --output.scorecard)
-code-ranker report [input] [--plugin <name|auto>] [--output.<fmt>.path <path>] [--baseline <snapshot>] [--preset <ID>] [--severity <tier>] [--top <N>]
+code-ranker report [input] [--plugin <name|auto>] [--output.<fmt>.path <path>] [--baseline <snapshot>] [--metric <NAME>] [--severity <tier>] [--top <N>]
 ```
 
 The positional `[input]` (default `.`) is polymorphic: a directory is

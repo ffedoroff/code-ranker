@@ -450,11 +450,11 @@ workspaces. The plugin MUST:
   Henry-Kafura (`HK = sloc × (fan_in × fan_out)²`) — all written into the node's
   flat `attrs`. Edges to external nodes are excluded from `fan_in`/`fan_out`/`hk`
   and counted in `fan_out_external` instead. The Rust plugin additionally
-  supplies language-calibrated `thresholds()` for `hk`/`sloc`/`fan_out`/`items`,
-  and extends the Prompt-Generator catalog via its `presets()` hook with four
-  metric-lens presets — `HK`, `SLOC`, `FANIN`, `FANOUT` — that rank modules by a
-  single coupling/size metric (`hk`/`sloc`/`fan_in`/`fan_out`) rather than a
-  design principle, documented under `principles/rust/`
+  supplies language-calibrated `thresholds()` for `hk`/`sloc`/`fan_out`/`items`.
+  The recommendation catalog is the shared 13 design-principle presets (from
+  `defaults.toml`); each coupling/complexity **metric** carries its own
+  fix-prompt doc under `principles/rust/` (`HK`, `Fan-in`, `Fan-out`, `Cognitive`,
+  `Cyclomatic`, `Cycles`), referenced from the metric's `remediation`
 
 **Rationale**: Rust is the primary use-case for the initial release.
 The `rust` module of the `code-ranker-plugins` crate (cargo metadata + `syn`,

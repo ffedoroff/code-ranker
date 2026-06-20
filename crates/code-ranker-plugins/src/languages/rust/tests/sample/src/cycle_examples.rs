@@ -7,7 +7,7 @@
 //!
 //! The `reex_*` and `sup_*` pairs are deliberately wired so they WOULD become
 //! `mutual` cycles IF `reexports` / `super` were flow — see
-//! `principles/rust/what-is-cycle.md`. With the current algorithm they are NOT
+//! `docs/cycles.md`. With the current algorithm they are NOT
 //! cycles.
 
 // contains cycle_examples → {reex_hub, reex_spoke, sup_parent, sup_loose} —

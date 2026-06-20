@@ -13,9 +13,10 @@
 #                        prefix) is COMMON and lives here; each `<lang>.toml`
 #                        supplies `doc_lang` (its principle-corpus language, e.g.
 #                        `rust`, `python`, `typescript`). A preset's `doc_url` is
-#                        resolved as `{doc_base}/{doc_lang}/{slug}.md`.
-#   [[presets]]          metric-lens recommendation presets (id, title,
-#                        sort_metric, connections, slug, prompt). The COMMON,
+#                        resolved as `{doc_base}/{doc_lang}/{id}.md` (the `id` is
+#                        the filename — there is no separate `slug`).
+#   [[presets]]          design-principle recommendation presets (id, title,
+#                        sort_metric, connections, prompt). The COMMON,
 #                        language-neutral catalog lives here ONCE; every language
 #                        inherits it. A language may append its own presets (or
 #                        override one by `id`) in its `<lang>.toml`. Merged by id.
@@ -29,7 +30,7 @@
 
 # The principle-doc URL prefix shared by every language. Each `<lang>.toml` adds
 # its own `doc_lang`; a preset's `doc_url` resolves to
-# `{doc_base}/{doc_lang}/{slug}.md`.
+# `{doc_base}/{doc_lang}/{id}.md`.
 doc_base = "https://github.com/ffedoroff/code-ranker/blob/main/principles"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -146,7 +147,6 @@ id = "CPX"
 title = "CPX — Reduce Complexity"
 sort_metric = "cognitive"
 connections = []
-slug = "reduce-complexity"
 prompt = """
 These modules are too complex and I want to reduce their complexity.
 Reduce it by splitting large units into smaller single-responsibility ones,
@@ -159,7 +159,6 @@ id = "ADP"
 title = "ADP — Acyclic Dependencies Principle"
 sort_metric = "cycle"
 connections = ["common"]
-slug = "acyclic-dependencies-principle"
 prompt = """
 The dependency graph between modules must form a DAG. When module A depends
 on module B, no chain of dependencies should bring B back to A.
@@ -180,7 +179,6 @@ id = "SRP"
 title = "SRP — Single Responsibility Principle"
 sort_metric = "sloc"
 connections = ["in", "out"]
-slug = "solid-single-responsibility"
 prompt = """
 A module should have one reason to change — it should serve one actor
 and encapsulate one coherent set of decisions.
@@ -195,7 +193,6 @@ id = "OCP"
 title = "OCP — Open/Closed Principle"
 sort_metric = "cyclomatic"
 connections = []
-slug = "solid-open-closed"
 prompt = """
 A module should be open for extension but closed for modification: new behaviour
 should be addable without editing existing, working code.
@@ -211,7 +208,6 @@ id = "LSP"
 title = "LSP — Liskov Substitution Principle"
 sort_metric = "hk"
 connections = []
-slug = "solid-liskov-substitution"
 prompt = """
 Every implementation of an interface must honour its full contract — return-value
 invariants, error/exception behaviour, side effects, and resource ownership — not
@@ -228,7 +224,6 @@ id = "ISP"
 title = "ISP — Interface Segregation Principle"
 sort_metric = "items"
 connections = ["in"]
-slug = "solid-interface-segregation"
 prompt = """
 Clients should not be forced to depend on methods they do not use. Prefer several
 small, focused interfaces over one wide interface.
@@ -243,7 +238,6 @@ id = "DIP"
 title = "DIP — Dependency Inversion Principle"
 sort_metric = "fan_out"
 connections = ["common", "out"]
-slug = "solid-dependency-inversion"
 prompt = """
 High-level modules should not depend on low-level modules; both should depend on
 abstractions, and abstractions should not depend on details.
@@ -258,7 +252,6 @@ id = "DRY"
 title = "DRY — Don't Repeat Yourself"
 sort_metric = "sloc"
 connections = []
-slug = "dry"
 prompt = """
 Every piece of knowledge must have a single authoritative representation.
 DRY is about knowledge duplication, not just code duplication.
@@ -273,7 +266,6 @@ id = "KISS"
 title = "KISS — Keep It Simple"
 sort_metric = "cognitive"
 connections = []
-slug = "kiss"
 prompt = """
 When two designs solve the same problem, prefer the simpler one — fewer
 abstractions, fewer indirection layers, fewer moving parts.
@@ -287,7 +279,6 @@ id = "LoD"
 title = "Law of Demeter — Principle of Least Knowledge"
 sort_metric = "fan_out"
 connections = ["common", "out"]
-slug = "law-of-demeter"
 prompt = """
 A method should only call methods on: itself, its direct fields,
 its parameters, and objects it constructs locally.
@@ -303,7 +294,6 @@ id = "MISU"
 title = "MISU — Make Invalid States Unrepresentable"
 sort_metric = "cyclomatic"
 connections = []
-slug = "make-invalid-states-unrepresentable"
 prompt = """
 Move correctness from runtime checks into the type system, so invalid states
 cannot be constructed and fail at compile time rather than at runtime.
@@ -319,7 +309,6 @@ id = "CoI"
 title = "CoI — Composition Over Inheritance"
 sort_metric = "items"
 connections = ["common"]
-slug = "composition-over-inheritance"
 prompt = """
 Build behaviour by composing small, focused pieces rather than through deep
 inheritance hierarchies.
@@ -334,7 +323,6 @@ id = "YAGNI"
 title = "YAGNI — You Aren't Gonna Need It"
 sort_metric = "sloc"
 connections = ["out"]
-slug = "yagni"
 prompt = """
 Build for the problem you have now, not one you imagine you might have later.
 Don't add an abstraction, a generic parameter, or a public API for a hypothetical
@@ -343,82 +331,4 @@ future use.
 Identify abstractions, generics, or public APIs in the modules below that were
 added speculatively. For each, assess whether multiple real callers use it today,
 and propose simplification if not.\
-"""
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Metric-lens presets — shared by every language (defined once here, not per
-# language). They rank modules by a single universal coupling/size metric
-# (`hk`/`sloc`/`fan_in`/`fan_out`, computed for all languages) rather than a
-# design principle. `slug` resolves per language to `{doc_base}/{doc_lang}/<slug>.md`
-# (the `principles/<lang>/<slug>.md` doc may not exist yet for every language).
-# ──────────────────────────────────────────────────────────────────────────────
-
-[[presets]]
-id = "HK"
-title = "HK — Henry-Kafura Coupling"
-sort_metric = "hk"
-connections = ["in", "out"]
-slug = "henry-kafura-coupling"
-prompt = """
-These modules carry heavy Henry-Kafura coupling — HK = sloc × (fan_in × fan_out)²,
-where sloc is the module's source lines of code (real code lines, excluding blanks
-and comment-only lines), fan_in is how many modules depend on it, and fan_out is how
-many it depends on.
-A high score is a large module sitting on a busy crossroads of incoming and outgoing
-dependencies, so any change here ripples widely.
-
-For each module below, lower the factor that dominates its HK: shrink the module by
-extracting cohesive pieces, or cut fan-in/fan-out by narrowing its public surface and
-depending on fewer collaborators (introduce an abstraction, move a responsibility).
-Keep existing API contracts intact.\
-"""
-
-[[presets]]
-id = "SLOC"
-title = "SLOC — Module Size"
-sort_metric = "sloc"
-connections = []
-slug = "module-size"
-prompt = """
-These are the largest modules by source lines of code. Size alone is not a defect, but
-oversized files usually bundle several responsibilities and are hard to read, test and
-review.
-
-For each module below, identify the distinct responsibilities it holds and propose how
-to split it into smaller, cohesive modules — each with a single clear purpose — without
-changing external behaviour.\
-"""
-
-[[presets]]
-id = "FANIN"
-title = "Fan-in — Afferent Coupling"
-sort_metric = "fan_in"
-connections = ["in"]
-slug = "fan-in-afferent-coupling"
-prompt = """
-These modules have high fan-in: many other modules depend on them. They are
-load-bearing — a change here forces changes (or re-review) across every dependant, and
-a bug here is widely felt.
-
-For each module below, confirm its public surface is a stable, minimal contract. Narrow
-the API to what callers actually need, split it if different callers use disjoint parts
-(see Interface Segregation), and stabilise the abstractions the rest of the codebase
-leans on.\
-"""
-
-[[presets]]
-id = "FANOUT"
-title = "Fan-out — Efferent Coupling"
-sort_metric = "fan_out"
-connections = ["out"]
-slug = "fan-out-efferent-coupling"
-prompt = """
-These modules have high fan-out: they depend on many other modules. High efferent
-coupling makes a module fragile (it breaks when any dependency changes) and hard to
-test or reuse in isolation.
-
-For each module below, reduce its direct dependencies: depend on abstractions rather
-than concretes (see Dependency Inversion), collapse several fine-grained collaborators
-behind one focused interface, and move logic that pulls in unrelated dependencies into
-a more appropriate module.\
 """

@@ -482,7 +482,7 @@ crate / module / trait nodes and `contains` / `uses` / `reexports` / `super` edg
 (`super` = a glob `use super::*` / `use crate::<ancestor>::*` reaching back into an
 enclosing module — non-flow scope-sugar, or a real back-dependency the analyzer
 can't tell apart, so kept non-flow as a low-priority cycle; see
-`principles/rust/what-is-cycle.md`). It also runs a `syn::visit`
+`cycles.md`). It also runs a `syn::visit`
 path collector over each file to capture **bare qualified paths** in
 expressions/types (≥ 2 segments, no `use`) **and qualified paths inside
 `#[derive(...)]`** (e.g. `serde::Serialize`), resolved through the same
