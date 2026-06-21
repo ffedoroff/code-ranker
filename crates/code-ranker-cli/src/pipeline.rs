@@ -27,6 +27,8 @@ pub(crate) struct Analyzed {
     /// `[output.<fmt>]` config: per-format `path` template and `enabled` flag
     /// (CLI flags still win — resolved in `run_report`).
     pub(crate) output: config::OutputConfig,
+    /// `[templates.languages.<lang>.<ID>]` doc-corpus overrides (for `--doc`).
+    pub(crate) templates: config::TemplatesConfig,
 }
 
 /// Directory input: load config, run the plugin, annotate the graphs, collect
@@ -142,13 +144,23 @@ pub(crate) fn analyze_directory(
         .map(|i| levels.remove(i));
     let level_spec = levels.into_iter().find(|l| l.name == "files");
     let flow_kinds = flow_kinds(level_spec.as_ref());
-    // Cycles, fan-in/HK and the drawn map all run on the same flow edges. A
+    // Cycles, fan-in/fan-out and the drawn map all run on the same flow edges. A
     // `pub use` re-export is a facade, not a dependency, so the Rust plugin marks
     // `reexports` non-flow (`EdgeKindSpec.flow = false`) — it never reaches any of
     // these and re-export hubs (lib.rs / mod.rs) cannot fabricate cycles.
     let mut cycles = code_ranker_graph::cycles::annotate_cycles(&mut graph, &flow_kinds);
     config::apply_cycle_rules(&mut cycles, &mut graph.nodes, &cfg.rules.cycles);
-    code_ranker_graph::hk::annotate_hk(&mut graph, &flow_kinds);
+    code_ranker_graph::annotate_coupling(&mut graph, &flow_kinds);
+
+    // Graph-derived built-in metrics (e.g. `hk`): now that the coupling pass has
+    // written `fan_in`/`fan_out` onto the nodes, evaluate the `[fields.*]` formulas
+    // that read them — the TIER1 → graph → TIER2 order. Pre-graph fields
+    // (volume/mi/…) were already written from the raw tier-1 counts above.
+    for node in &mut graph.nodes {
+        if node.kind != "external" {
+            code_ranker_graph::write_derived(node);
+        }
+    }
 
     // User-defined declarative metrics: evaluate each `[metrics.<key>]` CEL
     // formula. Node-scope metrics are written onto every internal node (built-in
@@ -316,6 +328,17 @@ pub(crate) fn analyze_directory(
     // project can recommend / scorecard on its custom metric.
     let presets = merge_project_presets(plugin::presets(&plugin_name, &input), &cfg.presets);
 
+    // Prompt-Generator scaffolding: the built-in `metrics/prompt.md`, or a
+    // `[templates] prompt = "<path>"` override read from disk (same `## <field>`
+    // Markdown shape).
+    let prompt = match &cfg.templates.prompt {
+        Some(path) => code_ranker_graph::prompt_template_from(
+            &std::fs::read_to_string(path)
+                .with_context(|| format!("reading [templates] prompt override {path}"))?,
+        ),
+        None => code_ranker_graph::prompt_template(),
+    };
+
     let snapshot = Snapshot::new(
         command,
         cwd.display().to_string(),
@@ -328,7 +351,7 @@ pub(crate) fn analyze_directory(
         timings,
         graphs,
         presets,
-        code_ranker_graph::prompt_template(),
+        prompt,
     );
 
     Ok(Analyzed {
@@ -337,6 +360,7 @@ pub(crate) fn analyze_directory(
         cycles: cfg.rules.cycles,
         rules: cfg.rules,
         output: cfg.output,
+        templates: cfg.templates,
     })
 }
 

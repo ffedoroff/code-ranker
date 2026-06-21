@@ -30,8 +30,8 @@ pub(crate) use model::{default_omit_at, default_value_type};
 /// and the `use super::*` test modules compile unchanged.
 mod eval;
 pub use eval::Populations;
-pub(crate) use eval::register_math;
 use eval::{exec_f64, register_agg, topo_order};
+pub(crate) use eval::{references, register_math};
 // Used only by the `use super::*` test submodules below.
 #[cfg(test)]
 use eval::{percentile, reduce};

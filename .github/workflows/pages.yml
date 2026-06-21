@@ -48,6 +48,14 @@ jobs:
             --git.origin="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
             --output.html.path=site/index.html \
             --output.json.path=site/report.json
+      - name: Compose the principle/metric doc corpus into ./site
+        # base/<ID>.md (fallback) + composed <lang>/<ID>.md (base ⊕ overlay), so a
+        # finding's `doc_url` resolves on Pages once `doc_base` points here.
+        # `.nojekyll` makes Pages serve the raw Markdown (Jekyll would render it),
+        # which is what the `remediation` "Download …" links and LLMs want.
+        run: |
+          cargo run -q -p code-ranker -- docs --out site
+          touch site/.nojekyll
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v5
         with:

@@ -20,41 +20,9 @@ should not host both domain logic and storage adapters.
 - matklad, "Large Rust Workspaces": one crate per bounded responsibility.
   <https://matklad.github.io/2021/08/22/large-rust-workspaces.html>
 
-## The principle
+<!-- doc:base "The principle" -->
 
-Martin's later formulation is the most useful: **a module is responsible
-to one actor**. An "actor" here is any stakeholder whose needs drive
-changes — a regulatory body, a product owner, a downstream team. When a
-module serves two actors, changes requested by one are forced through
-review by the other, and the module accumulates conflicting pressures.
-
-The popular short form — "one reason to change" — is sometimes
-misread as "one method per class" or "one function per file". That is
-not the principle. The unit of responsibility is **change pressure**:
-if two pieces of code consistently change for the same reason, they
-belong together; if they change for different reasons, they belong
-apart.
-
-In Rust, the unit of "responsibility" most naturally maps to a crate,
-then to a module, then to a struct or trait. Functions are usually too
-fine-grained — splitting a 50-line function in two does not change
-which actor causes it to evolve.
-
-## Why it matters
-
-A module shared by multiple actors becomes a coordination chokepoint:
-
-- Every PR must pass review by every actor's team.
-- Tests proliferate because each actor's changes can break the others'.
-- Refactoring is "expensive" because so many callers depend on the
-  module's exact shape.
-- Stack traces and commit history become hard to read: a single file
-  with eight reasons to change has eight times the commit churn.
-
-SRP is the principle that keeps a workspace **navigable**. When you
-violate it, the symptom is not a runtime bug — it is the gradual
-realization that nobody on the team feels comfortable touching certain
-files.
+<!-- doc:base "Why it matters" -->
 
 ## In Rust
 
@@ -242,56 +210,11 @@ workspace/
 
 Each crate has one actor; cross-crate dependencies are explicit.
 
-## How code-ranker detects SRP violations
+<!-- doc:base "How code-ranker detects SRP violations" -->
 
-Code Ranker cannot read actors directly, but the graph signatures of an
-SRP violation are unambiguous:
+<!-- doc:base "Suggested recommendation template" -->
 
-| Signal | SRP interpretation |
-|---|---|
-| Module with high fan-in × fan-out (god-module-coupling rule) | Module serves multiple unrelated siblings |
-| File LOC and item-count breaching mega-file thresholds | Single file accumulating multiple concerns |
-| Module composed mostly of re-exports + entangled in an SCC (prelude-sibling-cycle rule) | Module acts as both a facade and a participant in unrelated subsystems |
-| Public function with very high fan-in (high-fan-in-public-api rule) | Single API surface used by many unrelated actors — every change is a coordination event |
-
-Cross-references in code-ranker's catalog:
-
-- `god-module-coupling` directly maps to "module-serving-many-actors"
-- `mega-file` maps to "file-with-too-many-reasons-to-change"
-- `prelude-sibling-cycle` maps to "facade-module-conflated-with-participation"
-
-## Suggested recommendation template
-
-When code-ranker detects a candidate SRP violation, the Finding should:
-
-1. Quote Martin's "one reason to change" / "one actor".
-2. Pin the violation to the offending node (module or file).
-3. Ask the user to enumerate the *actors* whose changes touch this
-   module in the last N months (informally — this is qualitative).
-4. Suggest a split along those actor lines.
-5. Cite Martin's clean-coder post and matklad's large-workspaces post.
-
-Example body:
-
-> **SRP violation candidate**: module `domain::service` has fan-in 19
-> and fan-out 6. SRP (Martin 1996) prescribes one reason to change per
-> module. Identify the actors driving recent commits to this module;
-> if more than two are visible, split the module along those lines.
-> Suggested first move: extract `domain::service::context` (the DI
-> carrier) and `domain::service::errors` (the error vocabulary) into
-> leaf modules; have the orchestrator (`service::mod.rs`) re-export
-> only the intentional API.
-
-## Related principles
-
-- [Open/Closed Principle](OCP.md) — what to do once SRP
-  has been applied: keep each unit closed to modification.
-- [Interface Segregation Principle](ISP.md) —
-  same idea applied to trait surface, not module surface.
-- [DRY](DRY.md) — distinct: SRP is about *why* code changes; DRY is
-  about *whether* knowledge is duplicated.
-- [High Cohesion / Low Coupling](CoI.md) —
-  SRP is the cohesion lever; CoI is the coupling lever.
+<!-- doc:base "Related principles" -->
 
 ## References
 

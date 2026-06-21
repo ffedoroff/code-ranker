@@ -24,6 +24,7 @@
   ],
   "ignores": [
     "node_modules/**",
-    "target/**"
+    "target/**",
+    "languages/_overlay/**"
   ]
 }

@@ -293,7 +293,7 @@
         "hk": {
           "abbreviate": true,
           "calc": "sloc * (fan_in * fan_out) ** 2",
-          "description": "Henry-Kafura — sloc × (fan_in × fan_out)² — flags units that are both highly connected and large: change-amplifiers whose edits ripple widely across the system.",
+          "description": "Henry-Kafura — flags units that are both highly connected and large: change-amplifiers whose edits ripple widely across the system.",
           "direction": "lower_better",
           "formula": "sloc × (fan_in × fan_out)²",
           "group": "coupling",

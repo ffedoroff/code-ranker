@@ -366,13 +366,7 @@ Cross-references in code-ranker's catalog:
 >
 > Reference: <https://rust-lang.github.io/api-guidelines/future-proofing.html>
 
-## Related principles
-
-- [SRP](SRP.md) — splits before OCP defends.
-- [LSP](LSP.md) — defines what "extension" means
-  precisely: a substitute that behaves like the base.
-- [DIP](DIP.md) — provides the trait-based
-  extension point OCP demands.
+<!-- doc:base "Related principles" -->
 
 ## References
 

@@ -322,15 +322,7 @@ section* and to *recommend writing one*, not to verify behaviour.
 >  - <https://blog.yoshuawuyts.com/from-design-to-type-system/>
 >  - <https://rust-lang.github.io/api-guidelines/predictability.html>
 
-## Related principles
-
-- [SRP](SRP.md) — narrow traits are easier
-  to write contracts for than broad ones.
-- [ISP](ISP.md) — clients depend on small
-  contracts, not large ones; LSP gets easier with each split.
-- [Make Invalid States Unrepresentable](MISU.md)
-  — encode contract requirements in types where possible (e.g. a
-  `NonEmpty<T>` type instead of "must not be empty" in rustdoc).
+<!-- doc:base "Related principles" -->
 
 ## References
 

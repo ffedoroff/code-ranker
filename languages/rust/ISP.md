@@ -299,18 +299,7 @@ Martin's ISP paper.
 >  - <https://web.archive.org/web/20060822033314/http://www.objectmentor.com/resources/articles/isp.pdf>
 >  - <https://doc.rust-lang.org/std/io/index.html>
 
-## Related principles
-
-- [SRP](SRP.md) — SRP segregates *modules*;
-  ISP segregates *traits*. They reinforce each other.
-- [LSP](LSP.md) — small traits have small
-  contracts; ISP makes LSP affordable.
-- [DIP](DIP.md) — DIP wants consumers to
-  depend on traits; ISP keeps those traits small enough to be
-  worth depending on.
-- [Composition Over Inheritance](CoI.md)
-  — composing small trait bounds (`R: Read + Seek`) is the Rust
-  expression of "compose, don't inherit".
+<!-- doc:base "Related principles" -->
 
 ## References
 

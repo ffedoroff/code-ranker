@@ -26,29 +26,7 @@ different modules that means "the maximum retry count" is.
 - *The Zen of Python* (PEP 20): "There should be one — and preferably
   only one — obvious way to do it." DRY's spiritual cousin in Python
   culture.
-
-## The principle
-
-The Pragmatic Programmer text:
-
-> Every piece of knowledge must have a single, unambiguous,
-> authoritative representation within a system.
-
-The misreading the authors regret most: DRY is not "don't write the
-same characters twice". It is "don't encode the same **decision** in
-two places where they can drift apart".
-
-Hunt later clarified: if two pieces of code happen to look identical
-**because the underlying concept happens to coincide right now**, that
-is not a DRY violation. It is *accidental duplication*. Extracting it
-into a shared abstraction creates a worse problem — you have welded
-two concepts together that are free to diverge later, and the
-abstraction will fight every change.
-
-Real DRY violations are about **knowledge**: a constant, a regex, a
-business rule, a calculation, a schema. When the regulation says
-"customers under 18 cannot purchase alcohol", the number `18` should
-appear in exactly one place in your code.
+<!-- doc:base "The principle" -->
 
 ## Why it matters
 
@@ -566,15 +544,7 @@ decide.
 > Code Ranker cannot tell which case applies. See *Pragmatic Programmer*
 > Topic 9 and matklad's "Three Levels of Repetition" for guidance
 > on the call.
-
-## Related principles
-
-- [KISS](KISS.md) — DRY can violate KISS when premature abstraction
-  introduces a more complex shape than the duplication.
-- [YAGNI](YAGNI.md) — don't DRY for a hypothetical second instance
-  that may never appear.
-- [SRP](SRP.md) — SRP is the discipline that
-  produces *true* DRY by aligning code-units with reasons-to-change.
+<!-- doc:base "Related principles" -->
 
 ## References
 

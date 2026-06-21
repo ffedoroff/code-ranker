@@ -74,6 +74,10 @@ pub(crate) struct AnalyzeArgs {
     pub(crate) git_origin: Option<String>,
 }
 
+// A clap subcommand enum is parsed once at startup and never stored in a hot
+// collection, so the size gap between `Check` and `Report` (both large flag
+// bundles) is irrelevant — boxing the fields would only obscure the arg model.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand, Debug)]
 pub(crate) enum Command {
     /// Lint: evaluate rules (and, with --baseline, regressions); exit non-zero on violation.
@@ -236,5 +240,27 @@ pub(crate) enum Command {
         /// parameter you can override.
         #[arg(long = "export-full-config", value_name = "PATH")]
         export_full_config: Option<PathBuf>,
+
+        /// Print the AI fix-prompt for one principle/metric to stdout and exit
+        /// (e.g. `--prompt HK`) — the named counterpart of `--output.prompt`
+        /// (which auto-targets the worst). Combine with `--top N` / `--focus-path`
+        /// to shape the ranked module list.
+        #[arg(long = "prompt", value_name = "PRINCIPLE | METRIC")]
+        prompt_id: Option<String>,
+
+        /// Print the principle/metric doc Markdown for one id to stdout and exit
+        /// (e.g. `--doc HK`) — the resolved `languages/<lang>/<ID>.md`, with any
+        /// `[templates.languages.…]` override applied. No artifacts are written.
+        #[arg(long = "doc", value_name = "PRINCIPLE | METRIC")]
+        doc_id: Option<String>,
+    },
+
+    /// Assemble the embedded doc corpus into a directory for publishing (e.g.
+    /// GitHub Pages): `base/<ID>.md` copied as-is, each language manifest emitted as
+    /// its assembled Markdown, full language docs copied verbatim. No analysis.
+    Docs {
+        /// Output directory for the composed corpus.
+        #[arg(long = "out", value_name = "DIR", default_value = "site")]
+        out: PathBuf,
     },
 }

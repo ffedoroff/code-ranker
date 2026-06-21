@@ -1,16 +1,18 @@
-//! Henry-Kafura coupling over flow edges. For each internal (non-external) node
-//! we count unique flow partners (`fan_in` / `fan_out`), track outgoing edges to
-//! external libraries separately (`fan_out_external`), and compute
-//! `hk = sloc · (fan_in · fan_out)²`. Results are written into node `attrs` as
-//! flat keys; zero values are omitted.
+//! Coupling counts over flow edges. For each internal (non-external) node we count
+//! unique flow partners (`fan_in` / `fan_out`) and track outgoing edges to external
+//! libraries separately (`fan_out_external`). Results are written into node `attrs`
+//! as flat keys; zero values are omitted. The size-folding Henry–Kafura metric
+//! (`hk = sloc · (fan_in · fan_out)²`) is no longer computed here — it is a
+//! graph-derived `[fields.hk]` CEL formula evaluated by `builtin::write_derived`
+//! once these counts are on the node.
 
-use crate::attrs::{attr_f64, is_external, num_attr};
+use crate::attrs::is_external;
 use code_ranker_plugin_api::{attrs::AttrValue, graph::Graph, node::NodeId};
 use std::collections::{HashMap, HashSet};
 
-/// Annotate `fan_in` / `fan_out` / `fan_out_external` / `hk` on every internal
-/// node, counting only flow edges. External nodes carry no coupling metrics.
-pub fn annotate_hk(graph: &mut Graph, flow_kinds: &HashSet<String>) {
+/// Annotate `fan_in` / `fan_out` / `fan_out_external` on every internal node,
+/// counting only flow edges. External nodes carry no coupling metrics.
+pub fn annotate_coupling(graph: &mut Graph, flow_kinds: &HashSet<String>) {
     let external_ids: HashSet<&str> = graph
         .nodes
         .iter()
@@ -55,21 +57,10 @@ pub fn annotate_hk(graph: &mut Graph, flow_kinds: &HashSet<String>) {
         let fi = fan_in.get(&node.id).map(|s| s.len()).unwrap_or(0);
         let fo = fan_out.get(&node.id).map(|s| s.len()).unwrap_or(0);
         let foe = fan_out_ext.get(&node.id).map(|s| s.len()).unwrap_or(0);
-        // HK uses the source line count (`sloc`); fall back to the structural
-        // `loc` if the complexity pass produced no `sloc` for this file.
-        let loc = attr_f64(node, "sloc")
-            .or_else(|| attr_f64(node, "loc"))
-            .unwrap_or(0.0);
-        let hk = loc * ((fi * fo) as f64).powi(2);
 
         set_or_clear(node, "fan_in", fi as f64);
         set_or_clear(node, "fan_out", fo as f64);
         set_or_clear(node, "fan_out_external", foe as f64);
-        if hk > 0.0 {
-            node.attrs.insert("hk".to_string(), num_attr(hk));
-        } else {
-            node.attrs.remove("hk");
-        }
     }
 }
 
@@ -84,6 +75,7 @@ fn set_or_clear(node: &mut code_ranker_plugin_api::node::Node, key: &str, v: f64
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::attrs::attr_f64;
     use code_ranker_plugin_api::{edge::Edge, node::Node};
 
     fn file(id: &str, sloc: i64) -> Node {
@@ -111,16 +103,18 @@ mod tests {
     }
 
     #[test]
-    fn hk_is_loc_times_fan_squared() {
+    fn counts_fan_in_and_fan_out() {
         let mut g = Graph {
             nodes: vec![file("A", 4), file("B", 10), file("C", 5)],
             edges: vec![uses("A", "B"), uses("B", "C")],
         };
-        annotate_hk(&mut g, &flow());
+        annotate_coupling(&mut g, &flow());
         let b = &g.nodes[1];
         assert_eq!(attr_f64(b, "fan_in"), Some(1.0));
         assert_eq!(attr_f64(b, "fan_out"), Some(1.0));
-        assert_eq!(attr_f64(b, "hk"), Some(10.0));
+        // `hk` is no longer computed here — it is a graph-derived `[fields.hk]`
+        // formula applied by `builtin::write_derived` (covered there).
+        assert_eq!(b.attrs.get("hk"), None);
     }
 
     #[test]
@@ -138,9 +132,13 @@ mod tests {
             ],
             edges: vec![uses("a", "ext:x")],
         };
-        annotate_hk(&mut g, &flow());
+        annotate_coupling(&mut g, &flow());
         let a = &g.nodes[0];
         assert_eq!(attr_f64(a, "fan_out_external"), Some(1.0));
-        assert_eq!(a.attrs.get("hk"), None, "no internal coupling → no hk");
+        assert_eq!(
+            a.attrs.get("fan_out"),
+            None,
+            "external target is not fan_out"
+        );
     }
 }

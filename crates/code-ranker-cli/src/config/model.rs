@@ -63,6 +63,29 @@ pub struct Config {
     /// custom metric. Empty by default — absent → no change to output.
     #[serde(default)]
     pub presets: BTreeMap<String, PresetDef>,
+    /// Per-file doc-corpus overrides (`[templates.languages.<lang>.<ID>]`): use a
+    /// file from disk in place of the embedded `languages/<lang>/<ID>.md`. Empty by
+    /// default — absent → the embedded corpus is used unchanged.
+    #[serde(default)]
+    pub templates: TemplatesConfig,
+}
+
+/// Doc-corpus override map (`[templates.languages.<lang>.<ID>]`): `lang → (ID →
+/// file path)`. A configured path is read from disk in place of the embedded
+/// `languages/<lang>/<ID>.md` (see `crate::templates`). Empty by default — its
+/// `Default` is plain empty maps (no `defaults.toml` slice), so it never re-enters
+/// the `BUILTIN` `LazyLock` while that initializes.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TemplatesConfig {
+    /// `<lang> → (<ID> → override file path)`.
+    #[serde(default)]
+    pub languages: BTreeMap<String, BTreeMap<String, String>>,
+    /// `[templates] prompt = "<path>"` — override the Prompt-Generator scaffolding
+    /// (`metrics/prompt.md`) with a file from disk (same `## <field>` Markdown
+    /// shape). `None` → the built-in prompt template.
+    #[serde(default)]
+    pub prompt: Option<String>,
 }
 
 impl Default for Config {

@@ -112,7 +112,7 @@ with a code metric, so it depends on `fan_in`/`fan_out` being computed first.
 | `cyclomatic` | `spaces + branches` | `spaces`, `branches` |
 | `mi` | `171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)` | `volume`, `cyclomatic`, `span_sloc` |
 | `mi_sei` | `171 − 5.2·log2(volume) − 0.23·cyclomatic − 16.2·log2(span_sloc) + 50·sin(√(2.4·(cloc/span_sloc)))` | `volume`, `cyclomatic`, `span_sloc`, `cloc` |
-| `hk` | `sloc · (fan_in · fan_out)²` | `fan_in`, `fan_out`, `sloc` (falls back to `loc`) |
+| `hk` | `sloc · (fan_in · fan_out)²` | `fan_in`, `fan_out`, `sloc` (no `sloc` → no `hk`) |
 
 Henry–Kafura (`hk`) is emitted only when `> 0`. `cyclomatic` is omitted at its
 floor `1` (a function-less file); the rest omit at `0`.

@@ -26,15 +26,15 @@ pub mod stats;
 pub use attrs::{num_attr, round_sig3};
 pub use cycles::annotate_cycles;
 pub use finalize::finalize_graph;
-pub use hk::annotate_hk;
+pub use hk::annotate_coupling;
 pub use level_graph::{CycleGroup, LevelGraph, LevelUi};
 // The metric catalog reads the `builtin.toml` schema (module [`builtin`]). The
 // tier-1 input types (`MetricInputs` / `FunctionUnit`) are the plugin↔orchestrator
 // contract and live in `code-ranker-plugin-api` (its `metrics` module); a plugin
 // hands them back and `builtin::write_metrics` enriches the node from them.
 pub use builtin::{
-    Views, coupling_specs, cycle_specs, metric_specs, prompt_template, stat_keys, views,
-    write_metrics,
+    Views, coupling_specs, cycle_specs, metric_specs, prompt_template, prompt_template_from,
+    stat_keys, views, write_derived, write_metrics,
 };
 pub use checks::{CheckCompileError, CheckDef, CheckHit, CompiledCheck, GraphView};
 pub use registry::{Engine, MetricDef, Populations, RegistryError, Scope, apply_to_node};

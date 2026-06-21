@@ -392,44 +392,11 @@ A pragmatic heuristic: encode invariants that **multiple consumers**
 need. A single-use invariant ("this function takes a slice that must
 have an even number of elements") may be cheaper as a debug-assert.
 
-## How code-ranker detects representable-invalid-state risk
+<!-- doc:base "How code-ranker detects representable-invalid-state risk" -->
 
-Code Ranker's static graph cannot directly read invariants. It can flag
-*structural risk*:
+<!-- doc:base "Suggested recommendation template" -->
 
-| Signal | Interpretation |
-|---|---|
-| Functions with many `.expect()` / `.unwrap()` on `Option`-typed return values | Signals invariants in the head of the author, not in the types. Future AST rule. |
-| Public struct with many `Option` fields | Possibly invalid-state-representable. Check whether construction goes through a `parse`-style constructor. |
-| String-typed identifiers across many call sites | Newtype candidates. Detectable from AST. |
-| Functions taking same-type arguments without naming | Swapping risk. AST analysis. |
-
-Code Ranker's current rule set does not catch these directly. The
-**LLM-verification** prompt mode (see
-`cpt-code-ranker-fr-prompt-composer`) can ask an LLM reading the code
-to flag these patterns.
-
-## Suggested recommendation template
-
-> **Make-Invalid-States-Unrepresentable candidate**: struct
-> `OrderRequest` has 5 `Option<T>` fields, all of which downstream
-> code unwraps. This is a "parse, don't validate" candidate: split
-> `OrderRequest` into `OrderRequestRaw` (wire-level, all `Option`)
-> and `OrderRequest` (domain-level, all required), with a single
-> `into_domain` parse-step at the boundary.
->
-> Source: King, "Parse, don't validate" (2019); Minsky, "Effective
-> ML" (2010).
-
-## Related principles
-
-- [LSP](LSP.md) — types that encode
-  invariants make LSP contracts implicit (no rustdoc needed for
-  "email must be valid" — the type says so).
-- [Newtype Pattern](CoI.md) — the
-  workhorse Rust technique for this principle.
-- [KISS](KISS.md) — encoding too many invariants in types can
-  violate KISS. Pick your battles.
+<!-- doc:base "Related principles" -->
 
 ## References
 

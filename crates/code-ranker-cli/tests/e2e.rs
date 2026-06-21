@@ -520,6 +520,42 @@ fn rust_sample_prompt_auto_picks_worst_principle() {
     );
 }
 
+/// `report --prompt <ID>` prints the named principle's prompt to stdout directly
+/// (the explicit counterpart of `--output.prompt`, which auto-targets the worst),
+/// honouring `--top`. Unlike `--output.prompt` it does NOT require `--top 1`.
+#[test]
+fn rust_sample_prompt_flag_targets_named_principle() {
+    let (ok, stdout, stderr) = run_report_capture("rust", &["--prompt", "SRP", "--top", "3"]);
+    assert!(ok, "--prompt run failed: {stderr}");
+    assert!(
+        stdout.starts_with("# SRP — Single Responsibility Principle"),
+        "named principle prompt, not the auto-worst: {stdout}"
+    );
+    assert!(
+        stdout.contains("## Summary") && stdout.contains("## Task"),
+        "the prompt scaffolding is composed: {stdout}"
+    );
+}
+
+/// `report --doc <ID>` prints the embedded corpus Markdown for a principle/metric
+/// directly. `HK` is a metric (its doc lives in `base/`, reached via the metric's
+/// remediation URL), exercising the metric-doc resolution path.
+#[test]
+fn rust_sample_doc_flag_prints_embedded_markdown() {
+    let (ok, stdout, stderr) = run_report_capture("rust", &["--doc", "HK"]);
+    assert!(ok, "--doc run failed: {stderr}");
+    assert!(
+        stdout.starts_with("# HK — Henry-Kafura Coupling"),
+        "embedded HK doc printed: {stdout}"
+    );
+    // A principle id resolves too (SRP → its own rust/ corpus doc).
+    let (ok2, stdout2, _) = run_report_capture("rust", &["--doc", "SRP"]);
+    assert!(
+        ok2 && stdout2.contains("Single Responsibility"),
+        "SRP doc: {stdout2}"
+    );
+}
+
 /// `--focus-rule <metric>` frames the scorecard by that metric. `--focus-rule cycle`
 /// shows the dependency-cycle members (the ADP view) without the principle table.
 #[test]

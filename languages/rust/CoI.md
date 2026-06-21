@@ -23,29 +23,7 @@ delegation, type composition, and the newtype pattern.
   recommends composition.
   <https://doc.rust-lang.org/book/ch17-01-what-is-oo.html>
 
-## The principle
-
-In class-based OOP languages, `class Truck extends Vehicle` makes
-`Truck` reuse `Vehicle`'s code by inheriting its members. Decades
-of experience showed several systemic problems:
-
-1. **Fragile base class**: changing `Vehicle` may break every
-   subclass.
-2. **Banana–monkey–jungle problem**: inheriting from `Vehicle` drags
-   in every transitive concern of `Vehicle` (logging, persistence,
-   serialization, etc.) even when only one method is needed.
-3. **Hierarchy rigidity**: a `Truck` cannot be both a `Vehicle` and
-   a `Container` if both have a `weight` field — multiple inheritance
-   introduces diamonds.
-4. **Behaviour reuse coupled to identity reuse**: subclasses are
-   "is-a" relationships; inheritance forces "Truck *is a* Vehicle"
-   semantics on what was really just "Truck *has* engine code I
-   wanted to reuse".
-
-The Gang of Four prescription, repeated by every subsequent OO
-authority: **prefer composition** (object holds another object) over
-inheritance (class extends class). Rust simply removes inheritance
-from the menu, leaving the principle as the only path.
+<!-- doc:base "The principle" -->
 
 ## Why it matters
 
@@ -376,16 +354,7 @@ indirectly capture the "fat trait" issue. A future rule could flag:
 >
 > Source: Gang of Four (1994); Wuyts, "Combinatorial purity".
 
-## Related principles
-
-- [ISP](ISP.md) — segregation IS the
-  Rust-flavoured "favor composition" principle for traits.
-- [DIP](DIP.md) — composition is what
-  makes DIP cheap (no inheritance to drag in).
-- [Make Invalid States Unrepresentable](MISU.md)
-  — newtype is the workhorse for this.
-- [SRP](SRP.md) — each composed piece has
-  one responsibility.
+<!-- doc:base "Related principles" -->
 
 ## References
 

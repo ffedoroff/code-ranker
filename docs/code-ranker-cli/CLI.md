@@ -25,9 +25,12 @@ exact command per entry (triage, CI gates, focused checks, baselines, AI prompts
 | [`check`](#check) | A **verdict**: evaluates thresholds, cycle rules, and (with `--baseline`) regressions, prints diagnostics, and **exits non-zero** on violation. Writes no files. |
 | [`report`](#report) | **Artifacts**: an HTML viewer and/or a JSON snapshot. With `--baseline`, the HTML becomes a diff with a verdict. Can also emit a console **scorecard** triage and an AI **prompt** (see [Recommendations](#recommendations-scorecard--prompt)). Always exits `0`. |
 
-There are exactly two commands, split by *what they emit*: `check` produces an exit
+There are two analysis commands, split by *what they emit*: `check` produces an exit
 code (a CI gate), `report` produces files (a snapshot and a viewer). Both take the same
-input and share the same vocabulary below.
+input and share the same vocabulary below. (A third, maintenance-only `docs`
+subcommand publishes the principle/metric doc corpus — composing each language
+manifest over its base — for GitHub Pages; see
+[templates.md](../templates.md).)
 
 ## Global options
 

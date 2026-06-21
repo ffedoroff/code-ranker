@@ -21,50 +21,8 @@ different modules that means "the maximum retry count" is.
   premature DRY is worse than duplication)
 - Sandi Metz, "The Wrong Abstraction" (2016):
   <https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction>
-
-## The principle
-
-The Pragmatic Programmer text:
-
-> Every piece of knowledge must have a single, unambiguous,
-> authoritative representation within a system.
-
-The misreading the authors regret most: DRY is not "don't write the
-same characters twice". It is "don't encode the same **decision** in
-two places where they can drift apart".
-
-Hunt later clarified: if two pieces of code happen to look identical
-**because the underlying concept happens to coincide right now**, that
-is not a DRY violation. It is *accidental duplication*. Extracting it
-into a shared abstraction creates a worse problem — you have welded
-two concepts together that are free to diverge later, and the
-abstraction will fight every change.
-
-Real DRY violations are about **knowledge**: a constant, a regex, a
-business rule, a calculation, a schema. When the regulation says
-"customers under 18 cannot purchase alcohol", the number `18` should
-appear in exactly one place in your code.
-
-## Why it matters
-
-When the same knowledge lives in N places:
-
-- Updates require finding all N. You will miss some.
-- Tests may pass on the locations you remembered and silently fail
-  in production for the ones you forgot.
-- Reviewers cannot tell whether N differences are intentional or are
-  drift.
-- Onboarding becomes harder: "Where is the truth about X?" has N
-  answers.
-
-When *accidental* duplication is force-extracted (the "wrong
-abstraction" failure mode), N use sites are forced to evolve together
-when they actually need to diverge. The abstraction grows boolean
-flags, special cases, and conditionals until it is harder to read
-than the original duplication.
-
-The skill is distinguishing knowledge duplication (which DRY targets)
-from accidental similarity (which DRY does not).
+<!-- doc:base "The principle" -->
+<!-- doc:base "Why it matters" -->
 
 ## In Rust
 
@@ -382,15 +340,7 @@ decide.
 > Code Ranker cannot tell which case applies. See *Pragmatic Programmer*
 > Topic 9 and matklad's "Three Levels of Repetition" for guidance
 > on the call.
-
-## Related principles
-
-- [KISS](KISS.md) — DRY can violate KISS when premature abstraction
-  introduces a more complex shape than the duplication.
-- [YAGNI](YAGNI.md) — don't DRY for a hypothetical second instance
-  that may never appear.
-- [SRP](SRP.md) — SRP is the discipline that
-  produces *true* DRY by aligning code-units with reasons-to-change.
+<!-- doc:base "Related principles" -->
 
 ## References
 

@@ -345,15 +345,7 @@ second impl is planned).
 >
 > Source: KISS — Hoare, "The Emperor's Old Clothes" (1980);
 > matklad, "Almost Always Always Use a Vector".
-
-## Related principles
-
-- [YAGNI](YAGNI.md) — KISS and YAGNI overlap heavily; YAGNI is
-  scoped to features-you-haven't-used-yet.
-- [SRP](SRP.md) — KISS at the module level
-  often *is* SRP applied.
-- [Composition Over Inheritance](CoI.md)
-  — composition tends to be simpler than the alternative.
+<!-- doc:base "Related principles" -->
 
 ## References
 

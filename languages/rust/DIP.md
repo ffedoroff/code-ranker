@@ -21,30 +21,7 @@ types in at the composition root.
 - niko matsakis, "Dyn dispatch design notes":
   <https://smallcultfollowing.com/babysteps/blog/2022/01/07/dyn-async-traits-part-7/>
 
-## The principle
-
-The literal rule:
-
-1. High-level modules should not depend on low-level modules. Both
-   should depend on abstractions.
-2. Abstractions should not depend on details. Details should depend
-   on abstractions.
-
-Concretely: if `domain` orchestrates business rules and `postgres`
-implements storage, the `Cargo.toml` arrow should run from
-`postgres → domain` (postgres implements a trait defined in domain),
-**not** `domain → postgres` (domain calls postgres functions directly).
-The dependency arrow at the compilation level is inverted from the
-flow of control.
-
-This is the principle behind:
-
-- Hexagonal Architecture / Ports & Adapters (Cockburn, 2005)
-- Onion Architecture (Palermo, 2008)
-- Clean Architecture (Martin, 2012)
-
-All three are the same idea: *the domain owns the interfaces, the
-infrastructure owns the implementations*.
+<!-- doc:base "The principle" -->
 
 ## Why it matters
 
@@ -323,19 +300,7 @@ the underlying principle is unchanged. Whatever framework you use,
 the goal is: the **app crate** has the concrete types; everything
 else has the abstractions.
 
-## Related principles
-
-- [SRP](SRP.md) — defines what "a module" is;
-  DIP says how modules connect.
-- [OCP](OCP.md) — the traits DIP introduces are
-  exactly the extension points OCP requires.
-- [ISP](ISP.md) — make the abstractions
-  small enough to be worth depending on.
-- [Composition Over Inheritance](CoI.md)
-  — DIP is the macro form of "compose with traits, don't inherit
-  from concretes".
-- Hexagonal Architecture (Cockburn) — the
-  architecture-scale instantiation of DIP.
+<!-- doc:base "Related principles" -->
 
 ## References
 

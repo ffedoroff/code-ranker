@@ -7,81 +7,11 @@ not to strangers". In Rust this maps to: avoid `x.foo().bar().baz()`
 chains that traverse multiple objects; prefer narrow accessors that
 expose exactly what the caller needs.
 
-## Canonical sources
+<!-- doc:base "Canonical sources" -->
 
-- Ian Holland, Karl Lieberherr et al., "Object-Oriented Programming:
-  An Objective Sense of Style" (1988): the formal statement of the
-  Law of Demeter. <https://dl.acm.org/doi/10.1145/62083.62113>
-- Northeastern University Demeter Project, "The Law of Demeter":
-  <https://www2.ccs.neu.edu/research/demeter/papers/law-of-demeter/oopsla88-law-of-demeter.pdf>
-- David Bock, "The Paperboy, The Wallet, and The Law of Demeter"
-  (2001): the canonical metaphor.
-  <https://www2.ccs.neu.edu/research/demeter/demeter-method/LawOfDemeter/paper-boy/demeter.pdf>
-- Hunt and Thomas, *The Pragmatic Programmer*, Topic 28 "Coupling
-  and the Law of Demeter".
-- Yoshua Wuyts, "Combinatorial purity":
-  <https://blog.yoshuawuyts.com/combinatorial-purity/>
+<!-- doc:base "The principle" -->
 
-## The principle
-
-The original Demeter Project formulation gives a method `M` of class
-`C` permission to invoke methods only on:
-
-1. The object `M` is a method of (`self` in Rust).
-2. Arguments of `M`.
-3. Objects created by `M`.
-4. Direct fields of the object `M` is a method of.
-5. Global variables (in their sense) accessible to `C`.
-
-**Not** allowed: invoking methods on objects returned from methods
-of any of the above. That is: `a.b().c()` traverses *two* objects;
-LoD says you've reached too far.
-
-Bock's "Paperboy" metaphor: when the paperboy is collecting money,
-he should not say "give me your wallet so I can take what you owe
-me". He should say "you owe me $5". The customer manages their own
-wallet. The paperboy talks to a friend (the customer), not to a
-stranger (the wallet).
-
-In Rust:
-
-```rust
-// Demeter violation: 3-level traversal
-let username = order.customer.contact.email.local_part();
-```
-
-The function holding `order` is now coupled to the structure of
-`Order`, `Customer`, `Contact`, and `Email`. Any rename in any of
-them breaks this code.
-
-LoD says: ask `Order` for the username (or whatever you actually
-need), and let `Order` decide how to traverse:
-
-```rust
-let username = order.customer_email_local_part();
-```
-
-`Order` now talks to its `Customer`, which talks to its `Contact`,
-each layer responsible for its own knowledge.
-
-## Why it matters
-
-LoD-violating chains are **change amplifiers**:
-
-- Rename `Contact.email` → `Contact.email_address`. Every call site
-  that wrote `order.customer.contact.email.local_part()` breaks.
-- Change `Email` from a struct with `local_part` to an opaque type.
-  Same.
-- Add validation that some emails are non-public; the call site has
-  bypassed the validation.
-
-When chains run deep, the coupled call site has *transitively
-guessed* the data model of types it should not know about. The
-guess becomes a constraint.
-
-LoD also enforces a form of [encapsulation](#information-hiding):
-your code expresses **what you want**, not **how to reach it**. The
-how is hidden behind the boundary of each type.
+<!-- doc:base "Why it matters" -->
 
 ## In Rust
 
@@ -325,25 +255,6 @@ many but not all cases).
 >
 > Reference: <https://www2.ccs.neu.edu/research/demeter/papers/law-of-demeter/oopsla88-law-of-demeter.pdf>
 
-## Related principles
+<!-- doc:base "Related principles" -->
 
-- [DIP](DIP.md) — DIP makes the friends
-  trait-based, which limits how deep callers can reach.
-- [Information Hiding](CoI.md) — LoD is
-  the dynamic counterpart to "hide your fields".
-- [SRP](SRP.md) — when a method talks to too
-  many strangers, it usually has too many responsibilities.
-
-## References
-
-1. Lieberherr, K. and Holland, I. "Assuring Good Style for
-   Object-Oriented Programs". *IEEE Software*, 1989.
-2. Holland, I. "Specifying Reusable Components Using Contracts".
-   PhD thesis, Northeastern University, 1992.
-3. Bock, D. "The Paperboy, The Wallet, and The Law of Demeter".
-   <https://www2.ccs.neu.edu/research/demeter/demeter-method/LawOfDemeter/paper-boy/demeter.pdf>
-4. Hunt, A. and Thomas, D. *The Pragmatic Programmer*. Topic 28.
-5. Wuyts, Y. "Combinatorial purity".
-   <https://blog.yoshuawuyts.com/combinatorial-purity/>
-6. Demeter Project home.
-   <https://www.ccs.neu.edu/research/demeter/>
+<!-- doc:base "References" -->

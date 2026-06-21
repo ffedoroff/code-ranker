@@ -313,12 +313,32 @@ formula_js = "length * Math.log2(vocabulary)"
 direction = "lower_better"
 category = "halstead"
 
-# ── coupling (computed post-walk by annotate_hk / annotate_cycles) ────────────
+# Henry–Kafura: a graph-derived field — its `formula_cel` reads the coupling
+# counts (`fan_in`/`fan_out`) the graph pass writes, so it is evaluated AFTER that
+# pass (see `builtin::write_derived`), not in the per-file tier-2 step. A file with
+# no `sloc` (no analysed source lines) gets no `hk`. (`fan_in`/`fan_out`/`sloc` are
+# integers, so `pow(·, 2.0)` is exact and the result is rounded to 3 significant
+# figures like every metric.)
+[fields.hk]
+value_type = "float"
+label = "HK"
+name = "Henry–Kafura"
+short = "HK"
+description = "Henry-Kafura — flags units that are both highly connected and large: change-amplifiers whose edits ripple widely across the system."
+formula_cel = "sloc * pow(fan_in * fan_out, 2.0)"
+formula_pretty = "sloc × (fan_in × fan_out)²"
+formula_js = "sloc * (fan_in * fan_out) ** 2"
+direction = "lower_better"
+category = "coupling"
+abbreviate = true
+remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/languages/base/HK.md"
+
+# ── coupling (computed post-walk by annotate_coupling / annotate_cycles) ───────
 # Spec-only entries: the VALUES are derived by the graph crate's coupling/cycle
-# pass over the flow edges, so these carry NO `formula_cel`. `fan_in` / `fan_out` are
-# neutral (a high count is dual — broad reuse vs. bottleneck); `hk` folds unit
-# size with both coupling directions. `description` is the `why` and `remediation`
-# the `fix` shown by `check` (data, not Rust).
+# pass over the flow edges, so these carry NO `formula_cel`. `fan_in` / `fan_out`
+# are neutral (a high count is dual — broad reuse vs. bottleneck). `description` is
+# the `why` and `remediation` the `fix` shown by `check` (data, not Rust). The
+# size-folding `hk` is a graph-derived `[fields.hk]` above (it has a `formula_cel`).
 [coupling.fan_in]
 value_type = "int"
 label = "Fan-in"
@@ -338,19 +358,6 @@ value_type = "int"
 label = "Fan-out (external)"
 description = "Number of distinct external libraries this node depends on."
 category = "coupling"
-
-[coupling.hk]
-value_type = "float"
-label = "HK"
-name = "Henry–Kafura"
-short = "HK"
-description = "Henry-Kafura — sloc × (fan_in × fan_out)² — flags units that are both highly connected and large: change-amplifiers whose edits ripple widely across the system."
-formula_pretty = "sloc × (fan_in × fan_out)²"
-formula_js = "sloc * (fan_in * fan_out) ** 2"
-direction = "lower_better"
-category = "coupling"
-abbreviate = true
-remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/languages/base/HK.md"
 
 [coupling.cycle]
 value_type = "str"
@@ -372,22 +379,10 @@ label = "Chain"
 description = "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries."
 remediation = "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/languages/base/ADP.md"
 
-# ── prompt scaffolding (Prompt-Generator framing) ─────────────────────────────
-# The language-neutral prose the prompt wraps a preset in — DATA, not code.
-# Carried in the snapshot so the CLI `prompt` format and the HTML viewer's Prompt
-# Generator render identical text from this one source. `{id}` is substituted
-# with the active preset id at render time.
-[prompt]
-intro = "I want to apply this to some modules in my system."
-doc_note = "Download and read the full principle to understand it in detail. If you cannot download it, **stop the task immediately**."
-task = [
-    "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
-    "- If you find more serious violations elsewhere during research, mention them in the report too.",
-    "- Show a summary of the report in chat.",
-    "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`.",
-]
-focus = "**Focus the research and report primarily on the modules below.**"
-cycle_note = "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects."
+# ── prompt scaffolding ────────────────────────────────────────────────────────
+# The Prompt-Generator framing prose moved OUT of this file into `metrics/prompt.md`
+# (authored as Markdown `## <field>` sections, parsed by `builtin.rs::prompt_template`).
+# Edit it there.
 
 # ── report views ──────────────────────────────────────────────────────────────
 # ONE section, with the SAME key names a project's `[report]` override uses and

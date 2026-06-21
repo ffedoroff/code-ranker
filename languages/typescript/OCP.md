@@ -398,14 +398,7 @@ Cross-references in code-ranker's catalog:
 > silent fall-throughs.
 >
 > Reference: <https://www.typescriptlang.org/docs/handbook/2/narrowing.html#exhaustiveness-checking>
-
-## Related principles
-
-- [SRP](SRP.md) — splits before OCP defends.
-- [LSP](LSP.md) — defines what "extension" means
-  precisely: a substitute that behaves like the base.
-- [DIP](DIP.md) — provides the interface-based
-  extension point OCP demands.
+<!-- doc:base "Related principles" -->
 
 ## References
 

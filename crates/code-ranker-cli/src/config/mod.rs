@@ -13,6 +13,6 @@ pub mod violations;
 
 pub use ignore::apply_ignore;
 pub use load::load;
-pub use model::{CycleRules, OutputArtifact, OutputConfig, RulesConfig};
+pub use model::{CycleRules, OutputArtifact, OutputConfig, RulesConfig, TemplatesConfig};
 pub use rules::{apply_cycle_rules, rule_doc, rule_tuning};
 pub use violations::{Violation, check_violations};

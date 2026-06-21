@@ -61,6 +61,21 @@ pub(crate) fn apply_inline_overrides(cfg: &mut Config, entries: &[&str]) -> Resu
                 let val = parse_number(value).with_context(|| format!("in --config {raw}"))?;
                 set_threshold(cfg, scope, metric, val)?;
             }
+            "templates.prompt" => cfg.templates.prompt = Some(value.to_string()),
+            _ if key.strip_prefix("templates.languages.").is_some() => {
+                // `templates.languages.<lang>.<ID>=path` — override one doc fragment.
+                let rest = key.strip_prefix("templates.languages.").unwrap();
+                let (lang, id) = rest.split_once('.').with_context(|| {
+                    format!(
+                        "--config templates key must be templates.languages.<lang>.<ID>, got: {key}"
+                    )
+                })?;
+                cfg.templates
+                    .languages
+                    .entry(lang.to_string())
+                    .or_default()
+                    .insert(id.to_string(), value.to_string());
+            }
             other => anyhow::bail!("unknown config key {other:?}"),
         }
     }

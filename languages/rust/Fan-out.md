@@ -11,19 +11,7 @@ by depending on fewer, more abstract collaborators.
 flow edges (`use` paths, qualified references, derives). External-library
 dependencies are tracked separately (`fan_out_external`) and not counted here.
 Fan-out is the mirror of [fan-in](Fan-in.md).
-
-## Why it matters
-
-A high-fan-out module is coupled to many moving parts:
-
-- **Fragile**: it is exposed to change in every dependency. The more it
-  imports, the more often something underneath shifts beneath it.
-- **Hard to test**: each dependency must be constructed, mocked, or stubbed to
-  test the module in isolation; high fan-out means a heavy test harness.
-- **Hard to reuse**: you cannot lift the module into another context without
-  dragging its whole dependency cone along.
-- **Hard to understand**: following what a module does means following all the
-  things it calls.
+<!-- doc:base "Why it matters" -->
 
 ## In Rust
 
@@ -51,21 +39,6 @@ For each high-fan-out module:
   belongs in a module closer to those dependencies
   (see [LoD](LoD.md) — talk to immediate collaborators, not the
   whole graph).
-
-## How code-ranker surfaces it
-
-`fan_out` is a first-class node metric, a sort option, and the `FANOUT` preset
-in the Prompt Generator. The preset ranks modules by fan-out worst-first and
-pre-selects **outgoing** connections, so the prompt shows exactly what each
-module pulls in.
-
-## Related principles
-
-- [DIP](DIP.md) — depend on abstractions to cut fan-out.
-- [LoD](LoD.md) — limit who a module talks to directly.
-- [Fan-in](Fan-in.md) — the incoming-dependency mirror.
-
-## References
-
-1. Martin, R. C. "OO Design Quality Metrics: An Analysis of Dependencies"
-   (afferent / efferent coupling). 1994.
+<!-- doc:base "How code-ranker surfaces it" -->
+<!-- doc:base "Related principles" -->
+<!-- doc:base "References" -->

@@ -283,7 +283,7 @@ keys it understands, described per level by the semantics dictionaries.
 | NodeKindSpec / CycleKindSpec | Per-kind UI semantics. `NodeKindSpec`: `label`/`plural`/`fill`/`stroke`/`external`. `CycleKindSpec`: `label`/`description` (the cycle *why*)/`remediation` (the *fix*). `default_node_kinds()` seeds node kinds; `default_cycle_kinds()` seeds only the cycle *keys* (`mutual`/`chain`) — the orchestrator overlays the vocabulary centrally from `code-ranker-graph`'s `cycle_specs()` (the `builtin.toml [cycles.*]` catalog), so no cycle prose lives in Rust. | `crates/code-ranker-plugin-api/src/level.rs` |
 | Thresholds | `{ info: f64, warning: f64 }` — two-tier per-metric advisory thresholds overlaid onto the matching `AttributeSpec`; `warning` is the `[rules.thresholds.file]` gate limit, `info` an optional softer line below it (so the report mirrors the gate). | `crates/code-ranker-plugin-api/src/level.rs` |
 | Preset | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-ranker-cli/src/presets.rs`) and a plugin's `presets(input)` hook may pass through / edit / extend it. Stored top-level in the snapshot. Prompt-generator domain data — lives in its own module, not the parser contract. | `crates/code-ranker-plugin-api/src/preset.rs` |
-| PromptTemplate | The language-neutral prompt **scaffolding** the Prompt-Generator wraps a `Preset` in: `intro`, `doc_note`, `task` (bullet lines), `focus`, `cycle_note` (`{id}` substituted at render). Data, not code — sourced from `builtin.toml [prompt]` (`code-ranker-graph`'s `prompt_template()`), carried top-level in the snapshot so the CLI `prompt` format and the viewer's Prompt Generator render the same text from one source. | `crates/code-ranker-plugin-api/src/preset.rs` |
+| PromptTemplate | The language-neutral prompt **scaffolding** the Prompt-Generator wraps a `Preset` in: `intro`, `doc_note`, `task` (bullet lines), `focus`, `cycle_note` (`{id}` substituted at render). Data, not code — sourced from `code-ranker-graph/metrics/prompt.md` (`code-ranker-graph`'s `prompt_template()`), carried top-level in the snapshot so the CLI `prompt` format and the viewer's Prompt Generator render the same text from one source. | `crates/code-ranker-plugin-api/src/preset.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"mutual"` for a 2-node SCC, `"chain"` for 3+), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelUi | Computed UI hints: `default_sort`, `sort`, `size`, `card`, `columns`, `summary` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-ranker-graph/src/level_graph.rs` |
@@ -327,11 +327,14 @@ Modules:
   artifact (crate identity read from the node `crate` attribute, falling back to
   the path). Classifies each surviving SCC `"mutual"` (2 nodes) or `"chain"` (3+)
   and writes a `cycle` attribute on each member node.
-- **`hk.rs`** — `annotate_hk(graph, flow_kinds)`: writes `fan_in` / `fan_out` /
-  `fan_out_external` / `hk` (`hk = sloc × (fan_in × fan_out)²`) into each
-  internal node's `attrs`. `fan_in` / `fan_out` count unique **internal** flow
-  partners only; edges whose target is external are counted into
-  `fan_out_external` instead. Zero values are omitted.
+- **`hk.rs`** — `annotate_coupling(graph, flow_kinds)`: writes `fan_in` /
+  `fan_out` / `fan_out_external` into each internal node's `attrs`. `fan_in` /
+  `fan_out` count unique **internal** flow partners only; edges whose target is
+  external are counted into `fan_out_external` instead. Zero values are omitted.
+  The size-folding `hk` (`hk = sloc × (fan_in × fan_out)²`) is **not** computed
+  here: it is a graph-derived `[fields.hk]` CEL formula evaluated by
+  `builtin::write_derived` once these counts are on the node (TIER1 → graph →
+  TIER2).
 - **`stats.rs`** — `compute_stats(graph) -> BTreeMap<String, AttrValue>`: the
   mean of each tracked numeric metric across the file nodes (zero/missing values
   excluded; a metric emitted only when its average is positive).
@@ -420,8 +423,9 @@ A plugin may refine a spec's wording for its language via the
 `#[cfg(test)]`/`#[test]`-exclusion note to `sloc` / `lloc` / `cloc` / `blank`, so
 that nuance appears only in Rust snapshots).
 
-Coupling (`fan_in` / `fan_out` / `fan_out_external` / `hk`) and `cycle` are added
-later by this crate's `annotate_hk` / `annotate_cycles` passes.
+Coupling (`fan_in` / `fan_out` / `fan_out_external`) and `cycle` are added later by
+this crate's `annotate_coupling` / `annotate_cycles` passes; `hk` is then derived
+from the coupling counts by the `write_derived` (graph-derived `[fields.*]`) step.
 
 #### code-ranker-plugin-api
 
@@ -758,7 +762,7 @@ See [§3.7 Plugin System](#37-plugin-system).
 |----------|------------|-----------|
 | `code-ranker-cli` | `code-ranker-plugin-api` | `LanguagePlugin` trait — the only contract the CLI uses to talk to plugins |
 | `code-ranker-cli` | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | each **self-registers** via `inventory::submit!`. The CLI references NO symbol from this crate — a single `extern crate code_ranker_plugins as _;` link-anchor in `main.rs` pulls it in so the submissions are collected by `code_ranker_plugin_api::registry()`. All shared functionality (the merge, the list-override DSL) lives in `code-ranker-plugin-api`, not here. |
-| `code-ranker-cli` | `code-ranker-graph` | `Snapshot`/`LevelGraph`, `annotate_cycles`/`annotate_hk`/`compute_stats`, `relativize_graph`, `finalize_graph`, `coupling_specs`, `metric_specs()` (the metric attribute catalog), canonical serialization |
+| `code-ranker-cli` | `code-ranker-graph` | `Snapshot`/`LevelGraph`, `annotate_cycles`/`annotate_coupling`/`write_derived`/`compute_stats`, `relativize_graph`, `finalize_graph`, `coupling_specs`, `metric_specs()` (the metric attribute catalog), canonical serialization |
 | `code-ranker-cli` | `code-ranker-viewer` | `render_html_viewer()`, `extract_embedded_snapshot()` |
 | `code-ranker-plugins` (`rust`/`python`/`javascript`/`typescript`/`go`/`c`/`cpp`/`csharp`/`markdown` modules) | `code-ranker-plugin-api` | `impl LanguagePlugin` (name/detect/levels/analyze/metrics/versions/roots/metric_specs); generic `detect_with_marker` |
 | `code-ranker-plugins` (`rust`/`python`/`ecmascript`/`go`/`cfamily`/`csharp` modules) | `code-ranker-graph` | `MetricInputs` + `write_metrics` (the neutral metric scaffolding); all measure tier-1 counts via the **one shared generic engine** (`src/engine/`), parameterized by each language's `Dialect` + `config.toml` |
@@ -855,7 +859,7 @@ sequenceDiagram
     Plugin -->> CLI: N nodes annotated
     CLI ->> G: finalize_graph + relativize_graph (abs → {target}/{registry})
     CLI ->> CLI: apply_ignore (globs / dev-only; tests already dropped by the plugin)
-    CLI ->> G: annotate_cycles + annotate_hk + compute_stats (flow edges)
+    CLI ->> G: annotate_cycles + annotate_coupling + write_derived (hk) + compute_stats (flow edges)
     CLI ->> CLI: assemble LevelGraph (merge + prune specs) → graphs["files"]
     CLI ->> FS: write {ts}-{git-hash-3}.json (metadata + timings + files level)
     CLI -->> User: exit 0
@@ -1158,9 +1162,10 @@ code-ranker report /path/to/my-crate --plugin rust
       crate node, which maps to the crate-root file (`lib.rs` / `main.rs`) — so
       root-level items still produce a file→file edge to the root. Crate→crate
       dependency edges (from `cargo metadata`) are dropped as crate-level meta.
-6. Runs `annotate_all_cycles` (SCC → `CycleKind`) and `annotate_hk`
-   (internal `fan_in`/`fan_out`/`hk`; `fan_out_external` separately) on
-   the file graph, then `annotate_stats`. Named roots that did not shorten
+6. Runs `annotate_all_cycles` (SCC → `CycleKind`) and `annotate_coupling`
+   (internal `fan_in`/`fan_out`; `fan_out_external` separately), then
+   `write_derived` (the graph-derived `hk` over those counts) on the file graph,
+   then `annotate_stats`. Named roots that did not shorten
    any node path are pruned (`prune_unused_roots`), so the header lists only
    relevant roots.
 7. Writes the final snapshot `.json` (metadata + `timings` + `files` graph)

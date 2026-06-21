@@ -118,19 +118,6 @@
           "short": "H",
           "value_type": "int"
         },
-        "hk": {
-          "abbreviate": true,
-          "calc": "sloc * (fan_in * fan_out) ** 2",
-          "description": "Henry-Kafura — sloc × (fan_in × fan_out)² — flags units that are both highly connected and large: change-amplifiers whose edits ripple widely across the system.",
-          "direction": "lower_better",
-          "formula": "sloc × (fan_in × fan_out)²",
-          "group": "coupling",
-          "label": "HK",
-          "name": "Henry–Kafura",
-          "remediation": "Download and follow the instructions on https://github.com/ffedoroff/code-ranker/blob/main/languages/base/HK.md",
-          "short": "HK",
-          "value_type": "float"
-        },
         "links": {
           "description": "Total inline Markdown links `[text](dest)` (local files, URLs and anchors alike).",
           "label": "Links",
@@ -167,7 +154,6 @@
           "fan_in": 2,
           "fan_out": 2,
           "headings": 1,
-          "hk": 64,
           "id": "{target}/api.md",
           "kind": "file",
           "links": 2,
@@ -180,7 +166,6 @@
           "fan_in": 2,
           "fan_out": 2,
           "headings": 1,
-          "hk": 64,
           "id": "{target}/guide.md",
           "kind": "file",
           "links": 2,
@@ -194,7 +179,6 @@
           "fan_in": 2,
           "fan_out": 2,
           "headings": 1,
-          "hk": 96,
           "id": "{target}/index.md",
           "kind": "file",
           "links": 4,
@@ -205,17 +189,13 @@
       ],
       "stats": {
         "fan_in": 2,
-        "fan_out": 2,
-        "hk": 74.666
+        "fan_out": 2
       },
       "ui": {
-        "card": [
-          "hk"
-        ],
+        "card": [],
         "columns": [
           "kind",
           "cycle",
-          "hk",
           "fan_in",
           "fan_out",
           "headings",
@@ -227,12 +207,9 @@
         "filter": [
           "cycle"
         ],
-        "size": [
-          "hk"
-        ],
+        "size": [],
         "sort": [
           "cycle",
-          "hk",
           "fan_in",
           "fan_out",
           "headings",
@@ -241,7 +218,6 @@
           "broken_links"
         ],
         "summary": [
-          "hk",
           "fan_in",
           "fan_out",
           "headings",

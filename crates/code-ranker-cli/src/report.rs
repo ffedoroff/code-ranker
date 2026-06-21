@@ -35,6 +35,10 @@ pub(crate) struct ReportReco {
     pub(crate) severity: Vec<String>,
     pub(crate) top: Option<usize>,
     pub(crate) index: Option<usize>,
+    /// `--prompt <ID>`: print the named principle/metric prompt to stdout and exit.
+    pub(crate) prompt_id: Option<String>,
+    /// `--doc <ID>`: print the named principle/metric doc Markdown to stdout and exit.
+    pub(crate) doc_id: Option<String>,
 }
 
 /// `report` — analyze (or read) the input and write artifacts. Which formats are
@@ -46,6 +50,12 @@ pub(crate) fn run_report(
     out: ReportOutputs,
     reco: ReportReco,
 ) -> Result<()> {
+    // `--prompt <ID>` / `--doc <ID>`: analyze, print the one artifact to stdout,
+    // and exit — a direct dump that bypasses the file-artifact flags entirely.
+    if reco.prompt_id.is_some() || reco.doc_id.is_some() {
+        return run_direct(args, &reco);
+    }
+
     let json_path = out.json_path.as_deref();
     let html_path = out.html_path.as_deref();
     let sarif_path = out.sarif_path.as_deref();
@@ -212,6 +222,55 @@ pub(crate) fn run_report(
         )?;
     }
 
+    Ok(())
+}
+
+/// `--prompt <ID>` / `--doc <ID>`: analyze the input and print one principle's AI
+/// prompt or its doc Markdown to stdout, then exit. Standalone — no file artifacts
+/// and none of the `--output.*` validation (so `--prompt HK --top 5` is fine).
+fn run_direct(args: &AnalyzeArgs, reco: &ReportReco) -> Result<()> {
+    if reco.prompt_id.is_some() && reco.doc_id.is_some() {
+        anyhow::bail!("--prompt and --doc are mutually exclusive");
+    }
+    let a = analyze_input(args, &[], &[])?;
+    let snap = &a.snapshot;
+
+    // `--doc <ID>`: the resolved corpus Markdown (with any `[templates.…]` override).
+    if let Some(id) = &reco.doc_id {
+        let md = crate::templates::resolve_doc(snap, &a.templates, id)?;
+        print!("{md}");
+        if !md.ends_with('\n') {
+            println!();
+        }
+        return Ok(());
+    }
+
+    // `--prompt <ID>`: compose the named principle/metric prompt (same builder as
+    // `--output.prompt`, but for the id you name, to stdout).
+    let id = reco.prompt_id.as_deref().expect("prompt_id is set");
+    let level = snap
+        .graphs
+        .get("files")
+        .context("snapshot has no `files` level to build a prompt from")?;
+    let focus = recommend::resolve_focus(level, &snap.presets, id)?;
+    let synth; // holds the metric-lens preset for the borrow below
+    let (presets_for_prompt, preset_id): (&[recommend::Preset], String) = match &focus {
+        recommend::Focus::Metric(m) => {
+            synth = [recommend::synth_metric_preset(level, m)];
+            (&synth, m.clone())
+        }
+        recommend::Focus::Principle(pid) => (&snap.presets, pid.clone()),
+    };
+    let md = recommend::compose_prompt(
+        level,
+        presets_for_prompt,
+        &snap.prompt,
+        &preset_id,
+        recommend::Severity::Auto,
+        reco.top,
+        &reco.focus_path,
+    )?;
+    print!("{md}");
     Ok(())
 }
 

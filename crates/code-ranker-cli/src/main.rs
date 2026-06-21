@@ -10,6 +10,7 @@ extern crate code_ranker_plugins as _;
 mod analyze;
 mod check;
 mod cli;
+mod compose;
 mod config;
 mod export;
 mod git;
@@ -18,6 +19,7 @@ mod pipeline;
 mod plugin;
 mod recommend;
 mod report;
+mod templates;
 
 use anyhow::Result;
 use clap::Parser;
@@ -80,6 +82,8 @@ fn main() -> Result<()> {
             top,
             index,
             export_full_config,
+            prompt_id,
+            doc_id,
         } => match export_full_config {
             // `--export-full-config PATH`: dump the effective config and exit; no analysis.
             Some(path) => export::export_full_config(&analyze, &path),
@@ -106,9 +110,14 @@ fn main() -> Result<()> {
                     severity,
                     top,
                     index,
+                    prompt_id,
+                    doc_id,
                 },
             ),
         },
+        Command::Docs { out } => templates::build_corpus(&out).map(|n| {
+            logger::info(&format!("docs: wrote {n} files to {}", out.display()));
+        }),
     };
     match &res {
         Ok(_) => {

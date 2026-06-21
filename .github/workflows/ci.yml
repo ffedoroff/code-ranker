@@ -86,7 +86,7 @@ jobs:
       - name: lychee (offline link check)
         uses: lycheeverse/lychee-action@v2
         with:
-          args: --offline --no-progress docs/**/*.md contrib/**/*.md languages/**/*.md AGENTS.md CLAUDE.md
+          args: --offline --no-progress --exclude-path languages/_overlay docs/**/*.md contrib/**/*.md languages/**/*.md AGENTS.md CLAUDE.md
           fail: true
       - name: markdownlint
         # Argless — globs and rules come from .markdownlint-cli2.jsonc.

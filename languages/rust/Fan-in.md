@@ -51,23 +51,6 @@ For each high-fan-in module:
   split it so each caller depends only on what it uses
   (see [ISP](ISP.md)). This lowers fan-in on each
   resulting piece and shrinks the blast radius of a change.
-
-## How code-ranker surfaces it
-
-`fan_in` is a first-class node metric, a sort option, and the `FANIN` preset
-in the Prompt Generator. The preset ranks modules by fan-in worst-first and
-pre-selects **incoming** connections, so the prompt shows who depends on each
-load-bearing module.
-
-## Related principles
-
-- [ISP](ISP.md) — split a widely-used module so
-  callers depend only on the slice they need.
-- [DIP](DIP.md) — depend on stable abstractions, which
-  is what high-fan-in modules should be.
-- [Fan-out](Fan-out.md) — the outgoing-dependency mirror.
-
-## References
-
-1. Martin, R. C. "Design Principles and Design Patterns" (Stable Dependencies
-   / Stable Abstractions Principles). 2000.
+<!-- doc:base "How code-ranker surfaces it" -->
+<!-- doc:base "Related principles" -->
+<!-- doc:base "References" -->

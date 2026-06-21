@@ -59,33 +59,6 @@ leaf helpers; move shared data down into a leaf both depend on, never reference
 the parent back) — are written up once in
 [Cyclomatic § The cycle trap](Cyclomatic.md). Read that before splitting; it
 applies verbatim here.
-
-## A workflow
-
-```bash
-# Flag files over the cognitive budget, worst-first:
-code-ranker check <path/to/project> --threshold file.cognitive=110 --top 1
-
-# Snapshot and read the per-function breakdown to find the deepest offender:
-code-ranker report <path/to/project> --output.json.path=.code-ranker/cog.json
-
-# After flattening / splitting — confirm it dropped and no new cycle appeared:
-code-ranker check <path/to/project> --threshold file.cognitive=110
-```
-
-Prefer flattening (early returns, extracted blocks) over relocation when one
-function dominates — it lowers the *true* reading cost. Run the test suite after.
-
-## Related principles
-
-- [Cyclomatic](Cyclomatic.md) — the path-count twin; the split/cycle workflow
-  lives there. Reduce both together.
-- [KISS](KISS.md) — the qualitative root.
-- [SRP](SRP.md) — a deeply nested function often conflates several jobs.
-- [ADP](ADP.md) — the cycle trap a careless split triggers.
-
-## References
-
-1. Campbell, G. A. "Cognitive Complexity — A new way of measuring understandability".
-   SonarSource, 2018.
-2. McCabe, T. J. "A Complexity Measure". *IEEE TSE*, SE-2(4), 1976.
+<!-- doc:base "A workflow" -->
+<!-- doc:base "Related principles" -->
+<!-- doc:base "References" -->

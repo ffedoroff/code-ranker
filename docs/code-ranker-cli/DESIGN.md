@@ -72,8 +72,8 @@ detected roots, `config::apply_ignore` (language-agnostic path globs and
 job** — the CLI passes `PluginInput::ignore_tests` and each plugin drops its own
 tests during the walk, since what counts as a test is language-specific), then
 `annotate_cycles` +
-`config::apply_cycle_rules`, `annotate_hk` and `compute_stats` over the level's
-flow edges. Finally it assembles the `LevelGraph` — merging the plugin's
+`config::apply_cycle_rules`, `annotate_coupling`, `write_derived` (the
+graph-derived `hk`) and `compute_stats` over the level's flow edges. Finally it assembles the `LevelGraph` — merging the plugin's
 structural attribute specs with `code_ranker_graph::metric_specs` and
 `code_ranker_graph::coupling_specs`, then **pruning** the node/edge attribute
 dictionaries, edge kinds and groups to what is actually present — and wraps it in
