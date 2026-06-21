@@ -500,7 +500,7 @@ An unknown name is a hard error that lists both namespaces (`unknown --focus-rul
 Metrics: …. Principles: …`).
 
 `--focus-rule` drives **both** outputs. `--focus-rule hk --output.prompt.path=stdout --top 1`
-emits an **HK-framed** fix-prompt directly (titled "HK — Henry-Kafura", no Liskov wrapper);
+emits an **HK-framed** fix-prompt directly (titled "HK — Henry–Kafura", no Liskov wrapper);
 `--focus-rule LSP …` emits the **Liskov-framed** prompt. Without `--focus-rule` the scorecard
 spans all principles (one row each) and the `prompt` auto-targets the single worst module's
 principle. The principle *catalog* lives in the snapshot's `presets` (shared with the HTML
@@ -551,10 +551,11 @@ scopes the ranked modules to a subtree.
 
 Defaults to the file `.code-ranker/{ts}-{git-hash-3}-{preset}.md` (use
 `--output.prompt.path=stdout` to pipe it). It is **auto-targeted**: it emits the Markdown
-fix-prompt for the **single worst module** — its principle's intent and summary, a link to
-the full principle doc, a task checklist, the offending module annotated with its metric
-value, and the relevant connection lists. The `{preset}` in the default filename is the
-auto-selected principle id.
+fix-prompt for the **single worst module** — its principle's intent and summary, how to
+read the full principle (the offline `code-ranker report --doc <id>` command, no network),
+a task checklist, the offending module annotated with its metric value, and the relevant
+**flow** connection lists (`uses` — structural `contains`/`reexports` are excluded). The
+`{preset}` in the default filename is the auto-selected principle id.
 
 It **requires `--top 1`** (prompts are long, and the prompt always describes exactly one
 module). There is no principle selection and no `--index`.
@@ -565,6 +566,20 @@ code-ranker report . --output.prompt.path=stdout --top 1
 
 # the same, saved to a file (name carries the auto-selected principle id)
 code-ranker report . --output.prompt --top 1
+```
+
+### `--prompt <ID>` / `--doc <ID>` — one principle/metric by name
+
+`--prompt <ID>` is the **named** counterpart of `--output.prompt`: it prints that
+principle/metric's fix-prompt to stdout and exits (shape the module list with `--top N` /
+`--focus-path`). `--doc <ID>` prints the **raw principle/metric doc** Markdown (the
+resolved `languages/<lang>/<ID>.md`, with any `[templates.languages.…]` override) — offline,
+no network. Both accept a principle id (`SRP`, `ADP`) or a metric key (`hk`, `cyclomatic`),
+case-insensitive; they are mutually exclusive and write no artifacts.
+
+```sh
+code-ranker report . --prompt HK --top 1   # HK fix-prompt for the worst module
+code-ranker report . --doc HK              # the full HK principle text, to stdout
 ```
 
 ## `--baseline` (comparison)

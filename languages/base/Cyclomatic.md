@@ -141,9 +141,13 @@ and move that shared item to a leaf.
 # Gate on cyclomatic: flag every file over budget N, worst-first.
 code-ranker check <path/to/project> --threshold file.cyclomatic=110 --top 1
 
-# Snapshot once; inspect the offending file's total and its functions:
-code-ranker report <path/to/project> --output.json.path=.code-ranker/cx.json
+# Triage worst-first by cyclomatic — ranked offenders, no snapshot to parse:
+code-ranker report <path/to/project> --output.scorecard --focus-rule cyclomatic
 ```
+
+To read how a file's total splits across its functions (which picks the lever),
+turn on the function level (`[levels] functions = true`) and open the viewer
+(`report --output.html`) — each function shows its own cyclomatic in the node popup.
 
 Decide the lever from the shape: **one function ≫ the rest → Lever A** (simplify
 it); **many comparable functions → Lever B** (split the file).

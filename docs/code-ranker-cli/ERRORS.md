@@ -174,7 +174,7 @@ connectivity: `hk = sloc × (fan_in × fan_out)²`. Inactive until a limit is se
 
 | Metric | What it flags | How to fix |
 |--------|---------------|------------|
-| `hk` | Henry-Kafura coupling: the unit is both highly connected and large — a change-amplifier whose edits ripple widely across the system. | Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk. |
+| `hk` | Henry-Kafura information-flow complexity: a module that is both a busy crossroads (high fan-in × fan-out) and large — the most expensive place in the codebase to change. | Cut fan-in or fan-out: narrow the public surface, split the unit by responsibility, or route dependencies through a smaller interface. Shrinking the file (sloc) also lowers hk. |
 | `fan_in` | Too many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately. | If unintended, split the unit so each caller depends only on the slice it uses; otherwise stabilize the interface so high fan-in is safe. |
 | `fan_out` | This unit depends on too many others, so it breaks when any of them change and is hard to test in isolation. | Group related dependencies behind a facade, inject collaborators instead of reaching for them, or move logic closer to the data it uses. |
 

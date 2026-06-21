@@ -272,9 +272,10 @@ This section notes the implementation binding.
 
 ## 3. CLI Reference and Examples
 
-The full CLI surface is documented in [CLI.md](CLI.md). The two commands are
-`check` (verdict + exit code, no files) and `report` (artifacts). Both take a
-polymorphic `[input]` and accept `--baseline <snapshot>`.
+The full CLI surface is documented in [CLI.md](CLI.md). The two analysis commands
+are `check` (verdict + exit code, no files) and `report` (artifacts); both take a
+polymorphic `[input]` and accept `--baseline <snapshot>`. A third, maintenance-only
+`docs` subcommand assembles the doc corpus for publishing (no analysis).
 
 ### Snapshots — `code-ranker report --output.json`
 

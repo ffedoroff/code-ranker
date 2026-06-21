@@ -67,12 +67,16 @@ applies verbatim here.
 # Flag files over the cognitive budget, worst-first:
 code-ranker check <path/to/project> --threshold file.cognitive=110 --top 1
 
-# Snapshot and read the per-function breakdown to find the deepest offender:
-code-ranker report <path/to/project> --output.json.path=.code-ranker/cog.json
+# Triage worst-first by cognitive — ranked offenders, no snapshot to parse:
+code-ranker report <path/to/project> --output.scorecard --focus-rule cognitive
 
 # After flattening / splitting — confirm it dropped and no new cycle appeared:
 code-ranker check <path/to/project> --threshold file.cognitive=110
 ```
+
+To find the deepest offender within a file, turn on the function level
+(`[levels] functions = true`) and open the viewer (`report --output.html`) — each
+function shows its own cognitive score in the node popup.
 
 Prefer flattening (early returns, extracted blocks) over relocation when one
 function dominates — it lowers the *true* reading cost. Run the test suite after.
