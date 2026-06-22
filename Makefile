@@ -97,6 +97,10 @@ bump:
 	  LC_ALL=C sed -i '' "s/$$CURRENT/$(VERSION)/g" Cargo.toml README.md
 	cargo build --workspace
 	@echo
+	@echo "  ⚠ version mentions in docs (NOT auto-bumped — review/update manually):"
+	@hits=$$(grep -rnE -- '--version[ =]+v?[0-9]+\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)|code-ranker[@:][0-9]+\.[0-9]+\.[0-9]+' docs README.md AGENTS.md CLAUDE.md 2>/dev/null || true); \
+	  if [ -n "$$hits" ]; then echo "$$hits" | sed 's/^/      /'; else echo "      (none)"; fi
+	@echo
 	@echo "  ✓ bumped to $(VERSION) — review and commit:"
 	@echo "      git diff --stat && git diff Cargo.toml pyproject.toml README.md"
 	@echo "      git add -A && git commit -m 'release v$(VERSION)'"
