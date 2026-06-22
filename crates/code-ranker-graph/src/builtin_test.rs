@@ -27,6 +27,34 @@ fn prompt_template_parses_from_markdown() {
     assert!(t.cycle_note.starts_with("This is **one** dependency cycle"));
 }
 
+/// `prompt_template_from` is the hook a `[templates] prompt = "…"` override flows
+/// through: it parses caller-supplied scaffolding instead of the built-in default.
+#[test]
+fn prompt_template_from_parses_caller_supplied_markdown() {
+    let md =
+        "## intro\nCustom intro line.\n\n## task\n- first\n- second\n\n## focus\nStay sharp.\n";
+    let t = prompt_template_from(md);
+    assert_eq!(t.intro, "Custom intro line.");
+    assert_eq!(t.task, vec!["- first", "- second"]);
+    assert_eq!(t.focus, "Stay sharp.");
+    // Unspecified sections stay at their default (empty).
+    assert!(t.cycle_note.is_empty());
+}
+
+/// `aggregate_formulas` exposes every `[report.stats]` formula; `stat_keys` is the
+/// subset whose formula is a plain mean — so the keys must be a subset of the map.
+#[test]
+fn aggregate_formulas_superset_of_stat_keys() {
+    let formulas = aggregate_formulas();
+    assert!(!formulas.is_empty(), "built-in report.stats is non-empty");
+    for k in stat_keys() {
+        assert!(
+            formulas.contains_key(&k),
+            "stat key {k:?} has a backing formula"
+        );
+    }
+}
+
 #[test]
 fn parses_and_compiles() {
     let (specs, groups) = metric_specs();

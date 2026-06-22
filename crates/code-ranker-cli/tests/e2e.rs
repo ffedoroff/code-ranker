@@ -460,6 +460,205 @@ fn rust_sample_check_baseline_verdict_neutral() {
     );
 }
 
+/// The self-baseline verdict also renders in the default human format as a
+/// trailing `Baseline verdict:` line (the json test above covers the wrapper).
+#[test]
+fn rust_sample_check_baseline_verdict_human() {
+    let root = repo_root();
+    let sample = sample_dir("rust");
+    let tmp = std::env::temp_dir().join("cs-e2e-baseline-rust-human.json");
+    let report = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(&root)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(&sample)
+        .arg("--config")
+        .arg(sample.join("code-ranker.toml"))
+        .arg(format!("--output.json.path={}", tmp.display()))
+        .output()
+        .expect("spawn report");
+    assert!(report.status.success(), "baseline report");
+    let (_ok, stdout, _stderr) = run_check_capture("rust", &["--baseline", tmp.to_str().unwrap()]);
+    assert!(
+        stdout.contains("Baseline verdict: neutral"),
+        "human output carries the verdict line: {stdout}"
+    );
+}
+
+/// `check --focus-path` scopes the gate to a subtree: only violations under the
+/// path are reported and counted. The Rust sample's `chain` cycle lives in
+/// `src/chain/`, so focusing there keeps it and drops the `src/a.rs` mutual cycle.
+#[test]
+fn rust_sample_check_focus_path_scopes_gate() {
+    let (_ok, stdout, stderr) = run_check_capture("rust", &["--focus-path", "src/chain"]);
+    assert!(
+        stdout.contains("1 violation(s)") && stdout.contains("focused on path src/chain"),
+        "gate scoped to the focused subtree: {stdout}{stderr}"
+    );
+    assert!(
+        stdout.contains("src/chain/one.rs") && !stdout.contains("where  {target}/src/a.rs"),
+        "only the in-scope cycle is reported: {stdout}"
+    );
+}
+
+/// `check --focus-rule` scopes the gate to a rule id: focusing `cycle.mutual` keeps
+/// the `a ⇄ b` mutual cycle and drops the chain cycle.
+#[test]
+fn rust_sample_check_focus_rule_scopes_gate() {
+    let (_ok, stdout, stderr) = run_check_capture("rust", &["--focus-rule", "cycle.mutual"]);
+    assert!(
+        stdout.contains("1 violation(s)") && stdout.contains("focused on rule cycle.mutual"),
+        "gate scoped to the focused rule: {stdout}{stderr}"
+    );
+    assert!(
+        stdout.contains("src/a.rs"),
+        "the mutual-cycle member is reported: {stdout}"
+    );
+}
+
+/// `check --top N` limits how many violations are PRINTED (worst-first) without
+/// changing the exit code: the Rust sample's 2 cycles still fail the gate, but
+/// only the worst is shown plus a "showing the N worst" note.
+#[test]
+fn rust_sample_check_top_limits_reported_not_exit() {
+    let (ok, stdout, stderr) = run_check_capture("rust", &["--top", "1"]);
+    assert!(
+        !ok,
+        "gate still fails on the full violation count: {stderr}"
+    );
+    assert!(
+        stdout.contains("2 violation(s)") && stdout.contains("showing the 1 worst"),
+        "total counted, only the worst shown: {stdout}"
+    );
+    assert!(
+        stdout.contains("Summary (shown):"),
+        "summary marked as a partial view: {stdout}"
+    );
+}
+
+/// `report --prompt <metric>` composes the prompt through the metric lens (a
+/// synthesized metric "preset"), not a SOLID principle — exercising the metric
+/// arm of the standalone `--prompt` path.
+#[test]
+fn rust_sample_prompt_flag_targets_metric_lens() {
+    let (ok, stdout, stderr) = run_report_capture("rust", &["--prompt", "HK", "--top", "1"]);
+    assert!(ok, "--prompt HK run failed: {stderr}");
+    assert!(
+        stdout.contains("# HK") || stdout.contains("Henry"),
+        "metric-framed prompt, not a principle: {stdout}"
+    );
+}
+
+/// `--prompt` and `--doc` are mutually exclusive (the standalone-output guard).
+#[test]
+fn rust_sample_report_rejects_prompt_with_doc() {
+    let (ok, _stdout, stderr) = run_report_capture("rust", &["--prompt", "HK", "--doc", "SRP"]);
+    assert!(!ok, "mutually-exclusive flags must error");
+    assert!(
+        stderr.contains("--prompt and --doc are mutually exclusive"),
+        "names the conflict: {stderr}"
+    );
+}
+
+/// `docs --out <dir>` assembles the embedded corpus to disk: `base/*` verbatim and
+/// each language manifest as its composed Markdown. No analysis runs.
+#[test]
+fn docs_subcommand_writes_the_corpus() {
+    let root = repo_root();
+    let out = std::env::temp_dir().join("cs-e2e-docs-corpus");
+    let _ = std::fs::remove_dir_all(&out);
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(&root)
+        .arg("docs")
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .expect("spawn docs");
+    assert!(res.status.success(), "docs run failed");
+    assert!(out.join("base/ADP.md").exists(), "base doc copied verbatim");
+    let assembled = std::fs::read_to_string(out.join("rust/ADP.md")).unwrap();
+    assert!(
+        !assembled.contains("<!-- doc:base"),
+        "manifest includes expanded on publish: {assembled}"
+    );
+}
+
+/// With no `--output.*` flag selected, `report` writes the default pair: a JSON
+/// snapshot and an HTML viewer (into `.code-ranker/` relative to the run dir).
+#[test]
+fn report_default_writes_json_and_html() {
+    let sample = sample_dir("rust");
+    let run_dir = std::env::temp_dir().join("cs-e2e-report-default");
+    let _ = std::fs::remove_dir_all(&run_dir);
+    std::fs::create_dir_all(&run_dir).unwrap();
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(&run_dir)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(&sample)
+        .arg("--config")
+        .arg(sample.join("code-ranker.toml"))
+        .output()
+        .expect("spawn report");
+    assert!(res.status.success(), "default report failed");
+    let written: Vec<String> = std::fs::read_dir(run_dir.join(".code-ranker"))
+        .expect(".code-ranker created")
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert!(
+        written.iter().any(|f| f.ends_with(".json")),
+        "json snapshot written: {written:?}"
+    );
+    assert!(
+        written.iter().any(|f| f.ends_with(".html")),
+        "html viewer written: {written:?}"
+    );
+}
+
+/// A `--baseline` turns the HTML viewer into a diff and marks the filename
+/// `…-diff.html` (the rename branch of the html artifact path).
+#[test]
+fn report_baseline_html_is_named_diff() {
+    let root = repo_root();
+    let sample = sample_dir("rust");
+    let dir = std::env::temp_dir().join("cs-e2e-report-diff");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let base = dir.join("base.json");
+    let html = dir.join("viewer.html");
+    // Capture a baseline snapshot.
+    let cap = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(&root)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(&sample)
+        .arg("--config")
+        .arg(sample.join("code-ranker.toml"))
+        .arg(format!("--output.json.path={}", base.display()))
+        .output()
+        .expect("spawn baseline report");
+    assert!(cap.status.success(), "baseline capture failed");
+    // Render the HTML viewer against that baseline.
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(&root)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(&sample)
+        .arg("--config")
+        .arg(sample.join("code-ranker.toml"))
+        .arg("--baseline")
+        .arg(&base)
+        .arg(format!("--output.html.path={}", html.display()))
+        .output()
+        .expect("spawn diff report");
+    assert!(res.status.success(), "diff report failed");
+    assert!(
+        dir.join("viewer-diff.html").exists(),
+        "baseline run renames the html artifact to -diff.html"
+    );
+    assert!(!html.exists(), "the plain name is not used for a diff");
+}
+
 /// The `scorecard` format streams a per-principle table + worst-module list to
 /// stdout. The Rust sample has two cycles (the `a ⇄ b` mutual and the 3-node
 /// `chain`) and no metric breaches, so ADP is the only principle with violations

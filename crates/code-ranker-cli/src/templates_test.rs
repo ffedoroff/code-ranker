@@ -75,6 +75,37 @@ fn resolve_doc_assembles_a_language_manifest() {
 }
 
 #[test]
+fn resolve_doc_manifest_uses_base_override_when_present() {
+    // A `templates.languages.base.<ID>` override substitutes the neutral base that
+    // a language manifest assembles over, so the custom base flows into the result.
+    let dir = tempfile::tempdir().unwrap();
+    let base_path = dir.path().join("base_adp.md");
+    let custom_base = corpus_doc("base/ADP.md")
+        .unwrap()
+        .replace("Acyclic", "ZZ-MARKER-ACYCLIC");
+    std::fs::write(&base_path, &custom_base).unwrap();
+    let mut templates = TemplatesConfig::default();
+    let mut base_overrides = BTreeMap::new();
+    base_overrides.insert("ADP".to_string(), base_path.to_string_lossy().into_owned());
+    templates
+        .languages
+        .insert("base".to_string(), base_overrides);
+
+    let s = snap(
+        vec![preset("ADP", "https://x/blob/main/languages/rust/ADP.md")],
+        BTreeMap::new(),
+    );
+    let doc = resolve_doc(&s, &templates, "ADP").unwrap();
+    let manifest = corpus_doc("rust/ADP.md").unwrap();
+    let expected = crate::compose::compose(manifest, &custom_base, "Rust").unwrap();
+    assert_eq!(doc, expected);
+    assert!(
+        doc.contains("ZZ-MARKER-ACYCLIC"),
+        "custom base flowed in: {doc}"
+    );
+}
+
+#[test]
 fn resolve_doc_override_wins_verbatim() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("custom.md");

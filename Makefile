@@ -94,16 +94,19 @@ bump:
 	    echo "already at $(VERSION) — nothing to bump"; exit 1; \
 	  fi; \
 	  echo "bumping $$CURRENT -> $(VERSION)"; \
-	  LC_ALL=C sed -i '' "s/$$CURRENT/$(VERSION)/g" Cargo.toml README.md
+	  LC_ALL=C sed -i '' "s/$$CURRENT/$(VERSION)/g" Cargo.toml README.md; \
+	  RE=$$(printf '%s' "$$CURRENT" | sed 's/[.]/\\./g'); \
+	  for f in $$(grep -rlF "$$CURRENT" docs AGENTS.md CLAUDE.md languages 2>/dev/null || true); do \
+	    LC_ALL=C sed -i '' -E "/code-ranker|--version/ s/$$RE/$(VERSION)/g" "$$f" && echo "  ✓ fixed doc version refs in $$f"; \
+	  done
 	cargo build --workspace
 	@echo
-	@echo "  ⚠ version mentions in docs (NOT auto-bumped — review/update manually):"
-	@hits=$$(grep -rnE -- '--version[ =]+v?[0-9]+\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)|code-ranker[@:][0-9]+\.[0-9]+\.[0-9]+' docs README.md AGENTS.md CLAUDE.md 2>/dev/null || true); \
-	  if [ -n "$$hits" ]; then echo "$$hits" | sed 's/^/      /'; else echo "      (none)"; fi
+	@echo "  remaining stale version mentions in docs (auto-fix only touches code-ranker/--version lines):"
+	@hits=$$(grep -rnE -- '--version[ =]+v?[0-9]+\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)|code-ranker[@:" ]+v?[0-9]+\.[0-9]+\.[0-9]+' docs README.md AGENTS.md CLAUDE.md languages 2>/dev/null | grep -vF "$(VERSION)" || true); \
+	  if [ -n "$$hits" ]; then echo "$$hits" | sed 's/^/      /'; echo "      ^ not at $(VERSION) — review (bare numbers off code-ranker/--version lines are left alone on purpose)"; else echo "      (none — all at $(VERSION))"; fi
 	@echo
 	@echo "  ✓ bumped to $(VERSION) — review and commit:"
-	@echo "      git diff --stat && git diff Cargo.toml pyproject.toml README.md"
-	@echo "      git add -A && git commit -m 'release v$(VERSION)'"
+	@echo "      git diff --stat && git add -A && git commit -m 'release v$(VERSION)'"
 	@echo "  → then: make release"
 
 release:

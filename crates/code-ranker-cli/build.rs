@@ -4,23 +4,39 @@
 //! `CORPUS: &[(rel_path, contents)]` slice built from `include_str!`, so the tool
 //! can serve a principle's Markdown (e.g. `--doc HK`) from the binary itself with
 //! no filesystem at runtime. Dependency-free (no `include_dir` crate).
+//!
+//! The corpus lives at the repo root (`../../languages`), OUTSIDE this crate, so it
+//! is NOT in the published crate tarball. A workspace build (the prebuilt binaries
+//! shipped via the installer / npm / PyPI / Docker / GitHub Release) finds it and
+//! embeds the full corpus; an ISOLATED build (`cargo publish` verify, or
+//! `cargo install code-ranker` from crates.io source) won't — so the corpus is
+//! resolved best-effort and absence yields an EMPTY corpus (never a build failure).
+//! `--doc` then reports "not embedded" on such builds; everything else works.
 
 use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn main() {
     let manifest = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR");
-    let corpus = Path::new(&manifest)
-        .join("../../languages")
-        .canonicalize()
-        .expect("languages/ corpus directory exists");
-
-    // Re-run when the tree changes (added/removed files) and on any file edit.
-    println!("cargo:rerun-if-changed={}", corpus.display());
 
     let mut entries: Vec<(String, PathBuf)> = Vec::new();
-    collect(&corpus, &corpus, &mut entries);
-    entries.sort();
+    // Best-effort: a missing corpus (isolated/published build) is NOT an error —
+    // it must never break `cargo publish`/`cargo install`. See module docs.
+    match Path::new(&manifest).join("../../languages").canonicalize() {
+        Ok(corpus) => {
+            // Re-run when the tree changes (added/removed files) and on any file edit.
+            println!("cargo:rerun-if-changed={}", corpus.display());
+            collect(&corpus, &corpus, &mut entries);
+            entries.sort();
+        }
+        Err(_) => {
+            println!(
+                "cargo:warning=languages/ corpus not found (isolated build, e.g. \
+                 `cargo install code-ranker` from crates.io) — embedding an empty corpus; \
+                 `--doc` will report \"not embedded\". Prebuilt binaries embed the full corpus."
+            );
+        }
+    }
 
     let mut code = String::from(
         "/// Embedded doc corpus: (`<lang>/<ID>.md` relative path, file contents).\n\
