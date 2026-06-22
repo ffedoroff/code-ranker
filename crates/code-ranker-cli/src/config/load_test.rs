@@ -63,6 +63,49 @@ fn load_layers_multiple_config_files_in_order_last_wins() {
 }
 
 #[test]
+fn load_auto_discovers_code_ranker_toml_in_workspace() {
+    // No explicit `--config`: a `code-ranker.toml` in the workspace dir is found
+    // by auto-discovery and merged over the built-in defaults.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("code-ranker.toml"),
+        "[rules.thresholds.file]\nhk = 42\n",
+    )
+    .unwrap();
+
+    let loaded = load(dir.path(), &[], &[], &[], &[]).unwrap();
+    assert_eq!(loaded.config.rules.thresholds.file.get("hk"), Some(42.0));
+    let src = loaded.source_file.expect("discovered source file");
+    assert!(src.ends_with("code-ranker.toml"), "{src}");
+}
+
+#[test]
+fn load_auto_discovers_cargo_workspace_metadata() {
+    // No `code-ranker.toml`, but `[workspace.metadata.code-ranker]` in a Cargo.toml
+    // supplies the config (the `table_from_cargo_toml` fallback).
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[workspace]\nmembers = []\n[workspace.metadata.code-ranker.rules.thresholds.file]\nhk = 7\n",
+    )
+    .unwrap();
+
+    let loaded = load(dir.path(), &[], &[], &[], &[]).unwrap();
+    assert_eq!(loaded.config.rules.thresholds.file.get("hk"), Some(7.0));
+    let src = loaded.source_file.expect("discovered source file");
+    assert!(src.ends_with("#metadata.code-ranker"), "{src}");
+}
+
+#[test]
+fn load_falls_back_to_builtin_defaults_when_no_config_found() {
+    // An empty dir (no code-ranker.toml, no Cargo.toml) → pure built-in defaults.
+    let dir = tempfile::tempdir().unwrap();
+    let loaded = load(dir.path(), &[], &[], &[], &[]).unwrap();
+    assert!(loaded.source_file.is_none());
+    assert!(loaded.config.output.json.path.is_some(), "defaults present");
+}
+
+#[test]
 fn parse_on_off_accepts_on_off_true_false() {
     for (input, expected) in [
         ("on", true),
@@ -121,6 +164,42 @@ fn inline_overrides_set_each_key() {
     assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(7));
     assert_eq!(cfg.rules.thresholds.file.get("loc"), Some(800.0));
     assert_eq!(cfg.rules.thresholds.file.get("sloc"), Some(1200.0));
+}
+
+#[test]
+fn inline_overrides_set_template_and_remaining_ignore_keys() {
+    let mut cfg = Config::default();
+    apply_inline_overrides(
+        &mut cfg,
+        &[
+            "ignore.test_modules=off", // alias of ignore.tests
+            "ignore.gitignore=off",
+            "ignore.ignore_files=off",
+            "ignore.hidden=off",
+            "templates.prompt=my-prompt.md",
+            "templates.languages.rust.SRP=docs/srp.md",
+            "templates.languages.rust.HK=docs/hk.md",
+        ],
+    )
+    .unwrap();
+    assert!(!cfg.ignore.tests);
+    assert!(!cfg.ignore.gitignore);
+    assert!(!cfg.ignore.ignore_files);
+    assert!(!cfg.ignore.hidden);
+    assert_eq!(cfg.templates.prompt.as_deref(), Some("my-prompt.md"));
+    let rust = cfg.templates.languages.get("rust").unwrap();
+    assert_eq!(rust.get("SRP").map(String::as_str), Some("docs/srp.md"));
+    assert_eq!(rust.get("HK").map(String::as_str), Some("docs/hk.md"));
+}
+
+#[test]
+fn inline_template_override_requires_lang_and_id() {
+    // `templates.languages.<lang>.<ID>` — a key missing the `.<ID>` segment errors.
+    let mut cfg = Config::default();
+    let err = apply_inline_overrides(&mut cfg, &["templates.languages.rust=x.md"])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("templates.languages.<lang>.<ID>"), "{err}");
 }
 
 #[test]

@@ -79,6 +79,63 @@ above = 100
 }
 
 #[test]
+fn assemble_level_synthesizes_default_spec_when_none() {
+    // No plugin-provided level spec → `assemble_level` falls back to a bare
+    // `files` Level, then layers the central metric/coupling specs over it.
+    use code_ranker_plugin_api::graph::Graph;
+    let custom = BTreeMap::new();
+    let level = assemble_level(
+        None,
+        Graph::default(),
+        vec![],
+        BTreeMap::new(),
+        BTreeMap::new(),
+        &custom,
+        "rust",
+        &[],
+    );
+    // An empty graph prunes every metric spec (no node carries it), so the
+    // assembled level is well-formed but empty — the point is the default-spec
+    // fallback ran without a plugin-provided `Level`.
+    assert!(level.nodes.is_empty());
+    assert!(level.node_attributes.is_empty(), "pruned to present keys");
+}
+
+#[test]
+fn assemble_level_keeps_grouping_with_a_function() {
+    // A grouping that names a `function` (no `key`) is always usable, so it
+    // survives the pruning filter even though no attribute backs it.
+    use code_ranker_plugin_api::graph::Graph;
+    use code_ranker_plugin_api::level::{Grouping, Level};
+    let spec = Level {
+        name: "files".into(),
+        edge_kinds: BTreeMap::new(),
+        node_attributes: BTreeMap::new(),
+        edge_attributes: BTreeMap::new(),
+        attribute_groups: BTreeMap::new(),
+        node_kinds: BTreeMap::new(),
+        cycle_kinds: BTreeMap::new(),
+        grouping: Some(Grouping {
+            key: None,
+            function: Some("dir".into()),
+        }),
+    };
+    let custom = BTreeMap::new();
+    let level = assemble_level(
+        Some(spec),
+        Graph::default(),
+        vec![],
+        BTreeMap::new(),
+        BTreeMap::new(),
+        &custom,
+        "rust",
+        &[],
+    );
+    let g = level.ui.grouping.expect("function grouping retained");
+    assert_eq!(g.function.as_deref(), Some("dir"));
+}
+
+#[test]
 fn detect_plugin_by_single_marker() {
     let cases = vec![
         ("Cargo.toml", "rust"),

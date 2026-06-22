@@ -147,3 +147,74 @@ fn group_digits(n: u64) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::model::CycleRule;
+    use code_ranker_plugin_api::level::AttributeSpec;
+
+    fn node(id: &str, kind: &str, attrs: &[(&str, AttrValue)]) -> Node {
+        let mut a = BTreeMap::new();
+        for (k, v) in attrs {
+            a.insert((*k).to_string(), v.clone());
+        }
+        Node {
+            id: id.into(),
+            kind: kind.into(),
+            name: id.into(),
+            parent: None,
+            attrs: a,
+        }
+    }
+
+    #[test]
+    fn group_digits_inserts_thousands_separators() {
+        assert_eq!(group_digits(7), "7");
+        assert_eq!(group_digits(512_712), "512_712");
+        assert_eq!(group_digits(1_000_000), "1_000_000");
+    }
+
+    #[test]
+    fn print_current_values_no_files_level_is_noop() {
+        // No `files` level → early return, nothing printed, no panic.
+        print_current_values(&BTreeMap::new(), &config::CycleRules::default());
+    }
+
+    #[test]
+    fn print_current_values_handles_off_cycles_and_external_only_nodes() {
+        // Both cycle rules off → the `= false` branch; only an external node →
+        // `print_scope_values` finds no measurable unit and returns early.
+        let mut level = LevelGraph {
+            nodes: vec![node("ext", "external", &[])],
+            ..Default::default()
+        };
+        level
+            .node_attributes
+            .insert("loc".into(), AttributeSpec::new(ValueType::Int, "LOC"));
+        let mut graphs = BTreeMap::new();
+        graphs.insert("files".to_string(), level);
+        let cycles = config::CycleRules {
+            mutual: CycleRule::Off,
+            chain: CycleRule::Off,
+        };
+        print_current_values(&graphs, &cycles);
+    }
+
+    #[test]
+    fn print_current_values_skips_all_zero_metrics() {
+        // A real file node whose only suggestable metric is zero → the TOML block
+        // has no rows and is omitted (`print_toml_block` early return).
+        let mut level = LevelGraph {
+            nodes: vec![node("a.rs", "file", &[("loc", AttrValue::Int(0))])],
+            ..Default::default()
+        };
+        level
+            .node_attributes
+            .insert("loc".into(), AttributeSpec::new(ValueType::Int, "LOC"));
+        level.ui.columns = vec!["loc".into()];
+        let mut graphs = BTreeMap::new();
+        graphs.insert("files".to_string(), level);
+        print_current_values(&graphs, &config::CycleRules::default());
+    }
+}

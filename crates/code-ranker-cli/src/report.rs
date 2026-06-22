@@ -511,4 +511,67 @@ mod tests {
         let html_ts = html.trim_end_matches("-abc.html");
         assert_eq!(json_ts, html_ts, "json and html share one stamp");
     }
+
+    /// A malformed `{git-hash-…}` token (no closing brace, or a non-numeric width)
+    /// is left untouched rather than panicking — the `break` arms of the loop.
+    #[test]
+    fn render_name_leaves_malformed_git_hash_tokens_intact() {
+        let t = Path::new("/x/proj");
+        let at = fixed_ts();
+        // No closing brace → break, token kept verbatim.
+        let unclosed = render_name("a-{git-hash-3", t, Some("abcdef"), at);
+        assert_eq!(unclosed, "a-{git-hash-3");
+        // Non-numeric width → break, token kept verbatim.
+        let nonnum = render_name("a-{git-hash-x}.json", t, Some("abcdef"), at);
+        assert_eq!(nonnum, "a-{git-hash-x}.json");
+    }
+
+    #[test]
+    fn want_format_precedence() {
+        use config::OutputArtifact;
+        let off = OutputArtifact {
+            enabled: None,
+            path: None,
+        };
+        // A CLI flag forces it on regardless of config.
+        assert!(want_format(true, None, &off));
+        // A CLI path forces it on.
+        assert!(want_format(false, Some("x.json"), &off));
+        // No CLI selectors, no config → off (path.is_some() == false).
+        assert!(!want_format(false, None, &off));
+        // No CLI selectors, but a configured path implies on.
+        let with_path = OutputArtifact {
+            enabled: None,
+            path: Some("x.json".into()),
+        };
+        assert!(want_format(false, None, &with_path));
+        // An explicit `enabled = false` wins over a configured path.
+        let disabled = OutputArtifact {
+            enabled: Some(false),
+            path: Some("x.json".into()),
+        };
+        assert!(!want_format(false, None, &disabled));
+    }
+
+    #[test]
+    fn is_stream_recognizes_stdout_markers() {
+        assert!(is_stream("stdout"));
+        assert!(is_stream("-"));
+        assert!(!is_stream("out.json"));
+    }
+
+    #[test]
+    fn write_artifact_to_stream_is_a_noop_on_disk() {
+        // `stdout`/`-` print rather than write a file — nothing lands on disk.
+        write_artifact("stdout", "hello", "json").unwrap();
+        assert!(!Path::new("stdout").exists());
+    }
+
+    #[test]
+    fn write_artifact_creates_parent_dirs_and_writes_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("nested/sub/report.json");
+        write_artifact(dest.to_str().unwrap(), "payload", "json").unwrap();
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), "payload");
+    }
 }

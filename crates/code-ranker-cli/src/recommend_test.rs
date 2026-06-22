@@ -859,3 +859,63 @@ fn scorecard_focus_principle_shows_only_that_preset() {
         "worst modules ranked by the principle's sort_metric: {sc}"
     );
 }
+
+/// `--top 1` reduces the prompt to a single focus module: the connections are
+/// rendered in the abbreviated single-focus form — an `out` edge as "line N"
+/// (use-site in the focus file, named above) and an `in` edge as `dependant:line`.
+#[test]
+fn compose_prompt_single_focus_abbreviates_in_and_out_edges() {
+    let mut level = level_with(vec![
+        file_node("{target}/focus.rs", &[("hk", AttrValue::Float(2000.0))]),
+        file_node("{target}/dependant.rs", &[("hk", AttrValue::Float(10.0))]),
+        file_node("{target}/dep.rs", &[("hk", AttrValue::Float(5.0))]),
+    ]);
+    // in: dependant.rs → focus.rs (use-site in dependant); out: focus.rs → dep.rs.
+    level.edges.push(code_ranker_plugin_api::edge::Edge {
+        source: "{target}/dependant.rs".into(),
+        target: "{target}/focus.rs".into(),
+        kind: "uses".into(),
+        line: Some(7),
+        attrs: Default::default(),
+    });
+    level.edges.push(code_ranker_plugin_api::edge::Edge {
+        source: "{target}/focus.rs".into(),
+        target: "{target}/dep.rs".into(),
+        kind: "uses".into(),
+        line: Some(3),
+        attrs: Default::default(),
+    });
+    let preset = Preset {
+        id: "HK".into(),
+        label: "HK".into(),
+        title: "HK — Hotspot".into(),
+        prompt: "the hotspot rule".into(),
+        doc_url: None,
+        sort_metric: "hk".into(),
+        connections: vec!["in".into(), "out".into()],
+    };
+    let md = compose_prompt(
+        &level,
+        &[preset],
+        &code_ranker_graph::prompt_template(),
+        "HK",
+        Severity::Auto,
+        Some(1),
+        &[],
+    )
+    .unwrap();
+    assert!(
+        md.contains("## Target module (HK)"),
+        "single-target heading: {md}"
+    );
+    // out edge: focus → dep, use-site line in the focus file → "line 3".
+    assert!(
+        md.contains("`dep.rs` (uses, line 3)"),
+        "out edge abbreviated: {md}"
+    );
+    // in edge: dependant → focus, use-site `dependant.rs:7`.
+    assert!(
+        md.contains("`dependant.rs:7` (uses)"),
+        "in edge abbreviated: {md}"
+    );
+}

@@ -58,6 +58,47 @@ fn rule_matches_full_id_bare_id_and_group() {
 }
 
 #[test]
+fn focus_scope_note_covers_path_rule_both_and_neither() {
+    assert_eq!(focus_scope_note(&[], &[]), "");
+    assert_eq!(
+        focus_scope_note(&["src/a.rs".into()], &[]),
+        " (focused on path src/a.rs)"
+    );
+    assert_eq!(
+        focus_scope_note(&[], &["CPL".into()]),
+        " (focused on rule CPL)"
+    );
+    assert_eq!(
+        focus_scope_note(
+            &["src/a.rs".into(), "src/b".into()],
+            &["CPL".into(), "SIZ".into()]
+        ),
+        " (focused on path src/a.rs, src/b; rule CPL, SIZ)"
+    );
+}
+
+#[test]
+fn print_human_diagnostics_handles_clean_and_truncated_runs() {
+    let na = BTreeMap::new();
+    let ck = BTreeMap::new();
+    // total == 0 → the clean "no violations" line, then return.
+    print_human_diagnostics(&[], 0, "rust", "proj", "", &na, &ck);
+    // Showing fewer than total → the "showing the N worst" note + "(shown)" tail.
+    let shown = [viol("{target}/src/x.rs", Some(7))];
+    print_human_diagnostics(
+        &shown,
+        3,
+        "rust",
+        "proj",
+        " (focused on rule SIZ)",
+        &na,
+        &ck,
+    );
+    // Showing all → the "(total)" tail branch.
+    print_human_diagnostics(&shown, 1, "rust", "proj", "", &na, &ck);
+}
+
+#[test]
 fn annotation_location_maps_target_path_with_line() {
     assert_eq!(
         annotation_location("{target}/crates/a/src/x.rs", Some(42)),

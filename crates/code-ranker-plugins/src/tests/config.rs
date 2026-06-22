@@ -363,6 +363,27 @@ fn resolved_presets_inherit_catalog_and_resolve_doc_urls() {
     );
 }
 
+/// The selective `doc_overrides = ["SRP", …]` form: only the listed ids resolve
+/// to the language's own folder; every other principle falls back to `base/`.
+#[test]
+fn resolved_presets_partial_doc_overrides_route_only_listed_ids() {
+    let cfg = load("doc_lang = \"mylang\"\ndoc_overrides = [\"SRP\", \"DIP\"]\n");
+    let presets = resolved_presets(&cfg);
+    let url = |id: &str| {
+        presets
+            .iter()
+            .find(|p| p.id == id)
+            .and_then(|p| p.doc_url.clone())
+            .unwrap()
+    };
+    // Listed ids route to the language's own folder…
+    assert!(url("SRP").contains("/mylang/SRP.md"), "{}", url("SRP"));
+    assert!(url("DIP").contains("/mylang/DIP.md"), "{}", url("DIP"));
+    // …everything else falls back to the shared base corpus.
+    assert!(url("CPX").contains("/base/CPX.md"), "{}", url("CPX"));
+    assert!(url("KISS").contains("/base/KISS.md"), "{}", url("KISS"));
+}
+
 /// An inherited list is patched in place by an op-table (the list-override DSL);
 /// a plain array still replaces it wholesale (the historical behaviour).
 #[test]
