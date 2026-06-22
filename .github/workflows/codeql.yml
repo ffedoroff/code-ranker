@@ -1,0 +1,112 @@
+# CodeQL — advanced setup with per-language path gating.
+#
+# Replaces GitHub's *default* CodeQL setup so we can scan each language ONLY when
+# that language's source actually changed. Most non-Rust languages exist here only
+# as plugin test fixtures (`crates/.../languages/<lang>/tests/sample/**`) that
+# rarely change, yet default setup re-analyzed all of them on every PR.
+#
+# How the gating works: the `changes` job classifies the diff by *file extension*
+# (CodeQL analyzes source, so the extension is the right signal), then emits a
+# matrix of only the changed languages. Consequences of keying on extension:
+#   - golden snapshots (`*.json` / `*.sarif`) never match any language → no run;
+#   - a plugin's Rust file (e.g. `languages/csharp/dialect.rs`) is `rust`, not
+#     `csharp` → it triggers `rust`, not a pointless C# re-scan;
+#   - real first-party code outside the fixtures is covered too — `rust` spans all
+#     `**/*.rs`, `javascript-typescript` includes the viewer assets, `python`
+#     includes `.github/scripts/*.py`.
+# A docs-only PR matches nothing → the whole analyze job is skipped.
+#
+# The weekly `schedule` (and manual dispatch) force a FULL scan of every language
+# so coverage never drifts behind the gated PR runs.
+#
+# ⚠ REQUIRED ONE-TIME STEP: default setup must be turned OFF or it conflicts with
+# this workflow (uploads get rejected). Disable it in Settings → Code security →
+# "CodeQL analysis" → switch to Advanced, or run:
+#   gh api -X PATCH repos/ffedoroff/code-ranker/code-scanning/default-setup -f state=not-configured
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '25 6 * * 1'   # weekly Monday full scan
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Classify the diff → which CodeQL languages need analysis this run.
+  changes:
+    name: Detect changed languages
+    runs-on: ubuntu-22.04
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      any: ${{ steps.matrix.outputs.any }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
+        with:
+          filters: |
+            rust: ['**/*.rs', '**/Cargo.toml', 'Cargo.lock']
+            python: ['**/*.py']
+            csharp: ['**/*.cs']
+            go: ['**/*.go', '**/go.mod', '**/go.sum']
+            c-cpp: ['**/*.c', '**/*.cc', '**/*.cpp', '**/*.cxx', '**/*.h', '**/*.hh', '**/*.hpp']
+            javascript-typescript: ['**/*.js', '**/*.jsx', '**/*.mjs', '**/*.cjs', '**/*.ts', '**/*.tsx']
+            actions: ['.github/workflows/**']
+
+      # Map the matched filters to a CodeQL matrix. `go` is the only language here
+      # that has no buildless mode, so it gets `autobuild`; everything else uses
+      # `build-mode: none` (the fixtures are not buildable). On schedule/dispatch
+      # we override to the full language set for a complete scan.
+      - id: matrix
+        env:
+          CHANGED: ${{ steps.filter.outputs.changes }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          CHANGED="${CHANGED:-[]}"
+          [ -z "$CHANGED" ] && CHANGED='[]'
+          if [ "$EVENT" = "schedule" ] || [ "$EVENT" = "workflow_dispatch" ]; then
+            CHANGED='["actions","c-cpp","csharp","go","javascript-typescript","python","rust"]'
+          fi
+          matrix=$(jq -cn --argjson c "$CHANGED" \
+            '{include: [ $c[] | {language: ., "build-mode": (if . == "go" then "autobuild" else "none" end)} ]}')
+          any=$(jq -rn --argjson c "$CHANGED" 'if ($c|length) > 0 then "true" else "false" end')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "any=$any" >> "$GITHUB_OUTPUT"
+          echo "Languages selected: $matrix"
+
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    needs: changes
+    if: ${{ needs.changes.outputs.any == 'true' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      security-events: write
+      packages: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
