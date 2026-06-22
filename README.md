@@ -12,13 +12,13 @@ Structural-analysis tool for **Rust, Python, JavaScript and TypeScript** codebas
 
 **👉 Map your codebase's worst structural problems in 30 seconds — [jump to the Rust quick start](#rust-quick-start) and run it on your repo now.**
 
-**Status:** pre-alpha. APIs and output shapes may change without notice. Pin a specific version.
+**Status:** pre-alpha. APIs and output shapes may change without notice.
 
 ## Rust quick start
 
 ```sh
-cargo install code-ranker --version 1.1.0   # install the CLI
-code-ranker report .                        # make html report in .code-ranker/ folder
+cargo install code-ranker  # install the CLI
+code-ranker report .       # make html report in .code-ranker/ folder
 ```
 
 `report .` needs no flags: it writes a self-contained HTML report (plus a JSON
@@ -124,7 +124,7 @@ Built-in plugins: `rust` (cargo + syn), `python`, `javascript` (also handles Typ
 ## Try it now
 
 ```sh
-cargo install code-ranker --version 1.1.0 && code-ranker report . && open .code-ranker/
+cargo install code-ranker && code-ranker report . && open .code-ranker/
 ```
 
 One command on any Rust project — you'll have an interactive structural map and an AI-ready shortlist in seconds. ⭐ the repo if it helps.
