@@ -13,10 +13,10 @@ use code_ranker_plugin_api::Principle;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// The snapshot schema version this build produces and can read back. A
-/// `--baseline` (or snapshot input) with a different version is rejected with a
-/// structured error rather than silently mis-parsed.
-pub const SCHEMA_VERSION: &str = "3";
+/// The JSON-snapshot + viewer format version (re-exported from [`crate::version`]).
+/// Written as `schema_version`, rejected on mismatch in `analyze.rs`, and checked
+/// in the viewer. See `docs/versions.md`.
+pub use crate::version::SCHEMA_VERSION;
 
 /// Per-stage timing in milliseconds, in execution order.
 #[derive(Debug, Clone, Serialize, Deserialize)]

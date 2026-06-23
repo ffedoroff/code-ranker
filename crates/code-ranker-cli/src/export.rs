@@ -100,7 +100,14 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         // A partial project config: one override; everything else inherits defaults.
         let cfg = dir.path().join("code-ranker.toml");
-        std::fs::write(&cfg, "[ignore]\ntests = false\n").unwrap();
+        std::fs::write(
+            &cfg,
+            format!(
+                "version = \"{}\"\n[ignore]\ntests = false\n",
+                code_ranker_graph::version::CONFIG_VERSION
+            ),
+        )
+        .unwrap();
         let out = dir.path().join("full.toml");
 
         export_full_config(

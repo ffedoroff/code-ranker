@@ -28,3 +28,6 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# For e2e fixtures to reference the single format-version constant (SCHEMA_VERSION)
+# instead of hardcoding it.
+code-ranker-graph = { workspace = true }

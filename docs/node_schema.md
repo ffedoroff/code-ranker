@@ -1,7 +1,7 @@
 # Node JSON Schema
 
 Reference for the node objects emitted in code-ranker snapshot files
-(`.code-ranker/{ts}-{git-hash-3}.json`, `schema_version: "3"`), under
+(`.code-ranker/{ts}-{git-hash-3}.json`, `schema_version: "4.0"`), under
 `graphs.files.nodes`. There is a single graph level — `files` — so every node is
 either a source `file` or a third-party `external` library.
 

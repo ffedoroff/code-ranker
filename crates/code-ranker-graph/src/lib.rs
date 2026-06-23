@@ -22,6 +22,7 @@ pub mod relativize;
 pub mod serialize;
 pub mod snapshot;
 pub mod stats;
+pub mod version;
 
 pub use attrs::{num_attr, round_sig3};
 pub use cycles::annotate_cycles;

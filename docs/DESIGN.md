@@ -287,7 +287,7 @@ keys it understands, described per level by the semantics dictionaries.
 | CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"mutual"` for a 2-node SCC, `"chain"` for 3+), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelUi | Computed UI hints: `default_sort`, `sort`, `size`, `card`, `columns`, `summary` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-ranker-graph/src/level_graph.rs` |
-| Snapshot | The `.json` artifact: `schema_version: "3"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, top-level `principles: Vec<Principle>`, and `prompt: PromptTemplate` (the Prompt-Generator scaffolding prose, read by both the CLI and the viewer). Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-ranker-graph/src/snapshot.rs` |
+| Snapshot | The `.json` artifact: `schema_version: "4.0"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, top-level `principles: Vec<Principle>`, and `prompt: PromptTemplate` (the Prompt-Generator scaffolding prose, read by both the CLI and the viewer). Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-ranker-graph/src/snapshot.rs` |
 | StageTime | Per-stage timing entry: `stage`, `ms`, `detail`. Stored in `Snapshot.timings` in execution order. | `crates/code-ranker-graph/src/snapshot.rs` |
 
 **Relationships**:
@@ -753,7 +753,7 @@ See [§3.7 Plugin System](#37-plugin-system).
 
 - **Location**: defined by `Snapshot`, `Node`, `Edge` structs in
   `crates/code-ranker-graph/src/`
-- **Versioning**: `schema_version: "3"`; additive fields are minor;
+- **Versioning**: `schema_version: "4.0"`; additive fields are minor;
   breaking changes require a major-version bump
 
 ### 3.4 Internal Dependencies
@@ -980,13 +980,13 @@ dictionaries with the structural graph and the computed cycles/stats:
 
 ```json
 {
-  "schema_version": "3",
+  "schema_version": "4.0",
   "generated_at":   "2026-05-22T11:22:33Z",
   "command":        "code-ranker report /path/to/axum-api --plugin rust",
   "workspace":      "/Users/alice/projects/code-ranker",
   "target":         "/Users/alice/projects/axum-api",
   "plugin":         "rust",
-  "versions": { "code-ranker": "3.0.2", "rustc": "1.78.0" },
+  "versions": { "code-ranker": "4.0.0-alpha.1", "rustc": "1.78.0" },
   "roots": {
     "registry": "/Users/alice/.cargo/registry/src/index.crates.io-abc123",
     "target":   "/Users/alice/projects/axum-api"

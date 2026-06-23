@@ -320,15 +320,28 @@ function readEmbeddedSnapshot(id) {
 
 // Parse a snapshot from uploaded file text — either a raw JSON snapshot, or a code-ranker
 // HTML report with the snapshot embedded (prefer `cs-current`, else `cs-baseline`).
+// Rejects a snapshot whose format version this viewer can't read (single
+// `window.SCHEMA_VERSION`, injected by the renderer from the build's SCHEMA_VERSION).
 function extractSnapshotFromText(text) {
   const s = text.trim();
-  if (s.startsWith('{')) return JSON.parse(s);
-  const doc = new DOMParser().parseFromString(text, 'text/html');
-  const read = id => {
-    const t = doc.getElementById(id)?.textContent?.trim();
-    return t && t !== 'null' ? JSON.parse(t) : null;
-  };
-  return read('cs-current') || read('cs-baseline');
+  let snap;
+  if (s.startsWith('{')) {
+    snap = JSON.parse(s);
+  } else {
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    const read = id => {
+      const t = doc.getElementById(id)?.textContent?.trim();
+      return t && t !== 'null' ? JSON.parse(t) : null;
+    };
+    snap = read('cs-current') || read('cs-baseline');
+  }
+  const want = window.SCHEMA_VERSION;
+  if (snap && want && snap.schema_version !== want) {
+    throw new Error(
+      `snapshot schema_version "${snap.schema_version}" ≠ this viewer's "${want}" — ` +
+      `regenerate the report with a matching code-ranker version`);
+  }
+  return snap;
 }
 
 // Manual snapshot swap: load a different baseline/current snapshot (.json or .html) into the viewer.
@@ -344,7 +357,7 @@ function setupFileControls() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-      try { window.BASELINE = extractSnapshotFromText(e.target.result); } catch { alert('Invalid snapshot file'); return; }
+      try { window.BASELINE = extractSnapshotFromText(e.target.result); } catch (err) { alert(err.message || 'Invalid snapshot file'); return; }
       recomputeAll();
     };
     reader.readAsText(file);
@@ -356,7 +369,7 @@ function setupFileControls() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
-      try { window.CURRENT = extractSnapshotFromText(e.target.result); } catch { alert('Invalid snapshot file'); return; }
+      try { window.CURRENT = extractSnapshotFromText(e.target.result); } catch (err) { alert(err.message || 'Invalid snapshot file'); return; }
       recomputeAll();
     };
     reader.readAsText(file);

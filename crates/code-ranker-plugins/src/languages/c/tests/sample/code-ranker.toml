@@ -1,3 +1,4 @@
+version = "4.0"
 # Self-contained config for the code-ranker "c" sample fixture.
 plugin = "c"
 

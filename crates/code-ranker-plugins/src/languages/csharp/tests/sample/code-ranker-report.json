@@ -695,7 +695,7 @@
   "roots": {
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/csharp/tests/sample"
   },
-  "schema_version": "3",
+  "schema_version": "4.0",
   "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/csharp/tests/sample",
   "timings": [
     {

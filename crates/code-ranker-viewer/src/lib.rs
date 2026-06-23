@@ -77,8 +77,12 @@ pub fn render_html_viewer(baseline: Option<&Snapshot>, current: Option<&Snapshot
             json.replace("</", "<\\/")
         )
     };
+    // Expose the build's format version so the JS can reject a swapped-in snapshot
+    // (snap-controls upload) whose `schema_version` this viewer can't read. The
+    // embedded snapshots always match — this guards foreign uploads.
     let data_script = format!(
-        "{}\n{}",
+        "<script>window.SCHEMA_VERSION = \"{}\";</script>\n{}\n{}",
+        code_ranker_graph::snapshot::SCHEMA_VERSION,
         embed("cs-baseline", baseline),
         embed("cs-current", current),
     );

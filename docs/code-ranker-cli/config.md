@@ -1,5 +1,19 @@
 # code-ranker configuration
 
+## Required `version`
+
+Every `code-ranker.toml` MUST declare the config-schema version it targets:
+
+```toml
+version = "4.0"
+```
+
+It is the **config + CLI** format version (app `major.minor`). The loader rejects a
+missing or mismatched value with a directional hint — an older version means
+*migrate the config*, a newer one means *upgrade code-ranker* — instead of a cryptic
+`unknown field` error. Bump it only when the config schema or CLI surface changes;
+see [`../versions.md`](../versions.md) for the full versioning model and when to bump.
+
 ## Priority order
 
 Settings are merged from multiple sources. **Higher priority wins** for the same key.

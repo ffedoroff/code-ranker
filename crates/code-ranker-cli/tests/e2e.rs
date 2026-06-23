@@ -31,7 +31,14 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use code_ranker_graph::version::CONFIG_VERSION;
 use serde_json::Value;
+
+/// A `code-ranker.toml` body prefixed with the required `version` line. The number
+/// is the single `CONFIG_VERSION` constant, never hardcoded in a fixture.
+fn vcfg(body: &str) -> String {
+    format!("version = \"{CONFIG_VERSION}\"\n{body}")
+}
 
 /// Fields that MUST differ between the golden (captured earlier) and a fresh
 /// run — otherwise we are not actually exercising the binary.
@@ -1163,11 +1170,13 @@ fn user_defined_metric_is_computed_and_emitted() {
     .unwrap();
     std::fs::write(
         p.join("code-ranker.toml"),
-        "[metrics.comment_ratio]\n\
-         formula_cel = \"sloc > 0.0 ? cloc / sloc * 100.0 : 0.0\"\n\
-         label = \"Comments %\"\n\
-         direction = \"higher_better\"\n\
-         group = \"loc\"\n",
+        vcfg(
+            "[metrics.comment_ratio]\n\
+             formula_cel = \"sloc > 0.0 ? cloc / sloc * 100.0 : 0.0\"\n\
+             label = \"Comments %\"\n\
+             direction = \"higher_better\"\n\
+             group = \"loc\"\n",
+        ),
     )
     .unwrap();
     let out = p.join("out.json");
@@ -1220,9 +1229,11 @@ fn user_defined_aggregate_lands_in_stats() {
     std::fs::write(p.join("b.py"), "def g(y):\n    return y\n").unwrap();
     std::fs::write(
         p.join("code-ranker.toml"),
-        "[metrics.cyc_mean]\n\
-         scope = \"graph\"\n\
-         formula_cel = \"agg('cyclomatic', 'avg', 'not_empty')\"\n",
+        vcfg(
+            "[metrics.cyc_mean]\n\
+             scope = \"graph\"\n\
+             formula_cel = \"agg('cyclomatic', 'avg', 'not_empty')\"\n",
+        ),
     )
     .unwrap();
     let out = p.join("out.json");
@@ -1262,7 +1273,7 @@ fn functions_level_is_opt_in() {
     .unwrap();
 
     let run = |cfg: &str| -> Value {
-        std::fs::write(p.join("code-ranker.toml"), cfg).unwrap();
+        std::fs::write(p.join("code-ranker.toml"), vcfg(cfg)).unwrap();
         let out = p.join("out.json");
         let status = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
             .current_dir(p)
@@ -1310,7 +1321,7 @@ fn empty_metric_warns_on_stderr() {
     std::fs::write(p.join("m.py"), "def f(x):\n    return x\n").unwrap();
     std::fs::write(
         p.join("code-ranker.toml"),
-        "[metrics.bad]\nformula_cel = \"slocc / 100.0\"\n", // `slocc` is a typo for `sloc`
+        vcfg("[metrics.bad]\nformula_cel = \"slocc / 100.0\"\n"), // `slocc` is a typo for `sloc`
     )
     .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_code-ranker"))

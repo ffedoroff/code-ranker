@@ -1,5 +1,14 @@
 use super::*;
 
+/// A config-file body prefixed with the required `version` line. Fixtures must not
+/// hardcode the number — it comes from the single `CONFIG_VERSION` constant.
+fn v(body: &str) -> String {
+    format!(
+        "version = \"{}\"\n{body}",
+        code_ranker_graph::version::CONFIG_VERSION
+    )
+}
+
 #[test]
 fn load_merges_explicit_config_over_builtin_defaults() {
     // A partial `--config` file: it overrides one key and a threshold; every
@@ -8,7 +17,7 @@ fn load_merges_explicit_config_over_builtin_defaults() {
     let cfg = dir.path().join("ci.toml");
     std::fs::write(
         &cfg,
-        "[ignore]\ntests = false\n[rules.thresholds.file]\nhk = \"1M\"\n",
+        v("[ignore]\ntests = false\n[rules.thresholds.file]\nhk = \"1M\"\n"),
     )
     .unwrap();
 
@@ -31,12 +40,45 @@ fn load_merges_explicit_config_over_builtin_defaults() {
 }
 
 #[test]
+fn load_requires_matching_schema_version() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg = dir.path().join("code-ranker.toml");
+    let run = || load(dir.path(), &[cfg.display().to_string()], &[], &[], &[]);
+
+    let err = || format!("{:#}", run().err().unwrap());
+
+    // Missing `version` → error naming the required value.
+    std::fs::write(&cfg, "[ignore]\ntests = false\n").unwrap();
+    assert!(err().contains("missing the required `version`"));
+
+    // Older schema → migrate hint.
+    std::fs::write(&cfg, "version = \"1.0\"\n").unwrap();
+    let m = err();
+    assert!(
+        m.contains("expects") && m.contains("migrate the config"),
+        "{m}"
+    );
+
+    // Newer schema (config from a future build) → upgrade hint.
+    std::fs::write(&cfg, "version = \"99.0\"\n").unwrap();
+    assert!(err().contains("upgrade code-ranker"));
+
+    // Unparseable version → generic both-ways hint (neither side orders).
+    std::fs::write(&cfg, "version = \"abc\"\n").unwrap();
+    assert!(err().contains("migrate the config, or upgrade"));
+
+    // Matching schema → ok.
+    std::fs::write(&cfg, v("[ignore]\ntests = false\n")).unwrap();
+    assert!(run().is_ok());
+}
+
+#[test]
 fn load_layers_multiple_config_files_in_order_last_wins() {
     // Two `--config FILE` layers + an inline override; later wins at each step.
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base.toml");
     let over = dir.path().join("over.toml");
-    std::fs::write(&base, "[rules.thresholds.file]\nhk = 100\nsloc = 800\n").unwrap();
+    std::fs::write(&base, v("[rules.thresholds.file]\nhk = 100\nsloc = 800\n")).unwrap();
     std::fs::write(&over, "[rules.thresholds.file]\nhk = 5\n").unwrap();
 
     let loaded = load(
@@ -69,7 +111,7 @@ fn load_auto_discovers_code_ranker_toml_in_workspace() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("code-ranker.toml"),
-        "[rules.thresholds.file]\nhk = 42\n",
+        v("[rules.thresholds.file]\nhk = 42\n"),
     )
     .unwrap();
 
@@ -86,7 +128,10 @@ fn load_auto_discovers_cargo_workspace_metadata() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("Cargo.toml"),
-        "[workspace]\nmembers = []\n[workspace.metadata.code-ranker.rules.thresholds.file]\nhk = 7\n",
+        format!(
+            "[workspace]\nmembers = []\n[workspace.metadata.code-ranker]\nversion = \"{}\"\n[workspace.metadata.code-ranker.rules.thresholds.file]\nhk = 7\n",
+            code_ranker_graph::version::CONFIG_VERSION
+        ),
     )
     .unwrap();
 

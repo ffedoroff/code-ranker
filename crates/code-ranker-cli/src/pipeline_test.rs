@@ -47,8 +47,10 @@ fn gate_thresholds_uses_gate_as_warning_and_reconciles_info() {
     let cfg_path = dir.path().join("code-ranker.toml");
     fs::write(
         &cfg_path,
-        r#"
-[metrics.below]
+        format!(
+            "version = \"{}\"\n{}",
+            code_ranker_graph::version::CONFIG_VERSION,
+            r#"[metrics.below]
 formula_cel = "sloc"
 info = 50
 
@@ -60,7 +62,8 @@ info = 200
 hk = 500000
 below = 100
 above = 100
-"#,
+"#
+        ),
     )
     .unwrap();
     let loaded =

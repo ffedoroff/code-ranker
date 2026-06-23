@@ -74,6 +74,7 @@ pub fn load(
     apply_inline_overrides(&mut config, &inline)?;
     apply_cli_overrides(&mut config, ignore_paths, cycle_rules, thresholds)?;
     validate_thresholds(&config)?;
+    validate_schema_version(&config, &source_file)?;
     Ok(LoadedConfig {
         config,
         source_file,
@@ -106,6 +107,46 @@ fn validate_thresholds(cfg: &Config) -> Result<()> {
         );
     }
     Ok(())
+}
+
+/// Require a discovered config file to declare a compatible `version`. Pure
+/// built-in defaults (no file found) have nothing to version, so the check is
+/// skipped there. An exact `major.minor` mismatch fails with a directional hint
+/// (migrate the config vs upgrade the tool) — far clearer than the `unknown field`
+/// error a stale schema would otherwise raise under `deny_unknown_fields`.
+fn validate_schema_version(cfg: &Config, source_file: &Option<String>) -> Result<()> {
+    let Some(src) = source_file else {
+        return Ok(());
+    };
+    let want = super::model::CONFIG_SCHEMA_VERSION;
+    match cfg.version.as_deref() {
+        Some(v) if v == want => Ok(()),
+        None => anyhow::bail!(
+            "config {src} is missing the required `version`. Add `version = \"{want}\"` \
+             (the config-schema version this code-ranker supports)."
+        ),
+        Some(v) => {
+            let hint = match (parse_major_minor(v), parse_major_minor(want)) {
+                (Some(got), Some(exp)) if got < exp => "migrate the config to the new schema",
+                (Some(got), Some(exp)) if got > exp => {
+                    "upgrade code-ranker to a version that supports it"
+                }
+                _ => "migrate the config, or upgrade code-ranker",
+            };
+            anyhow::bail!(
+                "config {src} declares schema `version = {v:?}`, but this code-ranker expects \
+                 {want:?} — {hint}."
+            )
+        }
+    }
+}
+
+/// Parse a `major.minor` (ignoring any patch/pre-release tail) for ordering.
+fn parse_major_minor(s: &str) -> Option<(u32, u32)> {
+    let mut it = s.split('.');
+    let major = it.next()?.parse().ok()?;
+    let minor = it.next().unwrap_or("0").parse().ok()?;
+    Some((major, minor))
 }
 
 /// Discover the user's config as a raw [`Table`] (NOT yet deserialized into

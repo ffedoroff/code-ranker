@@ -29,9 +29,21 @@ static BUILTIN: LazyLock<Config> =
 // deadlocking. Per-field defaults are lazy and use each field's own `Default`
 // (`None`/empty for the scalar/map fields; the section structs' defaults are never
 // invoked because `defaults.toml` always carries those sections).
+/// The version a `code-ranker.toml` must declare in `version` — the **config + CLI**
+/// format version [`code_ranker_graph::version::CONFIG_VERSION`] (separate from the
+/// JSON-snapshot `SCHEMA_VERSION`; see `docs/versions.md`). The loader requires an
+/// exact match, failing with a migrate / upgrade hint instead of a cryptic
+/// `unknown field` error.
+pub const CONFIG_SCHEMA_VERSION: &str = code_ranker_graph::version::CONFIG_VERSION;
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
+    /// Config-schema version (`major.minor`, e.g. `"4.0"`) — **required** in a
+    /// `code-ranker.toml`. Validated against [`CONFIG_SCHEMA_VERSION`] at load.
+    /// `Option` so a missing value yields our migrate-hint error, not serde's.
+    #[serde(default)]
+    pub version: Option<String>,
     /// Default plugin name (e.g. "rust", "python"). Overridden by --plugin.
     #[serde(default)]
     pub plugin: Option<String>,

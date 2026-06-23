@@ -1,3 +1,4 @@
+version = "4.0"
 # code-ranker.toml — project-level configuration for code-ranker.
 # Discovery order: --config PATH > ./code-ranker.toml > <target>/code-ranker.toml >
 # Cargo.toml [workspace.metadata.code-ranker]. CLI flags always win over the file.
