@@ -67,21 +67,32 @@ pub(in crate::services::user_service)
 fn update_user_status(/* … */) { /* … */ }
 ```
 
-When a cycle's back-edges to the module root are **only**
-such visibility paths (not `use` statements), the smallest
-fix is to **tighten the visibility** to the narrowest scope
-the item's real consumers need — `pub(super)` if only the
-parent uses it, `pub(crate)` if a sibling subtree does. The
-edge to the root disappears, the cycle breaks, and the item
-is genuinely less exposed (least privilege) — no module moved.
+**This is the first remedy to try for a Rust module cycle —
+before any extract / split / move shape in the sections
+below.** Work it in order:
 
-**Only do this when every consumer already lives in the
-narrower scope.** Check the call sites first: if the item is
-truly used across the whole subtree, narrowing won't compile
-— that is a *real* dependency, so extract the shared item
-into a leaf module or invert the dependency instead.
+1. **Find the back-edges** — the cycle edges that point *up*
+   to an ancestor module. For each, check whether it is a
+   real `use` or only a `pub(in <path>)` visibility path.
+2. **If a back-edge is a visibility path, narrow it** to the
+   smallest scope its real callers need — `pub(super)` if
+   only the parent uses the item, `pub(crate)` if a sibling
+   subtree does. The edge to the root disappears, the cycle
+   breaks, the item is less exposed (least privilege), and
+   **no module moves and no test changes** — usually a
+   one-line edit per item.
+3. **Only a genuine `use` back-edge** needs the structural
+   shapes below (extract a shared leaf, invert, split).
+
+Check the call sites before narrowing: if an item is truly
+used across the whole subtree, narrowing won't compile — that
+is a *real* dependency, so extract or invert instead.
 Tightening a visibility you have not verified is silencing
-the metric, not fixing the structure.
+the metric, not fixing the structure. But the reverse is the
+more common cheaper-tier mistake: **do not extract or move a
+module when a one-line visibility change is the actual fix.**
+The shapes below are for `use` cycles; reach for them only
+after step 1 shows the back-edges are real imports.
 
 <!-- doc:base "Module-level cycles" -->
 <!-- doc:base "Common cycle shapes" -->
