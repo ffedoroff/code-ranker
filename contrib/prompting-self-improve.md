@@ -173,9 +173,11 @@ nothing eval-related is left in `PROJECT`.
    change. (This is also why the orchestrator must stage explicit paths, never
    `git add -A`, when committing the fix.)
 8. **Save the transcript** to `$RUN/chat.md` (see "Saving the chat"), commit the code
-   change to branch `<MODEL>-<FOCUS>-<N>-<CR_SHA>` in `PROJECT` (the `-<CR_SHA>` suffix
-   keeps it unique across builds — see [Artifacts](#artifacts-layout--naming)), return
-   to `main`.
+   change to a branch named **identically to this run's build dir** — `<TS>_<CR_SHA>`
+   (e.g. `20260623T1849Z_dc06762`) — in `PROJECT`, then return to `main`. Branch name ==
+   evidence-folder name, so code ↔ evidence line up by one identical string, and the UTC
+   `<TS>` makes every run's branch unique (no "bump `<n>`"). Pass that exact branch name
+   to the collector via `--branch`.
 9. **Measure.** Append one row to `prompt-eval/metrics.csv` with the collector —
    don't hand-compute it (see [Metrics](#metrics-metricscsv) → Collecting a row):
 
@@ -215,16 +217,15 @@ Layout (one build → one `<timestamp>_<CR_SHA>` folder → one subfolder per ru
       └─ haiku-cycle-2/                 dir            same shape
 ```
 
-- folder/run id = `<model>-<focus>-<n>`; the PROJECT **branch** for that run is
-  `<model>-<focus>-<n>-<CR_SHA>`. The run folder already sits under a
-  `<ts>_<CR_SHA>` build dir, so the id alone is unique *there*; but PROJECT branches
-  are flat and live across **every** build, so the same run id recurs and would
-  collide. The `-<CR_SHA>` suffix makes the branch unique **per prompt version** and
-  ties it back to this run's build dir — evidence ↔ code still line up, now by
-  `(run id, CR_SHA)`. (If you re-run the *same* commit in a fresh build dir, that
-  branch already exists — bump `<n>` until free; `<n>` is the iteration counter
-  anyway.) The collector defaults `--branch` to `<run>-<CR_SHA>`, so loc/files come
-  from the right branch without passing it.
+- folder/run id = `<model>-<focus>-<n>`; the PROJECT **branch** for that run is named
+  **identically to the run's build dir** — `<ts>_<CR_SHA>` (e.g.
+  `20260623T1849Z_dc06762`). Give each run its **own** `<ts>_<CR_SHA>` build dir (one run
+  subfolder per build dir) so that folder name is a unique per-run id, and the branch
+  reuses it verbatim. PROJECT branches are flat and live across every build, but the UTC
+  `<ts>` makes each unique — no more "bump `<n>` until free". Code ↔ evidence line up by
+  the shared `<ts>_<CR_SHA>` string. The branch is no longer `<run>-<CR_SHA>`, so **pass
+  it to the collector via `--branch`**. (If a build dir ever holds several runs, suffix
+  the branch with the run-id: `<ts>_<CR_SHA>_<run-id>`.)
 - the code-ranker version/commit is also embedded *inside* each report (from S2), so
   a file stays self-describing even if moved out of its folder.
 - HTML reports are large (self-contained, WASM inlined); JSON snapshots scale with
