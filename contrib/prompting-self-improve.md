@@ -93,6 +93,13 @@ Two nested loops. The **inner** loop improves the prompts; the **outer, meta** l
 ([below](#the-meta-loop--improving-this-playbook)) improves *this playbook* when the
 process itself gets in the way. Both are driven by the same measured signals.
 
+**Drive the loop to its end — don't pause for permission between iterations, and don't
+stop after a single pass.** A lever edit is only *half* a step: it is not done until its
+rebuild (S1–S2) **and** its verifying re-run have scored the hypothesis against the
+previous iteration. Stopping right after the edit leaves the loop unfinished and proves
+nothing. Keep iterating (≤ 3 per model, then descend a tier) until the cheapest tier is
+at the bar or the residual is recorded — that whole arc is one `improve(...)` call.
+
 ```
 for MODEL in models (most → least capable):        # opus, then sonnet, then haiku…
   loop (≤ 3 times):
@@ -220,6 +227,17 @@ Each run is a **fresh session** of `MODEL` with **no carried context** — start
 one, never `--continue`/`--resume`. Keep `PROJECT` free of a code-ranker-specific
 `CLAUDE.md`/memory so only `--doc AI` primes the agent; otherwise you're testing the
 priming, not the prompt.
+
+**Watch the agent's working directory.** Launch it *inside* `PROJECT` (the interactive
+`claude` below does this). If you instead drive it as a **sub-agent whose cwd is the
+code-ranker source repo**, it sees a Cargo project there and tends to run the analyzer
+via `cargo run --manifest-path <code-ranker>/Cargo.toml report …` — recompiling it and
+dumping a build log into context — instead of the installed `code-ranker` on PATH. That
+inflates the cost columns (`input_tokens`, `cache_read_tokens`, a couple of `commands`)
+with work **no real user does**, so the cost axis is no longer comparable to a run
+launched in `PROJECT`. Either launch in `PROJECT`, or tell the agent up front that
+`code-ranker` is installed on PATH and the code-ranker source tree is not its concern —
+and note in `metrics.csv` which basis the run used.
 
 - **Claude Code** (Opus / Sonnet / Haiku), interactive — what the fix loop wants
   (multi-turn: run code-ranker, edit, run tests):
@@ -370,6 +388,16 @@ column** (the meta-loop), not to fudge the score.
 
 ## Tuning rule
 
+**Diagnose from the transcript by hand, not from the aggregates.** Before scoring and
+before choosing a lever, read the run's `chat.jsonl` turn by turn. The collector's
+columns (`tool_calls`, `discovery_retries`, `output_tokens`, `first_edit_turn`) tell you
+*how much* was spent and *that* the model groped; only the turn-by-turn record shows
+*where* and *why* it diverged — which is what actually picks the lever. A lever chosen
+from counts alone over-fits the number, not the failure class. (Counts also mislead: a
+high `discovery_retries` can be benign compile iterations, and inflated tokens can be a
+measurement artifact — see the cwd caution under "Launching a clean-context agent" — both
+only visible by reading the log.)
+
 A prompt change is justified when a cheaper model misses on **any** of the three
 objectives in a way the prompt *could* have prevented:
 
@@ -391,9 +419,16 @@ row stays in `metrics.csv`) so it's a decision on record, not a silent failure.
 
 ## The meta-loop — improving this playbook
 
-The prompts are levers; so is this file. After a sweep, ask whether the *process*
-helped or fought you, and edit the playbook when it fought:
+The prompts are levers; so is this file. After a sweep — and the **moment the user has
+to correct how you ran the loop** — ask whether the *process* helped or fought you, and
+edit the playbook when it fought:
 
+- a **correction from the user** — they told you the loop skipped a step, stopped early,
+  read the wrong evidence, or measured the wrong thing → this is the **strongest**
+  meta-signal. If you had to be told, the playbook was unclear. Encode the correction
+  into THIS file **before continuing** the sweep, not after it. The file *not* changing
+  after a correction is itself the bug — "self-improving" means the next run can't repeat
+  the mistake you were just corrected for.
 - a **run that taught nothing** (you couldn't tell *why* the fix scored as it did) →
   fix what a run captures, or add a metric column that would have shown it;
 - a **signal that didn't discriminate** quality, cost, or clarity → sharpen the
