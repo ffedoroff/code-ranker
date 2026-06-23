@@ -231,7 +231,7 @@
   "plugin": "markdown",
   "prompt": {
     "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
-    "doc_note": "To understand the principle in detail, run `code-ranker report --doc {id}` — it prints the full principle to your terminal. Read it before proposing any changes.",
+    "doc_note": "**First, before reading the source**, run `code-ranker report --doc {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
     "focus": "**Focus the research and report primarily on the modules below.**",
     "intro": "I want to apply this to some modules in my system.",
     "task": [
@@ -264,7 +264,7 @@
     }
   ],
   "versions": {
-    "code-ranker": "3.0.0-alpha.1"
+    "code-ranker": "4.0.0-alpha.1"
   },
   "workspace": "/home/user/code-ranker"
 }
