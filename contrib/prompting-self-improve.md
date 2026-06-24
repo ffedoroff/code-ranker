@@ -163,6 +163,15 @@ nothing eval-related is left in `PROJECT`.
    work out how on its own** — which command to run, which doc to read, which refactor to
    choose. Don't hand it the command: the run tests whether the prompt and docs lead it
    there. The agent proposes the plan, applies the fix, and runs the project's tests.
+   **Verify at workspace scope, not just the touched crate.** A multi-crate workspace
+   (e.g. a Cargo workspace) needs BOTH `cargo check --workspace` AND
+   `cargo test --workspace --no-run` (build the test profile) before `tests_pass` is
+   trustworthy — a per-crate `cargo test -p <crate>` passes green while the change still
+   breaks the workspace through a **feature-unified** path (a sibling crate enables a
+   feature that compiles code the standalone build skipped) or a **`#[cfg(test)]`** module
+   that only the test profile compiles. Both bit the cyberfabric-core sweep: a visibility
+   narrowing that the touched crate's own tests accepted left a downstream/feature-gated
+   reference pointing at a now-private item.
 6. **AFTER + DIFF.** `code-ranker report . --baseline $RUN/before.json --output.html.path=$RUN/diff.html --output.json.path=$RUN/after.json` (+ an `after.html`).
 7. **Collect the agent's own writes into `$RUN`.** The generated prompt tells the agent
    to save a plan to `<PROJECT>/.code-ranker/<ts>-<FOCUS>.md`, and any `report` it runs
@@ -189,6 +198,31 @@ nothing eval-related is left in `PROJECT`.
    contrib/prompt-eval-metrics.py $RUN --focus <FOCUS> --project <name> \
      --project-path PROJECT --quality <1-5> --clarity <1-5> --verdict improved
    ```
+
+### Sweeps — clearing every instance, not tuning the prompt
+
+A *sweep* (loop the agent over `--top 1` until a FOCUS hits zero) is a different mode from
+a single tuning run, and it has its own failure shape: fixes **accumulate in one working
+tree** across many passes, so a later pass silently breaks an earlier one and per-pass
+verification compounds the debt. Rules learned from the cyberfabric-core cycle sweep
+(20 cycles → 0 over 28 Haiku passes):
+
+- **Track net progress, not per-pass success.** Measure the FOCUS total (e.g. sum of cycle
+  members) each pass; **stop on no net decrease across 2 passes** (a stall / capability
+  ceiling) and cap total iterations. A pass that *fragments* a big SCC (breaks one back-edge,
+  leaves a smaller remnant) shows as flat cycle-count but falling members — that is progress;
+  full convergence is normal even when individual passes are partial.
+- **Gate compilation at workspace scope between passes (or checkpoint).** Since the tree
+  accumulates, a per-crate-green pass can still break the workspace (feature-unified /
+  `cfg(test)` paths, see step 5). Either commit/checkpoint per pass for bisectability, or run
+  `cargo check --workspace` periodically — and always `cargo check --workspace` +
+  `cargo test --workspace --no-run` + a full test run at the **end** before declaring done.
+- **Measure from artifacts, never the agent's summary.** Agents over-claim ("`fan_in` → 0",
+  "cycle gone") — re-derive the count from `report --output.json` each pass.
+- **Cheap tier + iteration converges on cycles** even with fragmentation, because the cycle's
+  back-edges are concrete in the prompt's connections list; it does **not** converge on HK
+  hubs, where finding the high-value cut needs reasoning the cheapest tier lacks (the
+  capability ceiling — see the Tuning rule).
 
 ## Artifacts: layout & naming
 
@@ -309,7 +343,7 @@ Columns, grouped by objective (most are extractable from the run's artifacts; th
 | Column | Axis | Source | Meaning (↑/↓ = better) |
 |---|---|---|---|
 | `ts`,`cr_sha`,`project`,`focus`,`model`,`iter`,`run` | id | run.md | identity — `cr_sha` is the prompt version |
-| `tests_pass` | quality | project tests | 1/0 — tests green, behaviour preserved |
+| `tests_pass` | quality | project tests | 1/0 — tests green, behaviour preserved. ⚠ On a multi-crate workspace a per-crate pass is **not** sufficient — gate on `cargo check --workspace` + `cargo test --workspace --no-run` (see step 5); the collector's heuristic also can't see a workspace/feature/`cfg(test)` break, so verify it yourself. Also watch the **test count**: a fix that drops tests (e.g. moved code without migrating its tests) can leave the survivors green — `tests_pass` won't catch the lost coverage |
 | `focus_before` / `focus_after` | quality | before/after `.json` | **Focus-aware.** Cycle FOCUS (`ADP`/`cycle`): total cycle-warning count. Metric FOCUS (`HK`, `sloc`, `cognitive`, …): the **project-wide sum** of that metric across module nodes — a flat total beside a dropped `worst_*` means the fix **relocated** the cost rather than dissolving it. |
 | `focus_delta` | quality | `after − before` | ↓ (negative) = better (fewer cycle warnings, or lower total metric) |
 | `worst_before` / `worst_after` | quality | before/after `.json` | worst instance: cycle FOCUS → largest SCC node count; metric FOCUS → the **worst module's metric value** (the `--top 1` target, e.g. HK 390825 → 140697). Direction from the snapshot's `node_attributes` schema (`higher_better` → worst is the min). |
