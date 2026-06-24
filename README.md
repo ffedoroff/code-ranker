@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/code-ranker.svg)](https://pypi.org/project/code-ranker/)
 [![License](https://img.shields.io/crates/l/code-ranker.svg)](./LICENSE)
 
-Structural-analysis tool for **Rust, Python, JavaScript and TypeScript** codebases. Built **AI-agent-friendly first** — finds where a project has structural problems and hands an actionable shortlist to a human or an AI agent for the actual refactor.
+Structural-analysis tool for **Rust** (production-ready) plus **Python, TypeScript/JavaScript, Go, C, C++, C# and Markdown** (beta) codebases. Built **AI-agent-friendly first** — finds where a project has structural problems and hands an actionable shortlist to a human or an AI agent for the actual refactor.
 
 **👉 Map your codebase's worst structural problems in 30 seconds — [jump to the Rust quick start](#rust-quick-start) and run it on your repo now.**
 
@@ -106,7 +106,7 @@ code-ranker report
 code-ranker report . --baseline .code-ranker/before.json
 ```
 
-Built-in plugins: `rust` (cargo + syn), `python`, `javascript` (also handles TypeScript) — all compiled into the single binary, nothing to install.
+Built-in plugins for all nine supported languages (`rust` uses cargo + syn; Rust is production-ready, the rest are beta) — all compiled into the single binary, nothing to install.
 
 ## Documentation
 

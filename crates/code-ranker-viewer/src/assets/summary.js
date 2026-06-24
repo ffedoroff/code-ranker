@@ -429,6 +429,7 @@ function openSummaryPopup(syncUrl = true) {
   const ov = document.getElementById('summary-overlay');
   if (!ov) return;
   window._statsOpen = true;
+  document.getElementById('stats-btn')?.classList.add('active');
   buildSummary();                 // refresh to the active side/stat before showing
   // Keep the page header visible: start the white fill just below it.
   const hdr = document.querySelector('header');
@@ -440,6 +441,7 @@ function openSummaryPopup(syncUrl = true) {
 function closeSummaryPopup(syncUrl = true) {
   const ov = document.getElementById('summary-overlay');
   window._statsOpen = false;
+  document.getElementById('stats-btn')?.classList.remove('active');
   if (ov) ov.style.display = 'none';
   document.body.style.overflow = '';
   if (syncUrl) window.navReplaceView?.();
@@ -451,7 +453,9 @@ function setupSummaryPopup() {
   const ov = document.getElementById('summary-overlay');
   if (!ov || ov._wired) return;
   ov._wired = true;
-  document.getElementById('stats-btn')?.addEventListener('click', openSummaryPopup);
+  document.getElementById('stats-btn')?.addEventListener('click', () => {
+    window._statsOpen ? closeSummaryPopup() : openSummaryPopup();
+  });
   document.getElementById('summary-close')?.addEventListener('click', closeSummaryPopup);
   // Footer: download links (.json / .md) + copy-to-clipboard buttons.
   document.getElementById('summary-dl-json')?.addEventListener('click', e => { e.preventDefault(); exportSummaryJSON(); });

@@ -87,7 +87,16 @@ pub fn render_html_viewer(baseline: Option<&Snapshot>, current: Option<&Snapshot
         embed("cs-current", current),
     );
 
+    // Exact code-ranker version that produced the analysed snapshot (the CLI's
+    // `CARGO_PKG_VERSION`, recorded under `versions["code-ranker"]`), shown small
+    // under the header brand. Fall back to this crate's version if absent.
+    let cr_version = current
+        .or(baseline)
+        .and_then(|s| s.versions.get("code-ranker"))
+        .map_or(env!("CARGO_PKG_VERSION"), String::as_str);
+
     ASSET_HTML
+        .replace("__CR_VERSION__", &format!("v{cr_version}"))
         .replace(
             r#"<link rel="stylesheet" href="./index.css">"#,
             &format!(

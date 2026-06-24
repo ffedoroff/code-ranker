@@ -4,10 +4,16 @@ body { margin: 0; background: #fafafa; color: #222; }
 
 header { background: #2c3e50; color: #fff; padding: 8px 24px; }
 .header-row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-height: 32px; }
-.header-brand { font-size: 15px; font-weight: 800; letter-spacing: .12em;
-                color: #1abc9c; text-transform: uppercase; white-space: nowrap; margin-right: 4px;
-                text-decoration: none; }
-a.header-brand:hover { text-decoration: underline; }
+.header-brand { position: relative; display: inline-flex; align-items: baseline;
+                white-space: nowrap; margin-right: 4px; text-decoration: none; }
+.header-brand-name { font-size: 15px; font-weight: 800; letter-spacing: .02em; color: #1abc9c; }
+/* Exact version: sits just under the brand, absolutely positioned so it never
+   grows the header; hidden until the header is hovered, then fades in. */
+.header-ver { position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+              font-size: 10px; font-weight: 500; letter-spacing: 0; white-space: nowrap;
+              color: #cdd8e6; opacity: 0; transition: opacity .12s ease; }
+header:hover .header-ver { opacity: 1; }
+a.header-brand:hover .header-brand-name { text-decoration: underline; }
 /* Project title: capped width with an ellipsis (full value in the `title` attr). */
 .header-title { font-size: 18px; font-weight: 500; white-space: nowrap; color: #d7e0ea;
                 display: inline-block; max-width: 340px; overflow: hidden;

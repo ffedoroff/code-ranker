@@ -163,6 +163,9 @@
                     border: 0; border-radius: 4px; padding: 6px 14px; cursor: pointer;
                     transition: background .15s; }
 .header-stats-btn:hover { background: #5d7593; }
+/* Highlighted while the stats popup is open (toggle). */
+.header-stats-btn.active { background: #1abc9c; color: #14202c; font-weight: 600; }
+.header-stats-btn.active:hover { background: #1fd0b0; }
 
 /* Full-screen WHITE fill (the page header stays visible above it — its top offset
    is set in JS). The popup itself is content-width and vertically centred. */
