@@ -2,10 +2,14 @@
 
 [![CI](https://github.com/ffedoroff/code-ranker/actions/workflows/ci.yml/badge.svg)](https://github.com/ffedoroff/code-ranker/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/ffedoroff/code-ranker/branch/main/graph/badge.svg)](https://codecov.io/gh/ffedoroff/code-ranker)
+[![code-ranker](https://img.shields.io/endpoint?url=https://api.code-ranker.com/badge/ffedoroff/cr-smoke-test.json)](https://reports.code-ranker.com/r/ffedoroff/cr-smoke-test/latest)
 [![Crates.io](https://img.shields.io/crates/v/code-ranker.svg)](https://crates.io/crates/code-ranker)
 [![npm](https://img.shields.io/npm/v/code-ranker.svg)](https://www.npmjs.com/package/code-ranker)
 [![PyPI](https://img.shields.io/pypi/v/code-ranker.svg)](https://pypi.org/project/code-ranker/)
 [![License](https://img.shields.io/crates/l/code-ranker.svg)](./LICENSE)
+
+[![Website](https://img.shields.io/badge/website-code--ranker.com-1abc9c)](https://code-ranker.com)
+[![Install the GitHub App](https://img.shields.io/badge/GitHub%20App-install-2c3e50?logo=github&logoColor=white)](https://github.com/apps/code-ranker-app/installations/new)
 
 Structural-analysis tool for **Rust** (production-ready) plus **Python, TypeScript/JavaScript, Go, C, C++, C# and Markdown** (beta) codebases. Built **AI-agent-friendly first** — finds where a project has structural problems and hands an actionable shortlist to a human or an AI agent for the actual refactor.
 
@@ -61,6 +65,8 @@ code-ranker check . \
 The linter is the `check` command — exits non-zero on any cycle or threshold violation, e.g. a PR that introduces a new file-level cycle or a file above your LOC limit (`mutual` and `chain` cycle checks are on by default). See [docs/CLI.md](docs/code-ranker-cli/CLI.md) for all flags.
 
 **Add it to your pipeline today** — one `code-ranker check` step stops new cycles and bloat from ever landing.
+
+Prefer zero config? **[Install the GitHub App](https://github.com/apps/code-ranker-app/installations/new)** — it publishes a per-PR HTML structural report on every pull request, no workflow YAML to write. More at **[code-ranker.com](https://code-ranker.com)**.
 
 ## Full CLI
 

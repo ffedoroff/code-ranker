@@ -19,6 +19,12 @@ Minimal to start; add the diff wiring once you want per-PR regression diffs. The
 two reference files are drop-in workflows — copy one into `.github/workflows/`
 and adjust the `runs-on` / install step.
 
+> **Prefer zero config?** Install the
+> **[code-ranker GitHub App](https://github.com/apps/code-ranker-app/installations/new)**
+> instead — it runs the analysis and publishes the per-PR HTML report for you,
+> with no workflow YAML to maintain. The two modes below are for self-hosted CI
+> control. More at [code-ranker.com](https://code-ranker.com).
+
 ---
 
 ## Prerequisite: get the binary onto PATH
