@@ -196,6 +196,7 @@ fn inline_overrides_set_each_key() {
             "rules.cycles.chain=7",
             "rules.thresholds.file.loc=800",
             "rules.thresholds.file.sloc=1200",
+            "levels.functions=true",
         ],
     )
     .unwrap();
@@ -209,6 +210,7 @@ fn inline_overrides_set_each_key() {
     assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(7));
     assert_eq!(cfg.rules.thresholds.file.get("loc"), Some(800.0));
     assert_eq!(cfg.rules.thresholds.file.get("sloc"), Some(1200.0));
+    assert!(cfg.levels.functions);
 }
 
 #[test]

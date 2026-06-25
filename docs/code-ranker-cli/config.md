@@ -172,6 +172,7 @@ path = "gl-code-quality-report.json"  # default if unset: .code-ranker/{ts}-{git
 
 [levels]                     # opt-in extra graph levels beyond `files`
 # functions = true           # emit a `functions` level with per-function metrics
+#                            # (or inline, no file: --config levels.functions=true)
 
 [metrics.comment_ratio]      # user-defined metric (CEL formula + spec)
 formula_cel = "sloc > 0.0 ? cloc / sloc * 100.0 : 0.0"

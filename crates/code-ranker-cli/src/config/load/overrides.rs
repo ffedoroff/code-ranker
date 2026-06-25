@@ -51,6 +51,7 @@ pub(crate) fn apply_inline_overrides(cfg: &mut Config, entries: &[&str]) -> Resu
             "output.html.path" => cfg.output.html.path = Some(value.to_string()),
             "output.json.enabled" => cfg.output.json.enabled = Some(parse_on_off(value)?),
             "output.html.enabled" => cfg.output.html.enabled = Some(parse_on_off(value)?),
+            "levels.functions" => cfg.levels.functions = parse_on_off(value)?,
             _ if key.strip_prefix("rules.cycles.").is_some() => {
                 let kind = key.strip_prefix("rules.cycles.").unwrap();
                 set_cycle(cfg, kind, parse_cycle_rule(value)?)?;
