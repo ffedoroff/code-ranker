@@ -121,6 +121,46 @@ fn levels_returns_the_spec_for_a_known_plugin_and_empty_for_unknown() {
 }
 
 #[test]
+fn unknown_plugin_accessors_degrade_gracefully() {
+    // Every registry accessor takes a plugin *name*; an unknown one must return the
+    // documented empty/zero fallback (the `None` arm) rather than panic.
+    let tmp = tempfile::tempdir().unwrap();
+    let input = PluginInput::default();
+    let mut graph = Graph::default();
+
+    assert!(
+        analyze("nope", tmp.path(), &input).is_err(),
+        "analyze with an unknown plugin errors"
+    );
+    assert_eq!(
+        annotate_metrics("nope", &mut graph),
+        0,
+        "no metrics annotated for an unknown plugin"
+    );
+    assert!(
+        function_units("nope", &graph).is_empty(),
+        "no function units for an unknown plugin"
+    );
+    assert!(
+        principles("nope", &input).is_empty(),
+        "no principles for an unknown plugin"
+    );
+    // `metric_specs` returns the defaults verbatim for an unknown plugin.
+    let defaults: BTreeMap<String, AttributeSpec> = [(
+        "sloc".to_string(),
+        AttributeSpec::new(code_ranker_plugin_api::attrs::ValueType::Int, "Source"),
+    )]
+    .into_iter()
+    .collect();
+    let out = metric_specs("nope", defaults.clone());
+    assert!(
+        out.contains_key("sloc"),
+        "defaults passed through unchanged"
+    );
+    assert_eq!(out.len(), defaults.len(), "no plugin refinement applied");
+}
+
+#[test]
 fn resolve_plugin_failure_points_at_config() {
     // No marker resolves here, so the error guides the user to pin the language —
     // into the discovered config when one exists, else by creating `code-ranker.toml`.

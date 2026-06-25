@@ -93,3 +93,37 @@ pub fn timed<T>(label: &str, f: impl FnOnce() -> T) -> T {
     subcmd(label, start.elapsed());
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The level switch round-trips, and `secs` renders millisecond precision.
+    #[test]
+    fn level_set_and_get_round_trips() {
+        let saved = level();
+        set_level(QUIET);
+        assert_eq!(level(), QUIET);
+        set_level(VERBOSE);
+        assert_eq!(level(), VERBOSE);
+        set_level(saved);
+        assert_eq!(secs(Duration::from_millis(231)), "0.231s");
+    }
+
+    /// `timed` runs `f` and returns its value at EVERY level — the work is never
+    /// gated, only the line. Exercising it at VERBOSE drives the gated emission in
+    /// `subcmd` (and, via `verbose`, the matching `line` call) without asserting on
+    /// the stderr text. The level is saved and restored so the process-wide switch
+    /// is left as found for sibling tests.
+    #[test]
+    fn timed_runs_and_logs_at_verbose() {
+        let saved = level();
+        set_level(VERBOSE);
+        let out = timed("unit-test sub-command", || {
+            verbose("a verbose-only diagnostic line");
+            7
+        });
+        set_level(saved);
+        assert_eq!(out, 7, "timed returns the closure's value");
+    }
+}

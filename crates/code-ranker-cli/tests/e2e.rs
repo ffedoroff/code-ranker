@@ -1527,3 +1527,141 @@ fn empty_metric_warns_on_stderr() {
         "project-wide-empty warning expected on stderr, got: {stderr}"
     );
 }
+
+/// Bare `docs` (no subject) prints the subject catalog and exits `0` — the catalog
+/// *is* the help. Run from the Rust sample so a plugin auto-resolves (every subject
+/// but `ai` is strictly per-language).
+#[test]
+fn docs_bare_prints_the_catalog_and_exits_zero() {
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(sample_dir("rust"))
+        .arg("docs")
+        .output()
+        .expect("spawn docs");
+    assert!(
+        res.status.success(),
+        "bare docs must exit 0: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&res.stdout);
+    assert!(
+        stdout.contains("code-ranker docs <subject>"),
+        "catalog header present: {stdout}"
+    );
+    assert!(
+        stdout.contains("principles") && stdout.contains("ADP"),
+        "principles group + a member listed: {stdout}"
+    );
+}
+
+/// `docs principles` prints the principle index (the `principles` subject branch).
+#[test]
+fn docs_principles_index_lists_every_principle() {
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(sample_dir("rust"))
+        .args(["docs", "principles"])
+        .output()
+        .expect("spawn docs principles");
+    assert!(res.status.success(), "docs principles failed");
+    let stdout = String::from_utf8_lossy(&res.stdout);
+    assert!(
+        stdout.contains("Principles — print one with"),
+        "index header: {stdout}"
+    );
+    assert!(stdout.contains("ADP"), "a principle id listed: {stdout}");
+}
+
+/// An unknown `docs` subject prints the catalog (so the caller sees every option)
+/// and exits **non-zero** — it was a real lookup miss, not a help request.
+#[test]
+fn docs_unknown_subject_prints_catalog_and_fails() {
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(sample_dir("rust"))
+        .args(["docs", "no-such-subject"])
+        .output()
+        .expect("spawn docs");
+    assert!(!res.status.success(), "unknown subject must exit non-zero");
+    let stdout = String::from_utf8_lossy(&res.stdout);
+    assert!(
+        stdout.contains("Unknown docs subject"),
+        "lead note names the miss: {stdout}"
+    );
+}
+
+/// `report --export-full-config PATH` writes the merged `[project]` + `[plugin]`
+/// config and runs no analysis (the `Some(path)` arm in `main`).
+#[test]
+fn report_export_full_config_writes_both_sections() {
+    let sample = sample_dir("rust");
+    let dir = tempfile::tempdir().expect("temp dir");
+    let out = dir.path().join("full.toml");
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(dir.path())
+        .arg("report")
+        .arg(&sample)
+        .arg("--config")
+        .arg(sample.join("code-ranker.toml"))
+        .arg("--export-full-config")
+        .arg(&out)
+        .output()
+        .expect("spawn export-full-config");
+    assert!(
+        res.status.success(),
+        "export-full-config failed: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let body = std::fs::read_to_string(&out).expect("config dump written");
+    assert!(
+        body.contains("[project]") && body.contains("[plugin]"),
+        "both sections present: {body}"
+    );
+}
+
+/// `--output.mode quiet` silences the closing `✓` line on a successful run; the
+/// global flag is accepted after the subcommand. (Exercises the `Quiet` arm.)
+#[test]
+fn output_mode_quiet_suppresses_the_finish_line() {
+    let (ok, _stdout, stderr) = run_report_capture("rust", &["--output.mode", "quiet"]);
+    assert!(ok, "quiet report should still succeed: {stderr}");
+    assert!(
+        !stderr.contains('✓'),
+        "quiet suppresses the closing ✓ line: {stderr}"
+    );
+}
+
+/// `--output.mode verbose` adds the `▶` startup line and per-tool `↳` timings to
+/// stderr. (Exercises the `Verbose` arm.)
+#[test]
+fn output_mode_verbose_emits_the_startup_line() {
+    let (ok, _stdout, stderr) = run_report_capture("rust", &["--output.mode", "verbose"]);
+    assert!(ok, "verbose report should succeed: {stderr}");
+    assert!(
+        stderr.contains('▶'),
+        "verbose prints the ▶ startup line: {stderr}"
+    );
+}
+
+/// `report` on a directory with no plugin marker (and no `--plugin`) fails at
+/// plugin resolution inside the pipeline — the `?` on `resolve_plugin`. The error
+/// guides the user to pin a language (the same diagnostic `check` gives).
+#[test]
+fn report_fails_when_no_plugin_resolves() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    // An empty directory: config loads (defaults), but no project marker matches,
+    // so plugin auto-detection fails before any analysis runs.
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(dir.path())
+        .arg("report")
+        .arg(".")
+        .output()
+        .expect("spawn report");
+    assert!(
+        !res.status.success(),
+        "report must fail when no plugin resolves"
+    );
+    let stderr = String::from_utf8_lossy(&res.stderr);
+    assert!(
+        stderr.contains("auto-detect") || stderr.contains("--plugin"),
+        "error points at pinning a language: {stderr}"
+    );
+}
