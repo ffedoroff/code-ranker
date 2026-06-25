@@ -163,6 +163,13 @@ functions (a pure type or declaration block) is left with only the file unit's
 vacuous `1`, so the metric is **omitted** (`omit_at` = 1) rather than reported as
 a bare `1`.
 
+The engine emits the two summands of this sum as metrics in their own right, so
+the viewer can render the derivation with the node's real numbers:
+**`spaces`** — the *unit count*, the source file (1) plus each function / impl /
+trait / closure space (the base paths); and **`branches`** — the *decision
+points* (`if` / `for` / `while` / `loop` / match arm / `?` / `&&` / `||`). They
+combine as **`cyclomatic = spaces + branches`**.
+
 > **Sources:** McCabe, "A Complexity Measure" (1976); the multi-component form
 > `V(G) = E − N + 2P` and its equality with the per-function sum are described in
 > [Wikipedia: Cyclomatic complexity](https://en.wikipedia.org/wiki/Cyclomatic_complexity);
@@ -229,8 +236,11 @@ From the two maps come four raw counts:
 | **η₂** | distinct operands | `operands.len()` |
 | **N₂** | total operand occurrences | sum of operand counts |
 
-Everything else is arithmetic on those four. Worked on the expression
-`x = a + a * 2` (illustrative tokenization):
+These four raw counts are themselves emitted as node attributes — **`eta1`**
+(η₁), **`n1`** (N₁), **`eta2`** (η₂), **`n2`** (N₂) — so the viewer can show each
+derived Halstead formula filled in with this unit's actual numbers. Everything
+else is arithmetic on those four. Worked on the expression `x = a + a * 2`
+(illustrative tokenization):
 
 ```
 operators: =, +, *        → η₁ = 3,  N₁ = 3   (each used once)
@@ -258,14 +268,18 @@ A single 0–100 score (higher = more maintainable) folding volume, branching,
 and size together:
 
 ```
-mi      = 171 − 5.2·ln(volume)   − 0.23·cyclomatic − 16.2·ln(sloc)
-mi_sei  = 171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(sloc)
-                + 50·sin(√(2.4 × comment_ratio))        comment_ratio = cloc ÷ sloc
+mi      = 171 − 5.2·ln(volume)   − 0.23·cyclomatic − 16.2·ln(span_sloc)
+mi_sei  = 171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc)
+                + 50·sin(√(2.4 × comment_ratio))        comment_ratio = cloc ÷ span_sloc
 ```
 
-`mi` punishes big (`sloc`), complex (`cyclomatic`), and dense (`volume`) code.
-`mi_sei` is the SEI variant: same skeleton on a log₂ basis, plus a bonus for
-comment density — well-documented code scores higher.
+The size input is **`span_sloc`** — the unit's *line span* (`end_row −
+start_row`), emitted as its own metric — **not** `sloc`. It is the analyzer's
+size proxy for the classic MI's `LOC` term, kept distinct so `mi` and `mi_sei`
+share one consistent size number. `mi` punishes big (`span_sloc`), complex
+(`cyclomatic`), and dense (`volume`) code. `mi_sei` is the SEI variant: same
+skeleton on a log₂ basis, plus a bonus for comment density — well-documented code
+scores higher.
 
 ### `fan_in` / `fan_out` — graph coupling
 
@@ -365,6 +379,16 @@ External-only dependencies don't count (they land in `fan_out_external`), and a
 node with no internal coupling on one side (`fan_in` or `fan_out` = 0) gets
 `hk = 0`, which is dropped. See [HK.md](HK.md)
 for the full rationale.
+
+### `cycle` — dependency-cycle tag
+
+Not a number but a **categorical** node attribute: set on every module that
+participates in a dependency cycle, naming the cycle's kind — `mutual` (two units
+import each other, A ↔ B) or `chain` (a strongly-connected component of three or
+more, A → B → C → A). It comes from the graph's cycle pass (over the same flow
+edges as `fan_in` / `fan_out`), is left absent on acyclic modules, and is what
+the Acyclic Dependencies Principle (ADP) gate and scorecard key on. See
+[../../docs/cycles.md](../../docs/cycles.md) for how the components are detected.
 
 ### Project averages (the `stats` block)
 
