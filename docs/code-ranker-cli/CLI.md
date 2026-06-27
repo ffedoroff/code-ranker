@@ -242,7 +242,7 @@ threshold.file.cognitive  ·  rust  ·  CPX  ·  files graph
   where  {target}/src/handlers.rs
   issue  cognitive complexity 67 exceeds limit 25 (2.7× over budget)
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
-  fix    Run `code-ranker docs rust cognitive` and follow its instructions.
+  fix    Run `code-ranker report --plugins rust --prompt cognitive` to generate an AI fix-prompt.
   tune   set with --threshold file.cognitive=N   ·   plugins.rust.rules.thresholds.file.cognitive in code-ranker.toml (or plugins.base for all)
   ref    https://github.com/ffedoroff/code-ranker/blob/main/docs/code-ranker-cli/ERRORS.md#group-cpx
 ```

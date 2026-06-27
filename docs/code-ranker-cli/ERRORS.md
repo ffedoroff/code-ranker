@@ -105,7 +105,8 @@ carry a full why/fix rationale below; the rest report the breach with the same
 group and message shape. The `why` / `fix` copy is **data-driven**: `why` is each
 metric's `description` spec, and `fix` is its `remediation` when one is authored
 (a project `[plugins.<lang>.metrics.<key>]` may set a custom fix) — otherwise the built-in metrics
-carry no boilerplate and `fix` is auto-derived as a pointer to `code-ranker docs <lang> <key>`.
+carry no boilerplate and `fix` is auto-derived as a command that generates the AI fix-prompt for
+the metric: `code-ranker report --plugins <lang> --prompt <key>`.
 Cycle rules read the `[cycles.*]` catalog. The specs live in
 `code-ranker-graph/metrics/builtin.toml` and the per-language configs; the tables
 below mirror that data, they do not define it.
@@ -132,7 +133,7 @@ threshold.file.cognitive  ·  rust  ·  CPX  ·  files graph
   where  {target}/src/handlers.rs
   issue  cognitive complexity 67 exceeds limit 25 (2.7× over budget)
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
-  fix    Run `code-ranker docs rust cognitive` and follow its instructions.
+  fix    Run `code-ranker report --plugins rust --prompt cognitive` to generate an AI fix-prompt.
   tune   set with --threshold file.cognitive=N   ·   plugins.rust.rules.thresholds.file.cognitive in code-ranker.toml (or plugins.base for all)
   ref    https://github.com/ffedoroff/code-ranker/blob/main/docs/code-ranker-cli/ERRORS.md#group-cpx
 ```

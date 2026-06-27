@@ -62,12 +62,13 @@ pub fn rule_doc(
     let metric = id.rsplit('.').next().unwrap_or(id);
     let s = node_attributes.get(metric)?;
     // A metric's `fix` is its own `remediation` when one is authored (a project
-    // `[metrics.<key>]` may set a custom fix); otherwise auto-derive the pointer to
-    // its doc from the key, so the built-in catalog carries no duplicated boilerplate
-    // and the command always names the correct subject (`docs <lang> <key>`).
+    // `[metrics.<key>]` may set a custom fix); otherwise auto-derive a command that
+    // generates the AI fix-prompt for this metric, so the built-in catalog carries no
+    // duplicated boilerplate and the command always names the correct subject
+    // (`report --plugins <lang> --prompt <key>`).
     let fix = s.remediation.clone().or_else(|| {
         Some(format!(
-            "Run `code-ranker docs {lang} {metric}` and follow its instructions."
+            "Run `code-ranker report --plugins {lang} --prompt {metric}` to generate an AI fix-prompt."
         ))
     });
     Some(RuleDoc {

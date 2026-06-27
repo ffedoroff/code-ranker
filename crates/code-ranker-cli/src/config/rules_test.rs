@@ -37,7 +37,7 @@ fn rule_doc_auto_derives_fix_for_a_metric_without_remediation() {
     use code_ranker_plugin_api::attrs::ValueType;
     let mut na = BTreeMap::new();
     // A built-in metric carries no boilerplate `remediation`; the `fix` line is
-    // derived from the key as a pointer to its `docs` page.
+    // derived from the key as a command that generates the AI fix-prompt.
     na.insert(
         "sloc".to_string(),
         AttributeSpec::new(ValueType::Int, "Source"),
@@ -46,7 +46,7 @@ fn rule_doc_auto_derives_fix_for_a_metric_without_remediation() {
     let m = rule_doc("threshold.file.sloc", "rust", &na, &ck).expect("metric doc");
     assert_eq!(
         m.fix.as_deref(),
-        Some("Run `code-ranker docs rust sloc` and follow its instructions.")
+        Some("Run `code-ranker report --plugins rust --prompt sloc` to generate an AI fix-prompt.")
     );
 }
 
