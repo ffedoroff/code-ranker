@@ -125,6 +125,9 @@ pub(super) fn assert_disjoint_languages(
                 }
                 if !seen.insert(node.id.as_str()) {
                     debug_assert!(false, "file {} claimed by >1 language", node.id);
+                    // COVERAGE: release-only — under test/debug the `debug_assert!`
+                    // above panics first, so this `bail!` (the production fallback)
+                    // is unreachable when coverage is instrumented.
                     anyhow::bail!(
                         "internal error: file {:?} was analysed by more than one language; \
                          adjust `extensions` / `plugins` so each file maps to exactly one language",
@@ -135,4 +138,56 @@ pub(super) fn assert_disjoint_languages(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use code_ranker_graph::snapshot::LanguageSnapshot;
+    use code_ranker_plugin_api::node::Node;
+
+    /// A single-language snapshot whose `files` level holds one node.
+    fn lang_with_node(id: &str, kind: &str) -> LanguageSnapshot {
+        let level = LevelGraph {
+            nodes: vec![Node {
+                id: id.into(),
+                kind: kind.into(),
+                name: id.into(),
+                parent: None,
+                attrs: Default::default(),
+            }],
+            ..Default::default()
+        };
+        let mut graphs = BTreeMap::new();
+        graphs.insert("files".to_string(), level);
+        LanguageSnapshot {
+            graphs,
+            principles: vec![],
+            prompt: Default::default(),
+        }
+    }
+
+    /// Distinct internal files pass; a shared id that is `external` in one language
+    /// is exempt (external nodes are third-party, not owned by a language).
+    #[test]
+    fn assert_disjoint_languages_accepts_distinct_and_external() {
+        let mut langs = BTreeMap::new();
+        langs.insert("rust".to_string(), lang_with_node("a.rs", "file"));
+        // same id but external → ignored by the check
+        langs.insert("python".to_string(), lang_with_node("a.rs", "external"));
+        langs.insert("go".to_string(), lang_with_node("b.go", "file"));
+        assert!(assert_disjoint_languages(&langs).is_ok());
+    }
+
+    /// Two languages claiming the same internal file trip the invariant. In a
+    /// debug/test build the `debug_assert!` fires (the dev guard); the `bail!`
+    /// fallback only runs in release.
+    #[test]
+    #[should_panic(expected = "claimed by >1 language")]
+    fn assert_disjoint_languages_rejects_shared_internal_file() {
+        let mut langs = BTreeMap::new();
+        langs.insert("rust".to_string(), lang_with_node("dup.rs", "file"));
+        langs.insert("ts".to_string(), lang_with_node("dup.rs", "file"));
+        let _ = assert_disjoint_languages(&langs);
+    }
 }

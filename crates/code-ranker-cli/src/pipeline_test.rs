@@ -221,3 +221,29 @@ fn detect_all_multi_and_empty() {
     sorted.sort_unstable();
     assert_eq!(detected, sorted, "detect_all output is sorted");
 }
+
+/// Explicit `--plugins md` on an empty directory: the markdown plugin finds no
+/// source, so every active language drops out and assembly has nothing to
+/// snapshot — a hard, actionable error rather than an empty snapshot.
+#[test]
+fn analyze_directory_errors_when_all_plugins_are_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let args = AnalyzeArgs {
+        input: dir.path().to_path_buf(),
+        plugins: vec!["md".into()],
+        config: vec![],
+        ignore_paths: vec![],
+        git_branch: None,
+        git_commit: None,
+        git_dirty_files: None,
+        git_origin: None,
+    };
+    let err = analyze_directory(&args, &[], &[])
+        .err()
+        .expect("empty analysis should error")
+        .to_string();
+    assert!(
+        err.contains("produced empty graphs"),
+        "all-empty bail names the cause: {err}"
+    );
+}

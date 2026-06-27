@@ -221,6 +221,35 @@ fn build_specs_without_config_uses_the_plugin_catalog_and_neutral_input() {
     );
 }
 
+/// `base` resolves the language-agnostic principle catalog from the neutral
+/// built-in defaults (not a registered plugin).
+#[test]
+fn build_specs_base_uses_neutral_catalog() {
+    let specs = build_specs("base", None);
+    let ids: Vec<&str> = specs.principles.iter().map(|p| p.id.as_str()).collect();
+    assert!(
+        ids.contains(&"ADP"),
+        "base carries the neutral principle catalog: {ids:?}"
+    );
+    assert!(
+        specs.node_attributes.contains_key("sloc"),
+        "central metrics present for base too"
+    );
+}
+
+/// With no language markers present, `languages_hint` lists every available
+/// language rather than the project's detected set.
+#[test]
+fn languages_hint_lists_all_when_none_detected() {
+    let dir = tempfile::tempdir().unwrap();
+    let hint = languages_hint(None, dir.path());
+    assert!(
+        hint.starts_with("Available languages:"),
+        "no markers → the all-languages hint: {hint}"
+    );
+    assert!(hint.contains("base"), "mentions the base catalog: {hint}");
+}
+
 #[test]
 fn build_specs_overlays_project_metrics_and_principles() {
     let mut cfg = config::model::Config::default();

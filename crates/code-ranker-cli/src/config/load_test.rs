@@ -433,6 +433,135 @@ fn inline_override_sets_language_key() {
     assert!(base.contains_key("tests"));
 }
 
+/// An alias-named block (`[plugins.javascript]`) is folded into its canonical
+/// block (`[plugins.js]`) by deep-merge, so keys from both survive under the
+/// canonical key.
+#[test]
+fn load_deep_merges_alias_block_into_canonical() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg_path = dir.path().join("code-ranker.toml");
+    std::fs::write(
+        &cfg_path,
+        v("[plugins.js]\nlevels.functions = true\n[plugins.javascript]\nignore.tests = false\n"),
+    )
+    .unwrap();
+    let loaded = load(dir.path(), &[cfg_path.display().to_string()], &[], &[], &[]).unwrap();
+    assert!(
+        loaded.config.plugins.languages.contains_key("js")
+            && !loaded.config.plugins.languages.contains_key("javascript"),
+        "both blocks live under the canonical key"
+    );
+    let lc = loaded.config.language_config("js").unwrap();
+    assert!(lc.levels.functions, "key from the canonical block kept");
+    assert!(!lc.ignore.tests, "key from the alias block merged in");
+}
+
+/// `--ignore <glob>` extends the base layer's ignore globs (the `ensure_array`
+/// path that creates `[plugins.base].ignore.paths` on first use).
+#[test]
+fn cli_override_extends_ignore_paths() {
+    let mut cfg = Config::default();
+    apply_cli_overrides(&mut cfg, &["foo/**".into(), "bar/**".into()], &[], &[]).unwrap();
+    let lc = cfg.language_config("base").unwrap();
+    assert_eq!(lc.ignore.paths, ["foo/**", "bar/**"]);
+}
+
+/// `--ignore` coerces a pre-existing conflicting base value into the array it
+/// needs: a scalar `ignore.paths` leaf, or a scalar `ignore` standing where the
+/// table belongs (the defensive replace arms of `ensure_array`).
+#[test]
+fn cli_ignore_coerces_conflicting_base_values() {
+    // Leaf conflict: base already holds `ignore.paths` as a string.
+    let mut cfg = Config::default();
+    {
+        let mut ignore = toml::Table::new();
+        ignore.insert("paths".into(), toml::Value::String("oops".into()));
+        cfg.plugins
+            .languages
+            .entry("base".into())
+            .or_default()
+            .insert("ignore".into(), toml::Value::Table(ignore));
+    }
+    apply_cli_overrides(&mut cfg, &["a/**".into()], &[], &[]).unwrap();
+    assert_eq!(
+        cfg.language_config("base").unwrap().ignore.paths,
+        ["a/**"],
+        "scalar leaf replaced by an array"
+    );
+
+    // Intermediate conflict: base holds `ignore` itself as a scalar.
+    let mut cfg = Config::default();
+    cfg.plugins
+        .languages
+        .entry("base".into())
+        .or_default()
+        .insert("ignore".into(), toml::Value::Integer(5));
+    apply_cli_overrides(&mut cfg, &["b/**".into()], &[], &[]).unwrap();
+    assert_eq!(
+        cfg.language_config("base").unwrap().ignore.paths,
+        ["b/**"],
+        "scalar `ignore` replaced by a table"
+    );
+}
+
+/// A non-zero cycle budget is stored as a raw integer (`cycle_value`'s `Max(n)`
+/// arm), and a fractional threshold as a raw float (`number_value`'s float arm).
+#[test]
+fn cli_override_cycle_budget_and_fractional_threshold() {
+    let mut cfg = Config::default();
+    apply_cli_overrides(&mut cfg, &[], &["chain=5".into()], &["file.hk=2.5".into()]).unwrap();
+    let lc = cfg.language_config("base").unwrap();
+    assert_eq!(
+        lc.rules.cycles.chain,
+        CycleRule::Max(5),
+        "integer budget kept"
+    );
+    assert_eq!(lc.rules.thresholds.file.get("hk"), Some(2.5), "float kept");
+}
+
+/// `parse_leaf_value` coerces leaf scalars by shape: a bare float → TOML float, and
+/// a suffixed/garbage scalar (no decimal, not an int) → TOML string.
+#[test]
+fn inline_leaf_value_float_and_string_fallback() {
+    let mut cfg = Config::default();
+    apply_inline_overrides(
+        &mut cfg,
+        &["plugins.rust.ratio=1.5", "plugins.rust.budget=8K"],
+    )
+    .unwrap();
+    let rust = cfg.plugins.languages.get("rust").unwrap();
+    assert_eq!(rust.get("ratio").and_then(|v| v.as_float()), Some(1.5));
+    assert_eq!(
+        rust.get("budget").and_then(|v| v.as_str()),
+        Some("8K"),
+        "suffixed scalar stays a string for the threshold deserializer"
+    );
+}
+
+/// A `plugins.<lang>` key with no `.<path>` segment is a fatal, actionable error.
+#[test]
+fn inline_plugins_key_requires_path_segment() {
+    let mut cfg = Config::default();
+    let err = apply_inline_overrides(&mut cfg, &["plugins.rust=x"])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("plugins.<lang>.<path>"), "{err}");
+}
+
+/// `set_path` replaces a scalar standing where a sub-table is needed: writing
+/// `a.b` after `a` already holds an integer turns `a` into a table.
+#[test]
+fn inline_leaf_override_replaces_scalar_with_table() {
+    let mut cfg = Config::default();
+    apply_inline_overrides(&mut cfg, &["plugins.rust.a=1", "plugins.rust.a.b=2"]).unwrap();
+    let rust = cfg.plugins.languages.get("rust").unwrap();
+    let a = rust
+        .get("a")
+        .and_then(|v| v.as_table())
+        .expect("a is now a table");
+    assert_eq!(a.get("b").and_then(|v| v.as_integer()), Some(2));
+}
+
 /// `validate_thresholds` accepts a metric defined in the same language block.
 #[test]
 fn validate_thresholds_accepts_language_metrics_key() {

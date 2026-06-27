@@ -858,6 +858,198 @@ fn scorecard_focus_principle_shows_only_that_principle() {
     );
 }
 
+// ── resolve_language_snap ──────────────────────────────────────────────────────
+
+/// A `LanguageSnapshot` carrying the bits `resolve_language_snap` reads: the
+/// `files` level (for the metric check) and the principle list (for the id check).
+fn lang_snap(files: LevelGraph, principles: Vec<Principle>) -> LanguageSnapshot {
+    let mut graphs = BTreeMap::new();
+    graphs.insert("files".to_string(), files);
+    LanguageSnapshot {
+        graphs,
+        principles,
+        prompt: Default::default(),
+    }
+}
+
+/// A `Snapshot` over the given (language → snapshot) pairs; everything else is the
+/// minimum the resolver never reads.
+fn snap_of(langs: Vec<(&str, LanguageSnapshot)>) -> Snapshot {
+    let languages: BTreeMap<String, LanguageSnapshot> =
+        langs.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+    let plugins: Vec<String> = languages.keys().cloned().collect();
+    Snapshot::new(code_ranker_graph::snapshot::SnapshotInit {
+        command: "report".into(),
+        workspace: ".".into(),
+        target: ".".into(),
+        plugins,
+        config_file: None,
+        versions: BTreeMap::new(),
+        roots: BTreeMap::new(),
+        git: None,
+        timings: vec![],
+        languages,
+    })
+}
+
+/// Explicit `--language` wins and resolves an alias (`py` → `python`) to the
+/// canonical key the snapshot stores under.
+#[test]
+fn resolve_language_snap_explicit_resolves_alias() {
+    let snap = snap_of(vec![
+        ("rust", lang_snap(level_with(vec![]), vec![])),
+        (
+            "python",
+            lang_snap(level_with(vec![]), vec![srp_principle()]),
+        ),
+    ]);
+    let ls = resolve_language_snap(&snap, Some("py"), None).unwrap();
+    assert_eq!(ls.principles[0].id, "SRP", "py alias resolved to python");
+}
+
+/// An explicit language not in the snapshot is fatal, and the error lists what IS
+/// available.
+#[test]
+fn resolve_language_snap_explicit_unknown_lists_available() {
+    let snap = snap_of(vec![
+        ("rust", lang_snap(level_with(vec![]), vec![])),
+        ("python", lang_snap(level_with(vec![]), vec![])),
+    ]);
+    let err = resolve_language_snap(&snap, Some("go"), None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("\"go\" not found"),
+        "names the bad language: {err}"
+    );
+    assert!(
+        err.contains("python") && err.contains("rust"),
+        "lists available languages: {err}"
+    );
+}
+
+/// A single-language snapshot resolves to it regardless of `id`/`language`.
+#[test]
+fn resolve_language_snap_single_language_ignores_id() {
+    let snap = snap_of(vec![(
+        "rust",
+        lang_snap(level_with(vec![]), vec![srp_principle()]),
+    )]);
+    let ls = resolve_language_snap(&snap, None, Some("anything")).unwrap();
+    assert_eq!(ls.principles[0].id, "SRP", "the only language is used");
+}
+
+/// With multiple languages and an `id` that is a principle in exactly one, that
+/// language is chosen.
+#[test]
+fn resolve_language_snap_id_matches_one_principle() {
+    let snap = snap_of(vec![
+        // bare files level → no metric keys, so only the principle can match
+        ("python", lang_snap(LevelGraph::default(), vec![])),
+        (
+            "rust",
+            lang_snap(LevelGraph::default(), vec![srp_principle()]),
+        ),
+    ]);
+    let ls = resolve_language_snap(&snap, None, Some("SRP")).unwrap();
+    assert_eq!(
+        ls.principles[0].id, "SRP",
+        "matched the principle's language"
+    );
+}
+
+/// An `id` that is a metric key in one language's `files` level (but not the other)
+/// selects that language — the `is_metric` branch.
+#[test]
+fn resolve_language_snap_id_matches_metric_in_one() {
+    let snap = snap_of(vec![
+        // `level_with` seeds `hk`/`sloc` node attributes → the metric lives here
+        ("rust", lang_snap(level_with(vec![]), vec![])),
+        ("python", lang_snap(LevelGraph::default(), vec![])),
+    ]);
+    let ls = resolve_language_snap(&snap, None, Some("hk")).unwrap();
+    assert!(
+        ls.graphs["files"].node_attributes.contains_key("hk"),
+        "picked the language whose files level carries the metric"
+    );
+}
+
+/// An `id` present in more than one language is ambiguous → fatal, listing them.
+#[test]
+fn resolve_language_snap_id_in_multiple_errors() {
+    let snap = snap_of(vec![
+        (
+            "python",
+            lang_snap(LevelGraph::default(), vec![srp_principle()]),
+        ),
+        (
+            "rust",
+            lang_snap(LevelGraph::default(), vec![srp_principle()]),
+        ),
+    ]);
+    let err = resolve_language_snap(&snap, None, Some("SRP"))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("\"SRP\" found in languages"),
+        "ambiguity: {err}"
+    );
+    assert!(
+        err.contains("python") && err.contains("rust"),
+        "lists the matching languages: {err}"
+    );
+    assert!(err.contains("--language"), "hints the disambiguator: {err}");
+}
+
+/// Multiple languages and an `id` that matches none → fall back to the first
+/// language in BTreeMap order (deterministic).
+#[test]
+fn resolve_language_snap_id_none_match_falls_to_first() {
+    let snap = snap_of(vec![
+        (
+            "python",
+            lang_snap(LevelGraph::default(), vec![srp_principle()]),
+        ),
+        (
+            "rust",
+            lang_snap(LevelGraph::default(), vec![adp_principle()]),
+        ),
+    ]);
+    // "ZZZ" is neither a principle nor a metric anywhere → first key wins.
+    let ls = resolve_language_snap(&snap, None, Some("ZZZ")).unwrap();
+    assert_eq!(ls.principles[0].id, "SRP", "python sorts before rust");
+}
+
+/// Multiple languages and no `id` → the first language (BTreeMap order).
+#[test]
+fn resolve_language_snap_no_id_uses_first() {
+    let snap = snap_of(vec![
+        (
+            "rust",
+            lang_snap(LevelGraph::default(), vec![adp_principle()]),
+        ),
+        (
+            "python",
+            lang_snap(LevelGraph::default(), vec![srp_principle()]),
+        ),
+    ]);
+    let ls = resolve_language_snap(&snap, None, None).unwrap();
+    assert_eq!(ls.principles[0].id, "SRP", "python sorts before rust");
+}
+
+/// A snapshot with zero languages is a fatal, actionable error.
+#[test]
+fn resolve_language_snap_empty_errors() {
+    let snap = snap_of(vec![]);
+    let err = resolve_language_snap(&snap, None, None)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("no languages"),
+        "explains the empty snapshot: {err}"
+    );
+}
+
 /// `--top 1` reduces the prompt to a single focus module: the connections are
 /// rendered in the abbreviated single-focus form — an `out` edge as "line N"
 /// (use-site in the focus file, named above) and an `in` edge as `dependant:line`.
