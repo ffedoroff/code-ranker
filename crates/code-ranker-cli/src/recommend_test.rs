@@ -103,40 +103,6 @@ fn reco_for_cycle_uses_cycle_members() {
 }
 
 #[test]
-fn worst_principle_picks_most_violations() {
-    let level = level_with(vec![file_node(
-        "{target}/a.rs",
-        &[
-            ("hk", AttrValue::Float(2000.0)),
-            ("sloc", AttrValue::Int(10)),
-            ("cycle", AttrValue::Str("mutual".into())),
-        ],
-    )]);
-    let principles = vec![
-        Principle {
-            id: "SRP".into(),
-            label: "SRP".into(),
-            title: "SRP — x".into(),
-            prompt: "p".into(),
-            doc_url: None,
-            sort_metric: "sloc".into(),
-            connections: vec![],
-        },
-        Principle {
-            id: "ADP".into(),
-            label: "ADP".into(),
-            title: "ADP — x".into(),
-            prompt: "p".into(),
-            doc_url: None,
-            sort_metric: "cycle".into(),
-            connections: vec!["common".into()],
-        },
-    ];
-    // SRP: sloc 10 → 0 breaches; ADP: cycle → 1. ADP wins.
-    assert_eq!(worst_principle(&level, &principles).as_deref(), Some("ADP"));
-}
-
-#[test]
 fn compose_prompt_cycle_lists_modules_and_connections() {
     let mut level = level_with(vec![
         file_node(
@@ -383,7 +349,7 @@ fn scorecard_shows_principle_and_worst_modules() {
         "hk breach listed: {sc}"
     );
     assert!(
-        sc.contains("→ code-ranker report . --output.prompt.path=… --top 1"),
+        sc.contains("→ code-ranker report . --prompt <PRINCIPLE|METRIC>"),
         "next-step hint"
     );
 }

@@ -156,7 +156,7 @@ nothing eval-related is left in `PROJECT`.
    coaching.
 3. **BEFORE.** `code-ranker report . --output.html.path=$RUN/before.html --output.json.path=$RUN/before.json`.
 4. **Save the focused prompt** (orchestrator, for the record):
-   `code-ranker report . --output.prompt.path=$RUN/prompt.md --focus <FOCUS> --top 1`
+   `code-ranker report . --prompt <FOCUS> > $RUN/prompt.md`
    — captures the exact fix-prompt this run used into `$RUN/prompt.md`, so prompt ↔
    behaviour stays correlatable across models.
 5. **Fix** (agent). Ask the agent to fix the single worst (`--top 1`) cycle and **let it
@@ -363,7 +363,7 @@ Columns, grouped by objective (most are extractable from the run's artifacts; th
 | `read_doc_ai` / `read_doc_focus` | clarity | transcript | 1/0 — read `docs ai` / `docs <FOCUS>` |
 | `doc_reread` | clarity | transcript | ↓ times a doc was read more than once (a re-read signals the prompt/doc wasn't clear the first time) |
 | `planned_before_edit` | clarity | transcript | 1/0 — proposed a plan before editing |
-| `used_generated_prompt` | adherence | transcript | 1/0 — actually fetched the tool's fix-prompt (`--output.prompt` / `--prompt`) vs improvising |
+| `used_generated_prompt` | adherence | transcript | 1/0 — actually fetched the tool's fix-prompt (`--prompt`) vs improvising |
 | `focus_framing` | adherence | transcript | which lens the agent chose — `ADP` (principle) or `cycle` (metric); reveals how it read the task |
 | `first_edit_turn` | clarity | transcript | tool-call index of the first `Edit`/`Write` — very high = lots of exploration before acting (thoroughness, or an unclear prompt) |
 | `clarifying_qs` | clarity | transcript | ↓ questions the prompt should have pre-answered |

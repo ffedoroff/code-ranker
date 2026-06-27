@@ -213,33 +213,22 @@ pub(crate) enum Command {
         #[arg(long = "output.codequality.path", value_name = "PATH")]
         output_codequality_path: Option<String>,
 
-        /// Emit the AI fix-prompt, auto-targeted at the single worst module of the
-        /// worst-violating principle (requires `--top 1`; default to a `…-{principle}.md`
-        /// file, where {principle} is that principle).
-        #[arg(long = "output.prompt")]
-        output_prompt: bool,
-
         /// Emit the console triage scorecard (default to stdout).
         #[arg(long = "output.scorecard")]
         output_scorecard: bool,
-
-        /// AI-prompt destination: a path or name template (extra placeholder
-        /// {principle}), or `stdout`/`-`. Selects the prompt format.
-        #[arg(long = "output.prompt.path", value_name = "PATH")]
-        output_prompt_path: Option<String>,
 
         /// Scorecard destination: a path or name template, or `stdout`/`-`
         /// (the default). Selects the scorecard format.
         #[arg(long = "output.scorecard.path", value_name = "PATH")]
         output_scorecard_path: Option<String>,
 
-        /// Focus the scorecard / prompt on one **metric** (`hk`, `sloc`, … —
+        /// Focus the scorecard / `--prompt` on one **metric** (`hk`, `sloc`, … —
         /// case-insensitive, matched by value so it works with or without a
         /// configured threshold) or **principle** id (`LSP`, `ADP`, …). A metric
         /// frames the output by the metric itself (no SOLID wrapper); a principle by
-        /// that design principle. Without it, the scorecard spans every principle and
-        /// the prompt auto-targets the worst. (On `check`, `--focus` instead filters
-        /// the gate by rule/group — a different operation.)
+        /// that design principle. Without it, the scorecard spans every principle.
+        /// (On `check`, `--focus` instead filters the gate by rule/group — a
+        /// different operation.)
         #[arg(long = "focus", value_name = "METRIC | PRINCIPLE")]
         focus: Option<String>,
 
@@ -250,7 +239,7 @@ pub(crate) enum Command {
         #[arg(long, value_name = "NAME")]
         language: Option<String>,
 
-        /// Restrict the scorecard / prompt to modules under these paths (repeatable).
+        /// Restrict the scorecard / `--prompt` to modules under these paths (repeatable).
         /// The whole project is still analyzed (the graph needs it), but only modules
         /// located under one of these paths are ranked and listed. Paths are
         /// repo-relative (matching the reported location); a folder matches everything
@@ -264,7 +253,7 @@ pub(crate) enum Command {
         severity: Vec<String>,
 
         /// Rows the scorecard shows (`--top 1` = the single worst module).
-        /// `--output.prompt` requires exactly `--top 1`. Prompt/scorecard only.
+        /// Also shapes the `--prompt <ID>` ranked module list. Scorecard / prompt only.
         #[arg(long)]
         top: Option<usize>,
 
@@ -280,9 +269,8 @@ pub(crate) enum Command {
         export_full_config: Option<PathBuf>,
 
         /// Print the AI fix-prompt for one principle/metric to stdout and exit
-        /// (e.g. `--prompt HK`) — the named counterpart of `--output.prompt`
-        /// (which auto-targets the worst). Combine with `--top N` / `--focus-path`
-        /// to shape the ranked module list.
+        /// (e.g. `--prompt HK`). Combine with `--top N` / `--focus-path` to shape
+        /// the ranked module list, and `--language` to disambiguate across languages.
         #[arg(long = "prompt", value_name = "PRINCIPLE | METRIC")]
         prompt_id: Option<String>,
     },

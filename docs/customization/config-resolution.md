@@ -61,7 +61,7 @@ What it carries today:
 | `[plugins.base.rules.thresholds.file]` | empty — **no per-file limits by default** |
 | `[output.json]` / `[output.html]` | on, path `.code-ranker/{ts}-{git-hash-3}.{ext}` |
 | `[output.sarif]` / `[output.codequality]` | off (written only on demand) |
-| `[output.prompt]` / `[output.scorecard]` | path defaults; off unless requested |
+| `[output.scorecard]` | path default `stdout`; off unless requested |
 | `[plugins.base.levels]` | `functions = false` (only the `files` level is emitted) |
 
 ### Layer 3 — the discovered or explicit config file(s)
@@ -154,12 +154,12 @@ Every CLI flag below overrides the corresponding TOML key for the current run.
 | `--threshold file.METRIC=N` | `[plugins.base.rules.thresholds.file] METRIC` | `N` accepts `_` separators + `K/M/G` suffixes |
 | `--output.json` / `--output.html` / `--output.sarif` / `--output.codequality` | `[output.<fmt>] enabled` | forces that format on (`report` only) |
 | `--output.<fmt>.path PATH` | `[output.<fmt>] path` | overrides the filename template |
-| `--output.prompt` / `--output.scorecard` | `[output.<kind>]` | turns the recommendation output on |
-| `--output.prompt.path` / `--output.scorecard.path` | `[output.<kind>] path` | `scorecard` defaults to `stdout` |
+| `--output.scorecard` | `[output.scorecard]` | turns the recommendation output on |
+| `--output.scorecard.path` | `[output.scorecard] path` | defaults to `stdout` |
 | `--git.branch` / `--git.commit` / `--git.dirty-files` / `--git.origin` | *(snapshot metadata — no TOML key)* | CI escape hatch; replaces what `git` would report |
 
 Flags with **no TOML equivalent** (they shape this run's output, not the config):
-`--baseline`, `--focus-path`, `--focus`, `--output-format`, `--top`,
+`--baseline`, `--prompt`, `--focus-path`, `--focus`, `--output-format`, `--top`,
 `--exit-zero`, `--suggest-config`, `--severity`, `--export-full-config`.
 
 Full flag reference: [CLI.md](../code-ranker-cli/CLI.md).

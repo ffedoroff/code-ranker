@@ -98,7 +98,7 @@ its rule and output keys apply to snapshots too, while analysis-only keys (e.g.
 | Flag | Meaning |
 |---|---|
 | `--plugins <a,b,…>` | Active languages, comma-separated and/or repeatable: `rust`, `python`, `javascript` (covers TypeScript), … . Overrides the `[plugins].enabled` list. Omitted everywhere ⇒ auto-detect **every** language present and analyze them all in one run — see [Plugin resolution](#plugin-resolution). |
-| `--language <name>` | (`report` only) Focus the `scorecard` / `prompt` on one language. Not required when only one language is present; required when a `--prompt`/`--focus` selector resolves across several. See [Recommendations](#recommendations-scorecard--prompt). |
+| `--language <name>` | (`report` only) Focus the `scorecard` / `--prompt <ID>` on one language. Not required when only one language is present; required when a `--prompt`/`--focus` selector resolves across several. See [Recommendations](#recommendations-scorecard--prompt). |
 | `--config plugins.<lang>.<key>=value` | Inline override of any plugin-config key (scalars / comma-lists). `plugins.base.*` targets the shared base language. `plugins.enabled=a,b` overrides the active language list. Deep tables go through a `[plugins.<lang>]` TOML block — see [Config](#config). |
 | `--config <PATH \| KEY=VALUE>` | Repeatable. Load config from a file path, **or** override one setting inline (`KEY=VALUE`). Multiple files layer in command-line order (**last wins**) over the built-in defaults; inline `KEY=VALUE` applies after all files; passing any file disables auto-discovery of `code-ranker.toml`. See [Config](#config). |
 | `--ignore <glob>` | Repeatable. Glob to exclude paths from analysis. Merged with config-file globs. |
@@ -292,19 +292,18 @@ code-ranker report [input] [options]
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--output.<fmt>.path <path>` | `json` + `html` in `.code-ranker/` | Which artifacts to emit and where. `<fmt>` is `json`, `html`, `prompt`, or `scorecard`. Repeatable, one per format. See [Output paths](#output-paths). |
+| `--output.<fmt>.path <path>` | `json` + `html` in `.code-ranker/` | Which artifacts to emit and where. `<fmt>` is `json`, `html`, or `scorecard`. Repeatable, one per format. See [Output paths](#output-paths). |
 | `--baseline <snapshot>` | — | Baseline snapshot (`.json` or `.html`). Turns the HTML into a diff (baseline vs current) with a verdict, and names it `…-diff.html`. See [`--baseline`](#--baseline-comparison). |
-| `--focus <NAME>` | auto (all principles) | Frame the output by a **metric** (`hk`, `cycle`, `sloc`, `cognitive`, `cyclomatic`, `fan_in`, `fan_out`, `items` — case-insensitive; also accepts the full threshold rule id `threshold.file.hk`, matched **by value** so it works whether or not the metric has a configured threshold) or a **principle** id (`LSP`, `ADP`, `SRP`, `OCP`, `DIP`, `ISP`, `DRY`, `KISS`, `LoD`, `MISU`, `CoI`, `YAGNI`, `CPX`). A metric narrows the `scorecard` to that metric and emits a metric-framed `prompt`; a principle emits a principle-framed `prompt`. Without it the scorecard spans every principle and the prompt auto-targets the worst. Applies to both `scorecard` and `prompt`. Unknown names error with both namespaces listed. See [Recommendations](#recommendations-scorecard--prompt). |
+| `--focus <NAME>` | auto (all principles) | Frame the `scorecard` by a **metric** (`hk`, `cycle`, `sloc`, `cognitive`, `cyclomatic`, `fan_in`, `fan_out`, `items` — case-insensitive; also accepts the full threshold rule id `threshold.file.hk`, matched **by value** so it works whether or not the metric has a configured threshold) or a **principle** id (`LSP`, `ADP`, `SRP`, `OCP`, `DIP`, `ISP`, `DRY`, `KISS`, `LoD`, `MISU`, `CoI`, `YAGNI`, `CPX`). A metric narrows the scorecard to that metric; a principle frames it by that principle. Without it the scorecard spans every principle. Unknown names error with both namespaces listed. See [Recommendations](#recommendations-scorecard--prompt). |
 | `--focus-path <PATH>` | all modules | Restrict the ranked modules to a subtree. The whole project is still analyzed (the dependency graph needs it), but only modules under one of these repo-relative paths are ranked/listed; a folder matches everything beneath it. Repeatable; combine with `--focus` to intersect. A dependency cycle is a global unit, so `--focus-path` does **not** narrow cycle members — only the node-ranked metric/breach lists. See [Recommendations](#recommendations-scorecard--prompt). |
 | `--severity <tier>` | all tiers | Threshold tier for the `scorecard`: `info`, `warning`, or `auto`. Repeatable to show several tiers. |
-| `--top <N>` | 15 (scorecard) | `scorecard`: how many rows; `--top 1` = the single worst module. With `--focus cycle`, `--top 1` prints one entire cycle (biggest `chain` first) with **all** its members. `prompt`: **must be `--top 1`** — the prompt is auto-targeted at the single worst module. |
+| `--top <N>` | 15 (scorecard) | `scorecard`: how many rows; `--top 1` = the single worst module. With `--focus cycle`, `--top 1` prints one entire cycle (biggest `chain` first) with **all** its members. `--prompt <ID>`: how many modules the fix-prompt lists, ranked by the principle's sort metric. |
 | `--export-full-config <PATH>` | — | Instead of analyzing, write the **full effective configuration** to `PATH` and exit. See [Inspecting the effective config](#inspecting-the-effective-config). |
 
-`--focus`, `--focus-path`, `--severity`, and `--top` apply only when a `prompt` or
-`scorecard` format is selected; passing them otherwise is an error. `--output.prompt`
-additionally **requires `--top 1`** (it is auto-targeted at the single worst module);
-`--severity` is `scorecard`-only, while `--focus` now drives **both** the `scorecard`
-and the `prompt`.
+`--focus`, `--focus-path`, `--severity`, and `--top` apply only when the `scorecard`
+format (or `--prompt <ID>`) is selected; passing them otherwise is an error.
+`--focus` and `--severity` are `scorecard`-only; `--prompt <ID>` honours `--top`,
+`--focus-path`, and `--language`.
 
 ### Inspecting the effective config
 
@@ -355,8 +354,8 @@ code-ranker report . --output.scorecard
 # narrow the triage to one metric (coupling)
 code-ranker report . --output.scorecard --focus hk --top 5
 
-# AI fix-prompt for the single worst module (auto-targeted), to stdout
-code-ranker report . --output.prompt.path=stdout --top 1
+# AI fix-prompt for a named principle/metric, to stdout
+code-ranker report . --prompt hk --top 1
 ```
 
 The HTML is **self-contained**: the snapshot data is embedded inline, so the single file
@@ -366,8 +365,8 @@ opens straight from disk (no server, no extra files). See [HTML viewer](#html-vi
 
 `report` selects artifacts and their destinations through one flag family,
 `--output.<fmt>.path`, where `<fmt>` is `json`, `html`, `sarif`, `codequality`,
-`prompt`, or `scorecard`. The last two are the recommendation outputs — see
-[Recommendations](#recommendations-scorecard--prompt) for their flags and defaults.
+or `scorecard`. `scorecard` is the recommendation output — see
+[Recommendations](#recommendations-scorecard--prompt) for its flags and defaults.
 
 `sarif` and `codequality` write the **same documents** as the matching
 `check --output-format` (the current rule violations, with stable per-finding
@@ -375,14 +374,14 @@ fingerprints), but as artifacts rather than to stdout — so a single `report` r
 can emit the JSON snapshot, the HTML viewer, *and* a findings report for CI in one
 pass. `sarif` (SARIF 2.1.0) feeds GitHub code scanning / GitLab ≥18.11; `codequality`
 (CodeClimate JSON) feeds the GitLab Code Quality MR widget (GA, no flag). Like
-`prompt` / `scorecard`, both are opt-in: never part of the default set, and a
+`scorecard`, both are opt-in: never part of the default set, and a
 `--baseline` here only diffs the HTML — it does not filter the findings.
 
 **Which formats are written:**
 
 - No `--output.*` flag → the default set: **both** `json` and `html`, with default
-  names, into `.code-ranker/`. (`prompt` / `scorecard` are never in the default set —
-  they are emitted only when explicitly named.)
+  names, into `.code-ranker/`. (`scorecard` is never in the default set —
+  it is emitted only when explicitly named.)
 - One or more `--output.<fmt>.path` given → **exactly** the listed formats, nothing else.
 
 **The `.path` value:**
@@ -407,9 +406,8 @@ the current input (reusable as a future baseline), never a diff.
 When selected, `sarif` defaults to `.code-ranker/{ts}-{git-hash-3}.sarif` and
 `codequality` to `.code-ranker/{ts}-{git-hash-3}.codequality.json`.
 
-The recommendation formats have their own per-format defaults: `scorecard` defaults to
-**`stdout`** (it is a console overview), and `prompt` defaults to the file
-`.code-ranker/{ts}-{git-hash-3}-{principle}.md`.
+The recommendation format has its own default: `scorecard` defaults to
+**`stdout`** (it is a console overview).
 
 To pin destinations project-wide instead of passing flags every time, set them in
 config:
@@ -438,7 +436,6 @@ path = "dist/{project-dir}-{ts}.codequality.json"
 | `{ts}` | The run's `generated_at` as a local timestamp, `YYYYMMDD-HHMMSS`. One value per run, shared by every artifact. | `20260526-114144` |
 | `{git-hash}` | The 12-char short commit hash (zeros if not a git repo). | `a3f9c21b4d5e` |
 | `{git-hash-N}` | The first `N` chars of the commit hash. | `{git-hash-3}` → `a3f` |
-| `{principle}` | The principle id of the auto-targeted prompt (`prompt` only). | `SRP` |
 
 So the default `{ts}-{git-hash-3}.json` yields `20260526-114144-a3f.json`. When `[input]`
 is a **snapshot**, `{git-hash}` / `{ts}` are read from the snapshot's embedded metadata —
@@ -449,18 +446,17 @@ The destination resolves as **`--output.<fmt>.path` flag › `[output.<fmt>] pat
 
 ## Recommendations: `scorecard` & `prompt`
 
-Two `report` output formats turn the snapshot's gate thresholds into
-refactoring guidance:
+Two surfaces turn the snapshot's gate thresholds into refactoring guidance:
 
-- **`scorecard`** — a console triage overview answering *"what do I fix first?"*
-- **`prompt`** — a ready-to-paste AI fix-prompt, **auto-targeted at the single worst
-  module** (the same Markdown the HTML viewer's Prompt Generator produces).
+- **`scorecard`** (`--output.scorecard`) — a console triage overview answering
+  *"what do I fix first?"*
+- **`--prompt <ID>`** — a ready-to-paste AI fix-prompt for the principle or metric you
+  name (the same Markdown the HTML viewer's Prompt Generator produces).
 
 Both rank modules with the same engine. The `scorecard` is steered by `--focus`
 (narrow to one metric or principle), `--focus-path` (scope to a subtree), `--severity` (which tier), and
-`--top` (how many rows). The `prompt` also honours `--focus` (frame it by a metric or
-a principle); without it the prompt auto-targets the single worst module. Both **require
-`--top 1`** for the `prompt`.
+`--top` (how many rows). `--prompt <ID>` names the target itself and honours `--top`
+(how many modules it lists), `--focus-path`, and `--language`.
 
 Both are **per language**: in a multi-language report use `--language <name>` to pick
 which language the scorecard/prompt covers. It is optional when only one language is
@@ -488,7 +484,7 @@ selects which tier drives the output:
 |---|---|
 | `warning` | only modules over the warning line |
 | `info` | modules over the info line (a superset of `warning`) |
-| `auto` | warning if any module breaches it, else info — the **`prompt` default** |
+| `auto` | warning if any module breaches it, else info — the **`--prompt` default** |
 
 For `scorecard`, `--severity` is **repeatable** (`--severity warning --severity info`) to
 show several tiers at once; with none given it shows all tiers.
@@ -506,24 +502,20 @@ namespaces**:
   `fan_out` (coupling direction), `items` (interface size), **or** the full threshold rule
   id (`threshold.file.hk`). Matched **by value**, so it works whether or not the metric has
   a configured `[plugins.<lang>.rules.thresholds.file]` threshold. This narrows the `scorecard`
-  to that metric and frames the `prompt` by the **metric itself** — its own name,
-  description, and `remediation` doc (e.g. `languages/base/HK.md`), with **no** SOLID
-  design-principle wrapper.
+  to that metric.
 - a **principle** id — `LSP`, `ADP`, `SRP`, `OCP`, `DIP`, `ISP`, `DRY`, `KISS`, `LoD`,
-  `MISU`, `CoI`, `YAGNI`, `CPX`. This frames the output by that **design principle** (the
-  prior behaviour).
+  `MISU`, `CoI`, `YAGNI`, `CPX`. This frames the scorecard by that **design principle**.
 
 An unknown name is a hard error that lists both namespaces (`unknown --focus '<name>'.
 Metrics: …. Principles: …`).
 
-`--focus` drives **both** outputs. `--focus hk --output.prompt.path=stdout --top 1`
-emits an **HK-framed** fix-prompt directly (titled "HK — Henry–Kafura", no Liskov wrapper);
-`--focus LSP …` emits the **Liskov-framed** prompt. Without `--focus` the scorecard
-spans all principles (one row each) and the `prompt` auto-targets the single worst module's
-principle. The principle *catalog* lives in the snapshot's `principles` (shared with the HTML
-viewer's Prompt Generator and used for the prompt's prose). `cycle` has **no numeric
-threshold** — every module in a dependency cycle counts, ranked by HK, and `--severity` is
-ignored for it.
+`--focus` steers the `scorecard`. Without `--focus` it spans all principles (one row
+each). To frame a fix-prompt by a metric or principle, name it with `--prompt <ID>`
+instead: `--prompt hk` emits an **HK-framed** prompt (titled "HK — Henry–Kafura", no
+Liskov wrapper); `--prompt LSP` emits the **Liskov-framed** one. The principle *catalog*
+lives in the snapshot's `principles` (shared with the HTML viewer's Prompt Generator and
+used for the prompt's prose). `cycle` has **no numeric threshold** — every module in a
+dependency cycle counts, ranked by HK, and `--severity` is ignored for it.
 
 `--focus-path <PATH>` restricts the ranked modules to a subtree (repeatable). The whole
 project is still analyzed (the graph needs it), but only modules under one of these
@@ -557,45 +549,33 @@ WORST MODULES
  2 warn snapshot.rs     sloc 1.8K +hk
  3 info plugin/rust.rs  fan_out 14
 
-→ code-ranker report . --output.prompt.path=… --top 1
+→ code-ranker report . --prompt <PRINCIPLE|METRIC>
 ```
 
 `--top N` caps the worst-modules list (default ~15); `--focus <NAME>` narrows the
 scorecard to a single ranking metric (or frames it by a principle); `--focus-path <PATH>`
 scopes the ranked modules to a subtree.
 
-### `prompt` — AI fix-prompt for the worst module
+### `--prompt <ID>` — AI fix-prompt for one principle/metric by name
 
-Defaults to the file `.code-ranker/{ts}-{git-hash-3}-{principle}.md` (use
-`--output.prompt.path=stdout` to pipe it). It is **auto-targeted**: it emits the Markdown
-fix-prompt for the **single worst module** — its principle's intent and summary, how to
-read the full principle (the offline `code-ranker docs <lang> <id>` command, no network),
-a task checklist, the offending module annotated with its metric value, and the relevant
-**flow** connection lists (`uses` — structural `contains`/`reexports` are excluded). The
-`{principle}` in the default filename is the auto-selected principle id.
+`--prompt <ID>` prints the fix-prompt for the principle or metric you name to stdout and
+exits. You pick the target yourself — typically a principle or metric read off the
+`scorecard`. It accepts a principle id (`SRP`, `ADP`) or a metric key (`hk`,
+`cyclomatic`), case-insensitive, and writes no artifacts. Shape the module list with
+`--top N` / `--focus-path`. If the `<ID>` resolves in more than one active language, pass
+`--language <name>` to pick one (the command otherwise errors and lists the candidates).
 
-It **requires `--top 1`** (prompts are long, and the prompt always describes exactly one
-module). There is no principle selection and no `--index`.
-
-```sh
-# fix-prompt for the single worst module, to stdout
-code-ranker report . --output.prompt.path=stdout --top 1
-
-# the same, saved to a file (name carries the auto-selected principle id)
-code-ranker report . --output.prompt --top 1
-```
-
-### `--prompt <ID>` — one principle/metric fix-prompt by name
-
-`--prompt <ID>` is the **named** counterpart of `--output.prompt`: it prints that
-principle/metric's fix-prompt to stdout and exits (shape the module list with `--top N` /
-`--focus-path`). It accepts a principle id (`SRP`, `ADP`) or a metric key (`hk`,
-`cyclomatic`), case-insensitive, and writes no artifacts. If the `<ID>` resolves in
-more than one active language, pass `--language <name>` to pick one (the command
-otherwise errors and lists the candidates).
+The prompt is the same Markdown the HTML viewer's Prompt Generator produces — the
+principle's intent and summary, how to read the full principle (the offline
+`code-ranker docs <lang> <id>` command, no network), a task checklist, the offending
+modules annotated with their metric value, and the relevant **flow** connection lists
+(`uses` — structural `contains`/`reexports` are excluded). A metric id (`hk`, `cycle`, …)
+frames the prompt by the **metric itself** — its own name, description, and `remediation`
+doc (e.g. `languages/base/HK.md`), with **no** SOLID design-principle wrapper.
 
 ```sh
-code-ranker report . --prompt HK --top 1   # HK fix-prompt for the worst module
+code-ranker report . --prompt HK --top 1     # HK fix-prompt, top module
+code-ranker report . --prompt HK > prompt.md # redirect to a file when you need an artifact
 ```
 
 To print a **reference doc** itself (a principle's text, a metric's spec card, the AI

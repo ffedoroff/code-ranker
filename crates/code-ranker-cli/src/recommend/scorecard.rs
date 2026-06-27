@@ -88,7 +88,7 @@ fn node_breaches(
 
 /// Render the console triage scorecard: a per-principle table (warning/info
 /// counts + the worst module) followed by the worst modules overall, then a hint
-/// pointing at the prompt for the worst principle.
+/// pointing at `--prompt <ID>` for a specific principle/metric.
 pub fn render_scorecard(
     plugin: &str,
     level: &LevelGraph,
@@ -163,7 +163,9 @@ pub fn render_scorecard(
     }
 
     // ── Next-step hint ───────────────────────────────────────────────────────
-    out.push_str("\n→ code-ranker report . --output.prompt.path=… --top 1\n");
+    out.push_str(
+        "\n→ code-ranker report . --prompt <PRINCIPLE|METRIC>   (AI fix-prompt to stdout)\n",
+    );
 
     Ok(out)
 }

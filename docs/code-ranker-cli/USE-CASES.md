@@ -22,8 +22,8 @@ Ranking metrics used below (the `--focus` metric or principle that narrows the s
 `cognitive` / `cyclomatic` (complexity), `fan_in` / `fan_out` (coupling direction),
 `items` (interface size).
 
-The **`prompt`** output is always **auto-targeted**: it emits the fix-prompt for the
-single worst module and **requires `--top 1`** (prompts are long).
+The **`--prompt <ID>`** fix-prompt is **name-it-yourself**: you pass the principle or
+metric (picked from the scorecard) and it prints the fix-prompt to stdout.
 
 ---
 
@@ -99,10 +99,10 @@ code-ranker report . --output.json.path=.code-ranker/before.json
 code-ranker report . --baseline .code-ranker/before.json --output.html.path=.code-ranker/after.html
 ```
 
-**Get a copy-paste AI fix-prompt for the single worst module (auto-targeted).**
+**Get a copy-paste AI fix-prompt for a named principle/metric (pick it from the scorecard).**
 
 ```sh
-code-ranker report . --output.prompt.path=stdout --top 1
+code-ranker report . --prompt HK --top 1
 ```
 
 ---
@@ -300,18 +300,19 @@ code-ranker report . --baseline .code-ranker/before.json --output.html
 
 ## 8. AI prompts
 
-The prompt is **auto-targeted** at the single worst module and **requires `--top 1`**.
+Name the principle or metric with `--prompt <ID>` (pick it from the scorecard). The
+prompt is printed to stdout.
 
 **Emit the fix-prompt to stdout (for an agent to read on a failed gate).**
 
 ```sh
-code-ranker report . --output.prompt.path=stdout --top 1
+code-ranker report . --prompt HK --top 1
 ```
 
-**Save the fix-prompt to a file (templated name).**
+**Save the fix-prompt to a file (redirect stdout).**
 
 ```sh
-code-ranker report . --output.prompt --top 1
+code-ranker report . --prompt HK > prompt.md
 ```
 
 ---

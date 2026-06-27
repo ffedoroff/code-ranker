@@ -165,7 +165,7 @@ A language that yields an empty graph is dropped from the map.
 - **`report`** (`run_report`): runs the shared analysis core (analyzing the
   directory or reading the snapshot), then writes artifacts. Which formats are
   written, and where, is decided by one flag family, `--output.<fmt>[.path]`
-  (`<fmt>` = `json` / `html` / `sarif` / `codequality` / `prompt` / `scorecard`),
+  (`<fmt>` = `json` / `html` / `sarif` / `codequality` / `scorecard`),
   backed by `want_format`: a `--output.<fmt>` presence flag or a `--output.<fmt>.path`
   selects that format; for `json`/`html`/`sarif`/`codequality` the `[output.<fmt>]`
   config (`enabled`, else a configured `path`) is consulted next; if **nothing**
@@ -178,8 +178,7 @@ A language that yields an empty graph is dropped from the map.
   to write to the stdout stream (`is_stream` / `write_artifact`). The JSON
   snapshot records `config_file` when a config was found. Names are templates
   (`render_name`) with placeholders `{project-dir}`, `{ts}`, `{git-hash}`
-  (12-char short commit) and `{git-hash-N}` (first N chars) — plus `{principle}`
-  for the recommendation formats. `{ts}` is the snapshot's `generated_at`
+  (12-char short commit) and `{git-hash-N}` (first N chars). `{ts}` is the snapshot's `generated_at`
   formatted as a local timestamp — read once, not a fresh clock call per file,
   so every artifact of a run shares one stamp that matches the embedded
   `generated_at` (for a snapshot input it is the original analysis time).
@@ -188,7 +187,6 @@ A language that yields an empty graph is dropped from the map.
   (`DEFAULT_JSON_PATH` / `DEFAULT_HTML_PATH` / `DEFAULT_SARIF_PATH` /
   `DEFAULT_CODEQUALITY_PATH` =
   `.code-ranker/{ts}-{git-hash-3}.{json,html,sarif,codequality.json}`;
-  `DEFAULT_PROMPT_PATH` = `.code-ranker/{ts}-{git-hash-3}-{principle}.md`;
   `DEFAULT_SCORECARD_PATH` = `stdout`).
   The HTML viewer template and all assets (CSS, JS) are embedded in the binary
   via `include_str!` from `crates/code-ranker-viewer/src/assets/`, and the snapshot
@@ -202,17 +200,19 @@ A language that yields an empty graph is dropped from the map.
   (preferring the `cs-current` tag, falling back to `cs-baseline`). `report`
   always exits `0`. The single `.html` file is fully self-contained — no
   relative-path references, no `fetch`, so it opens straight from `file://`.
-  The **`prompt` / `scorecard`** formats are the refactoring-guidance outputs
-  (`write_recommendations` → the `recommend` module, the console counterpart of
-  the viewer's Prompt Generator): `prompt` emits the LLM Markdown for one
-  principle, `scorecard` a console triage table. The `scorecard` is narrowed by
-  `--focus` (one metric or principle),
+  The **`scorecard`** format and the **`--prompt <ID>`** flag are the
+  refactoring-guidance outputs (the `recommend` module, the console counterpart of
+  the viewer's Prompt Generator): `--prompt <ID>` (via `run_direct`) emits the LLM
+  Markdown for one named principle/metric to stdout, `scorecard` (via
+  `write_scorecard`) a console triage table. The
+  `scorecard` is narrowed by `--focus` (one metric or principle),
   `--focus-path` (scope the ranked modules to a subtree) and `--severity` (`info` /
-  `warning` / `auto`; repeatable) and capped by `--top`. The `prompt` is **auto-targeted at the single
-  worst module** and requires `--top 1` — there is no CLI principle selector. These
-  knobs are validated up front (rejected without a prompt/scorecard format,
-  `--output.prompt` requires `--top 1`, and an explicit `--index` is rejected with a
-  hint to use `--top`). See [§1 `code-ranker-cli` recommendation engine](#code-ranker-cli-recommendation-engine).
+  `warning` / `auto`; repeatable) and capped by `--top`. `--prompt <ID>` names the
+  principle/metric itself and honours `--top`, `--focus-path`, and `--language`. The
+  scorecard knobs are validated up front (`--focus`/`--focus-path`/`--severity`/`--top`
+  rejected without `--output.scorecard`; the `--prompt <ID>` path is standalone; an
+  explicit `--index` is rejected with a hint to use `--top`). See [§1 `code-ranker-cli`
+  recommendation engine](#code-ranker-cli-recommendation-engine).
 
 **Responsibility boundary**: holds no domain logic; no analysis, no
 rendering, no rules. Its sole job is argument parsing, plugin
@@ -233,9 +233,6 @@ the snapshot). Functions:
   (tie-broken `sloc` → `items`) plus the `warning` / `info` breach counts;
   mirrors the viewer's `recoFor`. The pseudo-metric `"cycle"` ranks the cycle
   members (by HK) and both counts equal that set's size.
-- `worst_principle(level, principles)` — the principle with the most violations
-  (`warning` count, tie-broken by `info`, then catalog order), used to auto-target
-  the `prompt` (which has no CLI principle selector) at the worst hotspot.
 - `compose_prompt(level, principles, principle_id, severity, top)` — the same Markdown
   the viewer emits (`composePrompt` + `buildContent`): intent + summary +
   principle-doc link + task checklist, then the ranked offending modules, then
@@ -243,11 +240,12 @@ the snapshot). Functions:
 - `render_scorecard(plugin, level, principles, severities, top, narrow)` — the
   console triage: a per-principle table (`warning` / `info` counts + worst
   module) and the worst modules overall (`node_breaches` ranks by selected-tier
-  breach count, then HK), with a next-step hint to the worst principle.
+  breach count, then HK), with a next-step hint pointing at `--prompt <ID>`.
 
-`run_report`'s `write_recommendations` resolves the principle/severity/top, then
-calls these. All of it is **advisory** — it never affects an exit code (that is
-`check`'s job).
+`run_report` routes `--output.scorecard` to `write_scorecard` (resolves
+focus/severity/top) and `--prompt <ID>` to `run_direct` (composes the prompt to
+stdout), which call these. All of it is **advisory** — it never affects an exit
+code (that is `check`'s job).
 
 ## 2. API Contracts
 

@@ -74,33 +74,32 @@ report covering every language.
 
 `report` selects artifacts and their destinations through one flag family,
 `--output.<fmt>.path <path>` (`<fmt>` is `json`, `html`, `sarif`, `codequality`,
-`prompt`, or `scorecard`; `sarif` and `codequality` write the same findings
+or `scorecard`; `sarif` and `codequality` write the same findings
 documents `check --output-format sarif`/`codequality` emit but as artifacts —
 SARIF 2.1.0 for GitHub code scanning / GitLab ≥18.11, CodeClimate JSON for the
 GitLab Code Quality MR widget — see `cpt-code-ranker-fr-diagnostics`;
-`prompt`/`scorecard` are the refactoring-guidance formats, see
-`cpt-code-ranker-fr-ai-prompts`). When no `--output.*` flag is given it writes
+`scorecard` is the refactoring-guidance triage, and the matching AI fix-prompt is
+`--prompt <ID>` to stdout, see `cpt-code-ranker-fr-ai-prompts`). When no
+`--output.*` flag is given it writes
 **both** `json` and `html` with default names into `.code-ranker/`:
 `{ts}-{git-hash-3}.json` and `{ts}-{git-hash-3}.html`, e.g.
 `.code-ranker/20260526-114144-a3f.json` (`{ts}` is the run's `generated_at` as a
 local `YYYYMMDD-HHMMSS` timestamp — one value shared by every artifact a run
 writes and identical to the embedded `generated_at`; `{git-hash-3}` the first
-three chars of the commit); `sarif` / `codequality` / `prompt` /
+three chars of the commit); `sarif` / `codequality` /
 `scorecard` are never in the default set and are emitted only when explicitly
 named (`sarif` default `{ts}-{git-hash-3}.sarif`, `codequality` default
 `{ts}-{git-hash-3}.codequality.json`). When one or more `--output.<fmt>.path` are given, **exactly** the
 listed formats are written. The `.path` value is a file path (or a name
 template, or `stdout`/`-` to stream the artifact); it supports placeholders
 `{project-dir}` (slugified workspace name), `{ts}`, `{git-hash}` (the
-12-char short commit), `{git-hash-N}` (its first N chars), and `{principle}` (the
-active principle id, `prompt` / `scorecard` only). The
+12-char short commit), and `{git-hash-N}` (its first N chars). The
 destination resolves as **`--output.<fmt>.path` flag › `[output.<fmt>]
 path` in `code-ranker.toml` › built-in default**, so a project can pin its
 own naming while a flag still wins for named states (e.g., `pr.json`). With
 `--baseline`, the HTML default gains a `-diff` marker
 (`{ts}-{git-hash-3}-diff.html`); the JSON artifact is always the current
-snapshot, never a diff. The `scorecard` default is `stdout` and the `prompt`
-default is `.code-ranker/{ts}-{git-hash-3}-{principle}.md`. No additional registry
+snapshot, never a diff. The `scorecard` default is `stdout`. No additional registry
 is created.
 
 Each snapshot is a **single self-contained `.json` file** combining top-level
@@ -196,12 +195,12 @@ enabled = true
 
 - `--plugins <a,b,…>` — set the active languages (comma list / repeatable); overrides
   the `[plugins].enabled` list. Omitted everywhere ⇒ auto-detect every language present
-- `--language <name>` (`report`) — focus the `scorecard` / `prompt` on one language;
+- `--language <name>` (`report`) — focus the `scorecard` / `--prompt <ID>` on one language;
   required only when a `--prompt`/`--focus` selector resolves across several languages
 - `--config plugins.<lang>.<key>=value` — inline override of any plugin-config key
   (scalars / comma-lists); `plugins.base.*` targets the shared base language;
   `plugins.enabled=a,b` overrides the active language list
-- `--output.<fmt>.path <PATH>` (`report`; `<fmt>` is `json`, `html`, `prompt`, or
+- `--output.<fmt>.path <PATH>` (`report`; `<fmt>` is `json`, `html`, or
   `scorecard`) — select
   that artifact format and set its destination (a path, a name template with
   placeholders `{project-dir}`, `{ts}`, `{git-hash}`, `{git-hash-N}`, or
@@ -209,7 +208,7 @@ enabled = true
   `json`/`html` only); built-in default
   `{ts}-{git-hash-3}`. Presence of any `--output.*` flag selects exactly the
   listed formats; with none, both `json` and `html` are written
-  (`prompt`/`scorecard` are flag-only and never default)
+  (`scorecard` is flag-only and never default)
 - `--baseline <SNAPSHOT>` (`check` / `report`) — compare the current `[input]`
   against this baseline snapshot (`.json` or `.html`); on `check` it switches
   to a relative gate (fail only on new violations), on `report` it turns the
@@ -379,8 +378,8 @@ command; every action is an explicit subcommand.
 code-ranker check  [input] [--plugins <a,b,…>] [--threshold ...] [--cycle-rule ...] [--baseline <snapshot>] [--output-format <human|json|github|sarif|codequality>] [--exit-zero]
 
 # Steps 1+2 — analyze (or read) the input and write a snapshot and/or HTML viewer
-# (also the AI prompt / console scorecard via --output.prompt / --output.scorecard)
-code-ranker report [input] [--plugins <a,b,…>] [--language <name>] [--output.<fmt>.path <path>] [--baseline <snapshot>] [--focus <NAME>] [--focus-path <PATH>] [--severity <tier>] [--top <N>]
+# (also the AI prompt via --prompt <ID> / console scorecard via --output.scorecard)
+code-ranker report [input] [--plugins <a,b,…>] [--language <name>] [--output.<fmt>.path <path>] [--baseline <snapshot>] [--prompt <ID>] [--focus <NAME>] [--focus-path <PATH>] [--severity <tier>] [--top <N>]
 
 # Reference docs (no analysis; language is first positional, no --plugin flag)
 code-ranker docs [<lang> [<subject>]]

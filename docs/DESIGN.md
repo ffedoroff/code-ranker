@@ -58,8 +58,8 @@ At P1 the platform ships three components:
   via `include_str!`. With `--baseline <snapshot>` the HTML becomes a
   baseline↔current diff with a verdict (one shared union layout where the
   Baseline/Current toggle is a CSS visibility flip so common nodes never move),
-  named `…-diff.html`. It also emits two refactoring-guidance formats
-  (`--output.prompt` / `--output.scorecard`) — the console counterpart of the
+  named `…-diff.html`. It also emits refactoring-guidance formats
+  (`--prompt <ID>` / `--output.scorecard`) — the console counterpart of the
   viewer's Prompt Generator, computed by the `recommend` module
 
 The three pillars of the design are:
@@ -85,7 +85,7 @@ The three pillars of the design are:
 | `cpt-code-ranker-fr-file-graph` | All plugins emit a single file graph: `File` nodes with `uses` / `reexports` edges between files, plus `External` library nodes at depth 1 reached by `uses` edges flagged `external: true`. The Rust plugin derives it by collapsing its module graph; Python/JS/TS build it directly from import resolution. |
 | `cpt-code-ranker-fr-html-report` | Built-in Rust renderer in `code-ranker-cli`: `report` analyzes (or reads) the input, then renders an HTML template with inline assets alongside the JSON snapshot. |
 | `cpt-code-ranker-fr-node-sorting` | Node weight (fan-in + fan-out) is computed at render time and embedded in the HTML; client-side JavaScript sorts the table on user interaction. |
-| `cpt-code-ranker-fr-ai-prompts` | HTML: the viewer's Prompt Generator (`export-popup.js`). CLI: the `recommend` module (`code-ranker-cli/src/recommend.rs`) drives the `report --output.prompt` (LLM Markdown for one principle) and `--output.scorecard` (console triage) formats from the snapshot's gate-derived thresholds — advisory, no exit code. |
+| `cpt-code-ranker-fr-ai-prompts` | HTML: the viewer's Prompt Generator (`export-popup.js`). CLI: the `recommend` module (`code-ranker-cli/src/recommend.rs`) drives the `report --prompt <ID>` AI fix-prompt (LLM Markdown for one named principle/metric, to stdout) and the `--output.scorecard` console-triage format, both from the snapshot's gate-derived thresholds — advisory, no exit code. |
 | `cpt-code-ranker-fr-graph-diff` | Browser-side diff in the HTML viewer (`diff.js` `computeDiff`/`computeCycles`): node/edge set difference on the file graph and `affected` propagation, from the two embedded snapshots. The `check --baseline` regression gate is rule-based (re-evaluates rules on the baseline), not a structured graph diff. |
 | `cpt-code-ranker-fr-diff-html-report` | With `report --baseline <snapshot>` the viewer becomes a self-contained diff with color-coded baseline/current views and a verdict; all assets inlined; the file is named `…-diff.html`. |
 | `cpt-code-ranker-fr-diff-text-report` | `check --baseline <snapshot> --output-format json` emits the machine-readable verdict (`improved` / `degraded` / `neutral`) and the list of new violations for CI parsing. |
@@ -283,7 +283,7 @@ keys it understands, described per level by the semantics dictionaries.
 | NodeKindSpec / CycleKindSpec | Per-kind UI semantics. `NodeKindSpec`: `label`/`plural`/`fill`/`stroke`/`external`. `CycleKindSpec`: `label`/`description` (the cycle *why*)/`remediation` (the *fix*). `default_node_kinds()` seeds node kinds; `default_cycle_kinds()` seeds only the cycle *keys* (`mutual`/`chain`) — the orchestrator overlays the vocabulary centrally from `code-ranker-graph`'s `cycle_specs()` (the `builtin.toml [cycles.*]` catalog), so no cycle prose lives in Rust. | `crates/code-ranker-plugin-api/src/level.rs` |
 | Thresholds | `{ info: f64, warning: f64 }` — two-tier per-metric advisory thresholds overlaid onto the matching `AttributeSpec`; `warning` is the `[plugins.base.rules.thresholds.file]` gate limit, `info` an optional softer line below it (so the report mirrors the gate). | `crates/code-ranker-plugin-api/src/level.rs` |
 | Principle | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-ranker-cli/src/principles.rs`) and a plugin's `principles(input)` hook may pass through / edit / extend it. Stored per language in the snapshot (`languages.<lang>.principles`). Prompt-generator domain data — lives in its own module, not the parser contract. | `crates/code-ranker-plugin-api/src/principle.rs` |
-| PromptTemplate | The language-neutral prompt **scaffolding** the Prompt-Generator wraps a `Principle` in: `intro`, `doc_note`, `task` (bullet lines), `focus`, `cycle_note` (`{id}` substituted at render). Data, not code — sourced from `code-ranker-graph/metrics/prompt.md` (`code-ranker-graph`'s `prompt_template()`), carried per language in the snapshot (`languages.<lang>.prompt`) so the CLI `prompt` format and the viewer's Prompt Generator render the same text from one source. | `crates/code-ranker-plugin-api/src/principle.rs` |
+| PromptTemplate | The language-neutral prompt **scaffolding** the Prompt-Generator wraps a `Principle` in: `intro`, `doc_note`, `task` (bullet lines), `focus`, `cycle_note` (`{id}` substituted at render). Data, not code — sourced from `code-ranker-graph/metrics/prompt.md` (`code-ranker-graph`'s `prompt_template()`), carried per language in the snapshot (`languages.<lang>.prompt`) so the CLI `--prompt <ID>` output and the viewer's Prompt Generator render the same text from one source. | `crates/code-ranker-plugin-api/src/principle.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"mutual"` for a 2-node SCC, `"chain"` for 3+), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelUi | Computed UI hints: `default_sort`, `sort`, `size`, `card`, `columns`, `summary` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-ranker-graph/src/level_graph.rs` |
@@ -1257,7 +1257,7 @@ code-ranker/
       src/
         plugin/            # Built-in plugins: rust.rs (incl. module→file collapse), python.rs, javascript.rs, finalize.rs (file-graph normalizer for Python/JS), mod.rs
         principles.rs         # Generic Prompt-Generator principle catalog (principles)
-        recommend.rs       # Recommendation engine: scorecard + prompt formats (CLI counterpart of the viewer's Prompt Generator)
+        recommend.rs       # Recommendation engine: scorecard + --prompt <ID> outputs (CLI counterpart of the viewer's Prompt Generator)
         assets/            # HTML/CSS/JS assets embedded via include_str! (see code-ranker-viewer/DESIGN.md for the full layer breakdown)
           index.html       # Shell template (single Files view); cs-baseline / cs-current JSON script tags embedded inline at render time
           base.css map.css modal.css tables.css export.css snap.css map-svg.css  # Concern-split stylesheet, concatenated in lib.rs in source order

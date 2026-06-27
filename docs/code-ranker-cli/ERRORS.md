@@ -58,7 +58,7 @@ cases:
 | **invalid `--plugins`** | A name in `--plugins` (or the config `[plugins].enabled` list) is not a known language. | Use a built-in language name (`rust`, `python`, `javascript`, …). |
 | **`docs`: subject without a language** | A subject was given to `docs` without a language (e.g. `docs hk`, `docs ai`). | Use `code-ranker docs <lang> <subject>` — bare `docs` lists the available languages. |
 
-For `report` the `scorecard` / `prompt` are **per language**: when a `--focus
+For `report` the `scorecard` and `--prompt <ID>` are **per language**: when a `--focus
 <METRIC\|PRINCIPLE>` or `--prompt <ID>` selector resolves in two or more languages
 and `--language` is omitted, the command errors and lists the matching languages —
 pass `--language <name>` to choose one.

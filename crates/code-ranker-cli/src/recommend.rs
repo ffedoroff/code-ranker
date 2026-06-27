@@ -1,4 +1,5 @@
-//! The recommendation engine behind the `prompt` and `scorecard` report formats.
+//! The recommendation engine behind the `--prompt <ID>` output and the `scorecard`
+//! report format.
 //!
 //! It is the console counterpart of the HTML viewer's Prompt Generator: the same
 //! ranking (`reco_for` ≈ `recoFor` in `export-popup.js`) and the same Markdown
@@ -330,7 +331,7 @@ pub fn reco_for<'a>(level: &'a LevelGraph, metric: &str) -> Reco<'a> {
             .then(bi.total_cmp(&ai))
     });
     // No configured threshold → no breaches (the metric still ranks for display,
-    // but never claims violations and so never wins `worst_principle`).
+    // but never claims violations and so never contributes to the scorecard counts).
     let (warning_count, info_count) = match th {
         Some(th) => (
             sorted
@@ -407,26 +408,6 @@ pub(super) fn tier_count(reco: &Reco, sev: Severity) -> usize {
             }
         }
     }
-}
-
-/// The principle with the most violations: highest `warning` count, tie-broken by
-/// `info` count, then by catalog order (the first principle wins on a tie). `None`
-/// only if there are no principles.
-pub fn worst_principle(level: &LevelGraph, principles: &[Principle]) -> Option<String> {
-    let mut best: Option<(&Principle, usize, usize)> = None;
-    for p in principles {
-        let r = reco_for(level, &p.sort_metric);
-        // Strictly-greater so the FIRST principle wins on a tie (catalog order).
-        let better = match best {
-            None => true,
-            Some((_, bw, bi)) => (r.warning_count, r.info_count) > (bw, bi),
-        };
-        if better {
-            best = Some((p, r.warning_count, r.info_count));
-        }
-    }
-    best.map(|(p, _, _)| p.id.clone())
-        .or_else(|| principles.first().map(|p| p.id.clone()))
 }
 
 /// Count of project source files in the level.

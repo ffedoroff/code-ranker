@@ -239,7 +239,7 @@ fn assert_sample_matches(lang: &str) {
 
 /// Run `report` on a language's `sample/` with extra args, capturing stdout and
 /// stderr (instead of comparing a golden file). Used for the recommendation
-/// formats (`scorecard` / `prompt`), which stream to stdout.
+/// outputs (`--output.scorecard` / `--prompt <ID>`), which stream to stdout.
 fn run_report_capture(lang: &str, extra: &[&str]) -> (bool, String, String) {
     let sample = sample_dir(lang);
     // Run from a throwaway cwd. A `report` with no explicit json/html path falls back
@@ -713,23 +713,38 @@ fn rust_sample_scorecard_triage() {
         "the two cycle members are listed as cycle breaches: {stdout}"
     );
     assert!(
-        stdout.contains("--output.prompt.path=… --top 1"),
-        "next-step hint points at the auto-prompt: {stdout}"
+        stdout.contains("--prompt <PRINCIPLE|METRIC>"),
+        "next-step hint points at the --prompt flag: {stdout}"
     );
 }
 
-/// With no `--principle`, the prompt auto-picks the worst-violating principle (ADP
-/// here) and lists the worst cycle's members + their connections — the same
-/// Markdown the HTML viewer's Prompt Generator emits. The 3-node `chain` SCC
-/// outranks the 2-node `a ⇄ b` mutual, so it is the cycle shown.
+/// `report --prompt <ID>` prints the named principle's prompt to stdout directly,
+/// honouring `--top`. It composes the same Markdown the HTML viewer's Prompt
+/// Generator emits.
 #[test]
-fn rust_sample_prompt_auto_picks_worst_principle() {
-    let (ok, stdout, stderr) =
-        run_report_capture("rust", &["--output.prompt.path=stdout", "--top", "1"]);
-    assert!(ok, "prompt run failed: {stderr}");
+fn rust_sample_prompt_flag_targets_named_principle() {
+    let (ok, stdout, stderr) = run_report_capture("rust", &["--prompt", "SRP", "--top", "3"]);
+    assert!(ok, "--prompt run failed: {stderr}");
+    assert!(
+        stdout.starts_with("# SRP — Single Responsibility Principle"),
+        "named principle prompt: {stdout}"
+    );
+    assert!(
+        stdout.contains("## Summary") && stdout.contains("## Task"),
+        "the prompt scaffolding is composed: {stdout}"
+    );
+}
+
+/// `--prompt <principle>` that pre-selects a connection set (ADP → `common`) lists
+/// the worst cycle's members + their connections. The 3-node `chain` SCC outranks
+/// the 2-node `a ⇄ b` mutual, so it is the cycle shown.
+#[test]
+fn rust_sample_prompt_flag_lists_cycle_and_connections() {
+    let (ok, stdout, stderr) = run_report_capture("rust", &["--prompt", "ADP", "--top", "1"]);
+    assert!(ok, "--prompt ADP run failed: {stderr}");
     assert!(
         stdout.starts_with("# ADP — Acyclic Dependencies Principle"),
-        "auto-picked ADP as the title heading: {stdout}"
+        "ADP as the title heading: {stdout}"
     );
     assert!(
         stdout.contains("## Modules in a dependency cycle"),
@@ -744,64 +759,6 @@ fn rust_sample_prompt_auto_picks_worst_principle() {
     assert!(
         stdout.contains("## Connections — common"),
         "ADP pre-selects the `common` connection set"
-    );
-    assert!(
-        stdout.contains(".code-ranker/<YYYYMMDD-HHMMSS>-ADP.md"),
-        "save-report instruction carries the principle id: {stdout}"
-    );
-}
-
-/// `report --prompt <ID>` prints the named principle's prompt to stdout directly
-/// (the explicit counterpart of `--output.prompt`, which auto-targets the worst),
-/// honouring `--top`. Unlike `--output.prompt` it does NOT require `--top 1`.
-#[test]
-fn rust_sample_prompt_flag_targets_named_principle() {
-    let (ok, stdout, stderr) = run_report_capture("rust", &["--prompt", "SRP", "--top", "3"]);
-    assert!(ok, "--prompt run failed: {stderr}");
-    assert!(
-        stdout.starts_with("# SRP — Single Responsibility Principle"),
-        "named principle prompt, not the auto-worst: {stdout}"
-    );
-    assert!(
-        stdout.contains("## Summary") && stdout.contains("## Task"),
-        "the prompt scaffolding is composed: {stdout}"
-    );
-}
-
-/// `--output.prompt --focus <metric>` frames the auto-targeted prompt through the
-/// metric lens (a synthesized metric-principle), titled by the metric rather than a
-/// SOLID principle — the `Focus::Metric` arm of the `--output.prompt` builder.
-#[test]
-fn rust_sample_output_prompt_focus_metric_uses_metric_lens() {
-    let (ok, stdout, stderr) = run_report_capture(
-        "rust",
-        &["--output.prompt.path=stdout", "--focus", "HK", "--top", "1"],
-    );
-    assert!(ok, "focus-metric prompt failed: {stderr}");
-    assert!(
-        stdout.starts_with("# HK — God-object risk"),
-        "metric-lens prompt titled by the metric: {stdout}"
-    );
-}
-
-/// `--output.prompt --focus <principle>` targets that named principle instead of
-/// the auto-worst — the `Focus::Principle` arm of the `--output.prompt` builder.
-#[test]
-fn rust_sample_output_prompt_focus_principle_targets_it() {
-    let (ok, stdout, stderr) = run_report_capture(
-        "rust",
-        &[
-            "--output.prompt.path=stdout",
-            "--focus",
-            "SRP",
-            "--top",
-            "1",
-        ],
-    );
-    assert!(ok, "focus-principle prompt failed: {stderr}");
-    assert!(
-        stdout.starts_with("# SRP — Single Responsibility Principle"),
-        "principle-focused prompt, not the auto-worst: {stdout}"
     );
 }
 
@@ -997,23 +954,10 @@ fn rust_sample_check_prompt_format() {
     );
 }
 
-/// `--output.prompt` is auto-targeted at the single worst module, so it requires
-/// exactly `--top 1`; without it the run errors with a pointer to the scorecard.
-#[test]
-fn rust_sample_prompt_requires_top1() {
-    let (ok, _stdout, stderr) = run_report_capture("rust", &["--output.prompt.path=stdout"]);
-    assert!(!ok, "prompt without --top 1 must fail");
-    assert!(
-        stderr.contains("--output.prompt requires --top 1"),
-        "actionable error: {stderr}"
-    );
-}
-
 /// `--index` is rejected with a hint to use `--top`.
 #[test]
 fn rust_sample_report_rejects_index() {
-    let (ok, _stdout, stderr) =
-        run_report_capture("rust", &["--output.prompt.path=stdout", "--index", "0"]);
+    let (ok, _stdout, stderr) = run_report_capture("rust", &["--output.scorecard", "--index", "0"]);
     assert!(!ok, "--index must fail");
     assert!(
         stderr.contains("--index is not supported") && stderr.contains("--top"),
@@ -1021,13 +965,13 @@ fn rust_sample_report_rejects_index() {
     );
 }
 
-/// The recommendation knobs only apply with a `prompt` / `scorecard` format.
+/// The recommendation knobs only apply with the `scorecard` format.
 #[test]
 fn rust_sample_report_rejects_stray_reco_flags() {
     let (ok, _stdout, stderr) = run_report_capture("rust", &["--focus", "hk"]);
-    assert!(!ok, "--focus without a prompt/scorecard format must fail");
+    assert!(!ok, "--focus without a scorecard format must fail");
     assert!(
-        stderr.contains("apply only with --output.prompt or --output.scorecard"),
+        stderr.contains("apply only with --output.scorecard"),
         "actionable error: {stderr}"
     );
 }

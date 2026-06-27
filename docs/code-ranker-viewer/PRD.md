@@ -128,27 +128,26 @@ an LLM, pre-populated with the top-N heaviest nodes and their coupling
 context, asking for refactoring recommendations. The prompt format MUST
 be copyable as plain text for direct paste into any LLM interface.
 
-The **same recommendation engine is exposed on the CLI** as two `report`
-output formats, so the guidance is reachable without opening the HTML
-(driven from the snapshot's gate-derived `node_attributes[*].thresholds`
-`info` / `warning` tiers — advisory, never a gate):
+The **same recommendation engine is exposed on the CLI** by `report`, so the
+guidance is reachable without opening the HTML (driven from the snapshot's
+gate-derived `node_attributes[*].thresholds` `info` / `warning` tiers —
+advisory, never a gate):
 
-- `--output.prompt[.path]` — the LLM prompt for **one** principle, the same
+- `--prompt <ID>` — the LLM prompt for **one** named principle or metric, the same
   Markdown the HTML Prompt Generator produces (intent, summary, principle-doc
   link, a task checklist, the ranked offending modules, and the principle's
-  connection lists). Defaults to a per-principle file
-  `.code-ranker/{ts}-{git-hash-3}-{principle}.md` (or `stdout`).
+  connection lists). Printed to stdout; redirect to a file when you need an artifact.
 - `--output.scorecard[.path]` — a console **triage** overview (a per-principle
   table of `warning` / `info` counts + the worst module, then the worst modules
-  overall, then a hint to the prompt for the worst principle). Defaults to
+  overall, then a next-step hint pointing at `--prompt <ID>`). Defaults to
   `stdout`.
 
 The `scorecard` is narrowed by `--focus <NAME>` (one ranking metric or principle: `hk`, `cycle`,
 `sloc`, `cognitive`, …; without it the table spans all principles) and `--severity
 <info|warning|auto>` (the tier; repeatable; `auto` = warning-if-any-else-info), and
-capped by `--top <N>`. The `prompt` is **auto-targeted at the single worst module**
-and **requires `--top 1`** — there is no CLI principle selector. These flags apply
-only with a `prompt` / `scorecard` format; an explicit `--index` is rejected with a
+capped by `--top <N>`. The `--prompt <ID>` fix-prompt names its target itself and
+honours `--top`, `--focus-path`, and `--language`. These flags apply only with the
+`scorecard` format (or `--prompt`); an explicit `--index` is rejected with a
 hint to use `--top`.
 
 The CLI side of this engine is documented in

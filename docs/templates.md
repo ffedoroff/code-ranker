@@ -206,12 +206,9 @@ code-ranker report . --prompt HK --top 5 --focus-path src/engine
   `--focus-path` refine the module list.
 - With embedded docs (§3) it can inline the full principle text rather than only the
   link.
-
-**How it differs from the existing `--output.prompt`**: `--output.prompt`
-*auto-targets the single worst principle*, requires `--top 1`, and writes a
-`…-{principle}.md` file. `--prompt <ID>` is the explicit, name-it-yourself, print-to-
-stdout counterpart — the quick "show me HK" path — and (being a standalone dump)
-accepts any `--top N` to widen the ranked module list.
+- It is the explicit, name-it-yourself, print-to-stdout path — the quick "show me HK"
+  path — and (being a standalone dump) accepts any `--top N` to widen the ranked module
+  list. Redirect to a file when you need an artifact: `code-ranker report . --prompt HK > prompt.md`.
 
 ### 7.2 `docs <lang> <subject>` — print the raw principle doc ✅
 
@@ -227,7 +224,7 @@ code-ranker docs base HK   # the language-agnostic base doc
 
 ### 7.3 Existing prompt surfaces ✅
 
-- `report --output.prompt[.path]` — write the auto-targeted worst-principle prompt.
+- `report --prompt <ID>` — print the named principle/metric prompt to stdout.
 - `check --output-format prompt` — build a prompt from the gate's own violations
   (`render_prompt`).
 - HTML viewer Prompt Generator — interactive, builds the prompt around the user's
@@ -285,7 +282,7 @@ and JS.
 | `base/` corpus + `doc_base = .../languages` | ✅ |
 | `PromptTemplate` prose in `metrics/prompt.md` (internal; parsed by `prompt_template`) | ✅ |
 | `compose_prompt` / `render_prompt` / viewer `composePrompt` | ✅ |
-| `report --output.prompt`, `check --output-format prompt` | ✅ |
+| `check --output-format prompt` | ✅ |
 | Embedding the corpus in the binary (`build.rs` → `CORPUS`) | ✅ |
 | `[templates.languages.<lang>.<ID>]` per-file override | ✅ |
 | `report --prompt <ID>` | ✅ |

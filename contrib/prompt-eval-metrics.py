@@ -159,7 +159,7 @@ def from_transcript(path, focus):
 
     # adherence
     m["used_generated_prompt"] = 1 if any(
-        ("--output.prompt" in c) or ("--prompt " in c) or ("--prompt=" in c) for _, c in cmds
+        ("--prompt " in c) or ("--prompt=" in c) for _, c in cmds
     ) else 0
     framing = []
     if any("--focus cycle" in c for _, c in cmds):

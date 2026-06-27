@@ -58,12 +58,8 @@ enabled = false
 path = ".code-ranker/{ts}-{git-hash-3}.codequality.json"
 enabled = false
 
-# The prompt defaults to a per-principle Markdown file; the scorecard is a console
-# overview defaulting to the stdout stream. Both stay OFF unless requested via
-# `--output.prompt` / `--output.scorecard`; these just supply the default path.
-[output.prompt]
-path = ".code-ranker/{ts}-{git-hash-3}-{principle}.md"
-
+# The scorecard is a console overview defaulting to the stdout stream. It stays
+# OFF unless requested via `--output.scorecard`; this just supplies the default path.
 [output.scorecard]
 path = "stdout"
 

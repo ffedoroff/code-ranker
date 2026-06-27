@@ -205,9 +205,8 @@ pub struct OutputConfig {
     pub html: OutputArtifact,
     pub sarif: OutputArtifact,
     pub codequality: OutputArtifact,
-    /// `prompt` / `scorecard` are flag-driven (off unless `--output.<fmt>` is
-    /// passed); their `path` here only supplies the default destination template.
-    pub prompt: OutputArtifact,
+    /// `scorecard` is flag-driven (off unless `--output.scorecard` is passed); its
+    /// `path` here only supplies the default destination template.
     pub scorecard: OutputArtifact,
 }
 

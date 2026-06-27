@@ -65,7 +65,7 @@ fn builtin_defaults_complete() {
     assert!(d.output.html.path.is_some() && d.output.html.enabled == Some(true));
     assert!(d.output.sarif.path.is_some() && d.output.sarif.enabled == Some(false));
     assert!(d.output.codequality.path.is_some() && d.output.codequality.enabled == Some(false));
-    assert!(d.output.prompt.path.is_some() && d.output.scorecard.path.as_deref() == Some("stdout"));
+    assert!(d.output.scorecard.path.as_deref() == Some("stdout"));
     // No project plugins pinned by default (→ auto-detect all markers).
     assert!(d.plugins.enabled.is_empty());
     // The built-in defaults live in the raw [plugins.base] block: `language_config`

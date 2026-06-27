@@ -301,7 +301,7 @@ is validated at load — a typo, or a metric you never defined, is a hard error)
 ### `[plugins.<lang>.principles.<ID>]` — project Prompt-Generator principles
 
 A principle ranks files by one metric and ships a
-ready-to-paste AI prompt, surfaced by the `scorecard` / `prompt` outputs and the
+ready-to-paste AI prompt, surfaced by the `scorecard` output, `--prompt <ID>`, and the
 viewer's Prompt-Generator buttons. The plugin catalog ships the SOLID/complexity principles;
 a project adds its own (e.g. over a custom metric) here. The table key is the id;
 a same-id project principle overrides the plugin's, a new id appends.

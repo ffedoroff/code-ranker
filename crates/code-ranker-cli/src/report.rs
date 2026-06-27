@@ -1,5 +1,6 @@
 //! `report` — analyze (or read) the input and write artifacts: JSON snapshot,
-//! HTML viewer (diff with `--baseline`), and the advisory prompt / scorecard.
+//! HTML viewer (diff with `--baseline`), and the advisory scorecard. The named
+//! AI fix-prompt is available via `--prompt <ID>` (printed to stdout).
 
 use crate::analyze::{analyze_input, load_snapshot_any};
 use crate::cli::AnalyzeArgs;
@@ -15,17 +16,15 @@ pub(crate) struct ReportOutputs {
     pub(crate) html: bool,
     pub(crate) sarif: bool,
     pub(crate) codequality: bool,
-    pub(crate) prompt: bool,
     pub(crate) scorecard: bool,
     pub(crate) json_path: Option<String>,
     pub(crate) html_path: Option<String>,
     pub(crate) sarif_path: Option<String>,
     pub(crate) codequality_path: Option<String>,
-    pub(crate) prompt_path: Option<String>,
     pub(crate) scorecard_path: Option<String>,
 }
 
-/// Recommendation knobs for the `prompt` / `scorecard` formats.
+/// Recommendation knobs for the `scorecard` format and the `--prompt <ID>` output.
 pub(crate) struct ReportReco {
     /// Focus the `scorecard` / `prompt` on one axis — a metric / rule id (`hk`,
     /// `threshold.file.hk`) or a principle id (`LSP`). Resolved against both.
@@ -62,43 +61,34 @@ pub(crate) fn run_report(
     let html_path = out.html_path.as_deref();
     let sarif_path = out.sarif_path.as_deref();
     let codequality_path = out.codequality_path.as_deref();
-    let prompt_path = out.prompt_path.as_deref();
     let scorecard_path = out.scorecard_path.as_deref();
 
-    // The recommendation formats are flag-only (no `[output.<fmt>]` config) and
-    // are never part of the default set.
-    let want_prompt = out.prompt || prompt_path.is_some();
+    // The scorecard format is flag-only (no `[output.<fmt>]` config) and is never
+    // part of the default set.
     let want_scorecard = out.scorecard || scorecard_path.is_some();
 
     // Validate the recommendation knobs before any analysis runs. `--index` is
     // intentionally unsupported — complain with a hint rather than a bare clap
-    // "unknown flag" — and the other knobs only make sense for prompt/scorecard.
+    // "unknown flag" — and the other knobs only make sense for the scorecard (the
+    // `--prompt <ID>` path is handled by `run_direct` above and never reaches here).
     if reco.index.is_some() {
         anyhow::bail!(
             "--index is not supported; use --top N instead (--top 1 = the single worst module)"
         );
     }
-    if !want_prompt
-        && !want_scorecard
+    if !want_scorecard
         && (reco.focus.is_some()
             || !reco.focus_path.is_empty()
             || !reco.severity.is_empty()
             || reco.top.is_some())
     {
         anyhow::bail!(
-            "--focus/--focus-path/--severity/--top apply only with --output.prompt or --output.scorecard"
+            "--focus/--focus-path/--severity/--top apply only with --output.scorecard (for a fix-prompt use --prompt <ID>)"
         );
     }
     // `--severity` steers the scorecard only (tiers are a triage concern).
     if !reco.severity.is_empty() && !want_scorecard {
         anyhow::bail!("--severity applies only to --output.scorecard");
-    }
-    // The prompt is auto-targeted at the single worst module: it requires exactly
-    // `--top 1` (prompts are long; for a broader view use --output.scorecard).
-    if want_prompt && reco.top != Some(1) {
-        anyhow::bail!(
-            "--output.prompt requires --top 1 (it is auto-targeted at the single worst module)"
-        );
     }
 
     let a = analyze_input(args, &[], &[])?;
@@ -110,13 +100,7 @@ pub(crate) fn run_report(
     let mut want_html = want_format(out.html, html_path, &a.output.html);
     let want_sarif = want_format(out.sarif, sarif_path, &a.output.sarif);
     let want_codequality = want_format(out.codequality, codequality_path, &a.output.codequality);
-    if !want_json
-        && !want_html
-        && !want_sarif
-        && !want_codequality
-        && !want_prompt
-        && !want_scorecard
-    {
+    if !want_json && !want_html && !want_sarif && !want_codequality && !want_scorecard {
         want_json = true;
         want_html = true;
     }
@@ -192,26 +176,13 @@ pub(crate) fn run_report(
         write_artifact(&dest, &cq, "codequality")?;
     }
 
-    if want_prompt || want_scorecard {
-        // A `--output.<fmt>.path` flag wins; otherwise the default template comes
-        // from the merged config (always present from the built-in defaults).
-        let prompt_tpl = prompt_path
-            .or(a.output.prompt.path.as_deref())
-            .expect("output.prompt.path from built-in defaults");
+    if want_scorecard {
+        // A `--output.scorecard.path` flag wins; otherwise the default template
+        // comes from the merged config (always present from the built-in defaults).
         let scorecard_tpl = scorecard_path
             .or(a.output.scorecard.path.as_deref())
             .expect("output.scorecard.path from built-in defaults");
-        write_recommendations(
-            snap,
-            &reco,
-            want_prompt,
-            want_scorecard,
-            prompt_tpl,
-            scorecard_tpl,
-            &target,
-            commit,
-            generated_at,
-        )?;
+        write_scorecard(snap, &reco, scorecard_tpl, &target, commit, generated_at)?;
     }
 
     Ok(())
@@ -225,8 +196,7 @@ fn run_direct(args: &AnalyzeArgs, reco: &ReportReco) -> Result<()> {
     let a = analyze_input(args, &[], &[])?;
     let snap = &a.snapshot;
 
-    // `--prompt <ID>`: compose the named principle/metric prompt (same builder as
-    // `--output.prompt`, but for the id you name, to stdout).
+    // `--prompt <ID>`: compose the named principle/metric prompt to stdout.
     let id = reco.prompt_id.as_deref().expect("prompt_id is set");
     let lang_snap = recommend::resolve_language_snap(snap, reco.language.as_deref(), Some(id))?;
     let level = lang_snap
@@ -259,18 +229,13 @@ fn run_direct(args: &AnalyzeArgs, reco: &ReportReco) -> Result<()> {
     Ok(())
 }
 
-/// Write the recommendation artifacts (`prompt` / `scorecard`) for the analyzed
-/// snapshot. Both read the `files` level of the selected language. `--focus` picks
-/// the lens: a metric frames the output by the metric itself, a principle by that
-/// design principle; without it the prompt auto-targets the worst-violating
-/// principle and the scorecard spans all.
-#[allow(clippy::too_many_arguments)]
-fn write_recommendations(
+/// Write the console-triage `scorecard` artifact for the analyzed snapshot. Reads
+/// the `files` level of the selected language. `--focus` picks the lens (a metric
+/// frames it by the metric itself, a principle by that design principle); without
+/// it the scorecard spans every principle.
+fn write_scorecard(
     snap: &Snapshot,
     reco: &ReportReco,
-    want_prompt: bool,
-    want_scorecard: bool,
-    prompt_tpl: &str,
     scorecard_tpl: &str,
     target: &Path,
     commit: Option<&str>,
@@ -291,44 +256,7 @@ fn write_recommendations(
         .map(|n| recommend::resolve_focus(level, &lang_snap.principles, n))
         .transpose()?;
 
-    if want_prompt {
-        // Metric focus frames the prompt by a synthesized metric "principle" (no SOLID
-        // principle); a principle focus targets that principle; no focus auto-targets
-        // the worst-violating principle. `--top 1` is validated up front, so `Auto`
-        // tier is irrelevant.
-        let synth; // holds the metric-lens principle, if any, for the borrow below
-        let (principles_for_prompt, principle_id): (&[recommend::Principle], String) = match &focus
-        {
-            Some(recommend::Focus::Metric(m)) => {
-                synth = [recommend::synth_metric_principle(
-                    level,
-                    &lang_snap.principles,
-                    m,
-                )];
-                (&synth, m.clone())
-            }
-            Some(recommend::Focus::Principle(id)) => (&lang_snap.principles, id.clone()),
-            None => (
-                &lang_snap.principles,
-                recommend::worst_principle(level, &lang_snap.principles)
-                    .context("no principles in the snapshot to recommend from")?,
-            ),
-        };
-        let md = recommend::compose_prompt(
-            level,
-            principles_for_prompt,
-            &lang_snap.prompt,
-            &principle_id,
-            recommend::Severity::Auto,
-            reco.top,
-            &reco.focus_path,
-        )?;
-        let dest = render_name(prompt_tpl, target, commit, generated_at)
-            .replace("{principle}", &principle_id);
-        write_artifact(&dest, &md, "prompt")?;
-    }
-
-    if want_scorecard {
+    {
         let severities = if reco.severity.is_empty() {
             vec![recommend::Severity::Warning, recommend::Severity::Info]
         } else {
