@@ -3,7 +3,8 @@
 // a dependency cycle). Shown next to the Prompt-Generator (AI) button.
 function warningTypeCount(level) {
   // Count over the active side, so the badge tracks Baseline/Current like the rest.
-  const nodes = ((typeof activeGraph === 'function' ? activeGraph(level).nodes : window.DIFF?.[level]?.nodes) || [])
+  const _wLang = (typeof currentLang === 'function' ? currentLang() : null) || Object.keys(window.DIFF || {})[0];
+  const nodes = ((typeof activeGraph === 'function' ? activeGraph(level).nodes : window.DIFF?.[_wLang]?.[level]?.nodes) || [])
     .filter(n => !isExternalNode(n, level));
   const sortMetrics = levelUi(level).sort || [];
   let count = sortMetrics.filter(m => {
@@ -12,7 +13,11 @@ function warningTypeCount(level) {
     if (!th) return false;
     return nodes.some(n => (nodeAttr(n, m) ?? 0) > th.warning);
   }).length;
-  const cy = window.CYCLES?.[level]?.nodeCycleStatus;
+  // CYCLES shape is { [lang]: { [level]: { nodeCycleStatus, … } } } — resolve via
+  // the active language before indexing by level.
+  const activeLang = (typeof currentLang === 'function') ? currentLang() : null;
+  const langCycles = activeLang ? window.CYCLES?.[activeLang] : Object.values(window.CYCLES || {})[0];
+  const cy = langCycles?.[level]?.nodeCycleStatus;
   if (cy && nodes.some(n => { const cs = cy.get(n.id); return cs != null && cs !== 'none'; })) count += 1;
   return count;
 }
@@ -73,7 +78,8 @@ function openExportPopup(level, restore) {
   // the snapshot the user is looking at — same source the map and table use.
   // (Review mode → the single snapshot.) Edges are kept to local↔local pairs,
   // mirroring the diff's edge set: no external links, no cross-side noise.
-  const activeG     = (typeof activeGraph === 'function') ? activeGraph(level) : (window.DIFF?.[level] || {});
+  const _oLang  = (typeof currentLang === 'function' ? currentLang() : null) || Object.keys(window.DIFF || {})[0];
+  const activeG = (typeof activeGraph === 'function') ? activeGraph(level) : (window.DIFF?.[_oLang]?.[level] || {});
   const allNodes    = activeG.nodes || [];
   const localIds    = new Set(allNodes.filter(n => !isExternalNode(n, level)).map(n => n.id));
   // Only FLOW edges (`uses`) drive coupling/cycles/HK; structural
@@ -197,7 +203,10 @@ function openExportPopup(level, restore) {
   // `cycle` → only nodes in a cycle (sorted by hk).
   const recoFor = metric => {
     if (metric === 'cycle') {
-      const cy = window.CYCLES?.[level];
+      // CYCLES shape is { [lang]: { [level]: … } } — resolve active language first.
+      const activeLang = (typeof currentLang === 'function') ? currentLang() : null;
+      const langCycles = activeLang ? window.CYCLES?.[activeLang] : Object.values(window.CYCLES || {})[0];
+      const cy = langCycles?.[level];
       const inCycle = internalNodes().filter(n => cy?.nodeCycleStatus?.get(n.id) != null)
         .sort((a, b) => (nodeAttr(b, 'hk') ?? 0) - (nodeAttr(a, 'hk') ?? 0));
       return { metric: 'cycle', sorted: inCycle, warningCount: inCycle.length, infoCount: inCycle.length };

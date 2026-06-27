@@ -15,8 +15,8 @@ the attribute key on a node and in the JSON — there is no prefix or namespace.
 
 Only the **measured** values and the graph passes are Rust. Everything **derived**
 or **aggregated** is data (a CEL formula + spec) — edit the formula, change the
-metric, no code change. Users add their own under `[metrics.<key>]`. The same
-registry runs per **unit**, so it serves file nodes and (with `[levels] functions`
+metric, no code change. Users add their own under `[plugins.base.metrics.<key>]`. The same
+registry runs per **unit**, so it serves file nodes and (with `[plugins.base.levels] functions`
 on) function nodes alike. How the registry orders and evaluates formulas (e.g. why
 `mi` runs after `volume`) is in
 [`metric-correctness.md` → How derived metrics are computed](metric-correctness.md#how-derived-metrics-are-computed-the-cel-registry-engine).

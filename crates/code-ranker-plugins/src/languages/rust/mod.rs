@@ -46,30 +46,30 @@ impl LanguagePlugin for RustPlugin {
         "rust"
     }
 
-    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
+    fn detect(&self, cfg: &toml::Table, workspace: &Path, _input: &PluginInput) -> bool {
         // Project-detect marker filenames are DATA: read from `config.toml`'s
         // `detect_markers` (the detect logic stays in Rust). Rust detects on
         // `Cargo.toml`. (The `cargo metadata` manifest path in `syn_analyze` is
         // separate — that is cargo machinery, not a detect-marker list.)
-        crate::config::string_list(&CONFIG, "detect_markers")
+        crate::config::string_list(cfg, "detect_markers")
             .iter()
             .any(|m| workspace.join(m).exists())
     }
 
-    fn levels(&self) -> Vec<Level> {
+    fn levels(&self, cfg: &toml::Table) -> Vec<Level> {
         // Edge-kind vocabulary (`uses` / `contains` / `reexports` / `super`) is
         // data: read it from `[edge_kinds]` in `rust/config.toml` (which
         // overrides the shared `uses` and adds the Rust-only structural kinds).
         // `collapse.rs` tags edges with the same identifiers via
         // `config::edge_kind_id`, so the spec and the tagged `kind` can't drift.
-        let edge_kinds: BTreeMap<String, EdgeKindSpec> = crate::config::edge_kinds(&CONFIG);
+        let edge_kinds: BTreeMap<String, EdgeKindSpec> = crate::config::edge_kinds(cfg);
 
         // Structural node/edge attribute display specs are DATA: read from the
         // merged config (`[node_attributes]` / `[edge_attributes]`). The shared
         // `path`/`loc`/`visibility`/`external` come from `defaults.toml`; Rust's
         // `crate`/`version`/`items`/`unsafe` (and edge `visibility`) from `rust/config.toml`.
-        let node_attributes = crate::config::node_attributes(&CONFIG);
-        let edge_attributes = crate::config::edge_attributes(&CONFIG);
+        let node_attributes = crate::config::node_attributes(cfg);
+        let edge_attributes = crate::config::edge_attributes(cfg);
 
         vec![
             Level {
@@ -77,7 +77,7 @@ impl LanguagePlugin for RustPlugin {
                 edge_kinds,
                 node_attributes,
                 edge_attributes,
-                attribute_groups: crate::config::attribute_groups(&CONFIG),
+                attribute_groups: crate::config::attribute_groups(cfg),
                 node_kinds: default_node_kinds(),
                 cycle_kinds: default_cycle_kinds(),
                 // Cluster the diagram by the owning crate (compilation unit), not by
@@ -86,7 +86,7 @@ impl LanguagePlugin for RustPlugin {
                     // Group by the `crate` node attribute — its key is DATA,
                     // validated against `[node_attributes]`.
                     key: Some(
-                        crate::config::attr_key(&CONFIG, "crate")
+                        crate::config::attr_key(cfg, "crate")
                             .expect("rust/config.toml [node_attributes] is missing `crate`")
                             .into(),
                     ),
@@ -100,33 +100,36 @@ impl LanguagePlugin for RustPlugin {
                 node_attributes: BTreeMap::new(),
                 edge_attributes: BTreeMap::new(),
                 attribute_groups: BTreeMap::new(),
-                node_kinds: function_node_kinds(),
+                node_kinds: function_node_kinds(cfg),
                 cycle_kinds: default_cycle_kinds(),
                 grouping: None,
             },
         ]
     }
 
-    fn principles(&self, _input: &PluginInput) -> Vec<Principle> {
+    fn principles(&self, cfg: &toml::Table, _input: &PluginInput) -> Vec<Principle> {
         // The common catalog (from `defaults.toml`) plus the Rust-only metric
         // lenses (`[[principles]]` in `rust.toml`), with each `doc_url` resolved to
         // `{doc_base}/rust/<slug>.md`. All data-driven via the shared loader.
-        crate::config::resolved_principles(&CONFIG)
+        crate::config::resolved_principles(cfg)
     }
 
-    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
+    fn report_overrides(
+        &self,
+        cfg: &toml::Table,
+    ) -> code_ranker_plugin_api::report::ReportOverride {
         // Rust's `[report]` patches: e.g. surface the `unsafe` column / stat.
-        code_ranker_plugin_api::list_override::report_override(&CONFIG)
+        code_ranker_plugin_api::list_override::report_override(cfg)
     }
 
-    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, _cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         let mut builder = GraphBuilder::new();
         syn_analyze(workspace, input.ignore_tests, &mut builder)?;
         let internal = builder.build();
         Ok(collapse_to_files(internal))
     }
 
-    fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
+    fn metrics(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(String, MetricInputs)> {
         // Each `.rs` file node is re-read (by its absolute-path `id`) and measured
         // by our `tree-sitter-rust` engine; `#[cfg(test)]` / `#[test]` items are
         // stripped first so metrics reflect production code only (their lines
@@ -146,7 +149,7 @@ impl LanguagePlugin for RustPlugin {
         out
     }
 
-    fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
+    fn function_units(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(Node, MetricInputs)> {
         let mut out = Vec::new();
         for node in &graph.nodes {
             if node.kind != code_ranker_plugin_api::node::FILE {
@@ -171,24 +174,30 @@ impl LanguagePlugin for RustPlugin {
         out
     }
 
-    fn versions(&self, _workspace: &Path, _input: &PluginInput) -> Vec<(String, String)> {
+    fn versions(
+        &self,
+        _cfg: &toml::Table,
+        _workspace: &Path,
+        _input: &PluginInput,
+    ) -> Vec<(String, String)> {
         version_string()
             .map(|rv| vec![("rustc".to_string(), rv)])
             .unwrap_or_default()
     }
 
-    fn roots(&self, _workspace: &Path) -> Vec<(String, String)> {
+    fn roots(&self, _cfg: &toml::Table, _workspace: &Path) -> Vec<(String, String)> {
         rust_toolchain_roots()
     }
 
     fn metric_specs(
         &self,
+        cfg: &toml::Table,
         defaults: BTreeMap<String, AttributeSpec>,
     ) -> BTreeMap<String, AttributeSpec> {
         // Apply the Rust `[specs.<key>]` overrides over the central builtin specs:
         // the production-only LOC nuance (`#[cfg(test)]` stripped) and the exact
         // Halstead operator/operand sets Rust counts.
-        crate::config::apply_spec_overrides(defaults, &CONFIG)
+        crate::config::apply_spec_overrides(defaults, cfg)
     }
 }
 
@@ -198,8 +207,8 @@ impl LanguagePlugin for RustPlugin {
 /// (Rust labels its free functions `fn`, not the generic `function`). The
 /// inherited generic `function` entry is also published; it is harmless on this
 /// off-by-default level (the dialect's `fn_kind` only ever tags `fn` / `method`).
-fn function_node_kinds() -> BTreeMap<String, NodeKindSpec> {
-    crate::config::node_kinds(&CONFIG)
+fn function_node_kinds(cfg: &toml::Table) -> BTreeMap<String, NodeKindSpec> {
+    crate::config::node_kinds(cfg)
 }
 
 #[cfg(test)]

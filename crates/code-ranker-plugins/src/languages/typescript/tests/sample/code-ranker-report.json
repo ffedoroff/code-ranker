@@ -1,5 +1,5 @@
 {
-  "command": "code-ranker report crates/code-ranker-plugins/src/languages/typescript/tests/sample --config crates/code-ranker-plugins/src/languages/typescript/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/typescript/tests/sample/code-ranker-report.json --output.mode quiet",
+  "command": "code-ranker report crates/code-ranker-plugins/src/languages/typescript/tests/sample --config crates/code-ranker-plugins/src/languages/typescript/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/typescript/tests/sample/code-ranker-report.json",
   "config_file": "crates/code-ranker-plugins/src/languages/typescript/tests/sample/code-ranker.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
@@ -8,1022 +8,1028 @@
     "dirty_files": 0,
     "origin": "git@example.com:org/repo.git"
   },
-  "graphs": {
-    "files": {
-      "attribute_groups": {
-        "complexity": {
-          "description": "per-function branching, nesting & size",
-          "label": "Complexity"
-        },
-        "coupling": {
-          "description": "how tightly modules depend on each other",
-          "label": "Coupling"
-        },
-        "halstead": {
-          "description": "operator/operand vocabulary & derived effort",
-          "label": "Halstead"
-        },
-        "loc": {
-          "description": "physical line counts",
-          "label": "Lines of Code"
-        },
-        "maintainability": {
-          "description": "composite score",
-          "label": "Maintainability"
-        }
-      },
-      "cycle_kinds": {
-        "chain": {
-          "description": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries.",
-          "label": "Chain",
-          "remediation": "Run `code-ranker docs ADP` and follow its instructions."
-        },
-        "mutual": {
-          "description": "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling.",
-          "label": "Mutual",
-          "remediation": "Run `code-ranker docs ADP` and follow its instructions."
-        }
-      },
-      "cycles": [
-        {
-          "kind": "chain",
+  "languages": {
+    "typescript": {
+      "graphs": {
+        "files": {
+          "attribute_groups": {
+            "complexity": {
+              "description": "per-function branching, nesting & size",
+              "label": "Complexity"
+            },
+            "coupling": {
+              "description": "how tightly modules depend on each other",
+              "label": "Coupling"
+            },
+            "halstead": {
+              "description": "operator/operand vocabulary & derived effort",
+              "label": "Halstead"
+            },
+            "loc": {
+              "description": "physical line counts",
+              "label": "Lines of Code"
+            },
+            "maintainability": {
+              "description": "composite score",
+              "label": "Maintainability"
+            }
+          },
+          "cycle_kinds": {
+            "chain": {
+              "description": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries.",
+              "label": "Chain",
+              "remediation": "Run `code-ranker docs ADP` and follow its instructions."
+            },
+            "mutual": {
+              "description": "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling.",
+              "label": "Mutual",
+              "remediation": "Run `code-ranker docs ADP` and follow its instructions."
+            }
+          },
+          "cycles": [
+            {
+              "kind": "chain",
+              "nodes": [
+                "{target}/src/chain1.ts",
+                "{target}/src/chain3.ts",
+                "{target}/src/chain2.ts"
+              ]
+            },
+            {
+              "kind": "mutual",
+              "nodes": [
+                "{target}/src/a.ts",
+                "{target}/src/b.ts"
+              ]
+            }
+          ],
+          "edge_attributes": {},
+          "edge_kinds": {
+            "uses": {
+              "description": "Import dependency — this file imports from the other.",
+              "flow": true,
+              "label": "uses"
+            }
+          },
+          "edges": [
+            {
+              "kind": "uses",
+              "line": 3,
+              "source": "{target}/src/a.test.ts",
+              "target": "{target}/src/a.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 20,
+              "source": "{target}/src/a.ts",
+              "target": "ext:@scope/util"
+            },
+            {
+              "kind": "uses",
+              "line": 18,
+              "source": "{target}/src/a.ts",
+              "target": "ext:axios"
+            },
+            {
+              "kind": "uses",
+              "line": 16,
+              "source": "{target}/src/a.ts",
+              "target": "ext:~utils"
+            },
+            {
+              "kind": "uses",
+              "line": 6,
+              "source": "{target}/src/a.ts",
+              "target": "{target}/src/b.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 8,
+              "source": "{target}/src/a.ts",
+              "target": "{target}/src/types.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 12,
+              "source": "{target}/src/a.ts",
+              "target": "{target}/src/util.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/src/b.ts",
+              "target": "{target}/src/a.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 6,
+              "source": "{target}/src/b.ts",
+              "target": "{target}/src/types.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/src/chain1.ts",
+              "target": "{target}/src/chain2.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/src/chain2.ts",
+              "target": "{target}/src/chain3.ts"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/src/chain3.ts",
+              "target": "{target}/src/chain1.ts"
+            }
+          ],
+          "node_attributes": {
+            "args": {
+              "description": "Number of function / closure arguments.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Args",
+              "name": "Arguments",
+              "short": "Args",
+              "value_type": "int"
+            },
+            "blank": {
+              "description": "Empty or whitespace-only lines.",
+              "group": "loc",
+              "label": "Blank",
+              "name": "Blank lines",
+              "short": "Blank",
+              "value_type": "int"
+            },
+            "branches": {
+              "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Branches",
+              "name": "Decision points",
+              "short": "Branches",
+              "value_type": "int"
+            },
+            "bugs": {
+              "calc": "effort ** (2/3) / 3000",
+              "description": "Estimated delivered bugs — a rough predictor of defect density.",
+              "direction": "lower_better",
+              "formula": "effort^⅔ ÷ 3000",
+              "group": "halstead",
+              "label": "Bugs",
+              "name": "Estimated bugs",
+              "short": "H.bugs",
+              "value_type": "float"
+            },
+            "cloc": {
+              "description": "Comment-only lines (inline comments on code lines are not counted).",
+              "group": "loc",
+              "label": "Comments",
+              "name": "Comment lines",
+              "short": "Comments",
+              "value_type": "int"
+            },
+            "closures": {
+              "description": "Number of closures defined in the unit.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Closures",
+              "name": "Closures defined",
+              "short": "Closures",
+              "value_type": "int"
+            },
+            "cognitive": {
+              "description": "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Cognitive",
+              "name": "Cognitive complexity",
+              "short": "Cognitive",
+              "value_type": "int"
+            },
+            "cycle": {
+              "description": "Cycle kind this node participates in.",
+              "group": "coupling",
+              "label": "Cycle",
+              "name": "Dependency cycle",
+              "short": "Cycle",
+              "value_type": "str"
+            },
+            "cyclomatic": {
+              "calc": "spaces + branches",
+              "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
+              "direction": "lower_better",
+              "formula": "spaces + branches",
+              "group": "complexity",
+              "label": "Cyclomatic",
+              "name": "Cyclomatic complexity",
+              "omit_at": 1.0,
+              "short": "Cyclomatic",
+              "value_type": "int"
+            },
+            "effort": {
+              "calc": "(eta1 / 2) * (n2 / eta2) * volume",
+              "description": "Mental effort to implement the algorithm.",
+              "direction": "lower_better",
+              "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
+              "group": "halstead",
+              "label": "Effort",
+              "name": "Implementation effort",
+              "short": "H.effort",
+              "value_type": "float"
+            },
+            "eta1": {
+              "description": "Distinct operators (η₁): the count of unique operator token kinds. JavaScript / TypeScript count the keywords `export import from as extends new function let var const return delete throw break continue if else switch case default for in of while try catch finally with async await yield`, arithmetic / logical / comparison / assignment operators (`+ - * / % ** ++ -- && || ! == === != !== < <= > >= = += -= *= /= %= **= ?? ?`), bitwise operators (`& | ^ << >> >>> ~`), and punctuation / delimiters (`. , : ; ( [ { @`).",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "η₁",
+              "name": "Unique operators",
+              "short": "η₁",
+              "value_type": "int"
+            },
+            "eta2": {
+              "description": "Distinct operands (η₂): the count of unique operand texts. JavaScript / TypeScript count identifiers (including `member_expression` / `property_identifier` / `nested_identifier`), literals (`string`, `number`, `true`, `false`, `null`, `undefined`, `void`), `this` / `super`, and the contextual keywords `set` / `get` / `typeof` / `instanceof`.",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "η₂",
+              "name": "Unique operands",
+              "short": "η₂",
+              "value_type": "int"
+            },
+            "exits": {
+              "description": "Number of exit points (return/throw) in the unit.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Exits",
+              "name": "Exit points",
+              "short": "Exits",
+              "value_type": "int"
+            },
+            "external": {
+              "label": "External",
+              "value_type": "bool"
+            },
+            "fan_in": {
+              "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
+              "group": "coupling",
+              "label": "Fan-in",
+              "name": "Incoming dependencies",
+              "short": "Fan-in",
+              "value_type": "int"
+            },
+            "fan_out": {
+              "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
+              "group": "coupling",
+              "label": "Fan-out",
+              "name": "Outgoing dependencies",
+              "short": "Fan-out",
+              "value_type": "int"
+            },
+            "fan_out_external": {
+              "description": "Number of distinct external libraries this node depends on.",
+              "group": "coupling",
+              "label": "Fan-out (external)",
+              "name": "External dependencies",
+              "short": "Fan-out (external)",
+              "value_type": "int"
+            },
+            "hk": {
+              "abbreviate": true,
+              "calc": "sloc * (fan_in * fan_out) ** 2",
+              "description": "Henry-Kafura information-flow complexity: a module that is both a busy crossroads (high fan-in × fan-out) and large — the most expensive place in the codebase to change.",
+              "direction": "lower_better",
+              "formula": "sloc × (fan_in × fan_out)²",
+              "group": "coupling",
+              "label": "HK",
+              "name": "God-object risk",
+              "short": "HK",
+              "value_type": "float"
+            },
+            "length": {
+              "calc": "n1 + n2",
+              "description": "Program length — total operator + operand occurrences.",
+              "direction": "lower_better",
+              "formula": "n1 + n2",
+              "group": "halstead",
+              "label": "Length",
+              "name": "Total tokens",
+              "short": "H.len",
+              "value_type": "float"
+            },
+            "lloc": {
+              "description": "Logical lines — counts statements, not physical lines.",
+              "group": "loc",
+              "label": "Logical",
+              "name": "Logical lines",
+              "short": "Logical",
+              "value_type": "int"
+            },
+            "loc": {
+              "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
+              "group": "loc",
+              "label": "Lines",
+              "name": "Total lines",
+              "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
+              "value_type": "int"
+            },
+            "mi": {
+              "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
+              "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
+              "direction": "higher_better",
+              "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
+              "group": "maintainability",
+              "label": "MI",
+              "name": "Maintainability index",
+              "short": "MI",
+              "value_type": "float"
+            },
+            "mi_sei": {
+              "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
+              "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
+              "direction": "higher_better",
+              "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
+              "group": "maintainability",
+              "label": "MI (SEI)",
+              "name": "Maintainability (SEI)",
+              "short": "MI SEI",
+              "value_type": "float"
+            },
+            "n1": {
+              "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "N₁",
+              "name": "Total operators",
+              "short": "N₁",
+              "value_type": "int"
+            },
+            "n2": {
+              "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "N₂",
+              "name": "Total operands",
+              "short": "N₂",
+              "value_type": "int"
+            },
+            "sloc": {
+              "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count).",
+              "group": "loc",
+              "label": "Source",
+              "name": "Source lines",
+              "short": "SLOC",
+              "value_type": "int"
+            },
+            "spaces": {
+              "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Spaces",
+              "name": "Code units",
+              "short": "Spaces",
+              "value_type": "int"
+            },
+            "span_sloc": {
+              "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
+              "direction": "lower_better",
+              "group": "maintainability",
+              "label": "Span",
+              "name": "Line span",
+              "short": "Span",
+              "value_type": "int"
+            },
+            "time": {
+              "calc": "effort / 18",
+              "description": "Estimated implementation time, in seconds.",
+              "direction": "lower_better",
+              "formula": "effort ÷ 18",
+              "group": "halstead",
+              "label": "Time",
+              "name": "Coding time (s)",
+              "short": "H.time(s)",
+              "value_type": "float"
+            },
+            "visibility": {
+              "label": "Visibility",
+              "value_type": "str"
+            },
+            "vocabulary": {
+              "calc": "eta1 + eta2",
+              "description": "Vocabulary — distinct operators + operands.",
+              "direction": "lower_better",
+              "formula": "eta1 + eta2",
+              "group": "halstead",
+              "label": "Vocabulary",
+              "name": "Distinct symbols",
+              "short": "H.vocab",
+              "value_type": "float"
+            },
+            "volume": {
+              "calc": "length * Math.log2(vocabulary)",
+              "description": "Algorithm size in bits, from distinct operators and operands.",
+              "direction": "lower_better",
+              "formula": "length × log₂(vocabulary)",
+              "group": "halstead",
+              "label": "Volume",
+              "name": "Code volume",
+              "short": "H.vol",
+              "value_type": "float"
+            }
+          },
+          "node_kinds": {
+            "external": {
+              "external": true,
+              "fill": "#f6e2c0",
+              "label": "Library",
+              "plural": "Libraries",
+              "stroke": "#b3801f"
+            },
+            "file": {
+              "fill": "#dbe9f4",
+              "label": "File",
+              "plural": "Files",
+              "stroke": "#4d6f9c"
+            }
+          },
           "nodes": [
-            "{target}/src/chain1.ts",
-            "{target}/src/chain3.ts",
-            "{target}/src/chain2.ts"
-          ]
+            {
+              "external": true,
+              "id": "ext:@scope/util",
+              "kind": "external",
+              "name": "@scope/util"
+            },
+            {
+              "external": true,
+              "id": "ext:axios",
+              "kind": "external",
+              "name": "axios"
+            },
+            {
+              "external": true,
+              "id": "ext:~utils",
+              "kind": "external",
+              "name": "~utils"
+            },
+            {
+              "blank": 1,
+              "bugs": 0.0166,
+              "cloc": 2,
+              "closures": 1,
+              "cyclomatic": 2,
+              "effort": 353.817,
+              "eta1": 7,
+              "eta2": 8,
+              "fan_out": 1,
+              "id": "{target}/src/a.test.ts",
+              "kind": "file",
+              "length": 23,
+              "lloc": 4,
+              "loc": 8,
+              "mi": 115.625,
+              "mi_sei": 128.146,
+              "n1": 14,
+              "n2": 9,
+              "name": "a.test.ts",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 7,
+              "time": 19.656,
+              "visibility": "public",
+              "vocabulary": 15,
+              "volume": 89.858
+            },
+            {
+              "blank": 3,
+              "branches": 2,
+              "bugs": 0.131,
+              "cloc": 13,
+              "cognitive": 2,
+              "cycle": "mutual",
+              "cyclomatic": 5,
+              "effort": 7858.206,
+              "eta1": 19,
+              "eta2": 21,
+              "exits": 2,
+              "fan_in": 2,
+              "fan_out": 3,
+              "fan_out_external": 3,
+              "hk": 540,
+              "id": "{target}/src/a.ts",
+              "kind": "file",
+              "length": 102,
+              "lloc": 13,
+              "loc": 32,
+              "mi": 81.476,
+              "mi_sei": 84.513,
+              "n1": 70,
+              "n2": 32,
+              "name": "a.ts",
+              "sloc": 15,
+              "spaces": 3,
+              "span_sloc": 31,
+              "time": 436.567,
+              "visibility": "public",
+              "vocabulary": 40,
+              "volume": 542.836
+            },
+            {
+              "blank": 3,
+              "bugs": 0.0262,
+              "cloc": 3,
+              "cycle": "mutual",
+              "cyclomatic": 3,
+              "effort": 700,
+              "eta1": 10,
+              "eta2": 6,
+              "exits": 2,
+              "fan_in": 1,
+              "fan_out": 2,
+              "hk": 32,
+              "id": "{target}/src/b.ts",
+              "kind": "file",
+              "length": 30,
+              "lloc": 8,
+              "loc": 15,
+              "mi": 102.662,
+              "mi_sei": 105.576,
+              "n1": 23,
+              "n2": 7,
+              "name": "b.ts",
+              "sloc": 8,
+              "spaces": 3,
+              "span_sloc": 14,
+              "time": 38.888,
+              "visibility": "public",
+              "vocabulary": 16,
+              "volume": 120
+            },
+            {
+              "bugs": 0.0163,
+              "cloc": 1,
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 344.156,
+              "eta1": 9,
+              "eta2": 3,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 4,
+              "id": "{target}/src/chain1.ts",
+              "kind": "file",
+              "length": 16,
+              "lloc": 4,
+              "loc": 6,
+              "mi": 123.41,
+              "mi_sei": 134.482,
+              "n1": 12,
+              "n2": 4,
+              "name": "chain1.ts",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 5,
+              "time": 19.119,
+              "visibility": "public",
+              "vocabulary": 12,
+              "volume": 57.359
+            },
+            {
+              "bugs": 0.0163,
+              "cloc": 1,
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 344.156,
+              "eta1": 9,
+              "eta2": 3,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 4,
+              "id": "{target}/src/chain2.ts",
+              "kind": "file",
+              "length": 16,
+              "lloc": 4,
+              "loc": 6,
+              "mi": 123.41,
+              "mi_sei": 134.482,
+              "n1": 12,
+              "n2": 4,
+              "name": "chain2.ts",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 5,
+              "time": 19.119,
+              "visibility": "public",
+              "vocabulary": 12,
+              "volume": 57.359
+            },
+            {
+              "bugs": 0.0163,
+              "cloc": 1,
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 344.156,
+              "eta1": 9,
+              "eta2": 3,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 4,
+              "id": "{target}/src/chain3.ts",
+              "kind": "file",
+              "length": 16,
+              "lloc": 4,
+              "loc": 6,
+              "mi": 123.41,
+              "mi_sei": 134.482,
+              "n1": 12,
+              "n2": 4,
+              "name": "chain3.ts",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 5,
+              "time": 19.119,
+              "visibility": "public",
+              "vocabulary": 12,
+              "volume": 57.359
+            },
+            {
+              "args": 4,
+              "branches": 4,
+              "bugs": 0.138,
+              "cloc": 5,
+              "cognitive": 5,
+              "cyclomatic": 7,
+              "effort": 8441.411,
+              "eta1": 19,
+              "eta2": 8,
+              "exits": 3,
+              "id": "{target}/src/complex.ts",
+              "kind": "file",
+              "length": 65,
+              "lloc": 11,
+              "loc": 16,
+              "mi": 95.705,
+              "mi_sei": 102.077,
+              "n1": 42,
+              "n2": 23,
+              "name": "complex.ts",
+              "sloc": 11,
+              "spaces": 3,
+              "span_sloc": 15,
+              "time": 468.967,
+              "visibility": "public",
+              "vocabulary": 27,
+              "volume": 309.067
+            },
+            {
+              "bugs": 0.00329,
+              "cloc": 3,
+              "effort": 31.019,
+              "eta1": 4,
+              "eta2": 2,
+              "id": "{target}/src/lazy.ts",
+              "kind": "file",
+              "length": 6,
+              "lloc": 1,
+              "loc": 5,
+              "mi": 134.056,
+              "mi_sei": 166.496,
+              "n1": 4,
+              "n2": 2,
+              "name": "lazy.ts",
+              "sloc": 1,
+              "spaces": 1,
+              "span_sloc": 4,
+              "time": 1.723,
+              "visibility": "public",
+              "vocabulary": 6,
+              "volume": 15.509
+            },
+            {
+              "blank": 1,
+              "bugs": 0.0098,
+              "cloc": 1,
+              "cyclomatic": 2,
+              "effort": 159.452,
+              "eta1": 8,
+              "eta2": 2,
+              "exits": 1,
+              "fan_in": 2,
+              "id": "{target}/src/types.ts",
+              "kind": "file",
+              "length": 12,
+              "lloc": 4,
+              "loc": 7,
+              "mi": 122.349,
+              "mi_sei": 130.571,
+              "n1": 10,
+              "n2": 2,
+              "name": "types.ts",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 8.858,
+              "visibility": "public",
+              "vocabulary": 10,
+              "volume": 39.863
+            },
+            {
+              "blank": 1,
+              "bugs": 0.012,
+              "cloc": 1,
+              "cyclomatic": 3,
+              "effort": 217.944,
+              "eta1": 7,
+              "eta2": 4,
+              "exits": 2,
+              "fan_in": 1,
+              "id": "{target}/src/util.ts",
+              "kind": "file",
+              "length": 18,
+              "lloc": 6,
+              "loc": 9,
+              "mi": 115.139,
+              "mi_sei": 116.752,
+              "n1": 14,
+              "n2": 4,
+              "name": "util.ts",
+              "sloc": 6,
+              "spaces": 3,
+              "span_sloc": 8,
+              "time": 12.108,
+              "visibility": "public",
+              "vocabulary": 11,
+              "volume": 62.269
+            }
+          ],
+          "stats": {
+            "blank": 1.8,
+            "bugs": 0.0385,
+            "cloc": 3.1,
+            "cognitive": 3.5,
+            "cyclomatic": 3.111,
+            "effort": 1879.431,
+            "fan_in": 1.285,
+            "fan_out": 1.5,
+            "hk": 116.8,
+            "length": 30.4,
+            "mi": 113.724,
+            "mi_sei": 123.757,
+            "sloc": 6.1,
+            "time": 104.412,
+            "vocabulary": 16.1,
+            "volume": 135.147
+          },
+          "ui": {
+            "card": [
+              "hk",
+              "sloc"
+            ],
+            "columns": [
+              "kind",
+              "cycle",
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "volume",
+              "bugs",
+              "effort",
+              "time",
+              "length",
+              "vocabulary",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank"
+            ],
+            "default_sort": "cycle",
+            "filter": [
+              "cycle"
+            ],
+            "size": [
+              "sloc",
+              "hk"
+            ],
+            "sort": [
+              "cycle",
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "volume",
+              "bugs",
+              "effort",
+              "time",
+              "length",
+              "vocabulary",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank"
+            ],
+            "summary": [
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "volume",
+              "bugs",
+              "effort",
+              "time",
+              "length",
+              "vocabulary",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank"
+            ]
+          }
+        }
+      },
+      "principles": [
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/CPX.md",
+          "id": "CPX",
+          "label": "CPX",
+          "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
+          "sort_metric": "cognitive",
+          "title": "CPX — Reduce Complexity"
         },
         {
-          "kind": "mutual",
-          "nodes": [
-            "{target}/src/a.ts",
-            "{target}/src/b.ts"
-          ]
+          "connections": [
+            "common"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/ADP.md",
+          "id": "ADP",
+          "label": "ADP",
+          "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
+          "sort_metric": "cycle",
+          "title": "ADP — Acyclic Dependencies Principle"
+        },
+        {
+          "connections": [
+            "in",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/SRP.md",
+          "id": "SRP",
+          "label": "SRP",
+          "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
+          "sort_metric": "sloc",
+          "title": "SRP — Single Responsibility Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/OCP.md",
+          "id": "OCP",
+          "label": "OCP",
+          "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
+          "sort_metric": "cyclomatic",
+          "title": "OCP — Open/Closed Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/LSP.md",
+          "id": "LSP",
+          "label": "LSP",
+          "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
+          "sort_metric": "hk",
+          "title": "LSP — Liskov Substitution Principle"
+        },
+        {
+          "connections": [
+            "in"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/ISP.md",
+          "id": "ISP",
+          "label": "ISP",
+          "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
+          "sort_metric": "items",
+          "title": "ISP — Interface Segregation Principle"
+        },
+        {
+          "connections": [
+            "common",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/DIP.md",
+          "id": "DIP",
+          "label": "DIP",
+          "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
+          "sort_metric": "fan_out",
+          "title": "DIP — Dependency Inversion Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/DRY.md",
+          "id": "DRY",
+          "label": "DRY",
+          "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
+          "sort_metric": "sloc",
+          "title": "DRY — Don't Repeat Yourself"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/KISS.md",
+          "id": "KISS",
+          "label": "KISS",
+          "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
+          "sort_metric": "cognitive",
+          "title": "KISS — Keep It Simple"
+        },
+        {
+          "connections": [
+            "common",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/LoD.md",
+          "id": "LoD",
+          "label": "LoD",
+          "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
+          "sort_metric": "fan_out",
+          "title": "Law of Demeter — Principle of Least Knowledge"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/MISU.md",
+          "id": "MISU",
+          "label": "MISU",
+          "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
+          "sort_metric": "cyclomatic",
+          "title": "MISU — Make Invalid States Unrepresentable"
+        },
+        {
+          "connections": [
+            "common"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/CoI.md",
+          "id": "CoI",
+          "label": "CoI",
+          "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
+          "sort_metric": "items",
+          "title": "CoI — Composition Over Inheritance"
+        },
+        {
+          "connections": [
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/YAGNI.md",
+          "id": "YAGNI",
+          "label": "YAGNI",
+          "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
+          "sort_metric": "sloc",
+          "title": "YAGNI — You Aren't Gonna Need It"
         }
       ],
-      "edge_attributes": {},
-      "edge_kinds": {
-        "uses": {
-          "description": "Import dependency — this file imports from the other.",
-          "flow": true,
-          "label": "uses"
-        }
-      },
-      "edges": [
-        {
-          "kind": "uses",
-          "line": 3,
-          "source": "{target}/src/a.test.ts",
-          "target": "{target}/src/a.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 20,
-          "source": "{target}/src/a.ts",
-          "target": "ext:@scope/util"
-        },
-        {
-          "kind": "uses",
-          "line": 18,
-          "source": "{target}/src/a.ts",
-          "target": "ext:axios"
-        },
-        {
-          "kind": "uses",
-          "line": 16,
-          "source": "{target}/src/a.ts",
-          "target": "ext:~utils"
-        },
-        {
-          "kind": "uses",
-          "line": 6,
-          "source": "{target}/src/a.ts",
-          "target": "{target}/src/b.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 8,
-          "source": "{target}/src/a.ts",
-          "target": "{target}/src/types.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 12,
-          "source": "{target}/src/a.ts",
-          "target": "{target}/src/util.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/src/b.ts",
-          "target": "{target}/src/a.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 6,
-          "source": "{target}/src/b.ts",
-          "target": "{target}/src/types.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/src/chain1.ts",
-          "target": "{target}/src/chain2.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/src/chain2.ts",
-          "target": "{target}/src/chain3.ts"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/src/chain3.ts",
-          "target": "{target}/src/chain1.ts"
-        }
-      ],
-      "node_attributes": {
-        "args": {
-          "description": "Number of function / closure arguments.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Args",
-          "name": "Arguments",
-          "short": "Args",
-          "value_type": "int"
-        },
-        "blank": {
-          "description": "Empty or whitespace-only lines.",
-          "group": "loc",
-          "label": "Blank",
-          "name": "Blank lines",
-          "short": "Blank",
-          "value_type": "int"
-        },
-        "branches": {
-          "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Branches",
-          "name": "Decision points",
-          "short": "Branches",
-          "value_type": "int"
-        },
-        "bugs": {
-          "calc": "effort ** (2/3) / 3000",
-          "description": "Estimated delivered bugs — a rough predictor of defect density.",
-          "direction": "lower_better",
-          "formula": "effort^⅔ ÷ 3000",
-          "group": "halstead",
-          "label": "Bugs",
-          "name": "Estimated bugs",
-          "short": "H.bugs",
-          "value_type": "float"
-        },
-        "cloc": {
-          "description": "Comment-only lines (inline comments on code lines are not counted).",
-          "group": "loc",
-          "label": "Comments",
-          "name": "Comment lines",
-          "short": "Comments",
-          "value_type": "int"
-        },
-        "closures": {
-          "description": "Number of closures defined in the unit.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Closures",
-          "name": "Closures defined",
-          "short": "Closures",
-          "value_type": "int"
-        },
-        "cognitive": {
-          "description": "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Cognitive",
-          "name": "Cognitive complexity",
-          "short": "Cognitive",
-          "value_type": "int"
-        },
-        "cycle": {
-          "description": "Cycle kind this node participates in.",
-          "group": "coupling",
-          "label": "Cycle",
-          "name": "Dependency cycle",
-          "short": "Cycle",
-          "value_type": "str"
-        },
-        "cyclomatic": {
-          "calc": "spaces + branches",
-          "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
-          "direction": "lower_better",
-          "formula": "spaces + branches",
-          "group": "complexity",
-          "label": "Cyclomatic",
-          "name": "Cyclomatic complexity",
-          "omit_at": 1.0,
-          "short": "Cyclomatic",
-          "value_type": "int"
-        },
-        "effort": {
-          "calc": "(eta1 / 2) * (n2 / eta2) * volume",
-          "description": "Mental effort to implement the algorithm.",
-          "direction": "lower_better",
-          "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
-          "group": "halstead",
-          "label": "Effort",
-          "name": "Implementation effort",
-          "short": "H.effort",
-          "value_type": "float"
-        },
-        "eta1": {
-          "description": "Distinct operators (η₁): the count of unique operator token kinds. JavaScript / TypeScript count the keywords `export import from as extends new function let var const return delete throw break continue if else switch case default for in of while try catch finally with async await yield`, arithmetic / logical / comparison / assignment operators (`+ - * / % ** ++ -- && || ! == === != !== < <= > >= = += -= *= /= %= **= ?? ?`), bitwise operators (`& | ^ << >> >>> ~`), and punctuation / delimiters (`. , : ; ( [ { @`).",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "η₁",
-          "name": "Unique operators",
-          "short": "η₁",
-          "value_type": "int"
-        },
-        "eta2": {
-          "description": "Distinct operands (η₂): the count of unique operand texts. JavaScript / TypeScript count identifiers (including `member_expression` / `property_identifier` / `nested_identifier`), literals (`string`, `number`, `true`, `false`, `null`, `undefined`, `void`), `this` / `super`, and the contextual keywords `set` / `get` / `typeof` / `instanceof`.",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "η₂",
-          "name": "Unique operands",
-          "short": "η₂",
-          "value_type": "int"
-        },
-        "exits": {
-          "description": "Number of exit points (return/throw) in the unit.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Exits",
-          "name": "Exit points",
-          "short": "Exits",
-          "value_type": "int"
-        },
-        "external": {
-          "label": "External",
-          "value_type": "bool"
-        },
-        "fan_in": {
-          "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
-          "group": "coupling",
-          "label": "Fan-in",
-          "name": "Incoming dependencies",
-          "short": "Fan-in",
-          "value_type": "int"
-        },
-        "fan_out": {
-          "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
-          "group": "coupling",
-          "label": "Fan-out",
-          "name": "Outgoing dependencies",
-          "short": "Fan-out",
-          "value_type": "int"
-        },
-        "fan_out_external": {
-          "description": "Number of distinct external libraries this node depends on.",
-          "group": "coupling",
-          "label": "Fan-out (external)",
-          "name": "External dependencies",
-          "short": "Fan-out (external)",
-          "value_type": "int"
-        },
-        "hk": {
-          "abbreviate": true,
-          "calc": "sloc * (fan_in * fan_out) ** 2",
-          "description": "Henry-Kafura information-flow complexity: a module that is both a busy crossroads (high fan-in × fan-out) and large — the most expensive place in the codebase to change.",
-          "direction": "lower_better",
-          "formula": "sloc × (fan_in × fan_out)²",
-          "group": "coupling",
-          "label": "HK",
-          "name": "God-object risk",
-          "short": "HK",
-          "value_type": "float"
-        },
-        "length": {
-          "calc": "n1 + n2",
-          "description": "Program length — total operator + operand occurrences.",
-          "direction": "lower_better",
-          "formula": "n1 + n2",
-          "group": "halstead",
-          "label": "Length",
-          "name": "Total tokens",
-          "short": "H.len",
-          "value_type": "float"
-        },
-        "lloc": {
-          "description": "Logical lines — counts statements, not physical lines.",
-          "group": "loc",
-          "label": "Logical",
-          "name": "Logical lines",
-          "short": "Logical",
-          "value_type": "int"
-        },
-        "loc": {
-          "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
-          "group": "loc",
-          "label": "Lines",
-          "name": "Total lines",
-          "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
-          "value_type": "int"
-        },
-        "mi": {
-          "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
-          "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
-          "direction": "higher_better",
-          "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
-          "group": "maintainability",
-          "label": "MI",
-          "name": "Maintainability index",
-          "short": "MI",
-          "value_type": "float"
-        },
-        "mi_sei": {
-          "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
-          "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
-          "direction": "higher_better",
-          "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
-          "group": "maintainability",
-          "label": "MI (SEI)",
-          "name": "Maintainability (SEI)",
-          "short": "MI SEI",
-          "value_type": "float"
-        },
-        "n1": {
-          "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "N₁",
-          "name": "Total operators",
-          "short": "N₁",
-          "value_type": "int"
-        },
-        "n2": {
-          "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "N₂",
-          "name": "Total operands",
-          "short": "N₂",
-          "value_type": "int"
-        },
-        "sloc": {
-          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count).",
-          "group": "loc",
-          "label": "Source",
-          "name": "Source lines",
-          "short": "SLOC",
-          "value_type": "int"
-        },
-        "spaces": {
-          "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Spaces",
-          "name": "Code units",
-          "short": "Spaces",
-          "value_type": "int"
-        },
-        "span_sloc": {
-          "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
-          "direction": "lower_better",
-          "group": "maintainability",
-          "label": "Span",
-          "name": "Line span",
-          "short": "Span",
-          "value_type": "int"
-        },
-        "time": {
-          "calc": "effort / 18",
-          "description": "Estimated implementation time, in seconds.",
-          "direction": "lower_better",
-          "formula": "effort ÷ 18",
-          "group": "halstead",
-          "label": "Time",
-          "name": "Coding time (s)",
-          "short": "H.time(s)",
-          "value_type": "float"
-        },
-        "visibility": {
-          "label": "Visibility",
-          "value_type": "str"
-        },
-        "vocabulary": {
-          "calc": "eta1 + eta2",
-          "description": "Vocabulary — distinct operators + operands.",
-          "direction": "lower_better",
-          "formula": "eta1 + eta2",
-          "group": "halstead",
-          "label": "Vocabulary",
-          "name": "Distinct symbols",
-          "short": "H.vocab",
-          "value_type": "float"
-        },
-        "volume": {
-          "calc": "length * Math.log2(vocabulary)",
-          "description": "Algorithm size in bits, from distinct operators and operands.",
-          "direction": "lower_better",
-          "formula": "length × log₂(vocabulary)",
-          "group": "halstead",
-          "label": "Volume",
-          "name": "Code volume",
-          "short": "H.vol",
-          "value_type": "float"
-        }
-      },
-      "node_kinds": {
-        "external": {
-          "external": true,
-          "fill": "#f6e2c0",
-          "label": "Library",
-          "plural": "Libraries",
-          "stroke": "#b3801f"
-        },
-        "file": {
-          "fill": "#dbe9f4",
-          "label": "File",
-          "plural": "Files",
-          "stroke": "#4d6f9c"
-        }
-      },
-      "nodes": [
-        {
-          "external": true,
-          "id": "ext:@scope/util",
-          "kind": "external",
-          "name": "@scope/util"
-        },
-        {
-          "external": true,
-          "id": "ext:axios",
-          "kind": "external",
-          "name": "axios"
-        },
-        {
-          "external": true,
-          "id": "ext:~utils",
-          "kind": "external",
-          "name": "~utils"
-        },
-        {
-          "blank": 1,
-          "bugs": 0.0166,
-          "cloc": 2,
-          "closures": 1,
-          "cyclomatic": 2,
-          "effort": 353.817,
-          "eta1": 7,
-          "eta2": 8,
-          "fan_out": 1,
-          "id": "{target}/src/a.test.ts",
-          "kind": "file",
-          "length": 23,
-          "lloc": 4,
-          "loc": 8,
-          "mi": 115.625,
-          "mi_sei": 128.146,
-          "n1": 14,
-          "n2": 9,
-          "name": "a.test.ts",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 7,
-          "time": 19.656,
-          "visibility": "public",
-          "vocabulary": 15,
-          "volume": 89.858
-        },
-        {
-          "blank": 3,
-          "branches": 2,
-          "bugs": 0.131,
-          "cloc": 13,
-          "cognitive": 2,
-          "cycle": "mutual",
-          "cyclomatic": 5,
-          "effort": 7858.206,
-          "eta1": 19,
-          "eta2": 21,
-          "exits": 2,
-          "fan_in": 2,
-          "fan_out": 3,
-          "fan_out_external": 3,
-          "hk": 540,
-          "id": "{target}/src/a.ts",
-          "kind": "file",
-          "length": 102,
-          "lloc": 13,
-          "loc": 32,
-          "mi": 81.476,
-          "mi_sei": 84.513,
-          "n1": 70,
-          "n2": 32,
-          "name": "a.ts",
-          "sloc": 15,
-          "spaces": 3,
-          "span_sloc": 31,
-          "time": 436.567,
-          "visibility": "public",
-          "vocabulary": 40,
-          "volume": 542.836
-        },
-        {
-          "blank": 3,
-          "bugs": 0.0262,
-          "cloc": 3,
-          "cycle": "mutual",
-          "cyclomatic": 3,
-          "effort": 700,
-          "eta1": 10,
-          "eta2": 6,
-          "exits": 2,
-          "fan_in": 1,
-          "fan_out": 2,
-          "hk": 32,
-          "id": "{target}/src/b.ts",
-          "kind": "file",
-          "length": 30,
-          "lloc": 8,
-          "loc": 15,
-          "mi": 102.662,
-          "mi_sei": 105.576,
-          "n1": 23,
-          "n2": 7,
-          "name": "b.ts",
-          "sloc": 8,
-          "spaces": 3,
-          "span_sloc": 14,
-          "time": 38.888,
-          "visibility": "public",
-          "vocabulary": 16,
-          "volume": 120
-        },
-        {
-          "bugs": 0.0163,
-          "cloc": 1,
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 344.156,
-          "eta1": 9,
-          "eta2": 3,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 1,
-          "hk": 4,
-          "id": "{target}/src/chain1.ts",
-          "kind": "file",
-          "length": 16,
-          "lloc": 4,
-          "loc": 6,
-          "mi": 123.41,
-          "mi_sei": 134.482,
-          "n1": 12,
-          "n2": 4,
-          "name": "chain1.ts",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 5,
-          "time": 19.119,
-          "visibility": "public",
-          "vocabulary": 12,
-          "volume": 57.359
-        },
-        {
-          "bugs": 0.0163,
-          "cloc": 1,
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 344.156,
-          "eta1": 9,
-          "eta2": 3,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 1,
-          "hk": 4,
-          "id": "{target}/src/chain2.ts",
-          "kind": "file",
-          "length": 16,
-          "lloc": 4,
-          "loc": 6,
-          "mi": 123.41,
-          "mi_sei": 134.482,
-          "n1": 12,
-          "n2": 4,
-          "name": "chain2.ts",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 5,
-          "time": 19.119,
-          "visibility": "public",
-          "vocabulary": 12,
-          "volume": 57.359
-        },
-        {
-          "bugs": 0.0163,
-          "cloc": 1,
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 344.156,
-          "eta1": 9,
-          "eta2": 3,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 1,
-          "hk": 4,
-          "id": "{target}/src/chain3.ts",
-          "kind": "file",
-          "length": 16,
-          "lloc": 4,
-          "loc": 6,
-          "mi": 123.41,
-          "mi_sei": 134.482,
-          "n1": 12,
-          "n2": 4,
-          "name": "chain3.ts",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 5,
-          "time": 19.119,
-          "visibility": "public",
-          "vocabulary": 12,
-          "volume": 57.359
-        },
-        {
-          "args": 4,
-          "branches": 4,
-          "bugs": 0.138,
-          "cloc": 5,
-          "cognitive": 5,
-          "cyclomatic": 7,
-          "effort": 8441.411,
-          "eta1": 19,
-          "eta2": 8,
-          "exits": 3,
-          "id": "{target}/src/complex.ts",
-          "kind": "file",
-          "length": 65,
-          "lloc": 11,
-          "loc": 16,
-          "mi": 95.705,
-          "mi_sei": 102.077,
-          "n1": 42,
-          "n2": 23,
-          "name": "complex.ts",
-          "sloc": 11,
-          "spaces": 3,
-          "span_sloc": 15,
-          "time": 468.967,
-          "visibility": "public",
-          "vocabulary": 27,
-          "volume": 309.067
-        },
-        {
-          "bugs": 0.00329,
-          "cloc": 3,
-          "effort": 31.019,
-          "eta1": 4,
-          "eta2": 2,
-          "id": "{target}/src/lazy.ts",
-          "kind": "file",
-          "length": 6,
-          "lloc": 1,
-          "loc": 5,
-          "mi": 134.056,
-          "mi_sei": 166.496,
-          "n1": 4,
-          "n2": 2,
-          "name": "lazy.ts",
-          "sloc": 1,
-          "spaces": 1,
-          "span_sloc": 4,
-          "time": 1.723,
-          "visibility": "public",
-          "vocabulary": 6,
-          "volume": 15.509
-        },
-        {
-          "blank": 1,
-          "bugs": 0.0098,
-          "cloc": 1,
-          "cyclomatic": 2,
-          "effort": 159.452,
-          "eta1": 8,
-          "eta2": 2,
-          "exits": 1,
-          "fan_in": 2,
-          "id": "{target}/src/types.ts",
-          "kind": "file",
-          "length": 12,
-          "lloc": 4,
-          "loc": 7,
-          "mi": 122.349,
-          "mi_sei": 130.571,
-          "n1": 10,
-          "n2": 2,
-          "name": "types.ts",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 8.858,
-          "visibility": "public",
-          "vocabulary": 10,
-          "volume": 39.863
-        },
-        {
-          "blank": 1,
-          "bugs": 0.012,
-          "cloc": 1,
-          "cyclomatic": 3,
-          "effort": 217.944,
-          "eta1": 7,
-          "eta2": 4,
-          "exits": 2,
-          "fan_in": 1,
-          "id": "{target}/src/util.ts",
-          "kind": "file",
-          "length": 18,
-          "lloc": 6,
-          "loc": 9,
-          "mi": 115.139,
-          "mi_sei": 116.752,
-          "n1": 14,
-          "n2": 4,
-          "name": "util.ts",
-          "sloc": 6,
-          "spaces": 3,
-          "span_sloc": 8,
-          "time": 12.108,
-          "visibility": "public",
-          "vocabulary": 11,
-          "volume": 62.269
-        }
-      ],
-      "stats": {
-        "blank": 1.8,
-        "bugs": 0.0385,
-        "cloc": 3.1,
-        "cognitive": 3.5,
-        "cyclomatic": 3.111,
-        "effort": 1879.431,
-        "fan_in": 1.285,
-        "fan_out": 1.5,
-        "hk": 116.8,
-        "length": 30.4,
-        "mi": 113.724,
-        "mi_sei": 123.757,
-        "sloc": 6.1,
-        "time": 104.412,
-        "vocabulary": 16.1,
-        "volume": 135.147
-      },
-      "ui": {
-        "card": [
-          "hk",
-          "sloc"
-        ],
-        "columns": [
-          "kind",
-          "cycle",
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "volume",
-          "bugs",
-          "effort",
-          "time",
-          "length",
-          "vocabulary",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank"
-        ],
-        "default_sort": "cycle",
-        "filter": [
-          "cycle"
-        ],
-        "size": [
-          "sloc",
-          "hk"
-        ],
-        "sort": [
-          "cycle",
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "volume",
-          "bugs",
-          "effort",
-          "time",
-          "length",
-          "vocabulary",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank"
-        ],
-        "summary": [
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "volume",
-          "bugs",
-          "effort",
-          "time",
-          "length",
-          "vocabulary",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank"
+      "prompt": {
+        "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
+        "doc_note": "**First, before reading the source**, run `code-ranker docs {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
+        "focus": "**Focus the research and report primarily on the modules below.**",
+        "intro": "I want to apply this to some modules in my system.",
+        "task": [
+          "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
+          "- If you find more serious violations elsewhere during research, mention them in the report too.",
+          "- Show a summary of the report in chat.",
+          "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
         ]
       }
     }
   },
-  "plugin": "typescript",
-  "principles": [
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/CPX.md",
-      "id": "CPX",
-      "label": "CPX",
-      "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
-      "sort_metric": "cognitive",
-      "title": "CPX — Reduce Complexity"
-    },
-    {
-      "connections": [
-        "common"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/ADP.md",
-      "id": "ADP",
-      "label": "ADP",
-      "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
-      "sort_metric": "cycle",
-      "title": "ADP — Acyclic Dependencies Principle"
-    },
-    {
-      "connections": [
-        "in",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/SRP.md",
-      "id": "SRP",
-      "label": "SRP",
-      "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
-      "sort_metric": "sloc",
-      "title": "SRP — Single Responsibility Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/OCP.md",
-      "id": "OCP",
-      "label": "OCP",
-      "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
-      "sort_metric": "cyclomatic",
-      "title": "OCP — Open/Closed Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/LSP.md",
-      "id": "LSP",
-      "label": "LSP",
-      "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
-      "sort_metric": "hk",
-      "title": "LSP — Liskov Substitution Principle"
-    },
-    {
-      "connections": [
-        "in"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/ISP.md",
-      "id": "ISP",
-      "label": "ISP",
-      "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
-      "sort_metric": "items",
-      "title": "ISP — Interface Segregation Principle"
-    },
-    {
-      "connections": [
-        "common",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/DIP.md",
-      "id": "DIP",
-      "label": "DIP",
-      "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
-      "sort_metric": "fan_out",
-      "title": "DIP — Dependency Inversion Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/DRY.md",
-      "id": "DRY",
-      "label": "DRY",
-      "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
-      "sort_metric": "sloc",
-      "title": "DRY — Don't Repeat Yourself"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/KISS.md",
-      "id": "KISS",
-      "label": "KISS",
-      "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
-      "sort_metric": "cognitive",
-      "title": "KISS — Keep It Simple"
-    },
-    {
-      "connections": [
-        "common",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/LoD.md",
-      "id": "LoD",
-      "label": "LoD",
-      "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
-      "sort_metric": "fan_out",
-      "title": "Law of Demeter — Principle of Least Knowledge"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/MISU.md",
-      "id": "MISU",
-      "label": "MISU",
-      "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
-      "sort_metric": "cyclomatic",
-      "title": "MISU — Make Invalid States Unrepresentable"
-    },
-    {
-      "connections": [
-        "common"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/CoI.md",
-      "id": "CoI",
-      "label": "CoI",
-      "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
-      "sort_metric": "items",
-      "title": "CoI — Composition Over Inheritance"
-    },
-    {
-      "connections": [
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/typescript/YAGNI.md",
-      "id": "YAGNI",
-      "label": "YAGNI",
-      "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
-      "sort_metric": "sloc",
-      "title": "YAGNI — You Aren't Gonna Need It"
-    }
+  "plugins": [
+    "typescript"
   ],
-  "prompt": {
-    "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
-    "doc_note": "**First, before reading the source**, run `code-ranker docs {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
-    "focus": "**Focus the research and report primarily on the modules below.**",
-    "intro": "I want to apply this to some modules in my system.",
-    "task": [
-      "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
-      "- If you find more serious violations elsewhere during research, mention them in the report too.",
-      "- Show a summary of the report in chat.",
-      "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
-    ]
-  },
   "roots": {
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/typescript/tests/sample"
   },
-  "schema_version": "4.0",
+  "schema_version": "5.0",
   "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/typescript/tests/sample",
   "timings": [
     {
       "detail": "13 nodes from 10 files",
       "ms": 0,
-      "stage": "typescript"
+      "stage": "typescript: parse"
     },
     {
       "detail": "10 nodes annotated",
       "ms": 0,
-      "stage": "complexity"
+      "stage": "typescript: complexity"
     },
     {
       "detail": "nodes=13 edges=12",
       "ms": 0,
-      "stage": "projection"
+      "stage": "typescript: projection"
     }
   ],
   "versions": {
-    "code-ranker": "4.0.0"
+    "code-ranker": "5.0.0"
   },
   "workspace": "/home/user/code-ranker"
 }

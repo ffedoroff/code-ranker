@@ -47,7 +47,7 @@ pub struct PluginInput {
 }
 
 pub trait LanguagePlugin: Sync {
-    /// Canonical name, e.g. `"rust"`. Used by `--plugin` and recorded in the
+    /// Canonical name, e.g. `"rust"`. Used by `--plugins` and recorded in the
     /// snapshot. Each plugin has exactly one name (js and ts are separate).
     fn name(&self) -> &str;
 
@@ -59,18 +59,19 @@ pub trait LanguagePlugin: Sync {
         toml::Table::new()
     }
 
-    /// Can this plugin parse `workspace` (honoring `input`)?
-    fn detect(&self, workspace: &Path, input: &PluginInput) -> bool;
+    /// Can this plugin parse `workspace` (honoring `input` and the effective
+    /// language config `cfg`)?
+    fn detect(&self, cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> bool;
 
-    /// Levels this plugin can produce, each carrying its edge-kind / attribute /
-    /// node-kind / cycle-kind semantics.
-    fn levels(&self) -> Vec<Level>;
+    /// Levels this plugin can produce under `cfg`, each carrying its edge-kind /
+    /// attribute / node-kind / cycle-kind semantics.
+    fn levels(&self, cfg: &toml::Table) -> Vec<Level>;
 
     /// Parse the workspace into the file-level graph. **Structure only**: nodes
     /// (with their structural attributes) + edges. Metrics are added downstream.
     /// When `input.ignore_tests` is set, the plugin must drop its own test files
     /// here (it knows the language's conventions).
-    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph>;
+    fn analyze(&self, cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> Result<Graph>;
 
     /// **Measure** this language's per-file complexity tier-1 counts and return
     /// them keyed by `file` node id (an absolute path). The plugin parses each of
@@ -79,7 +80,7 @@ pub trait LanguagePlugin: Sync {
     /// runs the tier-2 registry and writes every metric onto the node — so the
     /// plugin needs no dependency on the graph/enrichment crate. Default: none (a
     /// plugin that ships no metric engine).
-    fn metrics(&self, _graph: &Graph) -> Vec<(String, MetricInputs)> {
+    fn metrics(&self, _cfg: &toml::Table, _graph: &Graph) -> Vec<(String, MetricInputs)> {
         Vec::new()
     }
 
@@ -91,12 +92,17 @@ pub trait LanguagePlugin: Sync {
     /// is the just-parsed file graph with **absolute** file-path ids, so a plugin
     /// reads each file by `node.id`. Only called when the level is enabled;
     /// default: none (a plugin that ships no function-level support).
-    fn function_units(&self, _graph: &Graph) -> Vec<(Node, MetricInputs)> {
+    fn function_units(&self, _cfg: &toml::Table, _graph: &Graph) -> Vec<(Node, MetricInputs)> {
         Vec::new()
     }
 
     /// Toolchain versions to record in the snapshot, e.g. `[("rustc", "1.88.0")]`.
-    fn versions(&self, _workspace: &Path, _input: &PluginInput) -> Vec<(String, String)> {
+    fn versions(
+        &self,
+        _cfg: &toml::Table,
+        _workspace: &Path,
+        _input: &PluginInput,
+    ) -> Vec<(String, String)> {
         Vec::new()
     }
 
@@ -110,15 +116,15 @@ pub trait LanguagePlugin: Sync {
     ///
     /// This keeps language/toolchain knowledge inside the plugin instead of the
     /// language-agnostic orchestrator (mirrors [`versions`](Self::versions)).
-    fn roots(&self, _workspace: &Path) -> Vec<(String, String)> {
+    fn roots(&self, _cfg: &toml::Table, _workspace: &Path) -> Vec<(String, String)> {
         Vec::new()
     }
 
     /// The Prompt-Generator principles for this language. A plugin builds them from
-    /// its own config (the common catalog in `defaults.toml` merged with the
-    /// language's `<lang>.toml`, with each `doc_url` resolved). Default: none (a
-    /// plugin that ships no principles).
-    fn principles(&self, _input: &PluginInput) -> Vec<Principle> {
+    /// the passed effective config `cfg` (the common catalog in `defaults.toml`
+    /// merged with any user overrides), with each `doc_url` resolved.
+    /// Default: none (a plugin that ships no principles).
+    fn principles(&self, _cfg: &toml::Table, _input: &PluginInput) -> Vec<Principle> {
         Vec::new()
     }
 
@@ -130,6 +136,7 @@ pub trait LanguagePlugin: Sync {
     /// the shared catalog stays neutral and each language refines only what differs.
     fn metric_specs(
         &self,
+        _cfg: &toml::Table,
         defaults: BTreeMap<String, AttributeSpec>,
     ) -> BTreeMap<String, AttributeSpec> {
         defaults
@@ -141,7 +148,7 @@ pub trait LanguagePlugin: Sync {
     /// drops some, or reorders, via its `<lang>.toml` `[report]` section. The
     /// orchestrator applies the patch over the catalog defaults, then prunes to
     /// keys present. Default: no override (use the catalog lists as-is).
-    fn report_overrides(&self) -> ReportOverride {
+    fn report_overrides(&self, _cfg: &toml::Table) -> ReportOverride {
         ReportOverride::default()
     }
 }
@@ -157,9 +164,10 @@ inventory::collect!(PluginRegistration);
 /// Every self-registered language plugin. The CLI works only through this array
 /// and the [`LanguagePlugin`] trait — it never names a concrete language.
 ///
-/// Order is link order and is NOT significant: auto-detection treats multiple
-/// matches as an error (it never picks by position), and any user-facing listing
-/// sorts by [`LanguagePlugin::name`].
+/// Order is link order and is NOT significant: auto-detection considers all
+/// plugins whose `detect()` returns true (multiple matches are normal for
+/// multi-language repositories), and any user-facing listing sorts by
+/// [`LanguagePlugin::name`].
 pub fn registry() -> Vec<&'static dyn LanguagePlugin> {
     inventory::iter::<PluginRegistration>()
         .map(|entry| entry.0)
@@ -179,13 +187,13 @@ mod tests {
         fn name(&self) -> &str {
             "dummy"
         }
-        fn detect(&self, _w: &Path, _i: &PluginInput) -> bool {
+        fn detect(&self, _cfg: &toml::Table, _w: &Path, _i: &PluginInput) -> bool {
             false
         }
-        fn levels(&self) -> Vec<crate::level::Level> {
+        fn levels(&self, _cfg: &toml::Table) -> Vec<crate::level::Level> {
             Vec::new()
         }
-        fn analyze(&self, _w: &Path, _i: &PluginInput) -> Result<Graph> {
+        fn analyze(&self, _cfg: &toml::Table, _w: &Path, _i: &PluginInput) -> Result<Graph> {
             Ok(Graph {
                 nodes: Vec::new(),
                 edges: Vec::new(),
@@ -198,12 +206,13 @@ mod tests {
         let p = Dummy;
         let ws = Path::new("/tmp");
         let input = PluginInput::default();
+        let cfg = toml::Table::new();
 
         // Exercise the required methods too, so the dummy carries no dead code.
         assert_eq!(p.name(), "dummy");
-        assert!(!p.detect(ws, &input));
-        assert!(p.levels().is_empty());
-        let g = p.analyze(ws, &input).expect("dummy analyze ok");
+        assert!(!p.detect(&cfg, ws, &input));
+        assert!(p.levels(&cfg).is_empty());
+        let g = p.analyze(&cfg, ws, &input).expect("dummy analyze ok");
         assert!(g.nodes.is_empty() && g.edges.is_empty());
 
         let empty_graph = Graph {
@@ -211,23 +220,29 @@ mod tests {
             edges: Vec::new(),
         };
         assert!(
-            p.function_units(&empty_graph).is_empty(),
+            p.function_units(&cfg, &empty_graph).is_empty(),
             "default: no function units"
         );
-        assert!(p.metrics(&empty_graph).is_empty(), "default: no metrics");
-        assert!(p.versions(ws, &input).is_empty(), "default: no versions");
-        assert!(p.roots(ws).is_empty(), "default: no roots");
+        assert!(
+            p.metrics(&cfg, &empty_graph).is_empty(),
+            "default: no metrics"
+        );
+        assert!(
+            p.versions(&cfg, ws, &input).is_empty(),
+            "default: no versions"
+        );
+        assert!(p.roots(&cfg, ws).is_empty(), "default: no roots");
 
         // config defaults to an empty table (a stub with no config file).
         assert!(p.config().is_empty(), "default: empty config table");
 
         // principles defaults to none; metric_specs defaults to pass-through.
-        assert!(p.principles(&input).is_empty());
+        assert!(p.principles(&cfg, &input).is_empty());
         let specs: BTreeMap<String, AttributeSpec> = BTreeMap::new();
-        assert!(p.metric_specs(specs).is_empty());
+        assert!(p.metric_specs(&cfg, specs).is_empty());
 
         // report_overrides defaults to a no-op (catalog lists kept as-is).
-        let ro = p.report_overrides();
+        let ro = p.report_overrides(&cfg);
         assert!(ro.columns.is_noop() && ro.card.is_noop() && ro.stats.is_noop());
     }
 }

@@ -1,5 +1,5 @@
 {
-  "command": "code-ranker report crates/code-ranker-plugins/src/languages/rust/tests/sample --config crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker-report.json --output.mode quiet",
+  "command": "code-ranker report crates/code-ranker-plugins/src/languages/rust/tests/sample --config crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker-report.json",
   "config_file": "crates/code-ranker-plugins/src/languages/rust/tests/sample/code-ranker.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
@@ -8,1765 +8,1771 @@
     "dirty_files": 0,
     "origin": "git@example.com:org/repo.git"
   },
-  "graphs": {
-    "files": {
-      "attribute_groups": {
-        "complexity": {
-          "description": "per-function branching, nesting & size",
-          "label": "Complexity"
-        },
-        "coupling": {
-          "description": "how tightly modules depend on each other",
-          "label": "Coupling"
-        },
-        "halstead": {
-          "description": "operator/operand vocabulary & derived effort",
-          "label": "Halstead"
-        },
-        "loc": {
-          "description": "physical line counts",
-          "label": "Lines of Code"
-        },
-        "maintainability": {
-          "description": "composite score",
-          "label": "Maintainability"
-        },
-        "rust": {
-          "description": "unsafe, items, traits & other Rust-only facts",
-          "label": "Rust-specific"
-        }
-      },
-      "cycle_kinds": {
-        "chain": {
-          "description": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries.",
-          "label": "Chain",
-          "remediation": "Run `code-ranker docs ADP` and follow its instructions."
-        },
-        "mutual": {
-          "description": "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling.",
-          "label": "Mutual",
-          "remediation": "Run `code-ranker docs ADP` and follow its instructions."
-        }
-      },
-      "cycles": [
-        {
-          "kind": "chain",
+  "languages": {
+    "rust": {
+      "graphs": {
+        "files": {
+          "attribute_groups": {
+            "complexity": {
+              "description": "per-function branching, nesting & size",
+              "label": "Complexity"
+            },
+            "coupling": {
+              "description": "how tightly modules depend on each other",
+              "label": "Coupling"
+            },
+            "halstead": {
+              "description": "operator/operand vocabulary & derived effort",
+              "label": "Halstead"
+            },
+            "loc": {
+              "description": "physical line counts",
+              "label": "Lines of Code"
+            },
+            "maintainability": {
+              "description": "composite score",
+              "label": "Maintainability"
+            },
+            "rust": {
+              "description": "unsafe, items, traits & other Rust-only facts",
+              "label": "Rust-specific"
+            }
+          },
+          "cycle_kinds": {
+            "chain": {
+              "description": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries.",
+              "label": "Chain",
+              "remediation": "Run `code-ranker docs ADP` and follow its instructions."
+            },
+            "mutual": {
+              "description": "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling.",
+              "label": "Mutual",
+              "remediation": "Run `code-ranker docs ADP` and follow its instructions."
+            }
+          },
+          "cycles": [
+            {
+              "kind": "chain",
+              "nodes": [
+                "{target}/src/chain/one.rs",
+                "{target}/src/chain/three.rs",
+                "{target}/src/chain/two.rs"
+              ]
+            },
+            {
+              "kind": "mutual",
+              "nodes": [
+                "{target}/src/a.rs",
+                "{target}/src/b.rs"
+              ]
+            }
+          ],
+          "edge_attributes": {
+            "visibility": {
+              "label": "Visibility",
+              "value_type": "str"
+            }
+          },
+          "edge_kinds": {
+            "contains": {
+              "description": "Module ownership — the parent declares the child module (`mod foo;` / `pub mod foo;`), so `foo.rs` (or `foo/mod.rs`) belongs to it.<br>This is the Rust module tree: structure, not a code dependency.<br>Kept in the data but not drawn on the main map, and excluded from fan-in / fan-out / HK / cycles.",
+              "flow": false,
+              "label": "contains"
+            },
+            "reexports": {
+              "description": "Re-export (`pub use foo::Item;`) — re-publishes another file's item as part of this file's public API (the crate-root / prelude facade, e.g. `lib.rs` doing `pub use access_scope::AccessScope;`).<br>A facade, not a dependency: excluded from fan-in / fan-out / HK / cycles and not drawn on the main map, like `contains`.<br>A consumer's `use this_crate::Item` is attributed to the file that defines `Item`, so re-export hubs (`lib.rs` / `mod.rs`) collect no false coupling — the `pub use` is still recorded here so you can see what a file exposes.",
+              "flow": false,
+              "label": "reexport"
+            },
+            "super": {
+              "description": "Namespace pull from an enclosing module — a glob `use` that reaches *up* the module tree (`use super::*`, `use crate::<ancestor>::*`), bringing the parent's items into the child's scope.<br>Usually structural scope-sugar (a module split across files referring back to itself). But if the child actually uses a parent item brought in by the glob, it IS a real back-dependency — technically a cycle. code-ranker can't tell the two apart without name resolution, so it treats `super` as a **low-priority** cycle and leaves it non-flow: deprioritized next to obvious cross-module cycles.<br>Kept in the data but not drawn on the main map, and excluded from fan-in / fan-out / HK / cycles — like `contains`.",
+              "flow": false,
+              "label": "super"
+            },
+            "uses": {
+              "description": "Code dependency — this file references an item the target file defines.<br>Captured from `use path::Item;`, a qualified path (`crate::a::Item`, `other_crate::Item`), or a derive (`#[derive(serde::Serialize)]`).<br>The path resolves to the file that defines the item (following `pub use` re-exports), so the edge points at the definition, not a re-export hub.<br>This is the real dependency: it counts toward fan-in / fan-out, Henry-Kafura coupling and cycles.",
+              "flow": true,
+              "label": "uses"
+            }
+          },
+          "edges": [
+            {
+              "kind": "contains",
+              "source": "{target}/helper/src/lib.rs",
+              "target": "{target}/helper/src/gadget.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/helper/src/lib.rs",
+              "target": "{target}/helper/src/widget.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 15,
+              "source": "{target}/src/a.rs",
+              "target": "ext:serde"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/src/a.rs",
+              "target": "{target}/src/b.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 6,
+              "source": "{target}/src/a.rs",
+              "target": "{target}/src/c.rs"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/src/b.rs",
+              "target": "ext:once_cell"
+            },
+            {
+              "kind": "uses",
+              "line": 8,
+              "source": "{target}/src/b.rs",
+              "target": "{target}/src/a.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/chain.rs",
+              "target": "{target}/src/chain/one.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/chain.rs",
+              "target": "{target}/src/chain/three.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/chain.rs",
+              "target": "{target}/src/chain/two.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/src/chain/one.rs",
+              "target": "{target}/src/chain/two.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/src/chain/three.rs",
+              "target": "{target}/src/chain/one.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/src/chain/two.rs",
+              "target": "{target}/src/chain/three.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 13,
+              "source": "{target}/src/cross.rs",
+              "target": "{target}/helper/src/gadget.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 15,
+              "source": "{target}/src/cross.rs",
+              "target": "{target}/helper/src/lib.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 11,
+              "source": "{target}/src/cross.rs",
+              "target": "{target}/helper/src/widget.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/cycle_examples.rs",
+              "target": "{target}/src/cycle_examples/reex_hub.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/cycle_examples.rs",
+              "target": "{target}/src/cycle_examples/reex_spoke.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/cycle_examples.rs",
+              "target": "{target}/src/cycle_examples/sup_loose.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/cycle_examples.rs",
+              "target": "{target}/src/cycle_examples/sup_parent.rs"
+            },
+            {
+              "kind": "reexports",
+              "line": 8,
+              "source": "{target}/src/cycle_examples/reex_hub.rs",
+              "target": "{target}/src/cycle_examples/reex_spoke.rs",
+              "visibility": "public"
+            },
+            {
+              "kind": "uses",
+              "line": 6,
+              "source": "{target}/src/cycle_examples/reex_spoke.rs",
+              "target": "{target}/src/cycle_examples/reex_hub.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/cycle_examples/sup_loose.rs",
+              "target": "{target}/src/cycle_examples/sup_loose/child.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 8,
+              "source": "{target}/src/cycle_examples/sup_loose.rs",
+              "target": "{target}/src/cycle_examples/sup_loose/child.rs"
+            },
+            {
+              "kind": "super",
+              "line": 9,
+              "source": "{target}/src/cycle_examples/sup_loose/child.rs",
+              "target": "{target}/src/cycle_examples/sup_loose.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/cycle_examples/sup_parent.rs",
+              "target": "{target}/src/cycle_examples/sup_parent/child.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 16,
+              "source": "{target}/src/cycle_examples/sup_parent.rs",
+              "target": "{target}/src/cycle_examples/sup_parent/child.rs"
+            },
+            {
+              "kind": "super",
+              "line": 11,
+              "source": "{target}/src/cycle_examples/sup_parent/child.rs",
+              "target": "{target}/src/cycle_examples/sup_parent.rs"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/src/derives.rs",
+              "target": "ext:serde"
+            },
+            {
+              "kind": "uses",
+              "line": 10,
+              "source": "{target}/src/foo.rs",
+              "target": "{target}/src/b.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/foo.rs",
+              "target": "{target}/src/foo/bar.rs"
+            },
+            {
+              "kind": "super",
+              "line": 13,
+              "source": "{target}/src/foo/bar.rs",
+              "target": "{target}/src/foo.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/a.rs"
+            },
+            {
+              "kind": "reexports",
+              "line": 42,
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/a.rs",
+              "visibility": "public"
+            },
+            {
+              "kind": "uses",
+              "line": 64,
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/a.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/b.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 65,
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/b.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/c.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/chain.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/complex.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/cross.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/cycle_examples.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/derives.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/foo.rs"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/foo.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/macros.rs"
+            },
+            {
+              "kind": "contains",
+              "source": "{target}/src/lib.rs",
+              "target": "{target}/src/relocated/custom.rs"
+            },
+            {
+              "kind": "uses",
+              "line": 7,
+              "source": "{target}/src/relocated/custom.rs",
+              "target": "{target}/src/c.rs"
+            }
+          ],
+          "node_attributes": {
+            "args": {
+              "description": "Number of function / closure arguments.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Args",
+              "name": "Arguments",
+              "short": "Args",
+              "value_type": "int"
+            },
+            "attrs": {
+              "description": "Names of attributes (other than `derive`) applied in the file (e.g. `tokio,serde`), production code only.",
+              "group": "rust",
+              "label": "Attributes",
+              "value_type": "str"
+            },
+            "blank": {
+              "description": "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
+              "group": "loc",
+              "label": "Blank",
+              "name": "Blank lines",
+              "short": "Blank",
+              "value_type": "int"
+            },
+            "branches": {
+              "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Branches",
+              "name": "Decision points",
+              "short": "Branches",
+              "value_type": "int"
+            },
+            "bugs": {
+              "calc": "effort ** (2/3) / 3000",
+              "description": "Estimated delivered bugs — a rough predictor of defect density.",
+              "direction": "lower_better",
+              "formula": "effort^⅔ ÷ 3000",
+              "group": "halstead",
+              "label": "Bugs",
+              "name": "Estimated bugs",
+              "short": "H.bugs",
+              "value_type": "float"
+            },
+            "cloc": {
+              "description": "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
+              "group": "loc",
+              "label": "Comments",
+              "name": "Comment lines",
+              "short": "Comments",
+              "value_type": "int"
+            },
+            "closures": {
+              "description": "Number of closures defined in the unit.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Closures",
+              "name": "Closures defined",
+              "short": "Closures",
+              "value_type": "int"
+            },
+            "cognitive": {
+              "description": "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Cognitive",
+              "name": "Cognitive complexity",
+              "short": "Cognitive",
+              "value_type": "int"
+            },
+            "crate": {
+              "label": "Crate",
+              "value_type": "str"
+            },
+            "cycle": {
+              "description": "Cycle kind this node participates in.",
+              "group": "coupling",
+              "label": "Cycle",
+              "name": "Dependency cycle",
+              "short": "Cycle",
+              "value_type": "str"
+            },
+            "cyclomatic": {
+              "calc": "spaces + branches",
+              "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
+              "direction": "lower_better",
+              "formula": "spaces + branches",
+              "group": "complexity",
+              "label": "Cyclomatic",
+              "name": "Cyclomatic complexity",
+              "omit_at": 1.0,
+              "short": "Cyclomatic",
+              "value_type": "int"
+            },
+            "derives": {
+              "description": "Names of the `#[derive(...)]` traits used in the file (e.g. `Serialize,Debug`), production code only.",
+              "group": "rust",
+              "label": "Derives",
+              "value_type": "str"
+            },
+            "effort": {
+              "calc": "(eta1 / 2) * (n2 / eta2) * volume",
+              "description": "Mental effort to implement the algorithm.",
+              "direction": "lower_better",
+              "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
+              "group": "halstead",
+              "label": "Effort",
+              "name": "Implementation effort",
+              "short": "H.effort",
+              "value_type": "float"
+            },
+            "eta1": {
+              "description": "Distinct operators (η₁): the count of unique operator token kinds. Rust counts punctuation & delimiters (`( { [ , . ; -> => ? .. ..=`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % & | ^ << >> == != < > <= >= && || += -= *= /= %= &= |= ^= <<= >>=`), the keywords `async await continue for if let loop match move return unsafe while fn`, `mut` (mutable_specifier) and primitive types, plus the context-sensitive `|| / !`.",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "η₁",
+              "name": "Unique operators",
+              "short": "η₁",
+              "value_type": "int"
+            },
+            "eta2": {
+              "description": "Distinct operands (η₂): the count of unique operand texts. Rust counts identifiers, `self`, the `_` wildcard, and literals — string, raw-string, integer, float, boolean and char.",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "η₂",
+              "name": "Unique operands",
+              "short": "η₂",
+              "value_type": "int"
+            },
+            "exits": {
+              "description": "Number of exit points (return/throw) in the unit.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Exits",
+              "name": "Exit points",
+              "short": "Exits",
+              "value_type": "int"
+            },
+            "external": {
+              "label": "External",
+              "value_type": "bool"
+            },
+            "fan_in": {
+              "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
+              "group": "coupling",
+              "label": "Fan-in",
+              "name": "Incoming dependencies",
+              "short": "Fan-in",
+              "value_type": "int"
+            },
+            "fan_out": {
+              "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
+              "group": "coupling",
+              "label": "Fan-out",
+              "name": "Outgoing dependencies",
+              "short": "Fan-out",
+              "value_type": "int"
+            },
+            "fan_out_external": {
+              "description": "Number of distinct external libraries this node depends on.",
+              "group": "coupling",
+              "label": "Fan-out (external)",
+              "name": "External dependencies",
+              "short": "Fan-out (external)",
+              "value_type": "int"
+            },
+            "hk": {
+              "abbreviate": true,
+              "calc": "sloc * (fan_in * fan_out) ** 2",
+              "description": "Henry-Kafura information-flow complexity: a module that is both a busy crossroads (high fan-in × fan-out) and large — the most expensive place in the codebase to change.",
+              "direction": "lower_better",
+              "formula": "sloc × (fan_in × fan_out)²",
+              "group": "coupling",
+              "label": "HK",
+              "name": "God-object risk",
+              "short": "HK",
+              "value_type": "float"
+            },
+            "imports": {
+              "description": "Qualified paths the file references (≥2 segments, e.g. `http::StatusCode,std::fmt`), production code only.",
+              "group": "rust",
+              "label": "Imports",
+              "value_type": "str"
+            },
+            "items": {
+              "description": "Number of top-level items (`fn` / `struct` / `enum` / `impl` / `trait` / `mod` / `const` / …) defined in the file — a structural size signal complementary to line counts.",
+              "group": "rust",
+              "label": "Items",
+              "remediation": "Split the file by responsibility into focused modules; move large impls or trait clusters into their own files.",
+              "value_type": "int"
+            },
+            "length": {
+              "calc": "n1 + n2",
+              "description": "Program length — total operator + operand occurrences.",
+              "direction": "lower_better",
+              "formula": "n1 + n2",
+              "group": "halstead",
+              "label": "Length",
+              "name": "Total tokens",
+              "short": "H.len",
+              "value_type": "float"
+            },
+            "lloc": {
+              "description": "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
+              "group": "loc",
+              "label": "Logical",
+              "name": "Logical lines",
+              "short": "Logical",
+              "value_type": "int"
+            },
+            "loc": {
+              "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
+              "group": "loc",
+              "label": "Lines",
+              "name": "Total lines",
+              "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
+              "value_type": "int"
+            },
+            "macros": {
+              "description": "Names of macros invoked in the file (e.g. `println,vec`), production code only.",
+              "group": "rust",
+              "label": "Macros",
+              "value_type": "str"
+            },
+            "mi": {
+              "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
+              "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
+              "direction": "higher_better",
+              "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
+              "group": "maintainability",
+              "label": "MI",
+              "name": "Maintainability index",
+              "short": "MI",
+              "value_type": "float"
+            },
+            "mi_sei": {
+              "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
+              "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
+              "direction": "higher_better",
+              "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
+              "group": "maintainability",
+              "label": "MI (SEI)",
+              "name": "Maintainability (SEI)",
+              "short": "MI SEI",
+              "value_type": "float"
+            },
+            "n1": {
+              "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "N₁",
+              "name": "Total operators",
+              "short": "N₁",
+              "value_type": "int"
+            },
+            "n2": {
+              "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "N₂",
+              "name": "Total operands",
+              "short": "N₂",
+              "value_type": "int"
+            },
+            "path": {
+              "label": "Path",
+              "value_type": "str"
+            },
+            "sloc": {
+              "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
+              "group": "loc",
+              "label": "Source",
+              "name": "Source lines",
+              "short": "SLOC",
+              "value_type": "int"
+            },
+            "spaces": {
+              "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Spaces",
+              "name": "Code units",
+              "short": "Spaces",
+              "value_type": "int"
+            },
+            "span_sloc": {
+              "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
+              "direction": "lower_better",
+              "group": "maintainability",
+              "label": "Span",
+              "name": "Line span",
+              "short": "Span",
+              "value_type": "int"
+            },
+            "time": {
+              "calc": "effort / 18",
+              "description": "Estimated implementation time, in seconds.",
+              "direction": "lower_better",
+              "formula": "effort ÷ 18",
+              "group": "halstead",
+              "label": "Time",
+              "name": "Coding time (s)",
+              "short": "H.time(s)",
+              "value_type": "float"
+            },
+            "tloc": {
+              "description": "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
+              "group": "loc",
+              "label": "Test",
+              "name": "Test lines",
+              "short": "TLOC",
+              "value_type": "int"
+            },
+            "types": {
+              "description": "Names of types defined in the file (struct / enum / type alias).",
+              "group": "rust",
+              "label": "Types",
+              "value_type": "str"
+            },
+            "unsafe": {
+              "description": "Count of `unsafe` blocks and `unsafe fn`/`impl`/`trait` declarations in production code (test items are excluded). Syntactic count: `unsafe` inside a macro body is not seen, and the figure is not type-checked.",
+              "direction": "lower_better",
+              "group": "rust",
+              "label": "Unsafe",
+              "name": "Unsafe blocks",
+              "remediation": "Encapsulate each `unsafe` block behind a safe, documented abstraction with checked invariants; minimize the unsafe surface and cover it with tests.",
+              "short": "Unsafe",
+              "value_type": "int"
+            },
+            "version": {
+              "label": "Version",
+              "value_type": "str"
+            },
+            "visibility": {
+              "label": "Visibility",
+              "value_type": "str"
+            },
+            "vocabulary": {
+              "calc": "eta1 + eta2",
+              "description": "Vocabulary — distinct operators + operands.",
+              "direction": "lower_better",
+              "formula": "eta1 + eta2",
+              "group": "halstead",
+              "label": "Vocabulary",
+              "name": "Distinct symbols",
+              "short": "H.vocab",
+              "value_type": "float"
+            },
+            "volume": {
+              "calc": "length * Math.log2(vocabulary)",
+              "description": "Algorithm size in bits, from distinct operators and operands.",
+              "direction": "lower_better",
+              "formula": "length × log₂(vocabulary)",
+              "group": "halstead",
+              "label": "Volume",
+              "name": "Code volume",
+              "short": "H.vol",
+              "value_type": "float"
+            }
+          },
+          "node_kinds": {
+            "external": {
+              "external": true,
+              "fill": "#f6e2c0",
+              "label": "Library",
+              "plural": "Libraries",
+              "stroke": "#b3801f"
+            },
+            "file": {
+              "fill": "#dbe9f4",
+              "label": "File",
+              "plural": "Files",
+              "stroke": "#4d6f9c"
+            }
+          },
           "nodes": [
-            "{target}/src/chain/one.rs",
-            "{target}/src/chain/three.rs",
-            "{target}/src/chain/two.rs"
-          ]
+            {
+              "external": true,
+              "id": "ext:once_cell",
+              "kind": "external",
+              "name": "once_cell",
+              "path": "{registry}/once_cell-1.21.4",
+              "version": "1.21.4"
+            },
+            {
+              "external": true,
+              "id": "ext:serde",
+              "kind": "external",
+              "name": "serde",
+              "path": "{registry}/serde-1.0.228",
+              "version": "1.0.228"
+            },
+            {
+              "blank": 1,
+              "bugs": 0.00447,
+              "cloc": 2,
+              "crate": "helper",
+              "cyclomatic": 2,
+              "effort": 49.128,
+              "eta1": 5,
+              "eta2": 2,
+              "exits": 1,
+              "fan_in": 1,
+              "id": "{target}/helper/src/gadget.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 7,
+              "loc": 6,
+              "mi": 126.027,
+              "mi_sei": 145.313,
+              "n1": 5,
+              "n2": 2,
+              "name": "gadget.rs",
+              "sloc": 3,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 2.729,
+              "visibility": "public",
+              "vocabulary": 7,
+              "volume": 19.651
+            },
+            {
+              "blank": 2,
+              "bugs": 0.00376,
+              "cloc": 7,
+              "crate": "helper",
+              "effort": 37.899,
+              "eta1": 3,
+              "eta2": 4,
+              "fan_in": 1,
+              "id": "{target}/helper/src/lib.rs",
+              "items": 3,
+              "kind": "file",
+              "length": 9,
+              "loc": 12,
+              "mi": 113.721,
+              "mi_sei": 134.757,
+              "n1": 5,
+              "n2": 4,
+              "name": "lib.rs",
+              "sloc": 3,
+              "spaces": 1,
+              "span_sloc": 12,
+              "time": 2.105,
+              "visibility": "public",
+              "vocabulary": 7,
+              "volume": 25.266
+            },
+            {
+              "blank": 2,
+              "bugs": 0.00447,
+              "cloc": 2,
+              "crate": "helper",
+              "cyclomatic": 2,
+              "effort": 49.128,
+              "eta1": 5,
+              "eta2": 2,
+              "exits": 1,
+              "fan_in": 1,
+              "id": "{target}/helper/src/widget.rs",
+              "items": 2,
+              "kind": "file",
+              "length": 7,
+              "loc": 8,
+              "mi": 121.366,
+              "mi_sei": 134.569,
+              "n1": 5,
+              "n2": 2,
+              "name": "widget.rs",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 8,
+              "time": 2.729,
+              "types": "Widget",
+              "visibility": "public",
+              "vocabulary": 7,
+              "volume": 19.651
+            },
+            {
+              "blank": 5,
+              "bugs": 0.0896,
+              "cloc": 11,
+              "crate": "rust-sample",
+              "cycle": "mutual",
+              "cyclomatic": 2,
+              "derives": "Serialize",
+              "effort": 4413.97,
+              "eta1": 15,
+              "eta2": 17,
+              "exits": 1,
+              "fan_in": 2,
+              "fan_out": 2,
+              "fan_out_external": 1,
+              "hk": 224,
+              "id": "{target}/src/a.rs",
+              "imports": "HashMap::new,helpers::offset",
+              "items": 2,
+              "kind": "file",
+              "length": 69,
+              "lloc": 1,
+              "loc": 30,
+              "mi": 85.054,
+              "mi_sei": 87.531,
+              "n1": 40,
+              "n2": 29,
+              "name": "a.rs",
+              "sloc": 14,
+              "spaces": 2,
+              "span_sloc": 30,
+              "time": 245.22,
+              "types": "Alpha",
+              "visibility": "public",
+              "vocabulary": 32,
+              "volume": 345
+            },
+            {
+              "blank": 4,
+              "bugs": 0.0521,
+              "cloc": 15,
+              "closures": 1,
+              "crate": "rust-sample",
+              "cycle": "mutual",
+              "cyclomatic": 4,
+              "effort": 1958.647,
+              "eta1": 14,
+              "eta2": 13,
+              "exits": 2,
+              "fan_in": 3,
+              "fan_out": 1,
+              "fan_out_external": 1,
+              "hk": 81,
+              "id": "{target}/src/b.rs",
+              "imports": "once_cell::sync::Lazy,once_cell::sync::Lazy::new",
+              "items": 2,
+              "kind": "file",
+              "length": 45,
+              "lloc": 2,
+              "loc": 28,
+              "macros": "println,pull_in_c",
+              "mi": 88.195,
+              "mi_sei": 97.249,
+              "n1": 28,
+              "n2": 17,
+              "name": "b.rs",
+              "sloc": 9,
+              "spaces": 4,
+              "span_sloc": 28,
+              "time": 108.813,
+              "visibility": "public",
+              "vocabulary": 27,
+              "volume": 213.969
+            },
+            {
+              "attrs": "test",
+              "blank": 3,
+              "bugs": 0.00867,
+              "cloc": 9,
+              "crate": "rust-sample",
+              "cyclomatic": 3,
+              "effort": 132.877,
+              "eta1": 5,
+              "eta2": 5,
+              "exits": 2,
+              "fan_in": 2,
+              "id": "{target}/src/c.rs",
+              "items": 3,
+              "kind": "file",
+              "length": 16,
+              "loc": 32,
+              "macros": "assert_eq",
+              "mi": 101.118,
+              "mi_sei": 113.588,
+              "n1": 11,
+              "n2": 5,
+              "name": "c.rs",
+              "sloc": 8,
+              "spaces": 3,
+              "span_sloc": 20,
+              "time": 7.382,
+              "tloc": 12,
+              "visibility": "public",
+              "vocabulary": 10,
+              "volume": 53.15
+            },
+            {
+              "bugs": 0.0011,
+              "cloc": 5,
+              "crate": "rust-sample",
+              "effort": 6,
+              "eta1": 1,
+              "eta2": 3,
+              "id": "{target}/src/chain.rs",
+              "items": 3,
+              "kind": "file",
+              "length": 6,
+              "loc": 8,
+              "mi": 124.161,
+              "mi_sei": 150.564,
+              "n1": 3,
+              "n2": 3,
+              "name": "chain.rs",
+              "sloc": 3,
+              "spaces": 1,
+              "span_sloc": 8,
+              "time": 0.333,
+              "visibility": "public",
+              "vocabulary": 4,
+              "volume": 12
+            },
+            {
+              "blank": 1,
+              "bugs": 0.011,
+              "cloc": 1,
+              "crate": "rust-sample",
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 190.195,
+              "eta1": 6,
+              "eta2": 3,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 4,
+              "id": "{target}/src/chain/one.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 12,
+              "loc": 6,
+              "mi": 122.592,
+              "mi_sei": 130.923,
+              "n1": 7,
+              "n2": 5,
+              "name": "one.rs",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 10.566,
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 38.039
+            },
+            {
+              "blank": 1,
+              "bugs": 0.011,
+              "cloc": 1,
+              "crate": "rust-sample",
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 190.195,
+              "eta1": 6,
+              "eta2": 3,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 4,
+              "id": "{target}/src/chain/three.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 12,
+              "loc": 6,
+              "mi": 122.592,
+              "mi_sei": 130.923,
+              "n1": 7,
+              "n2": 5,
+              "name": "three.rs",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 10.566,
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 38.039
+            },
+            {
+              "blank": 1,
+              "bugs": 0.011,
+              "cloc": 1,
+              "crate": "rust-sample",
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 190.195,
+              "eta1": 6,
+              "eta2": 3,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 4,
+              "id": "{target}/src/chain/two.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 12,
+              "loc": 6,
+              "mi": 122.592,
+              "mi_sei": 130.923,
+              "n1": 7,
+              "n2": 5,
+              "name": "two.rs",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 10.566,
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 38.039
+            },
+            {
+              "args": 6,
+              "blank": 2,
+              "branches": 4,
+              "bugs": 0.158,
+              "cloc": 17,
+              "closures": 1,
+              "cognitive": 5,
+              "crate": "rust-sample",
+              "cyclomatic": 8,
+              "effort": 10375,
+              "eta1": 20,
+              "eta2": 12,
+              "exits": 4,
+              "id": "{target}/src/complex.rs",
+              "items": 2,
+              "kind": "file",
+              "length": 83,
+              "lloc": 6,
+              "loc": 32,
+              "mi": 81.668,
+              "mi_sei": 88.138,
+              "n1": 53,
+              "n2": 30,
+              "name": "complex.rs",
+              "sloc": 15,
+              "spaces": 4,
+              "span_sloc": 32,
+              "time": 576.388,
+              "unsafe": 1,
+              "visibility": "public",
+              "vocabulary": 32,
+              "volume": 415
+            },
+            {
+              "blank": 2,
+              "bugs": 0.0331,
+              "cloc": 11,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 991.183,
+              "eta1": 10,
+              "eta2": 9,
+              "exits": 1,
+              "fan_out": 3,
+              "id": "{target}/src/cross.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 30,
+              "lloc": 1,
+              "loc": 20,
+              "mi": 96.801,
+              "mi_sei": 109.773,
+              "n1": 16,
+              "n2": 14,
+              "name": "cross.rs",
+              "sloc": 7,
+              "spaces": 2,
+              "span_sloc": 20,
+              "time": 55.065,
+              "visibility": "public",
+              "vocabulary": 19,
+              "volume": 127.437
+            },
+            {
+              "blank": 1,
+              "bugs": 0.00147,
+              "cloc": 16,
+              "crate": "rust-sample",
+              "effort": 9.287,
+              "eta1": 1,
+              "eta2": 4,
+              "id": "{target}/src/cycle_examples.rs",
+              "items": 4,
+              "kind": "file",
+              "length": 8,
+              "loc": 21,
+              "mi": 106.255,
+              "mi_sei": 126.505,
+              "n1": 4,
+              "n2": 4,
+              "name": "cycle_examples.rs",
+              "sloc": 4,
+              "spaces": 1,
+              "span_sloc": 21,
+              "time": 0.515,
+              "visibility": "public",
+              "vocabulary": 5,
+              "volume": 18.575
+            },
+            {
+              "blank": 2,
+              "bugs": 0.000974,
+              "cloc": 7,
+              "crate": "rust-sample",
+              "effort": 5,
+              "eta1": 1,
+              "eta2": 3,
+              "fan_in": 1,
+              "id": "{target}/src/cycle_examples/reex_hub.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 5,
+              "loc": 11,
+              "mi": 119.95,
+              "mi_sei": 144.674,
+              "n1": 2,
+              "n2": 3,
+              "name": "reex_hub.rs",
+              "sloc": 2,
+              "spaces": 1,
+              "span_sloc": 11,
+              "time": 0.277,
+              "types": "Hub",
+              "visibility": "public",
+              "vocabulary": 4,
+              "volume": 10
+            },
+            {
+              "args": 1,
+              "blank": 3,
+              "bugs": 0.00736,
+              "cloc": 4,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 103.782,
+              "eta1": 5,
+              "eta2": 6,
+              "exits": 1,
+              "fan_out": 1,
+              "id": "{target}/src/cycle_examples/reex_spoke.rs",
+              "items": 2,
+              "kind": "file",
+              "length": 12,
+              "loc": 12,
+              "mi": 110.909,
+              "mi_sei": 123.503,
+              "n1": 6,
+              "n2": 6,
+              "name": "reex_spoke.rs",
+              "sloc": 5,
+              "spaces": 2,
+              "span_sloc": 12,
+              "time": 5.765,
+              "types": "Widget",
+              "visibility": "public",
+              "vocabulary": 11,
+              "volume": 41.513
+            },
+            {
+              "blank": 4,
+              "bugs": 0.00959,
+              "cloc": 4,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 154.533,
+              "eta1": 5,
+              "eta2": 4,
+              "exits": 1,
+              "fan_out": 1,
+              "id": "{target}/src/cycle_examples/sup_loose.rs",
+              "items": 3,
+              "kind": "file",
+              "length": 13,
+              "loc": 14,
+              "mi": 108.45,
+              "mi_sei": 117.795,
+              "n1": 7,
+              "n2": 6,
+              "name": "sup_loose.rs",
+              "sloc": 6,
+              "spaces": 2,
+              "span_sloc": 14,
+              "time": 8.585,
+              "types": "Bough",
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 41.209
+            },
+            {
+              "blank": 2,
+              "cloc": 7,
+              "crate": "rust-sample",
+              "eta1": 2,
+              "fan_in": 1,
+              "id": "{target}/src/cycle_examples/sup_loose/child.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 3,
+              "loc": 11,
+              "mi": 126.211,
+              "mi_sei": 153.706,
+              "n1": 3,
+              "name": "child.rs",
+              "sloc": 2,
+              "spaces": 1,
+              "span_sloc": 11,
+              "types": "Pip",
+              "visibility": "public",
+              "vocabulary": 2,
+              "volume": 3
+            },
+            {
+              "blank": 4,
+              "bugs": 0.00959,
+              "cloc": 12,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 154.533,
+              "eta1": 5,
+              "eta2": 4,
+              "exits": 1,
+              "fan_out": 1,
+              "id": "{target}/src/cycle_examples/sup_parent.rs",
+              "items": 3,
+              "kind": "file",
+              "length": 13,
+              "loc": 22,
+              "mi": 101.128,
+              "mi_sei": 115.917,
+              "n1": 7,
+              "n2": 6,
+              "name": "sup_parent.rs",
+              "sloc": 6,
+              "spaces": 2,
+              "span_sloc": 22,
+              "time": 8.585,
+              "types": "Nest",
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 41.209
+            },
+            {
+              "args": 1,
+              "blank": 3,
+              "bugs": 0.00488,
+              "cloc": 9,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 56.147,
+              "eta1": 5,
+              "eta2": 2,
+              "fan_in": 1,
+              "id": "{target}/src/cycle_examples/sup_parent/child.rs",
+              "items": 2,
+              "kind": "file",
+              "length": 8,
+              "loc": 15,
+              "mi": 110.488,
+              "mi_sei": 130.506,
+              "n1": 6,
+              "n2": 2,
+              "name": "child.rs",
+              "sloc": 3,
+              "spaces": 2,
+              "span_sloc": 15,
+              "time": 3.119,
+              "types": "Chick",
+              "visibility": "public",
+              "vocabulary": 7,
+              "volume": 22.458
+            },
+            {
+              "attrs": "test",
+              "blank": 2,
+              "bugs": 0.0051,
+              "cloc": 9,
+              "crate": "rust-sample",
+              "derives": "Serialize",
+              "effort": 60,
+              "eta1": 5,
+              "eta2": 3,
+              "fan_out_external": 1,
+              "id": "{target}/src/derives.rs",
+              "imports": "crate::derives::OnlyDerived,serde::Serialize",
+              "items": 2,
+              "kind": "file",
+              "length": 8,
+              "loc": 23,
+              "macros": "assert_eq",
+              "mi": 110.373,
+              "mi_sei": 130.238,
+              "n1": 5,
+              "n2": 3,
+              "name": "derives.rs",
+              "sloc": 4,
+              "spaces": 1,
+              "span_sloc": 15,
+              "time": 3.333,
+              "tloc": 8,
+              "types": "OnlyDerived",
+              "visibility": "public",
+              "vocabulary": 8,
+              "volume": 24
+            },
+            {
+              "blank": 3,
+              "bugs": 0.0123,
+              "cloc": 12,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 225.852,
+              "eta1": 7,
+              "eta2": 5,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 1,
+              "hk": 5,
+              "id": "{target}/src/foo.rs",
+              "items": 2,
+              "kind": "file",
+              "length": 15,
+              "loc": 20,
+              "mi": 101.288,
+              "mi_sei": 117.232,
+              "n1": 9,
+              "n2": 6,
+              "name": "foo.rs",
+              "sloc": 5,
+              "spaces": 2,
+              "span_sloc": 20,
+              "time": 12.547,
+              "visibility": "private",
+              "vocabulary": 12,
+              "volume": 53.774
+            },
+            {
+              "blank": 1,
+              "bugs": 0.01,
+              "cloc": 14,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 166.052,
+              "eta1": 8,
+              "eta2": 3,
+              "exits": 1,
+              "id": "{target}/src/foo/bar.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 12,
+              "loc": 19,
+              "mi": 103.464,
+              "mi_sei": 122.326,
+              "n1": 9,
+              "n2": 3,
+              "name": "bar.rs",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 19,
+              "time": 9.225,
+              "visibility": "public",
+              "vocabulary": 11,
+              "volume": 41.513
+            },
+            {
+              "attrs": "macro_use,path,test",
+              "blank": 7,
+              "bugs": 0.0355,
+              "cloc": 34,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 1099.872,
+              "eta1": 9,
+              "eta2": 19,
+              "exits": 1,
+              "fan_out": 3,
+              "id": "{target}/src/lib.rs",
+              "imports": "foo::run",
+              "items": 14,
+              "kind": "file",
+              "length": 46,
+              "lloc": 1,
+              "loc": 71,
+              "macros": "assert_eq,make_answer",
+              "mi": 76.137,
+              "mi_sei": 80.309,
+              "n1": 25,
+              "n2": 21,
+              "name": "lib.rs",
+              "sloc": 19,
+              "spaces": 2,
+              "span_sloc": 60,
+              "time": 61.104,
+              "tloc": 11,
+              "visibility": "public",
+              "vocabulary": 28,
+              "volume": 221.138
+            },
+            {
+              "blank": 2,
+              "bugs": 0.0174,
+              "cloc": 7,
+              "crate": "rust-sample",
+              "effort": 377.753,
+              "eta1": 7,
+              "eta2": 6,
+              "id": "{target}/src/macros.rs",
+              "items": 2,
+              "kind": "file",
+              "length": 25,
+              "loc": 22,
+              "macros": "macro_rules",
+              "mi": 97.153,
+              "mi_sei": 102.903,
+              "n1": 18,
+              "n2": 7,
+              "name": "macros.rs",
+              "sloc": 13,
+              "spaces": 1,
+              "span_sloc": 22,
+              "time": 20.986,
+              "visibility": "private",
+              "vocabulary": 13,
+              "volume": 92.51
+            },
+            {
+              "blank": 2,
+              "bugs": 0.0112,
+              "cloc": 5,
+              "crate": "rust-sample",
+              "cyclomatic": 2,
+              "effort": 196.755,
+              "eta1": 7,
+              "eta2": 4,
+              "exits": 1,
+              "fan_out": 1,
+              "id": "{target}/src/relocated/custom.rs",
+              "items": 1,
+              "kind": "file",
+              "length": 13,
+              "loc": 11,
+              "mi": 111.902,
+              "mi_sei": 129.176,
+              "n1": 8,
+              "n2": 5,
+              "name": "custom.rs",
+              "sloc": 4,
+              "spaces": 2,
+              "span_sloc": 11,
+              "time": 10.93,
+              "visibility": "private",
+              "vocabulary": 11,
+              "volume": 44.972
+            }
+          ],
+          "stats": {
+            "blank": 2.5,
+            "bugs": 0.0214,
+            "cloc": 8.88,
+            "cognitive": 5,
+            "cyclomatic": 2.5,
+            "effort": 883.082,
+            "fan_in": 1.307,
+            "fan_out": 1.416,
+            "hk": 53.666,
+            "length": 19.56,
+            "mi": 107.583,
+            "mi_sei": 121.961,
+            "sloc": 6.2,
+            "time": 49.059,
+            "tloc": 10.333,
+            "unsafe": 1,
+            "vocabulary": 12.08,
+            "volume": 80.044
+          },
+          "ui": {
+            "card": [
+              "hk",
+              "sloc"
+            ],
+            "columns": [
+              "kind",
+              "cycle",
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "bugs",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank",
+              "tloc",
+              "unsafe"
+            ],
+            "default_sort": "cycle",
+            "filter": [
+              "cycle"
+            ],
+            "grouping": {
+              "key": "crate"
+            },
+            "size": [
+              "sloc",
+              "hk"
+            ],
+            "sort": [
+              "cycle",
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "bugs",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank",
+              "tloc",
+              "unsafe"
+            ],
+            "summary": [
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "bugs",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank",
+              "tloc",
+              "unsafe"
+            ]
+          }
+        }
+      },
+      "principles": [
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/CPX.md",
+          "id": "CPX",
+          "label": "CPX",
+          "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
+          "sort_metric": "cognitive",
+          "title": "CPX — Reduce Complexity"
         },
         {
-          "kind": "mutual",
-          "nodes": [
-            "{target}/src/a.rs",
-            "{target}/src/b.rs"
-          ]
+          "connections": [
+            "common"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/ADP.md",
+          "id": "ADP",
+          "label": "ADP",
+          "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
+          "sort_metric": "cycle",
+          "title": "ADP — Acyclic Dependencies Principle"
+        },
+        {
+          "connections": [
+            "in",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/SRP.md",
+          "id": "SRP",
+          "label": "SRP",
+          "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
+          "sort_metric": "sloc",
+          "title": "SRP — Single Responsibility Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/OCP.md",
+          "id": "OCP",
+          "label": "OCP",
+          "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
+          "sort_metric": "cyclomatic",
+          "title": "OCP — Open/Closed Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/LSP.md",
+          "id": "LSP",
+          "label": "LSP",
+          "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
+          "sort_metric": "hk",
+          "title": "LSP — Liskov Substitution Principle"
+        },
+        {
+          "connections": [
+            "in"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/ISP.md",
+          "id": "ISP",
+          "label": "ISP",
+          "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
+          "sort_metric": "items",
+          "title": "ISP — Interface Segregation Principle"
+        },
+        {
+          "connections": [
+            "common",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/DIP.md",
+          "id": "DIP",
+          "label": "DIP",
+          "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
+          "sort_metric": "fan_out",
+          "title": "DIP — Dependency Inversion Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/DRY.md",
+          "id": "DRY",
+          "label": "DRY",
+          "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
+          "sort_metric": "sloc",
+          "title": "DRY — Don't Repeat Yourself"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/KISS.md",
+          "id": "KISS",
+          "label": "KISS",
+          "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
+          "sort_metric": "cognitive",
+          "title": "KISS — Keep It Simple"
+        },
+        {
+          "connections": [
+            "common",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/LoD.md",
+          "id": "LoD",
+          "label": "LoD",
+          "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
+          "sort_metric": "fan_out",
+          "title": "Law of Demeter — Principle of Least Knowledge"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/MISU.md",
+          "id": "MISU",
+          "label": "MISU",
+          "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
+          "sort_metric": "cyclomatic",
+          "title": "MISU — Make Invalid States Unrepresentable"
+        },
+        {
+          "connections": [
+            "common"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/CoI.md",
+          "id": "CoI",
+          "label": "CoI",
+          "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
+          "sort_metric": "items",
+          "title": "CoI — Composition Over Inheritance"
+        },
+        {
+          "connections": [
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/YAGNI.md",
+          "id": "YAGNI",
+          "label": "YAGNI",
+          "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
+          "sort_metric": "sloc",
+          "title": "YAGNI — You Aren't Gonna Need It"
         }
       ],
-      "edge_attributes": {
-        "visibility": {
-          "label": "Visibility",
-          "value_type": "str"
-        }
-      },
-      "edge_kinds": {
-        "contains": {
-          "description": "Module ownership — the parent declares the child module (`mod foo;` / `pub mod foo;`), so `foo.rs` (or `foo/mod.rs`) belongs to it.<br>This is the Rust module tree: structure, not a code dependency.<br>Kept in the data but not drawn on the main map, and excluded from fan-in / fan-out / HK / cycles.",
-          "flow": false,
-          "label": "contains"
-        },
-        "reexports": {
-          "description": "Re-export (`pub use foo::Item;`) — re-publishes another file's item as part of this file's public API (the crate-root / prelude facade, e.g. `lib.rs` doing `pub use access_scope::AccessScope;`).<br>A facade, not a dependency: excluded from fan-in / fan-out / HK / cycles and not drawn on the main map, like `contains`.<br>A consumer's `use this_crate::Item` is attributed to the file that defines `Item`, so re-export hubs (`lib.rs` / `mod.rs`) collect no false coupling — the `pub use` is still recorded here so you can see what a file exposes.",
-          "flow": false,
-          "label": "reexport"
-        },
-        "super": {
-          "description": "Namespace pull from an enclosing module — a glob `use` that reaches *up* the module tree (`use super::*`, `use crate::<ancestor>::*`), bringing the parent's items into the child's scope.<br>Usually structural scope-sugar (a module split across files referring back to itself). But if the child actually uses a parent item brought in by the glob, it IS a real back-dependency — technically a cycle. code-ranker can't tell the two apart without name resolution, so it treats `super` as a **low-priority** cycle and leaves it non-flow: deprioritized next to obvious cross-module cycles.<br>Kept in the data but not drawn on the main map, and excluded from fan-in / fan-out / HK / cycles — like `contains`.",
-          "flow": false,
-          "label": "super"
-        },
-        "uses": {
-          "description": "Code dependency — this file references an item the target file defines.<br>Captured from `use path::Item;`, a qualified path (`crate::a::Item`, `other_crate::Item`), or a derive (`#[derive(serde::Serialize)]`).<br>The path resolves to the file that defines the item (following `pub use` re-exports), so the edge points at the definition, not a re-export hub.<br>This is the real dependency: it counts toward fan-in / fan-out, Henry-Kafura coupling and cycles.",
-          "flow": true,
-          "label": "uses"
-        }
-      },
-      "edges": [
-        {
-          "kind": "contains",
-          "source": "{target}/helper/src/lib.rs",
-          "target": "{target}/helper/src/gadget.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/helper/src/lib.rs",
-          "target": "{target}/helper/src/widget.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 15,
-          "source": "{target}/src/a.rs",
-          "target": "ext:serde"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/src/a.rs",
-          "target": "{target}/src/b.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 6,
-          "source": "{target}/src/a.rs",
-          "target": "{target}/src/c.rs"
-        },
-        {
-          "kind": "uses",
-          "source": "{target}/src/b.rs",
-          "target": "ext:once_cell"
-        },
-        {
-          "kind": "uses",
-          "line": 8,
-          "source": "{target}/src/b.rs",
-          "target": "{target}/src/a.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/chain.rs",
-          "target": "{target}/src/chain/one.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/chain.rs",
-          "target": "{target}/src/chain/three.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/chain.rs",
-          "target": "{target}/src/chain/two.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/src/chain/one.rs",
-          "target": "{target}/src/chain/two.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/src/chain/three.rs",
-          "target": "{target}/src/chain/one.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/src/chain/two.rs",
-          "target": "{target}/src/chain/three.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 13,
-          "source": "{target}/src/cross.rs",
-          "target": "{target}/helper/src/gadget.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 15,
-          "source": "{target}/src/cross.rs",
-          "target": "{target}/helper/src/lib.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 11,
-          "source": "{target}/src/cross.rs",
-          "target": "{target}/helper/src/widget.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/cycle_examples.rs",
-          "target": "{target}/src/cycle_examples/reex_hub.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/cycle_examples.rs",
-          "target": "{target}/src/cycle_examples/reex_spoke.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/cycle_examples.rs",
-          "target": "{target}/src/cycle_examples/sup_loose.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/cycle_examples.rs",
-          "target": "{target}/src/cycle_examples/sup_parent.rs"
-        },
-        {
-          "kind": "reexports",
-          "line": 8,
-          "source": "{target}/src/cycle_examples/reex_hub.rs",
-          "target": "{target}/src/cycle_examples/reex_spoke.rs",
-          "visibility": "public"
-        },
-        {
-          "kind": "uses",
-          "line": 6,
-          "source": "{target}/src/cycle_examples/reex_spoke.rs",
-          "target": "{target}/src/cycle_examples/reex_hub.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/cycle_examples/sup_loose.rs",
-          "target": "{target}/src/cycle_examples/sup_loose/child.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 8,
-          "source": "{target}/src/cycle_examples/sup_loose.rs",
-          "target": "{target}/src/cycle_examples/sup_loose/child.rs"
-        },
-        {
-          "kind": "super",
-          "line": 9,
-          "source": "{target}/src/cycle_examples/sup_loose/child.rs",
-          "target": "{target}/src/cycle_examples/sup_loose.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/cycle_examples/sup_parent.rs",
-          "target": "{target}/src/cycle_examples/sup_parent/child.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 16,
-          "source": "{target}/src/cycle_examples/sup_parent.rs",
-          "target": "{target}/src/cycle_examples/sup_parent/child.rs"
-        },
-        {
-          "kind": "super",
-          "line": 11,
-          "source": "{target}/src/cycle_examples/sup_parent/child.rs",
-          "target": "{target}/src/cycle_examples/sup_parent.rs"
-        },
-        {
-          "kind": "uses",
-          "source": "{target}/src/derives.rs",
-          "target": "ext:serde"
-        },
-        {
-          "kind": "uses",
-          "line": 10,
-          "source": "{target}/src/foo.rs",
-          "target": "{target}/src/b.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/foo.rs",
-          "target": "{target}/src/foo/bar.rs"
-        },
-        {
-          "kind": "super",
-          "line": 13,
-          "source": "{target}/src/foo/bar.rs",
-          "target": "{target}/src/foo.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/a.rs"
-        },
-        {
-          "kind": "reexports",
-          "line": 42,
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/a.rs",
-          "visibility": "public"
-        },
-        {
-          "kind": "uses",
-          "line": 64,
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/a.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/b.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 65,
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/b.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/c.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/chain.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/complex.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/cross.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/cycle_examples.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/derives.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/foo.rs"
-        },
-        {
-          "kind": "uses",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/foo.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/macros.rs"
-        },
-        {
-          "kind": "contains",
-          "source": "{target}/src/lib.rs",
-          "target": "{target}/src/relocated/custom.rs"
-        },
-        {
-          "kind": "uses",
-          "line": 7,
-          "source": "{target}/src/relocated/custom.rs",
-          "target": "{target}/src/c.rs"
-        }
-      ],
-      "node_attributes": {
-        "args": {
-          "description": "Number of function / closure arguments.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Args",
-          "name": "Arguments",
-          "short": "Args",
-          "value_type": "int"
-        },
-        "attrs": {
-          "description": "Names of attributes (other than `derive`) applied in the file (e.g. `tokio,serde`), production code only.",
-          "group": "rust",
-          "label": "Attributes",
-          "value_type": "str"
-        },
-        "blank": {
-          "description": "Empty or whitespace-only lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-          "group": "loc",
-          "label": "Blank",
-          "name": "Blank lines",
-          "short": "Blank",
-          "value_type": "int"
-        },
-        "branches": {
-          "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Branches",
-          "name": "Decision points",
-          "short": "Branches",
-          "value_type": "int"
-        },
-        "bugs": {
-          "calc": "effort ** (2/3) / 3000",
-          "description": "Estimated delivered bugs — a rough predictor of defect density.",
-          "direction": "lower_better",
-          "formula": "effort^⅔ ÷ 3000",
-          "group": "halstead",
-          "label": "Bugs",
-          "name": "Estimated bugs",
-          "short": "H.bugs",
-          "value_type": "float"
-        },
-        "cloc": {
-          "description": "Comment-only lines (inline comments on code lines are not counted). In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-          "group": "loc",
-          "label": "Comments",
-          "name": "Comment lines",
-          "short": "Comments",
-          "value_type": "int"
-        },
-        "closures": {
-          "description": "Number of closures defined in the unit.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Closures",
-          "name": "Closures defined",
-          "short": "Closures",
-          "value_type": "int"
-        },
-        "cognitive": {
-          "description": "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Cognitive",
-          "name": "Cognitive complexity",
-          "short": "Cognitive",
-          "value_type": "int"
-        },
-        "crate": {
-          "label": "Crate",
-          "value_type": "str"
-        },
-        "cycle": {
-          "description": "Cycle kind this node participates in.",
-          "group": "coupling",
-          "label": "Cycle",
-          "name": "Dependency cycle",
-          "short": "Cycle",
-          "value_type": "str"
-        },
-        "cyclomatic": {
-          "calc": "spaces + branches",
-          "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
-          "direction": "lower_better",
-          "formula": "spaces + branches",
-          "group": "complexity",
-          "label": "Cyclomatic",
-          "name": "Cyclomatic complexity",
-          "omit_at": 1.0,
-          "short": "Cyclomatic",
-          "value_type": "int"
-        },
-        "derives": {
-          "description": "Names of the `#[derive(...)]` traits used in the file (e.g. `Serialize,Debug`), production code only.",
-          "group": "rust",
-          "label": "Derives",
-          "value_type": "str"
-        },
-        "effort": {
-          "calc": "(eta1 / 2) * (n2 / eta2) * volume",
-          "description": "Mental effort to implement the algorithm.",
-          "direction": "lower_better",
-          "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
-          "group": "halstead",
-          "label": "Effort",
-          "name": "Implementation effort",
-          "short": "H.effort",
-          "value_type": "float"
-        },
-        "eta1": {
-          "description": "Distinct operators (η₁): the count of unique operator token kinds. Rust counts punctuation & delimiters (`( { [ , . ; -> => ? .. ..=`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % & | ^ << >> == != < > <= >= && || += -= *= /= %= &= |= ^= <<= >>=`), the keywords `async await continue for if let loop match move return unsafe while fn`, `mut` (mutable_specifier) and primitive types, plus the context-sensitive `|| / !`.",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "η₁",
-          "name": "Unique operators",
-          "short": "η₁",
-          "value_type": "int"
-        },
-        "eta2": {
-          "description": "Distinct operands (η₂): the count of unique operand texts. Rust counts identifiers, `self`, the `_` wildcard, and literals — string, raw-string, integer, float, boolean and char.",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "η₂",
-          "name": "Unique operands",
-          "short": "η₂",
-          "value_type": "int"
-        },
-        "exits": {
-          "description": "Number of exit points (return/throw) in the unit.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Exits",
-          "name": "Exit points",
-          "short": "Exits",
-          "value_type": "int"
-        },
-        "external": {
-          "label": "External",
-          "value_type": "bool"
-        },
-        "fan_in": {
-          "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
-          "group": "coupling",
-          "label": "Fan-in",
-          "name": "Incoming dependencies",
-          "short": "Fan-in",
-          "value_type": "int"
-        },
-        "fan_out": {
-          "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
-          "group": "coupling",
-          "label": "Fan-out",
-          "name": "Outgoing dependencies",
-          "short": "Fan-out",
-          "value_type": "int"
-        },
-        "fan_out_external": {
-          "description": "Number of distinct external libraries this node depends on.",
-          "group": "coupling",
-          "label": "Fan-out (external)",
-          "name": "External dependencies",
-          "short": "Fan-out (external)",
-          "value_type": "int"
-        },
-        "hk": {
-          "abbreviate": true,
-          "calc": "sloc * (fan_in * fan_out) ** 2",
-          "description": "Henry-Kafura information-flow complexity: a module that is both a busy crossroads (high fan-in × fan-out) and large — the most expensive place in the codebase to change.",
-          "direction": "lower_better",
-          "formula": "sloc × (fan_in × fan_out)²",
-          "group": "coupling",
-          "label": "HK",
-          "name": "God-object risk",
-          "short": "HK",
-          "value_type": "float"
-        },
-        "imports": {
-          "description": "Qualified paths the file references (≥2 segments, e.g. `http::StatusCode,std::fmt`), production code only.",
-          "group": "rust",
-          "label": "Imports",
-          "value_type": "str"
-        },
-        "items": {
-          "description": "Number of top-level items (`fn` / `struct` / `enum` / `impl` / `trait` / `mod` / `const` / …) defined in the file — a structural size signal complementary to line counts.",
-          "group": "rust",
-          "label": "Items",
-          "remediation": "Split the file by responsibility into focused modules; move large impls or trait clusters into their own files.",
-          "value_type": "int"
-        },
-        "length": {
-          "calc": "n1 + n2",
-          "description": "Program length — total operator + operand occurrences.",
-          "direction": "lower_better",
-          "formula": "n1 + n2",
-          "group": "halstead",
-          "label": "Length",
-          "name": "Total tokens",
-          "short": "H.len",
-          "value_type": "float"
-        },
-        "lloc": {
-          "description": "Logical lines — counts statements, not physical lines. In Rust, measured on production code only (inline `#[cfg(test)]` / `#[test]` tests are excluded, like `sloc`; their lines are `tloc`).",
-          "group": "loc",
-          "label": "Logical",
-          "name": "Logical lines",
-          "short": "Logical",
-          "value_type": "int"
-        },
-        "loc": {
-          "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
-          "group": "loc",
-          "label": "Lines",
-          "name": "Total lines",
-          "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
-          "value_type": "int"
-        },
-        "macros": {
-          "description": "Names of macros invoked in the file (e.g. `println,vec`), production code only.",
-          "group": "rust",
-          "label": "Macros",
-          "value_type": "str"
-        },
-        "mi": {
-          "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
-          "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
-          "direction": "higher_better",
-          "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
-          "group": "maintainability",
-          "label": "MI",
-          "name": "Maintainability index",
-          "short": "MI",
-          "value_type": "float"
-        },
-        "mi_sei": {
-          "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
-          "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
-          "direction": "higher_better",
-          "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
-          "group": "maintainability",
-          "label": "MI (SEI)",
-          "name": "Maintainability (SEI)",
-          "short": "MI SEI",
-          "value_type": "float"
-        },
-        "n1": {
-          "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "N₁",
-          "name": "Total operators",
-          "short": "N₁",
-          "value_type": "int"
-        },
-        "n2": {
-          "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "N₂",
-          "name": "Total operands",
-          "short": "N₂",
-          "value_type": "int"
-        },
-        "path": {
-          "label": "Path",
-          "value_type": "str"
-        },
-        "sloc": {
-          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted. In Rust, lines inside `#[cfg(test)]` / `#[test]` items are excluded too, so this counts production code only (unlike `loc`, the raw file line count).",
-          "group": "loc",
-          "label": "Source",
-          "name": "Source lines",
-          "short": "SLOC",
-          "value_type": "int"
-        },
-        "spaces": {
-          "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Spaces",
-          "name": "Code units",
-          "short": "Spaces",
-          "value_type": "int"
-        },
-        "span_sloc": {
-          "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
-          "direction": "lower_better",
-          "group": "maintainability",
-          "label": "Span",
-          "name": "Line span",
-          "short": "Span",
-          "value_type": "int"
-        },
-        "time": {
-          "calc": "effort / 18",
-          "description": "Estimated implementation time, in seconds.",
-          "direction": "lower_better",
-          "formula": "effort ÷ 18",
-          "group": "halstead",
-          "label": "Time",
-          "name": "Coding time (s)",
-          "short": "H.time(s)",
-          "value_type": "float"
-        },
-        "tloc": {
-          "description": "Test lines of code — the lines inside `#[cfg(test)]` / `#[test]` / `#[bench]` items (Rust), removed before the production metrics are measured. The complement of `sloc`: test code never inflates a file's size, HK, or complexity.",
-          "group": "loc",
-          "label": "Test",
-          "name": "Test lines",
-          "short": "TLOC",
-          "value_type": "int"
-        },
-        "types": {
-          "description": "Names of types defined in the file (struct / enum / type alias).",
-          "group": "rust",
-          "label": "Types",
-          "value_type": "str"
-        },
-        "unsafe": {
-          "description": "Count of `unsafe` blocks and `unsafe fn`/`impl`/`trait` declarations in production code (test items are excluded). Syntactic count: `unsafe` inside a macro body is not seen, and the figure is not type-checked.",
-          "direction": "lower_better",
-          "group": "rust",
-          "label": "Unsafe",
-          "name": "Unsafe blocks",
-          "remediation": "Encapsulate each `unsafe` block behind a safe, documented abstraction with checked invariants; minimize the unsafe surface and cover it with tests.",
-          "short": "Unsafe",
-          "value_type": "int"
-        },
-        "version": {
-          "label": "Version",
-          "value_type": "str"
-        },
-        "visibility": {
-          "label": "Visibility",
-          "value_type": "str"
-        },
-        "vocabulary": {
-          "calc": "eta1 + eta2",
-          "description": "Vocabulary — distinct operators + operands.",
-          "direction": "lower_better",
-          "formula": "eta1 + eta2",
-          "group": "halstead",
-          "label": "Vocabulary",
-          "name": "Distinct symbols",
-          "short": "H.vocab",
-          "value_type": "float"
-        },
-        "volume": {
-          "calc": "length * Math.log2(vocabulary)",
-          "description": "Algorithm size in bits, from distinct operators and operands.",
-          "direction": "lower_better",
-          "formula": "length × log₂(vocabulary)",
-          "group": "halstead",
-          "label": "Volume",
-          "name": "Code volume",
-          "short": "H.vol",
-          "value_type": "float"
-        }
-      },
-      "node_kinds": {
-        "external": {
-          "external": true,
-          "fill": "#f6e2c0",
-          "label": "Library",
-          "plural": "Libraries",
-          "stroke": "#b3801f"
-        },
-        "file": {
-          "fill": "#dbe9f4",
-          "label": "File",
-          "plural": "Files",
-          "stroke": "#4d6f9c"
-        }
-      },
-      "nodes": [
-        {
-          "external": true,
-          "id": "ext:once_cell",
-          "kind": "external",
-          "name": "once_cell",
-          "path": "{registry}/once_cell-1.21.4",
-          "version": "1.21.4"
-        },
-        {
-          "external": true,
-          "id": "ext:serde",
-          "kind": "external",
-          "name": "serde",
-          "path": "{registry}/serde-1.0.228",
-          "version": "1.0.228"
-        },
-        {
-          "blank": 1,
-          "bugs": 0.00447,
-          "cloc": 2,
-          "crate": "helper",
-          "cyclomatic": 2,
-          "effort": 49.128,
-          "eta1": 5,
-          "eta2": 2,
-          "exits": 1,
-          "fan_in": 1,
-          "id": "{target}/helper/src/gadget.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 7,
-          "loc": 6,
-          "mi": 126.027,
-          "mi_sei": 145.313,
-          "n1": 5,
-          "n2": 2,
-          "name": "gadget.rs",
-          "sloc": 3,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 2.729,
-          "visibility": "public",
-          "vocabulary": 7,
-          "volume": 19.651
-        },
-        {
-          "blank": 2,
-          "bugs": 0.00376,
-          "cloc": 7,
-          "crate": "helper",
-          "effort": 37.899,
-          "eta1": 3,
-          "eta2": 4,
-          "fan_in": 1,
-          "id": "{target}/helper/src/lib.rs",
-          "items": 3,
-          "kind": "file",
-          "length": 9,
-          "loc": 12,
-          "mi": 113.721,
-          "mi_sei": 134.757,
-          "n1": 5,
-          "n2": 4,
-          "name": "lib.rs",
-          "sloc": 3,
-          "spaces": 1,
-          "span_sloc": 12,
-          "time": 2.105,
-          "visibility": "public",
-          "vocabulary": 7,
-          "volume": 25.266
-        },
-        {
-          "blank": 2,
-          "bugs": 0.00447,
-          "cloc": 2,
-          "crate": "helper",
-          "cyclomatic": 2,
-          "effort": 49.128,
-          "eta1": 5,
-          "eta2": 2,
-          "exits": 1,
-          "fan_in": 1,
-          "id": "{target}/helper/src/widget.rs",
-          "items": 2,
-          "kind": "file",
-          "length": 7,
-          "loc": 8,
-          "mi": 121.366,
-          "mi_sei": 134.569,
-          "n1": 5,
-          "n2": 2,
-          "name": "widget.rs",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 8,
-          "time": 2.729,
-          "types": "Widget",
-          "visibility": "public",
-          "vocabulary": 7,
-          "volume": 19.651
-        },
-        {
-          "blank": 5,
-          "bugs": 0.0896,
-          "cloc": 11,
-          "crate": "rust-sample",
-          "cycle": "mutual",
-          "cyclomatic": 2,
-          "derives": "Serialize",
-          "effort": 4413.97,
-          "eta1": 15,
-          "eta2": 17,
-          "exits": 1,
-          "fan_in": 2,
-          "fan_out": 2,
-          "fan_out_external": 1,
-          "hk": 224,
-          "id": "{target}/src/a.rs",
-          "imports": "HashMap::new,helpers::offset",
-          "items": 2,
-          "kind": "file",
-          "length": 69,
-          "lloc": 1,
-          "loc": 30,
-          "mi": 85.054,
-          "mi_sei": 87.531,
-          "n1": 40,
-          "n2": 29,
-          "name": "a.rs",
-          "sloc": 14,
-          "spaces": 2,
-          "span_sloc": 30,
-          "time": 245.22,
-          "types": "Alpha",
-          "visibility": "public",
-          "vocabulary": 32,
-          "volume": 345
-        },
-        {
-          "blank": 4,
-          "bugs": 0.0521,
-          "cloc": 15,
-          "closures": 1,
-          "crate": "rust-sample",
-          "cycle": "mutual",
-          "cyclomatic": 4,
-          "effort": 1958.647,
-          "eta1": 14,
-          "eta2": 13,
-          "exits": 2,
-          "fan_in": 3,
-          "fan_out": 1,
-          "fan_out_external": 1,
-          "hk": 81,
-          "id": "{target}/src/b.rs",
-          "imports": "once_cell::sync::Lazy,once_cell::sync::Lazy::new",
-          "items": 2,
-          "kind": "file",
-          "length": 45,
-          "lloc": 2,
-          "loc": 28,
-          "macros": "println,pull_in_c",
-          "mi": 88.195,
-          "mi_sei": 97.249,
-          "n1": 28,
-          "n2": 17,
-          "name": "b.rs",
-          "sloc": 9,
-          "spaces": 4,
-          "span_sloc": 28,
-          "time": 108.813,
-          "visibility": "public",
-          "vocabulary": 27,
-          "volume": 213.969
-        },
-        {
-          "attrs": "test",
-          "blank": 3,
-          "bugs": 0.00867,
-          "cloc": 9,
-          "crate": "rust-sample",
-          "cyclomatic": 3,
-          "effort": 132.877,
-          "eta1": 5,
-          "eta2": 5,
-          "exits": 2,
-          "fan_in": 2,
-          "id": "{target}/src/c.rs",
-          "items": 3,
-          "kind": "file",
-          "length": 16,
-          "loc": 32,
-          "macros": "assert_eq",
-          "mi": 101.118,
-          "mi_sei": 113.588,
-          "n1": 11,
-          "n2": 5,
-          "name": "c.rs",
-          "sloc": 8,
-          "spaces": 3,
-          "span_sloc": 20,
-          "time": 7.382,
-          "tloc": 12,
-          "visibility": "public",
-          "vocabulary": 10,
-          "volume": 53.15
-        },
-        {
-          "bugs": 0.0011,
-          "cloc": 5,
-          "crate": "rust-sample",
-          "effort": 6,
-          "eta1": 1,
-          "eta2": 3,
-          "id": "{target}/src/chain.rs",
-          "items": 3,
-          "kind": "file",
-          "length": 6,
-          "loc": 8,
-          "mi": 124.161,
-          "mi_sei": 150.564,
-          "n1": 3,
-          "n2": 3,
-          "name": "chain.rs",
-          "sloc": 3,
-          "spaces": 1,
-          "span_sloc": 8,
-          "time": 0.333,
-          "visibility": "public",
-          "vocabulary": 4,
-          "volume": 12
-        },
-        {
-          "blank": 1,
-          "bugs": 0.011,
-          "cloc": 1,
-          "crate": "rust-sample",
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 190.195,
-          "eta1": 6,
-          "eta2": 3,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 1,
-          "hk": 4,
-          "id": "{target}/src/chain/one.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 12,
-          "loc": 6,
-          "mi": 122.592,
-          "mi_sei": 130.923,
-          "n1": 7,
-          "n2": 5,
-          "name": "one.rs",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 10.566,
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 38.039
-        },
-        {
-          "blank": 1,
-          "bugs": 0.011,
-          "cloc": 1,
-          "crate": "rust-sample",
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 190.195,
-          "eta1": 6,
-          "eta2": 3,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 1,
-          "hk": 4,
-          "id": "{target}/src/chain/three.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 12,
-          "loc": 6,
-          "mi": 122.592,
-          "mi_sei": 130.923,
-          "n1": 7,
-          "n2": 5,
-          "name": "three.rs",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 10.566,
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 38.039
-        },
-        {
-          "blank": 1,
-          "bugs": 0.011,
-          "cloc": 1,
-          "crate": "rust-sample",
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 190.195,
-          "eta1": 6,
-          "eta2": 3,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 1,
-          "hk": 4,
-          "id": "{target}/src/chain/two.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 12,
-          "loc": 6,
-          "mi": 122.592,
-          "mi_sei": 130.923,
-          "n1": 7,
-          "n2": 5,
-          "name": "two.rs",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 10.566,
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 38.039
-        },
-        {
-          "args": 6,
-          "blank": 2,
-          "branches": 4,
-          "bugs": 0.158,
-          "cloc": 17,
-          "closures": 1,
-          "cognitive": 5,
-          "crate": "rust-sample",
-          "cyclomatic": 8,
-          "effort": 10375,
-          "eta1": 20,
-          "eta2": 12,
-          "exits": 4,
-          "id": "{target}/src/complex.rs",
-          "items": 2,
-          "kind": "file",
-          "length": 83,
-          "lloc": 6,
-          "loc": 32,
-          "mi": 81.668,
-          "mi_sei": 88.138,
-          "n1": 53,
-          "n2": 30,
-          "name": "complex.rs",
-          "sloc": 15,
-          "spaces": 4,
-          "span_sloc": 32,
-          "time": 576.388,
-          "unsafe": 1,
-          "visibility": "public",
-          "vocabulary": 32,
-          "volume": 415
-        },
-        {
-          "blank": 2,
-          "bugs": 0.0331,
-          "cloc": 11,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 991.183,
-          "eta1": 10,
-          "eta2": 9,
-          "exits": 1,
-          "fan_out": 3,
-          "id": "{target}/src/cross.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 30,
-          "lloc": 1,
-          "loc": 20,
-          "mi": 96.801,
-          "mi_sei": 109.773,
-          "n1": 16,
-          "n2": 14,
-          "name": "cross.rs",
-          "sloc": 7,
-          "spaces": 2,
-          "span_sloc": 20,
-          "time": 55.065,
-          "visibility": "public",
-          "vocabulary": 19,
-          "volume": 127.437
-        },
-        {
-          "blank": 1,
-          "bugs": 0.00147,
-          "cloc": 16,
-          "crate": "rust-sample",
-          "effort": 9.287,
-          "eta1": 1,
-          "eta2": 4,
-          "id": "{target}/src/cycle_examples.rs",
-          "items": 4,
-          "kind": "file",
-          "length": 8,
-          "loc": 21,
-          "mi": 106.255,
-          "mi_sei": 126.505,
-          "n1": 4,
-          "n2": 4,
-          "name": "cycle_examples.rs",
-          "sloc": 4,
-          "spaces": 1,
-          "span_sloc": 21,
-          "time": 0.515,
-          "visibility": "public",
-          "vocabulary": 5,
-          "volume": 18.575
-        },
-        {
-          "blank": 2,
-          "bugs": 0.000974,
-          "cloc": 7,
-          "crate": "rust-sample",
-          "effort": 5,
-          "eta1": 1,
-          "eta2": 3,
-          "fan_in": 1,
-          "id": "{target}/src/cycle_examples/reex_hub.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 5,
-          "loc": 11,
-          "mi": 119.95,
-          "mi_sei": 144.674,
-          "n1": 2,
-          "n2": 3,
-          "name": "reex_hub.rs",
-          "sloc": 2,
-          "spaces": 1,
-          "span_sloc": 11,
-          "time": 0.277,
-          "types": "Hub",
-          "visibility": "public",
-          "vocabulary": 4,
-          "volume": 10
-        },
-        {
-          "args": 1,
-          "blank": 3,
-          "bugs": 0.00736,
-          "cloc": 4,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 103.782,
-          "eta1": 5,
-          "eta2": 6,
-          "exits": 1,
-          "fan_out": 1,
-          "id": "{target}/src/cycle_examples/reex_spoke.rs",
-          "items": 2,
-          "kind": "file",
-          "length": 12,
-          "loc": 12,
-          "mi": 110.909,
-          "mi_sei": 123.503,
-          "n1": 6,
-          "n2": 6,
-          "name": "reex_spoke.rs",
-          "sloc": 5,
-          "spaces": 2,
-          "span_sloc": 12,
-          "time": 5.765,
-          "types": "Widget",
-          "visibility": "public",
-          "vocabulary": 11,
-          "volume": 41.513
-        },
-        {
-          "blank": 4,
-          "bugs": 0.00959,
-          "cloc": 4,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 154.533,
-          "eta1": 5,
-          "eta2": 4,
-          "exits": 1,
-          "fan_out": 1,
-          "id": "{target}/src/cycle_examples/sup_loose.rs",
-          "items": 3,
-          "kind": "file",
-          "length": 13,
-          "loc": 14,
-          "mi": 108.45,
-          "mi_sei": 117.795,
-          "n1": 7,
-          "n2": 6,
-          "name": "sup_loose.rs",
-          "sloc": 6,
-          "spaces": 2,
-          "span_sloc": 14,
-          "time": 8.585,
-          "types": "Bough",
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 41.209
-        },
-        {
-          "blank": 2,
-          "cloc": 7,
-          "crate": "rust-sample",
-          "eta1": 2,
-          "fan_in": 1,
-          "id": "{target}/src/cycle_examples/sup_loose/child.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 3,
-          "loc": 11,
-          "mi": 126.211,
-          "mi_sei": 153.706,
-          "n1": 3,
-          "name": "child.rs",
-          "sloc": 2,
-          "spaces": 1,
-          "span_sloc": 11,
-          "types": "Pip",
-          "visibility": "public",
-          "vocabulary": 2,
-          "volume": 3
-        },
-        {
-          "blank": 4,
-          "bugs": 0.00959,
-          "cloc": 12,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 154.533,
-          "eta1": 5,
-          "eta2": 4,
-          "exits": 1,
-          "fan_out": 1,
-          "id": "{target}/src/cycle_examples/sup_parent.rs",
-          "items": 3,
-          "kind": "file",
-          "length": 13,
-          "loc": 22,
-          "mi": 101.128,
-          "mi_sei": 115.917,
-          "n1": 7,
-          "n2": 6,
-          "name": "sup_parent.rs",
-          "sloc": 6,
-          "spaces": 2,
-          "span_sloc": 22,
-          "time": 8.585,
-          "types": "Nest",
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 41.209
-        },
-        {
-          "args": 1,
-          "blank": 3,
-          "bugs": 0.00488,
-          "cloc": 9,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 56.147,
-          "eta1": 5,
-          "eta2": 2,
-          "fan_in": 1,
-          "id": "{target}/src/cycle_examples/sup_parent/child.rs",
-          "items": 2,
-          "kind": "file",
-          "length": 8,
-          "loc": 15,
-          "mi": 110.488,
-          "mi_sei": 130.506,
-          "n1": 6,
-          "n2": 2,
-          "name": "child.rs",
-          "sloc": 3,
-          "spaces": 2,
-          "span_sloc": 15,
-          "time": 3.119,
-          "types": "Chick",
-          "visibility": "public",
-          "vocabulary": 7,
-          "volume": 22.458
-        },
-        {
-          "attrs": "test",
-          "blank": 2,
-          "bugs": 0.0051,
-          "cloc": 9,
-          "crate": "rust-sample",
-          "derives": "Serialize",
-          "effort": 60,
-          "eta1": 5,
-          "eta2": 3,
-          "fan_out_external": 1,
-          "id": "{target}/src/derives.rs",
-          "imports": "crate::derives::OnlyDerived,serde::Serialize",
-          "items": 2,
-          "kind": "file",
-          "length": 8,
-          "loc": 23,
-          "macros": "assert_eq",
-          "mi": 110.373,
-          "mi_sei": 130.238,
-          "n1": 5,
-          "n2": 3,
-          "name": "derives.rs",
-          "sloc": 4,
-          "spaces": 1,
-          "span_sloc": 15,
-          "time": 3.333,
-          "tloc": 8,
-          "types": "OnlyDerived",
-          "visibility": "public",
-          "vocabulary": 8,
-          "volume": 24
-        },
-        {
-          "blank": 3,
-          "bugs": 0.0123,
-          "cloc": 12,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 225.852,
-          "eta1": 7,
-          "eta2": 5,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 1,
-          "hk": 5,
-          "id": "{target}/src/foo.rs",
-          "items": 2,
-          "kind": "file",
-          "length": 15,
-          "loc": 20,
-          "mi": 101.288,
-          "mi_sei": 117.232,
-          "n1": 9,
-          "n2": 6,
-          "name": "foo.rs",
-          "sloc": 5,
-          "spaces": 2,
-          "span_sloc": 20,
-          "time": 12.547,
-          "visibility": "private",
-          "vocabulary": 12,
-          "volume": 53.774
-        },
-        {
-          "blank": 1,
-          "bugs": 0.01,
-          "cloc": 14,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 166.052,
-          "eta1": 8,
-          "eta2": 3,
-          "exits": 1,
-          "id": "{target}/src/foo/bar.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 12,
-          "loc": 19,
-          "mi": 103.464,
-          "mi_sei": 122.326,
-          "n1": 9,
-          "n2": 3,
-          "name": "bar.rs",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 19,
-          "time": 9.225,
-          "visibility": "public",
-          "vocabulary": 11,
-          "volume": 41.513
-        },
-        {
-          "attrs": "macro_use,path,test",
-          "blank": 7,
-          "bugs": 0.0355,
-          "cloc": 34,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 1099.872,
-          "eta1": 9,
-          "eta2": 19,
-          "exits": 1,
-          "fan_out": 3,
-          "id": "{target}/src/lib.rs",
-          "imports": "foo::run",
-          "items": 14,
-          "kind": "file",
-          "length": 46,
-          "lloc": 1,
-          "loc": 71,
-          "macros": "assert_eq,make_answer",
-          "mi": 76.137,
-          "mi_sei": 80.309,
-          "n1": 25,
-          "n2": 21,
-          "name": "lib.rs",
-          "sloc": 19,
-          "spaces": 2,
-          "span_sloc": 60,
-          "time": 61.104,
-          "tloc": 11,
-          "visibility": "public",
-          "vocabulary": 28,
-          "volume": 221.138
-        },
-        {
-          "blank": 2,
-          "bugs": 0.0174,
-          "cloc": 7,
-          "crate": "rust-sample",
-          "effort": 377.753,
-          "eta1": 7,
-          "eta2": 6,
-          "id": "{target}/src/macros.rs",
-          "items": 2,
-          "kind": "file",
-          "length": 25,
-          "loc": 22,
-          "macros": "macro_rules",
-          "mi": 97.153,
-          "mi_sei": 102.903,
-          "n1": 18,
-          "n2": 7,
-          "name": "macros.rs",
-          "sloc": 13,
-          "spaces": 1,
-          "span_sloc": 22,
-          "time": 20.986,
-          "visibility": "private",
-          "vocabulary": 13,
-          "volume": 92.51
-        },
-        {
-          "blank": 2,
-          "bugs": 0.0112,
-          "cloc": 5,
-          "crate": "rust-sample",
-          "cyclomatic": 2,
-          "effort": 196.755,
-          "eta1": 7,
-          "eta2": 4,
-          "exits": 1,
-          "fan_out": 1,
-          "id": "{target}/src/relocated/custom.rs",
-          "items": 1,
-          "kind": "file",
-          "length": 13,
-          "loc": 11,
-          "mi": 111.902,
-          "mi_sei": 129.176,
-          "n1": 8,
-          "n2": 5,
-          "name": "custom.rs",
-          "sloc": 4,
-          "spaces": 2,
-          "span_sloc": 11,
-          "time": 10.93,
-          "visibility": "private",
-          "vocabulary": 11,
-          "volume": 44.972
-        }
-      ],
-      "stats": {
-        "blank": 2.5,
-        "bugs": 0.0214,
-        "cloc": 8.88,
-        "cognitive": 5,
-        "cyclomatic": 2.5,
-        "effort": 883.082,
-        "fan_in": 1.307,
-        "fan_out": 1.416,
-        "hk": 53.666,
-        "length": 19.56,
-        "mi": 107.583,
-        "mi_sei": 121.961,
-        "sloc": 6.2,
-        "time": 49.059,
-        "tloc": 10.333,
-        "unsafe": 1,
-        "vocabulary": 12.08,
-        "volume": 80.044
-      },
-      "ui": {
-        "card": [
-          "hk",
-          "sloc"
-        ],
-        "columns": [
-          "kind",
-          "cycle",
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "bugs",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank",
-          "tloc",
-          "unsafe"
-        ],
-        "default_sort": "cycle",
-        "filter": [
-          "cycle"
-        ],
-        "grouping": {
-          "key": "crate"
-        },
-        "size": [
-          "sloc",
-          "hk"
-        ],
-        "sort": [
-          "cycle",
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "bugs",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank",
-          "tloc",
-          "unsafe"
-        ],
-        "summary": [
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "bugs",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank",
-          "tloc",
-          "unsafe"
+      "prompt": {
+        "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
+        "doc_note": "**First, before reading the source**, run `code-ranker docs {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
+        "focus": "**Focus the research and report primarily on the modules below.**",
+        "intro": "I want to apply this to some modules in my system.",
+        "task": [
+          "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
+          "- If you find more serious violations elsewhere during research, mention them in the report too.",
+          "- Show a summary of the report in chat.",
+          "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
         ]
       }
     }
   },
-  "plugin": "rust",
-  "principles": [
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/CPX.md",
-      "id": "CPX",
-      "label": "CPX",
-      "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
-      "sort_metric": "cognitive",
-      "title": "CPX — Reduce Complexity"
-    },
-    {
-      "connections": [
-        "common"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/ADP.md",
-      "id": "ADP",
-      "label": "ADP",
-      "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
-      "sort_metric": "cycle",
-      "title": "ADP — Acyclic Dependencies Principle"
-    },
-    {
-      "connections": [
-        "in",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/SRP.md",
-      "id": "SRP",
-      "label": "SRP",
-      "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
-      "sort_metric": "sloc",
-      "title": "SRP — Single Responsibility Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/OCP.md",
-      "id": "OCP",
-      "label": "OCP",
-      "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
-      "sort_metric": "cyclomatic",
-      "title": "OCP — Open/Closed Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/LSP.md",
-      "id": "LSP",
-      "label": "LSP",
-      "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
-      "sort_metric": "hk",
-      "title": "LSP — Liskov Substitution Principle"
-    },
-    {
-      "connections": [
-        "in"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/ISP.md",
-      "id": "ISP",
-      "label": "ISP",
-      "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
-      "sort_metric": "items",
-      "title": "ISP — Interface Segregation Principle"
-    },
-    {
-      "connections": [
-        "common",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/DIP.md",
-      "id": "DIP",
-      "label": "DIP",
-      "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
-      "sort_metric": "fan_out",
-      "title": "DIP — Dependency Inversion Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/DRY.md",
-      "id": "DRY",
-      "label": "DRY",
-      "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
-      "sort_metric": "sloc",
-      "title": "DRY — Don't Repeat Yourself"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/KISS.md",
-      "id": "KISS",
-      "label": "KISS",
-      "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
-      "sort_metric": "cognitive",
-      "title": "KISS — Keep It Simple"
-    },
-    {
-      "connections": [
-        "common",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/LoD.md",
-      "id": "LoD",
-      "label": "LoD",
-      "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
-      "sort_metric": "fan_out",
-      "title": "Law of Demeter — Principle of Least Knowledge"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/MISU.md",
-      "id": "MISU",
-      "label": "MISU",
-      "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
-      "sort_metric": "cyclomatic",
-      "title": "MISU — Make Invalid States Unrepresentable"
-    },
-    {
-      "connections": [
-        "common"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/CoI.md",
-      "id": "CoI",
-      "label": "CoI",
-      "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
-      "sort_metric": "items",
-      "title": "CoI — Composition Over Inheritance"
-    },
-    {
-      "connections": [
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/rust/YAGNI.md",
-      "id": "YAGNI",
-      "label": "YAGNI",
-      "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
-      "sort_metric": "sloc",
-      "title": "YAGNI — You Aren't Gonna Need It"
-    }
+  "plugins": [
+    "rust"
   ],
-  "prompt": {
-    "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
-    "doc_note": "**First, before reading the source**, run `code-ranker docs {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
-    "focus": "**Focus the research and report primarily on the modules below.**",
-    "intro": "I want to apply this to some modules in my system.",
-    "task": [
-      "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
-      "- If you find more serious violations elsewhere during research, mention them in the report too.",
-      "- Show a summary of the report in chat.",
-      "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
-    ]
-  },
   "roots": {
     "registry": "/home/user/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f",
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample"
   },
-  "schema_version": "4.0",
+  "schema_version": "5.0",
   "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/rust/tests/sample",
   "timings": [
     {
       "detail": "27 nodes from 25 files",
       "ms": 0,
-      "stage": "rust"
+      "stage": "rust: parse"
     },
     {
       "detail": "25 nodes annotated",
       "ms": 0,
-      "stage": "complexity"
+      "stage": "rust: complexity"
     },
     {
       "detail": "nodes=27 edges=48",
       "ms": 0,
-      "stage": "projection"
+      "stage": "rust: projection"
     }
   ],
   "versions": {
-    "code-ranker": "4.0.0",
+    "code-ranker": "5.0.0",
     "rustc": "1.96.0"
   },
   "workspace": "/home/user/code-ranker"

@@ -141,7 +141,7 @@ substitution primitive already in the tree.
 Corpus publishing to GitHub Pages (and the `code-ranker docs` subcommand that
 composed the corpus to disk) has been **removed**. The corpus is no longer served
 over a URL; it lives only **embedded in the binary** (§3) and is reached through
-the `docs <ID>` command / inline prompt text. The Pages workflow still publishes the HTML
+the `docs <lang> <ID>` command / inline prompt text. The Pages workflow still publishes the HTML
 *report* (`report . → site/index.html`), but not the doc corpus, so a finding's
 `doc_url` no longer resolves to a live page.
 
@@ -213,15 +213,16 @@ code-ranker report . --prompt HK --top 5 --focus-path src/engine
 stdout counterpart — the quick "show me HK" path — and (being a standalone dump)
 accepts any `--top N` to widen the ranked module list.
 
-### 7.2 `docs <ID>` — print the raw principle doc ✅
+### 7.2 `docs <lang> <subject>` — print the raw principle doc ✅
 
-The `docs` command dumps the embedded principle/metric Markdown itself (composed for one
-language, with any `[templates.…]` override applied), no analysis and no `[input]`. It keeps
-a **singular** `--plugin <name>` flag, since it emits a reference doc for one language; when
-omitted it defaults to the first of `plugins` (the scalar config key `plugin` does not exist):
+The `docs` command dumps the embedded principle/metric Markdown (composed for one
+language, with any `[templates.…]` override applied), no analysis and no `[input]`. The
+language is the **first positional argument** — there is no `--plugin` flag. Bare `docs`
+lists available languages; `docs <lang>` lists that language's subject catalog:
 
 ```bash
-code-ranker docs HK        # the resolved languages/<lang>/HK.md
+code-ranker docs rust HK   # the resolved languages/rust/HK.md
+code-ranker docs base HK   # the language-agnostic base doc
 ```
 
 ### 7.3 Existing prompt surfaces ✅
@@ -252,7 +253,7 @@ corpus, `prompt.md` is **internal template prose**: it sits next to `builtin.tom
 | Field | Role |
 |---|---|
 | `intro` | one-line intent under the title |
-| `doc_note` | how to read the full principle — points at the offline `code-ranker docs <id>` command (`{id}` substituted), not a network URL |
+| `doc_note` | how to read the full principle — points at the offline `code-ranker docs <lang> <id>` command (`{id}` substituted), not a network URL |
 | `task` | the task-protocol bullets (`{id}` → active principle id) |
 | `focus` | closing emphasis line |
 | `cycle_note` | note prepended to a single dependency-cycle's module list |
@@ -288,7 +289,7 @@ and JS.
 | Embedding the corpus in the binary (`build.rs` → `CORPUS`) | ✅ |
 | `[templates.languages.<lang>.<ID>]` per-file override | ✅ |
 | `report --prompt <ID>` | ✅ |
-| `docs <ID>` | ✅ |
+| `docs <lang> <subject>` | ✅ |
 | Manifest composer (`compose.rs`: `doc:base` + `from`/`to`) + `resolve_doc` wiring | ✅ |
 | `code-ranker docs` build subcommand + corpus Pages publishing (Variant B) | ✗ removed — corpus is binary-embedded only, not served over a URL |
 | `base/` + per-language manifest migration | ◐ all `rust/` docs migrated; `python`/`typescript` 🔜 |

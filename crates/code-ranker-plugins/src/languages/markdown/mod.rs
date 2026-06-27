@@ -39,15 +39,15 @@ impl LanguagePlugin for MarkdownPlugin {
         "markdown"
     }
 
-    fn detect(&self, workspace: &Path, input: &PluginInput) -> bool {
+    fn detect(&self, _cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> bool {
         structure::detect(workspace, &crate::walk::ignore_from(input))
     }
 
-    fn levels(&self) -> Vec<Level> {
+    fn levels(&self, cfg: &toml::Table) -> Vec<Level> {
         vec![Level {
             name: "files".into(),
-            edge_kinds: crate::config::edge_kinds(&CONFIG),
-            node_attributes: crate::config::node_attributes(&CONFIG),
+            edge_kinds: crate::config::edge_kinds(cfg),
+            node_attributes: crate::config::node_attributes(cfg),
             edge_attributes: BTreeMap::new(),
             attribute_groups: BTreeMap::new(),
             node_kinds: default_node_kinds(),
@@ -56,21 +56,24 @@ impl LanguagePlugin for MarkdownPlugin {
         }]
     }
 
-    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, _cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         structure::analyze(workspace, &crate::walk::ignore_from(input))
     }
 
     // No `metrics` / `function_units`: Markdown emits only the structural `loc`
     // (set in `analyze`) plus the orchestrator-derived coupling over the links.
 
-    fn principles(&self, _input: &PluginInput) -> Vec<Principle> {
+    fn principles(&self, _cfg: &toml::Table, _input: &PluginInput) -> Vec<Principle> {
         // The common catalog is a set of code-refactoring lenses — not meaningful
         // for prose — so Markdown ships none.
         Vec::new()
     }
 
-    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        code_ranker_plugin_api::list_override::report_override(&CONFIG)
+    fn report_overrides(
+        &self,
+        cfg: &toml::Table,
+    ) -> code_ranker_plugin_api::report::ReportOverride {
+        code_ranker_plugin_api::list_override::report_override(cfg)
     }
 }
 

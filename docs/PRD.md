@@ -231,7 +231,7 @@ required.
   appear as opaque depth-1 nodes; their internals are never read)
 - Call-graph analysis (no `Calls` edges, no semantic call resolution).
   Per-function **metrics** are available as an opt-in `functions` level
-  (`[levels] functions`), but functions are metric nodes only — they carry no
+  (`[plugins.base.levels] functions`), but functions are metric nodes only — they carry no
   edges and form no call graph.
 - Automated code modification or refactoring suggestions
 - IDE/LSP integration and interactive visualization
@@ -284,16 +284,16 @@ the lower (no merge), highest wins:
    `pyproject.toml` / `setup.py` / `setup.cfg` → `python`; `package.json` →
    `javascript`; `tsconfig.json` → `typescript`; …). Multiple matches is the
    normal multi-language case — there is no "ambiguous project" error.
-2. **`plugins` array in the config file** (`code-ranker.toml` /
+2. **`[plugins] enabled = [...]` in the config file** (`code-ranker.toml` /
    `Cargo.toml#metadata.code-ranker`), if set → that list verbatim.
 3. **`--plugins <a,b,...>`** on the command line (highest) → that list verbatim.
 
 A language whose graph comes out empty is dropped. If **zero** languages are
 detected and none is configured, the analyzing command MUST exit non-zero with a
-human-readable error naming the valid plugins and asking for `plugins = [...]` /
+human-readable error naming the valid plugins and asking for `[plugins].enabled` /
 `--plugins`. Two active plugins claiming the same file extension is a startup
 error before analysis (one file maps to exactly one language). The scalar
-`plugin` config key is not recognized — it errors pointing to `plugins = [...]`.
+`plugin` config key is not recognized — it errors pointing to `[plugins].enabled`.
 
 **Rationale**: Built-in-only selection keeps the tool a single binary with
 nothing to install: every supported language ships compiled in, and adding
@@ -376,7 +376,7 @@ workspaces. The plugin MUST:
   Henry-Kafura (`HK = sloc × (fan_in × fan_out)²`) — all written into the node's
   flat `attrs`. Edges to external nodes are excluded from `fan_in`/`fan_out`/`hk`
   and counted in `fan_out_external` instead. The advisory scorecard / viewer /
-  prompt tiers are derived from the project's own `[rules.thresholds.file]` gate
+  prompt tiers are derived from the project's own `[plugins.base.rules.thresholds.file]` gate
   (not language-calibrated), so the report shows exactly what fails `check`.
   The recommendation catalog is the shared 13 design principles (from
   `defaults.toml`); each coupling/complexity **metric** carries its own
@@ -721,7 +721,7 @@ as a self-contained HTML report.
 | `cargo_metadata` crate | Cargo workspace enumeration (local vs. external crates) | p1 |
 | `syn` crate | Rust source parsing for the module tree and `use` statements | p1 |
 | `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript` / `-go` / `-c` / `-cpp` / `-c-sharp`) | Source parsing for the shared generic tier-1 metric engine (`code-ranker-plugins/src/engine/`, parameterized per language by a `Dialect` — a single faithful port of `rust-code-analysis`'s node-kind rules) and for the Python / JS / TS / Go / C# plugins' graph extraction (C/C++ recover the `#include` graph by text scan, so they use their grammar only for metrics; Markdown is grammar-free) | p1 |
-| `cel` crate | Evaluates the declarative tier-2 metric formulas (`metrics/builtin.toml`) and user `[metrics.<key>]` formulas; the metric registry engine | p1 |
+| `cel` crate | Evaluates the declarative tier-2 metric formulas (`metrics/builtin.toml`) and user `[plugins.base.metrics.<key>]` formulas; the metric registry engine | p1 |
 | Python 3.9+ | Runtime for the built-in Python language plugin | p3 |
 
 ## 11. Assumptions

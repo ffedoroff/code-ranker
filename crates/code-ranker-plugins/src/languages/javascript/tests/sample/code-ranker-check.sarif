@@ -21,7 +21,7 @@
             "text": "{target}/src/a.js: chain cycle: {target}/src/a.js → {target}/src/b.js → {target}/src/c.js → (back to start)"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "cycle.chain:{target}/src/a.js"
+            "codeRankerRuleLocation/v1": "javascript:cycle.chain:{target}/src/a.js"
           },
           "properties": {
             "graph": "files",
@@ -48,7 +48,7 @@
             "text": "{target}/src/m1.js: mutual cycle between {target}/src/m1.js ↔ {target}/src/m2.js"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "cycle.mutual:{target}/src/m1.js"
+            "codeRankerRuleLocation/v1": "javascript:cycle.mutual:{target}/src/m1.js"
           },
           "properties": {
             "graph": "files",
@@ -90,7 +90,7 @@
               }
             }
           ],
-          "version": "3.0.0-alpha.1"
+          "version": "4.0.0"
         }
       }
     }

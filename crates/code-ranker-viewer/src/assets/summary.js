@@ -1,3 +1,4 @@
+// `snap` is a language sub-object { graphs, … } (already language-resolved by callers).
 function nodePercentiles(snap, level, getVal) {
   const nodes = (snap?.graphs?.[level]?.nodes || []).filter(n => !isExternalNode(n, level));
   const vals = nodes.map(n => getVal(n)).filter(v => typeof v === 'number' && isFinite(v) && v > 0);
@@ -21,10 +22,25 @@ function buildSummary() {
   // Review = a single snapshot (no baseline). `current` is the primary; in review
   // the lone column reads whichever snapshot is present.
   const isReview = !window.BASELINE || !window.CURRENT;
-  const baseline   = window.BASELINE ?? window.CURRENT;
-  const current    = window.CURRENT  ?? window.BASELINE;
+  const baselineSnap = window.BASELINE ?? window.CURRENT;
+  const currentSnap  = window.CURRENT  ?? window.BASELINE;
 
-  const levels   = ['files'];
+  // The active language; fall back to first key available.
+  const activeLang = (typeof currentLang === 'function' ? currentLang() : null)
+    || (typeof langKeys === 'function' ? langKeys(baselineSnap || currentSnap) : [])[0]
+    || Object.keys((baselineSnap || currentSnap || {}).languages || {})[0]
+    || '';
+
+  // Extract the active language's sub-object from each side.
+  const baseline = activeLang ? (baselineSnap?.languages?.[activeLang] ?? null) : null;
+  const current  = activeLang ? (currentSnap?.languages?.[activeLang]  ?? null) : null;
+
+  // Levels come from the active language rather than being hardcoded.
+  const levels = Object.keys((baseline || current || {}).graphs || {});
+  if (!levels.includes('files') && levels.length === 0) levels.push('files');
+  // Stable order: files first.
+  levels.sort((a, b) => (a === 'files' ? -1 : b === 'files' ? 1 : 0));
+
   const LLABELS  = { files: 'Files' };
 
   const titleEl = document.getElementById('summary-title');
@@ -50,7 +66,7 @@ function buildSummary() {
     }
   }
 
-  // Helpers
+  // Helpers — `snap` here is already the language sub-object { graphs, … }.
   const countNodes = (snap, level) =>
     ((snap?.graphs || {})[level]?.nodes || []).filter(n => !isExternalNode(n, level)).length;
 
@@ -174,6 +190,7 @@ function buildSummary() {
   // Distinct grouping-key values (the groups drawn on the map — e.g. crates) per
   // side. Empty when the level has no grouping.
   const groupingKey = levelUi(level0).grouping?.key || null;
+  // `snap` is the language sub-object { graphs, … } — .graphs access is correct.
   const countGroups = (snap, level) => {
     if (!groupingKey) return 0;
     const s = new Set();
@@ -195,7 +212,8 @@ function buildSummary() {
     return s.size;
   };
   const cyclesRow = () => {
-    const cy = window.CYCLES?.[level0];
+    // CYCLES is keyed [lang][level] in the new schema.
+    const cy = activeLang ? window.CYCLES?.[activeLang]?.[level0] : null;
     if (!cy || (cy.cycleBaseline + cy.cycleBoth + cy.cycleCurrent) === 0) return null;
     // Tooltip: how many cycle groups of each kind were found, from the active
     // snapshot's backend-computed `cycles`. Kind labels come from schema.js.

@@ -98,39 +98,72 @@ function updateHeader() {
 
 }
 
-// Build the per-level views + the level switcher from the loaded snapshot's graph
-// levels. The `files` view is the static template in index.html; every other level
-// (e.g. `functions`, emitted when `[levels] functions = true`) is cloned from it —
-// rendering is level-agnostic (renderView / setupNodeTable scope to the section +
-// its `data-view`). The switcher row is shown only when more than one level is
-// present, so single-level reports look exactly as before. Idempotent: re-running
-// (on a snapshot swap) skips existing sections and just refreshes the switcher.
+// Build the per-level views, the level switcher, and the language switcher from
+// the loaded snapshot. The `files` view is the static template in index.html;
+// every other level (e.g. `functions`) is cloned from it. The language switcher
+// appears above the level switcher and is hidden when only one language exists.
+// On language change the non-files level sections are torn down and rebuilt for
+// the new language (id-namespaced to avoid collisions).
 function updateFilesTab() {
-  const snap = window.CURRENT ?? window.BASELINE ?? { graphs: {} };
-  const levels = Object.keys(snap.graphs || {});
-  if (!levels.length) return;
-  // Stable order: files first, then the rest in snapshot order.
+  const snap = window.CURRENT ?? window.BASELINE;
+  if (!snap) return;
+
+  // Determine the active language; default to the first key.
+  const langs = (typeof langKeys === 'function') ? langKeys(snap) : Object.keys(snap.languages || {});
+  if (!langs.length) return;
+  const activeLang = (typeof currentLang === 'function' && currentLang()) || langs[0];
+  if (typeof setLang === 'function') setLang(activeLang);
+
+  const langSnap = (snap.languages || {})[activeLang] || {};
+  const levels = Object.keys(langSnap.graphs || {});
+  if (!levels.length) levels.push('files');
+  // Stable order: files first.
   levels.sort((a, b) => (a === 'files' ? -1 : b === 'files' ? 1 : 0));
 
   const main = document.querySelector('main');
   const template = document.querySelector('.view[data-view="files"]');
   if (!main || !template) return;
 
-  // One section per extra level: clone the files template for any level missing a
-  // view. The clone is built clean (this runs before node-table setup), with its
-  // per-level element ids made unique (`*-files` → `*-<level>`).
+  // Tear down previously cloned non-files level sections (from a prior language
+  // or a prior snapshot) so we rebuild them fresh for the active language.
+  main.querySelectorAll('.view[data-view]:not([data-view="files"])').forEach(sec => sec.remove());
+
+  // One section per extra level: clone the files template with ids namespaced by
+  // both language and level to avoid collisions (lang-level suffix).
   for (const level of levels) {
-    if (level === 'files' || document.querySelector(`.view[data-view="${level}"]`)) continue;
+    if (level === 'files') continue;
     const sec = template.cloneNode(true);
     sec.dataset.view = level;
     sec.classList.remove('active');
     delete sec.dataset.rendered;
     sec.querySelectorAll('.svg-frame').forEach(f => { f.innerHTML = ''; });
-    sec.querySelectorAll('[id]').forEach(el => { el.id = el.id.replace(/files$/, level); });
+    // Namespace ids: `*-files` → `*-<lang>-<level>` (unique across language+level).
+    const suffix = `${activeLang}-${level}`;
+    sec.querySelectorAll('[id]').forEach(el => { el.id = el.id.replace(/files$/, suffix); });
     main.appendChild(sec);
   }
 
-  // Level switcher: one tab per level, wired to switchToLevel + URL persistence.
+  // ── Language switcher ────────────────────────────────────────────────────
+  const langSw = document.getElementById('lang-switch');
+  if (langSw) {
+    langSw.innerHTML = '';
+    for (const lang of langs) {
+      const a = document.createElement('a');
+      a.href = '#';
+      a.dataset.lang = lang;
+      a.textContent = lang.charAt(0).toUpperCase() + lang.slice(1);
+      if (lang === activeLang) a.classList.add('selected');
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        if (lang === (typeof currentLang === 'function' ? currentLang() : null)) return;
+        if (typeof switchToLang === 'function') switchToLang(lang);
+      });
+      langSw.appendChild(a);
+    }
+    langSw.hidden = langs.length < 2;
+  }
+
+  // ── Level switcher ───────────────────────────────────────────────────────
   const sw = document.getElementById('report-switch');
   if (!sw) return;
   sw.innerHTML = '';
@@ -141,7 +174,7 @@ function updateFilesTab() {
     a.dataset.view = level;
     a.textContent = level.charAt(0).toUpperCase() + level.slice(1);
     if (level === cur) a.classList.add('selected');
-    a.addEventListener('click', (e) => {
+    a.addEventListener('click', e => {
       e.preventDefault();
       if (level === currentLevel()) return;
       switchToLevel(level);

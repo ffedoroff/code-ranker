@@ -53,30 +53,30 @@ impl LanguagePlugin for JavascriptPlugin {
         "javascript"
     }
 
-    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
+    fn detect(&self, cfg: &toml::Table, workspace: &Path, _input: &PluginInput) -> bool {
         // Project-detect marker filenames are DATA: read from `config.toml`'s
         // `detect_markers` (the walk/detect logic stays in Rust). JS detects on
         // `package.json`.
-        crate::config::string_list(&CONFIG, "detect_markers")
+        crate::config::string_list(cfg, "detect_markers")
             .iter()
             .any(|m| detect_with_marker(workspace, m))
     }
 
-    fn levels(&self) -> Vec<Level> {
+    fn levels(&self, cfg: &toml::Table) -> Vec<Level> {
         vec![
-            ecmascript_level("files", &CONFIG),
-            ecmascript_functions_level(&CONFIG),
+            ecmascript_level("files", cfg),
+            ecmascript_functions_level(cfg),
         ]
     }
 
-    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         // File-collection extensions / import-resolution order are DATA: read
         // from `config.toml`'s `extensions` (a JS-only project collects and
         // resolves against the same list). Every JavaScript extension uses the one
         // `tree-sitter-javascript` grammar, so the grammar selector is a constant
         // (a grammar TYPE can't be config) — the `extensions` list alone gates
         // which files reach it, so no extension is enumerated here.
-        let exts = crate::config::string_list(&CONFIG, "extensions");
+        let exts = crate::config::string_list(cfg, "extensions");
         let exts: Vec<&str> = exts.iter().map(String::as_str).collect();
         analyze_ecmascript(
             workspace,
@@ -88,35 +88,39 @@ impl LanguagePlugin for JavascriptPlugin {
         )
     }
 
-    fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
+    fn metrics(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(String, MetricInputs)> {
         ecmascript_metrics(graph, |_ext| {
             Some((tree_sitter_javascript::LANGUAGE.into(), false))
         })
     }
 
-    fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
+    fn function_units(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(Node, MetricInputs)> {
         ecmascript_function_units(graph, |_ext| {
             Some((tree_sitter_javascript::LANGUAGE.into(), false))
         })
     }
 
-    fn principles(&self, _input: &PluginInput) -> Vec<Principle> {
+    fn principles(&self, cfg: &toml::Table, _input: &PluginInput) -> Vec<Principle> {
         // The common catalog from `defaults.toml`, with `doc_url` resolved to
         // `{doc_base}/typescript/<slug>.md` (JS shares the TS principle corpus).
-        crate::config::resolved_principles(&CONFIG)
+        crate::config::resolved_principles(cfg)
     }
 
-    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        code_ranker_plugin_api::list_override::report_override(&CONFIG)
+    fn report_overrides(
+        &self,
+        cfg: &toml::Table,
+    ) -> code_ranker_plugin_api::report::ReportOverride {
+        code_ranker_plugin_api::list_override::report_override(cfg)
     }
 
     fn metric_specs(
         &self,
+        cfg: &toml::Table,
         defaults: BTreeMap<String, AttributeSpec>,
     ) -> BTreeMap<String, AttributeSpec> {
         // Shared ECMAScript Halstead operator/operand descriptions (JS and TS use
         // the same `[halstead]` vocab → one home in `ecmascript/config.toml`).
-        ecmascript_metric_specs(defaults)
+        ecmascript_metric_specs(defaults, cfg)
     }
 }
 

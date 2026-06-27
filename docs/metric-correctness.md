@@ -57,11 +57,11 @@ four homes, and a test lives in the same crate as the computation it checks:
 
 So a **measured count** is added / fixed / tested in the shared generic engine; a
 **derived formula** (or aggregate) is added by editing `metrics/builtin.toml` (or,
-for a user metric, `[metrics.<key>]` in config) — no Rust change — and tested in
+for a user metric, `[plugins.base.metrics.<key>]` in config) — no Rust change — and tested in
 `code-ranker-graph` (`registry.rs` / `metrics.rs`); an edge / `unsafe` / `items`
 metric in the relevant plugin module of `code-ranker-plugins`; coupling / cycle in `code-ranker-graph`.
 There is no single "metric tests" crate — tests follow the computation. The same
-registry runs per **unit**, so file nodes and (with `[levels] functions` on)
+registry runs per **unit**, so file nodes and (with `[plugins.base.levels] functions` on)
 function nodes share one definition.
 
 For the full catalog — every metric grouped by how it is produced (measured /
@@ -72,7 +72,7 @@ the catalog name is the bare node attribute key.
 
 Derived metrics and aggregates are **declarative data**, not Rust: a CEL
 `formula_cel` plus a display spec, in `code-ranker-graph/metrics/builtin.toml` (the
-built-ins) or under `[metrics.<key>]` in `code-ranker.toml` (user metrics). The
+built-ins) or under `[plugins.base.metrics.<key>]` in `code-ranker.toml` (user metrics). The
 registry engine — `code-ranker-graph/src/registry.rs` — turns them into node
 values. No derived-metric name is hardcoded in Rust.
 
@@ -176,7 +176,7 @@ Two paths, depending on the home above.
 
 A derived metric is a CEL `formula_cel` plus its display spec — both live in one
 `[fields.<key>]` table. Add it in `code-ranker-graph/metrics/builtin.toml`
-(built-in) or under `[metrics.<key>]` in `code-ranker.toml` (user metric):
+(built-in) or under `[plugins.base.metrics.<key>]` in `code-ranker.toml` (user metric):
 
 ```toml
 [fields.<key>]          # display spec + the executable formula, together

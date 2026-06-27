@@ -434,3 +434,33 @@ fn rust_config_report_override_is_the_demo() {
     assert!(rust.columns.add.contains(&"unsafe".to_string()));
     assert!(rust.stats.add.contains(&"unsafe".to_string()));
 }
+
+/// Static regression guard: no file extension is claimed by two plugins in
+/// their default (static) configs. This catches build-time authoring bugs
+/// before they become runtime ambiguity errors; Rust has no `extensions` entry
+/// (it uses `cargo metadata` for file discovery), which is also fine (empty
+/// list → no contribution to the map).
+#[test]
+fn registry_extensions_are_unique_across_plugins() {
+    use std::collections::HashMap;
+    let mut ext_to_plugins: HashMap<String, Vec<String>> = HashMap::new();
+    for plugin in code_ranker_plugin_api::plugin::registry() {
+        let cfg = plugin.config();
+        for ext in string_list(&cfg, "extensions") {
+            ext_to_plugins
+                .entry(ext)
+                .or_default()
+                .push(plugin.name().to_string());
+        }
+    }
+    let conflicts: Vec<String> = ext_to_plugins
+        .iter()
+        .filter(|(_, plugins)| plugins.len() > 1)
+        .map(|(ext, plugins)| format!(".{ext}: {:?}", plugins))
+        .collect();
+    assert!(
+        conflicts.is_empty(),
+        "extension(s) claimed by multiple plugins (built-in default configs): {}",
+        conflicts.join(", ")
+    );
+}

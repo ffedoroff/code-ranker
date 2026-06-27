@@ -12,8 +12,9 @@
 //! frames it by the metric itself, a **principle** id (`LSP`) by that design
 //! principle. Resolution lives in [`resolve_focus`].
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use code_ranker_graph::level_graph::{CycleGroup, LevelGraph};
+use code_ranker_graph::snapshot::{LanguageSnapshot, Snapshot};
 pub use code_ranker_plugin_api::Principle;
 use code_ranker_plugin_api::{
     attrs::{AttrValue, ValueType},
@@ -21,6 +22,69 @@ use code_ranker_plugin_api::{
     node::Node,
 };
 use std::collections::HashMap;
+
+/// Select the `LanguageSnapshot` to use for recommendations.
+///
+/// Resolution order:
+/// 1. `--language` explicitly given → use that language or error.
+/// 2. Single language → use it (no ambiguity).
+/// 3. Multiple languages + `id` given → search all; if `id` matches exactly
+///    one language, use it; if 2+ match → error listing them.
+/// 4. Multiple languages + no `id` → use the first (BTreeMap order); this
+///    path is taken only for scorecard/prompt without `--focus`.
+pub fn resolve_language_snap<'a>(
+    snap: &'a Snapshot,
+    language: Option<&str>,
+    id: Option<&str>,
+) -> Result<&'a LanguageSnapshot> {
+    // Explicit `--language` always wins.
+    if let Some(lang) = language {
+        return snap.languages.get(lang).with_context(|| {
+            let available: Vec<&str> = snap.languages.keys().map(String::as_str).collect();
+            format!(
+                "language {lang:?} not found in snapshot; available: {}",
+                available.join(", ")
+            )
+        });
+    }
+
+    // Single language: no ambiguity.
+    if snap.languages.len() == 1 {
+        return Ok(snap.languages.values().next().expect("len==1"));
+    }
+
+    // Multiple languages: try to resolve the id across all of them.
+    if let Some(focus_id) = id {
+        let matches: Vec<&str> = snap
+            .languages
+            .iter()
+            .filter_map(|(lang, ls)| {
+                // A match is: it is a principle id, or a metric key in the files level.
+                let is_principle = ls.principles.iter().any(|p| p.id == focus_id);
+                let is_metric = ls
+                    .graphs
+                    .get("files")
+                    .is_some_and(|g| g.node_attributes.contains_key(focus_id));
+                (is_principle || is_metric).then_some(lang.as_str())
+            })
+            .collect();
+
+        match matches.as_slice() {
+            [one] => return Ok(snap.languages.get(*one).expect("key from languages")),
+            [] => {} // fall through to first-language default
+            langs => anyhow::bail!(
+                "{focus_id:?} found in languages: {}; specify --language <name> to disambiguate",
+                langs.join(", ")
+            ),
+        }
+    }
+
+    // Fall back to the first language (BTreeMap order, deterministic).
+    snap.languages
+        .values()
+        .next()
+        .context("snapshot has no languages; regenerate the report with `code-ranker report`")
+}
 
 mod prompt;
 mod scorecard;

@@ -6,11 +6,12 @@ use super::*;
 fn detects_by_md_presence_and_has_no_principles() {
     let d = tempfile::tempdir().unwrap();
     let p = MarkdownPlugin;
-    assert!(!p.detect(d.path(), &PluginInput::default()));
+    let cfg = p.config();
+    assert!(!p.detect(&cfg, d.path(), &PluginInput::default()));
     std::fs::write(d.path().join("README.md"), "# Hi\n").unwrap();
-    assert!(p.detect(d.path(), &PluginInput::default()));
+    assert!(p.detect(&cfg, d.path(), &PluginInput::default()));
     assert_eq!(p.name(), "markdown");
-    assert!(p.principles(&PluginInput::default()).is_empty());
+    assert!(p.principles(&cfg, &PluginInput::default()).is_empty());
 }
 
 #[test]
@@ -18,7 +19,8 @@ fn analyze_emits_file_nodes_with_loc() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(d.path().join("a.md"), "# Title\n\nbody line\n").unwrap();
     let p = MarkdownPlugin;
-    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
+    let cfg = p.config();
+    let g = p.analyze(&cfg, d.path(), &PluginInput::default()).unwrap();
     let file = g
         .nodes
         .iter()

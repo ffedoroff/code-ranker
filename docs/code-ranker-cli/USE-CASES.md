@@ -10,7 +10,7 @@ Two commands underlie everything:
   files. Thresholds come from `code-ranker.toml` (or `--threshold` overrides).
 - **`report`** — produces **artifacts** (JSON snapshot, HTML viewer) and the **advisory**
   outputs (`scorecard` triage, `prompt` for an AI). The advisory tiers (`warn` / `info`)
-  are driven by the **same `[rules.thresholds.file]` limits the gate enforces** — `warn` is the
+  are driven by the **same `[plugins.<lang>.rules.thresholds.file]` limits the gate enforces** — `warn` is the
   gate line, `info` an optional softer line below it — so the report shows what fails (or is
   about to fail) `check`. Always exits `0`.
 
@@ -327,7 +327,7 @@ code-ranker check . --threshold file.cognitive=25
 **Override a config value inline via `--config KEY=VALUE`.**
 
 ```sh
-code-ranker check . --config rules.thresholds.file.hk=200000
+code-ranker check . --config plugins.base.rules.thresholds.file.hk=200000
 ```
 
 **Layer an extra config file on top of the project's (last wins).**

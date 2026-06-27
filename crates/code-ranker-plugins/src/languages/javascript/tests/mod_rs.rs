@@ -12,14 +12,16 @@ fn plugin_name_is_javascript() {
 fn detect_requires_package_json() {
     let tmp = TempDir::new().unwrap();
     let input = PluginInput::default();
-    assert!(!JavascriptPlugin.detect(tmp.path(), &input));
+    let cfg = JavascriptPlugin.config();
+    assert!(!JavascriptPlugin.detect(&cfg, tmp.path(), &input));
     fs::write(tmp.path().join("package.json"), "{}").unwrap();
-    assert!(JavascriptPlugin.detect(tmp.path(), &input));
+    assert!(JavascriptPlugin.detect(&cfg, tmp.path(), &input));
 }
 
 #[test]
 fn levels_returns_files_and_functions() {
-    let levels = JavascriptPlugin.levels();
+    let cfg = JavascriptPlugin.config();
+    let levels = JavascriptPlugin.levels(&cfg);
     assert_eq!(levels.len(), 2);
     assert_eq!(levels[0].name, "files");
     assert!(levels[0].edge_kinds.contains_key("uses"));
@@ -46,8 +48,9 @@ fn function_units_extracts_per_function_nodes() {
         }],
         edges: vec![],
     };
+    let cfg = JavascriptPlugin.config();
     let units: Vec<_> = JavascriptPlugin
-        .function_units(&graph)
+        .function_units(&cfg, &graph)
         .into_iter()
         .map(|(n, _)| n)
         .collect();
@@ -74,8 +77,9 @@ fn analyze_builds_js_graph_with_imports_and_externals() {
     );
     write_file(root, "src/b.js", "export function greet() { return 1; }\n");
 
+    let cfg = JavascriptPlugin.config();
     let graph = JavascriptPlugin
-        .analyze(root, &PluginInput::default())
+        .analyze(&cfg, root, &PluginInput::default())
         .expect("analyze should succeed");
 
     let a_id = root.join("src/a.js").to_string_lossy().into_owned();
@@ -101,11 +105,12 @@ fn metrics_annotates_file_nodes() {
         "src/a.js",
         "export function f(x) { if (x > 0) { return 1; } return 2; }\n",
     );
+    let cfg = JavascriptPlugin.config();
     let graph = JavascriptPlugin
-        .analyze(root, &PluginInput::default())
+        .analyze(&cfg, root, &PluginInput::default())
         .expect("analyze should succeed");
     // The plugin measures inputs; the orchestrator (here, the test) writes them.
-    let inputs = JavascriptPlugin.metrics(&graph);
+    let inputs = JavascriptPlugin.metrics(&cfg, &graph);
     assert_eq!(inputs.len(), 1, "the single .js file node is measured");
 
     let a_id = root.join("src/a.js").to_string_lossy().into_owned();
@@ -135,6 +140,7 @@ fn metrics_skip_unreadable_and_unsupported_files() {
         nodes: vec![n("/no/such/missing.js"), n("/x/readme.txt")],
         edges: vec![],
     };
-    assert!(JavascriptPlugin.metrics(&graph).is_empty());
-    assert!(JavascriptPlugin.function_units(&graph).is_empty());
+    let cfg = JavascriptPlugin.config();
+    assert!(JavascriptPlugin.metrics(&cfg, &graph).is_empty());
+    assert!(JavascriptPlugin.function_units(&cfg, &graph).is_empty());
 }

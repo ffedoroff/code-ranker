@@ -1,6 +1,7 @@
 function getNavParams() {
   const p = new URLSearchParams(location.search);
   return {
+    lang:  p.get('lang'),
     level: p.get('level'),
     node:  p.get('node'),
     side:  p.get('side'),
@@ -36,7 +37,13 @@ function navDepth() {
 }
 
 function navViewState() {
+  const snap = window.CURRENT ?? window.BASELINE;
+  const langs = (typeof langKeys === 'function' && snap) ? langKeys(snap) : [];
+  // Omit `lang` when there is only one language — keeps URLs clean for existing
+  // single-language reports.
+  const langVal = langs.length > 1 ? ((typeof currentLang === 'function' ? currentLang() : null) || langs[0]) : null;
   return {
+    lang:  langVal,
     level: currentLevel() ?? null,
     side:  navSide(),
     group: window.drillGroup  || null,
@@ -49,6 +56,7 @@ function navViewState() {
 }
 function navViewUrl(st) {
   const p = new URLSearchParams();
+  if (st.lang)  p.set('lang',  st.lang);
   if (st.level) p.set('level', st.level);
   if (st.side)  p.set('side',  st.side);
   if (st.group) p.set('group', st.group);
@@ -106,10 +114,25 @@ function switchToLevel(target) {
   const sec = document.querySelector('.view.active');
   if (sec && sec.dataset.rendered !== 'true' && window.gv) renderView(sec);
 }
+// Switch the active language and rebuild the level sections + switchers for it.
+// Persists `lang` in the URL; uses replaceState (no extra history entry).
+function switchToLang(target) {
+  if (typeof setLang === 'function') setLang(target);
+  // Highlight the selected tab in the language switcher.
+  document.querySelectorAll('#lang-switch a').forEach(a => a.classList.toggle('selected', a.dataset.lang === target));
+  // Rebuild level sections / diff / cycles for the new language.
+  if (typeof updateFilesTab === 'function') updateFilesTab();
+  if (typeof recomputeAll  === 'function') recomputeAll();
+  // Persist language in the URL.
+  const st = navViewState();
+  history.replaceState(st, '', navViewUrl(st));
+}
 function openModalForNode(nodeId, level) {
   // Is the node on the side currently shown? (vs. only in the union/DIFF)
   const onSide   = activeGraph(level).nodes.find(n => n.id === nodeId);
-  const nodeData = onSide ?? window.DIFF?.[level]?.nodes?.find(n => n.id === nodeId);
+  // DIFF is keyed [lang][level]; resolve the active language.
+  const _nLang   = (typeof currentLang === 'function' ? currentLang() : null) || Object.keys(window.DIFF || {})[0];
+  const nodeData = onSide ?? window.DIFF?.[_nLang]?.[level]?.nodes?.find(n => n.id === nodeId);
   if (!nodeData) return false;
   // Remember which node the modal shows so a baseline⇄current toggle can re-render it.
   // On a FRESH open (the overlay is not already visible) also remember it as the

@@ -14,17 +14,12 @@ mod overrides;
 // live in a sibling module and depend only on the `model` types, so this
 // import does not form a parent↔child cycle.
 use overrides::{apply_cli_overrides, apply_inline_overrides};
-// The remaining override helpers — and the model types they exercise — are
-// referenced only by `load_test.rs` (via `super::*`); import them under
-// `#[cfg(test)]` so normal builds stay warning-free.
+// The remaining override helpers are referenced only by `load_test.rs` (via
+// `super::*`); import them under `#[cfg(test)]` so normal builds stay warning-free.
 #[cfg(test)]
-use super::model::{CycleRule, MetricThresholds};
-#[cfg(test)]
-use overrides::{
-    parse_cycle_rule, parse_on_off, parse_threshold_path, set_cycle, set_metric, set_threshold,
-    split_kv,
-};
+use overrides::{parse_cycle_rule, parse_on_off, parse_threshold_path, split_kv};
 
+#[derive(Debug)]
 pub struct LoadedConfig {
     pub config: Config,
     pub source_file: Option<String>,
@@ -66,6 +61,17 @@ pub fn load(
         None => log::verbose("config: built-in defaults (no config file found)"),
     }
     let merged = layers.into_iter().fold(builtin_table(), deep_merge);
+
+    // Hard-error on the legacy singular `plugin` key before serde gets a chance to
+    // reject it with a cryptic `unknown field`. This lets us give a directed
+    // migration message instead.
+    if merged.contains_key("plugin") {
+        anyhow::bail!(
+            "`plugin = \"x\"` is no longer supported; use `plugins = [\"x\"]` instead \
+             (version 5.0 schema)"
+        );
+    }
+
     let mut config: Config = merged
         .clone()
         .try_into()
@@ -92,19 +98,27 @@ fn builtin_table() -> Table {
 }
 
 /// Validate every configured threshold key once the full config is known: a key
-/// is legal if it is a registry per-file metric OR a project `[metrics.<key>]`.
-/// Deferred here (not in the deserializer) so a custom metric — invisible to the
-/// `MetricThresholds` deserializer — is accepted while a typo still fails fast.
+/// is legal if it is a registry per-file metric, a project `[metrics.<key>]`, OR
+/// a metric key declared under any `[languages.*].metrics` table (a per-language
+/// custom metric is a valid global-threshold target).
+/// Deferred here (not in the deserializer) so custom metrics — invisible to the
+/// `MetricThresholds` deserializer — are accepted while a typo still fails fast.
 fn validate_thresholds(cfg: &Config) -> Result<()> {
-    for key in cfg.rules.thresholds.file.limits.keys() {
-        if super::metrics::is_threshold_metric(key) || cfg.metrics.contains_key(key) {
-            continue;
+    // Thresholds are per-language now: validate each configured language's effective
+    // `[rules.thresholds.file]` (base ⊕ <lang>) against that language's metric
+    // vocabulary (registry metrics ∪ its own `[metrics.<key>]`).
+    for lang in cfg.plugins.languages.keys() {
+        let lc = cfg.language_config(lang)?;
+        for key in lc.rules.thresholds.file.limits.keys() {
+            if super::metrics::is_threshold_metric(key) || lc.metrics.contains_key(key) {
+                continue;
+            }
+            anyhow::bail!(
+                "unknown threshold metric {key:?} under [plugins.{lang}]; expected a per-file \
+                 metric (e.g. sloc, loc, cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, \
+                 bugs) or a custom [plugins.{lang}.metrics.{key}] / [plugins.base.metrics.{key}]"
+            );
         }
-        anyhow::bail!(
-            "unknown threshold metric {key:?}; expected a per-file metric (e.g. sloc, loc, \
-             cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, bugs) or a custom \
-             [metrics.{key}] defined in this config"
-        );
     }
     Ok(())
 }

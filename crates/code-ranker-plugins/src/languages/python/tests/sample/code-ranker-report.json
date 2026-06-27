@@ -1,5 +1,5 @@
 {
-  "command": "code-ranker report crates/code-ranker-plugins/src/languages/python/tests/sample --config crates/code-ranker-plugins/src/languages/python/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/python/tests/sample/code-ranker-report.json --output.mode quiet",
+  "command": "code-ranker report crates/code-ranker-plugins/src/languages/python/tests/sample --config crates/code-ranker-plugins/src/languages/python/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/python/tests/sample/code-ranker-report.json",
   "config_file": "crates/code-ranker-plugins/src/languages/python/tests/sample/code-ranker.toml",
   "generated_at": "1970-01-01T00:00:00Z",
   "git": {
@@ -8,1064 +8,1070 @@
     "dirty_files": 0,
     "origin": "git@example.com:org/repo.git"
   },
-  "graphs": {
-    "files": {
-      "attribute_groups": {
-        "complexity": {
-          "description": "per-function branching, nesting & size",
-          "label": "Complexity"
-        },
-        "coupling": {
-          "description": "how tightly modules depend on each other",
-          "label": "Coupling"
-        },
-        "halstead": {
-          "description": "operator/operand vocabulary & derived effort",
-          "label": "Halstead"
-        },
-        "loc": {
-          "description": "physical line counts",
-          "label": "Lines of Code"
-        },
-        "maintainability": {
-          "description": "composite score",
-          "label": "Maintainability"
-        }
-      },
-      "cycle_kinds": {
-        "chain": {
-          "description": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries.",
-          "label": "Chain",
-          "remediation": "Run `code-ranker docs ADP` and follow its instructions."
-        },
-        "mutual": {
-          "description": "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling.",
-          "label": "Mutual",
-          "remediation": "Run `code-ranker docs ADP` and follow its instructions."
-        }
-      },
-      "cycles": [
-        {
-          "kind": "chain",
+  "languages": {
+    "python": {
+      "graphs": {
+        "files": {
+          "attribute_groups": {
+            "complexity": {
+              "description": "per-function branching, nesting & size",
+              "label": "Complexity"
+            },
+            "coupling": {
+              "description": "how tightly modules depend on each other",
+              "label": "Coupling"
+            },
+            "halstead": {
+              "description": "operator/operand vocabulary & derived effort",
+              "label": "Halstead"
+            },
+            "loc": {
+              "description": "physical line counts",
+              "label": "Lines of Code"
+            },
+            "maintainability": {
+              "description": "composite score",
+              "label": "Maintainability"
+            }
+          },
+          "cycle_kinds": {
+            "chain": {
+              "description": "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries.",
+              "label": "Chain",
+              "remediation": "Run `code-ranker docs ADP` and follow its instructions."
+            },
+            "mutual": {
+              "description": "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling.",
+              "label": "Mutual",
+              "remediation": "Run `code-ranker docs ADP` and follow its instructions."
+            }
+          },
+          "cycles": [
+            {
+              "kind": "chain",
+              "nodes": [
+                "{target}/pkg/chain1.py",
+                "{target}/pkg/chain3.py",
+                "{target}/pkg/chain2.py"
+              ]
+            },
+            {
+              "kind": "mutual",
+              "nodes": [
+                "{target}/pkg/a.py",
+                "{target}/pkg/b.py"
+              ]
+            }
+          ],
+          "edge_attributes": {},
+          "edge_kinds": {
+            "uses": {
+              "description": "Import dependency — this file imports from the other.",
+              "flow": true,
+              "label": "uses"
+            }
+          },
+          "edges": [
+            {
+              "kind": "uses",
+              "line": 21,
+              "source": "{target}/pkg/a.py",
+              "target": "ext:base64"
+            },
+            {
+              "kind": "uses",
+              "line": 6,
+              "source": "{target}/pkg/a.py",
+              "target": "ext:json"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/pkg/a.py",
+              "target": "ext:os"
+            },
+            {
+              "kind": "uses",
+              "line": 8,
+              "source": "{target}/pkg/a.py",
+              "target": "{target}/pkg/__init__.py"
+            },
+            {
+              "kind": "uses",
+              "line": 8,
+              "source": "{target}/pkg/a.py",
+              "target": "{target}/pkg/b.py"
+            },
+            {
+              "kind": "uses",
+              "line": 9,
+              "source": "{target}/pkg/a.py",
+              "target": "{target}/pkg/c.py"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/pkg/b.py",
+              "target": "ext:importlib"
+            },
+            {
+              "kind": "uses",
+              "line": 6,
+              "source": "{target}/pkg/b.py",
+              "target": "{target}/pkg/__init__.py"
+            },
+            {
+              "kind": "uses",
+              "line": 6,
+              "source": "{target}/pkg/b.py",
+              "target": "{target}/pkg/a.py"
+            },
+            {
+              "kind": "uses",
+              "line": 7,
+              "source": "{target}/pkg/b.py",
+              "target": "{target}/pkg/c.py"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/pkg/c.py",
+              "target": "ext:requests"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/pkg/chain1.py",
+              "target": "{target}/pkg/__init__.py"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/pkg/chain1.py",
+              "target": "{target}/pkg/chain2.py"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/pkg/chain2.py",
+              "target": "{target}/pkg/__init__.py"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/pkg/chain2.py",
+              "target": "{target}/pkg/chain3.py"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/pkg/chain3.py",
+              "target": "{target}/pkg/__init__.py"
+            },
+            {
+              "kind": "uses",
+              "line": 2,
+              "source": "{target}/pkg/chain3.py",
+              "target": "{target}/pkg/chain1.py"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/tests/test_pkg.py",
+              "target": "{target}/pkg/__init__.py"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/tests/test_pkg.py",
+              "target": "{target}/pkg/a.py"
+            },
+            {
+              "kind": "uses",
+              "line": 4,
+              "source": "{target}/tests/test_pkg.py",
+              "target": "{target}/pkg/b.py"
+            }
+          ],
+          "node_attributes": {
+            "args": {
+              "description": "Number of function / closure arguments.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Args",
+              "name": "Arguments",
+              "short": "Args",
+              "value_type": "int"
+            },
+            "blank": {
+              "description": "Empty or whitespace-only lines.",
+              "group": "loc",
+              "label": "Blank",
+              "name": "Blank lines",
+              "short": "Blank",
+              "value_type": "int"
+            },
+            "branches": {
+              "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Branches",
+              "name": "Decision points",
+              "short": "Branches",
+              "value_type": "int"
+            },
+            "bugs": {
+              "calc": "effort ** (2/3) / 3000",
+              "description": "Estimated delivered bugs — a rough predictor of defect density.",
+              "direction": "lower_better",
+              "formula": "effort^⅔ ÷ 3000",
+              "group": "halstead",
+              "label": "Bugs",
+              "name": "Estimated bugs",
+              "short": "H.bugs",
+              "value_type": "float"
+            },
+            "cloc": {
+              "description": "Comment-only lines (inline comments on code lines are not counted).",
+              "group": "loc",
+              "label": "Comments",
+              "name": "Comment lines",
+              "short": "Comments",
+              "value_type": "int"
+            },
+            "closures": {
+              "description": "Number of closures defined in the unit.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Closures",
+              "name": "Closures defined",
+              "short": "Closures",
+              "value_type": "int"
+            },
+            "cognitive": {
+              "description": "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Cognitive",
+              "name": "Cognitive complexity",
+              "short": "Cognitive",
+              "value_type": "int"
+            },
+            "cycle": {
+              "description": "Cycle kind this node participates in.",
+              "group": "coupling",
+              "label": "Cycle",
+              "name": "Dependency cycle",
+              "short": "Cycle",
+              "value_type": "str"
+            },
+            "cyclomatic": {
+              "calc": "spaces + branches",
+              "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
+              "direction": "lower_better",
+              "formula": "spaces + branches",
+              "group": "complexity",
+              "label": "Cyclomatic",
+              "name": "Cyclomatic complexity",
+              "omit_at": 1.0,
+              "short": "Cyclomatic",
+              "value_type": "int"
+            },
+            "effort": {
+              "calc": "(eta1 / 2) * (n2 / eta2) * volume",
+              "description": "Mental effort to implement the algorithm.",
+              "direction": "lower_better",
+              "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
+              "group": "halstead",
+              "label": "Effort",
+              "name": "Implementation effort",
+              "short": "H.effort",
+              "value_type": "float"
+            },
+            "eta1": {
+              "description": "Distinct operators (η₁): the count of unique operator token kinds. Python counts the keywords `and or not is in if elif else for while try except finally with return yield await async def del raise pass break continue global exec assert import from as print`, arithmetic / bitwise / comparison / assignment operators (`+ - * / // % ** & | ^ << ~ < <= == != >= > <> := = += -= *= /= //= %= **= >>= <<= &= ^= |= @=`), and `. , @ -> *`.",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "η₁",
+              "name": "Unique operators",
+              "short": "η₁",
+              "value_type": "int"
+            },
+            "eta2": {
+              "description": "Distinct operands (η₂): the count of unique operand texts. Python counts identifiers, numeric literals (`integer`, `float`), the constants `True` / `False` / `None`, and string literals — except a bare docstring (a string that is the sole statement of its block), which is treated as a comment, not an operand.",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "η₂",
+              "name": "Unique operands",
+              "short": "η₂",
+              "value_type": "int"
+            },
+            "exits": {
+              "description": "Number of exit points (return/throw) in the unit.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Exits",
+              "name": "Exit points",
+              "short": "Exits",
+              "value_type": "int"
+            },
+            "external": {
+              "label": "External",
+              "value_type": "bool"
+            },
+            "fan_in": {
+              "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
+              "group": "coupling",
+              "label": "Fan-in",
+              "name": "Incoming dependencies",
+              "short": "Fan-in",
+              "value_type": "int"
+            },
+            "fan_out": {
+              "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
+              "group": "coupling",
+              "label": "Fan-out",
+              "name": "Outgoing dependencies",
+              "short": "Fan-out",
+              "value_type": "int"
+            },
+            "fan_out_external": {
+              "description": "Number of distinct external libraries this node depends on.",
+              "group": "coupling",
+              "label": "Fan-out (external)",
+              "name": "External dependencies",
+              "short": "Fan-out (external)",
+              "value_type": "int"
+            },
+            "hk": {
+              "abbreviate": true,
+              "calc": "sloc * (fan_in * fan_out) ** 2",
+              "description": "Henry-Kafura information-flow complexity: a module that is both a busy crossroads (high fan-in × fan-out) and large — the most expensive place in the codebase to change.",
+              "direction": "lower_better",
+              "formula": "sloc × (fan_in × fan_out)²",
+              "group": "coupling",
+              "label": "HK",
+              "name": "God-object risk",
+              "short": "HK",
+              "value_type": "float"
+            },
+            "length": {
+              "calc": "n1 + n2",
+              "description": "Program length — total operator + operand occurrences.",
+              "direction": "lower_better",
+              "formula": "n1 + n2",
+              "group": "halstead",
+              "label": "Length",
+              "name": "Total tokens",
+              "short": "H.len",
+              "value_type": "float"
+            },
+            "lloc": {
+              "description": "Logical lines — counts statements, not physical lines.",
+              "group": "loc",
+              "label": "Logical",
+              "name": "Logical lines",
+              "short": "Logical",
+              "value_type": "int"
+            },
+            "loc": {
+              "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
+              "group": "loc",
+              "label": "Lines",
+              "name": "Total lines",
+              "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
+              "value_type": "int"
+            },
+            "mi": {
+              "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
+              "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
+              "direction": "higher_better",
+              "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
+              "group": "maintainability",
+              "label": "MI",
+              "name": "Maintainability index",
+              "short": "MI",
+              "value_type": "float"
+            },
+            "mi_sei": {
+              "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
+              "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
+              "direction": "higher_better",
+              "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
+              "group": "maintainability",
+              "label": "MI (SEI)",
+              "name": "Maintainability (SEI)",
+              "short": "MI SEI",
+              "value_type": "float"
+            },
+            "n1": {
+              "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "N₁",
+              "name": "Total operators",
+              "short": "N₁",
+              "value_type": "int"
+            },
+            "n2": {
+              "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
+              "direction": "lower_better",
+              "group": "halstead",
+              "label": "N₂",
+              "name": "Total operands",
+              "short": "N₂",
+              "value_type": "int"
+            },
+            "sloc": {
+              "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count).",
+              "group": "loc",
+              "label": "Source",
+              "name": "Source lines",
+              "short": "SLOC",
+              "value_type": "int"
+            },
+            "spaces": {
+              "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
+              "direction": "lower_better",
+              "group": "complexity",
+              "label": "Spaces",
+              "name": "Code units",
+              "short": "Spaces",
+              "value_type": "int"
+            },
+            "span_sloc": {
+              "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
+              "direction": "lower_better",
+              "group": "maintainability",
+              "label": "Span",
+              "name": "Line span",
+              "short": "Span",
+              "value_type": "int"
+            },
+            "time": {
+              "calc": "effort / 18",
+              "description": "Estimated implementation time, in seconds.",
+              "direction": "lower_better",
+              "formula": "effort ÷ 18",
+              "group": "halstead",
+              "label": "Time",
+              "name": "Coding time (s)",
+              "short": "H.time(s)",
+              "value_type": "float"
+            },
+            "visibility": {
+              "label": "Visibility",
+              "value_type": "str"
+            },
+            "vocabulary": {
+              "calc": "eta1 + eta2",
+              "description": "Vocabulary — distinct operators + operands.",
+              "direction": "lower_better",
+              "formula": "eta1 + eta2",
+              "group": "halstead",
+              "label": "Vocabulary",
+              "name": "Distinct symbols",
+              "short": "H.vocab",
+              "value_type": "float"
+            },
+            "volume": {
+              "calc": "length * Math.log2(vocabulary)",
+              "description": "Algorithm size in bits, from distinct operators and operands.",
+              "direction": "lower_better",
+              "formula": "length × log₂(vocabulary)",
+              "group": "halstead",
+              "label": "Volume",
+              "name": "Code volume",
+              "short": "H.vol",
+              "value_type": "float"
+            }
+          },
+          "node_kinds": {
+            "external": {
+              "external": true,
+              "fill": "#f6e2c0",
+              "label": "Library",
+              "plural": "Libraries",
+              "stroke": "#b3801f"
+            },
+            "file": {
+              "fill": "#dbe9f4",
+              "label": "File",
+              "plural": "Files",
+              "stroke": "#4d6f9c"
+            }
+          },
           "nodes": [
-            "{target}/pkg/chain1.py",
-            "{target}/pkg/chain3.py",
-            "{target}/pkg/chain2.py"
-          ]
+            {
+              "external": true,
+              "id": "ext:base64",
+              "kind": "external",
+              "name": "base64"
+            },
+            {
+              "external": true,
+              "id": "ext:importlib",
+              "kind": "external",
+              "name": "importlib"
+            },
+            {
+              "external": true,
+              "id": "ext:json",
+              "kind": "external",
+              "name": "json"
+            },
+            {
+              "external": true,
+              "id": "ext:os",
+              "kind": "external",
+              "name": "os"
+            },
+            {
+              "external": true,
+              "id": "ext:requests",
+              "kind": "external",
+              "name": "requests"
+            },
+            {
+              "blank": 1,
+              "bugs": 0.00174,
+              "cloc": 8,
+              "effort": 12,
+              "eta1": 3,
+              "eta2": 1,
+              "fan_in": 6,
+              "id": "{target}/pkg/__init__.py",
+              "kind": "file",
+              "length": 4,
+              "lloc": 2,
+              "loc": 10,
+              "mi": 124.361,
+              "mi_sei": 153.513,
+              "n1": 3,
+              "n2": 1,
+              "name": "__init__.py",
+              "sloc": 1,
+              "spaces": 1,
+              "span_sloc": 9,
+              "time": 0.666,
+              "visibility": "public",
+              "vocabulary": 4,
+              "volume": 8
+            },
+            {
+              "args": 1,
+              "blank": 9,
+              "bugs": 0.0531,
+              "cloc": 11,
+              "cycle": "mutual",
+              "cyclomatic": 4,
+              "effort": 2013.517,
+              "eta1": 8,
+              "eta2": 21,
+              "exits": 3,
+              "fan_in": 2,
+              "fan_out": 3,
+              "fan_out_external": 3,
+              "hk": 468,
+              "id": "{target}/pkg/a.py",
+              "kind": "file",
+              "length": 64,
+              "lloc": 11,
+              "loc": 28,
+              "mi": 86.842,
+              "mi_sei": 91.762,
+              "n1": 30,
+              "n2": 34,
+              "name": "a.py",
+              "sloc": 13,
+              "spaces": 4,
+              "span_sloc": 27,
+              "time": 111.862,
+              "visibility": "public",
+              "vocabulary": 29,
+              "volume": 310.91
+            },
+            {
+              "blank": 6,
+              "branches": 1,
+              "bugs": 0.0487,
+              "cloc": 8,
+              "cognitive": 1,
+              "cycle": "mutual",
+              "cyclomatic": 4,
+              "effort": 1766.48,
+              "eta1": 12,
+              "eta2": 18,
+              "exits": 2,
+              "fan_in": 2,
+              "fan_out": 3,
+              "fan_out_external": 1,
+              "hk": 360,
+              "id": "{target}/pkg/b.py",
+              "kind": "file",
+              "length": 45,
+              "lloc": 9,
+              "loc": 22,
+              "mi": 92.692,
+              "mi_sei": 99.283,
+              "n1": 21,
+              "n2": 24,
+              "name": "b.py",
+              "sloc": 10,
+              "spaces": 3,
+              "span_sloc": 21,
+              "time": 98.137,
+              "visibility": "public",
+              "vocabulary": 30,
+              "volume": 220.81
+            },
+            {
+              "blank": 6,
+              "bugs": 0.0105,
+              "cloc": 3,
+              "cyclomatic": 3,
+              "effort": 176.927,
+              "eta1": 5,
+              "eta2": 8,
+              "exits": 2,
+              "fan_in": 2,
+              "fan_out_external": 1,
+              "id": "{target}/pkg/c.py",
+              "kind": "file",
+              "length": 17,
+              "lloc": 5,
+              "loc": 15,
+              "mi": 106.02,
+              "mi_sei": 110.421,
+              "n1": 8,
+              "n2": 9,
+              "name": "c.py",
+              "sloc": 6,
+              "spaces": 3,
+              "span_sloc": 14,
+              "time": 9.829,
+              "visibility": "public",
+              "vocabulary": 13,
+              "volume": 62.907
+            },
+            {
+              "blank": 2,
+              "bugs": 0.00713,
+              "cloc": 1,
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 99.06,
+              "eta1": 5,
+              "eta2": 4,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 2,
+              "hk": 12,
+              "id": "{target}/pkg/chain1.py",
+              "kind": "file",
+              "length": 10,
+              "lloc": 3,
+              "loc": 7,
+              "mi": 123.54,
+              "mi_sei": 132.29,
+              "n1": 5,
+              "n2": 5,
+              "name": "chain1.py",
+              "sloc": 3,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 5.503,
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 31.699
+            },
+            {
+              "blank": 2,
+              "bugs": 0.00713,
+              "cloc": 1,
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 99.06,
+              "eta1": 5,
+              "eta2": 4,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 2,
+              "hk": 12,
+              "id": "{target}/pkg/chain2.py",
+              "kind": "file",
+              "length": 10,
+              "lloc": 3,
+              "loc": 7,
+              "mi": 123.54,
+              "mi_sei": 132.29,
+              "n1": 5,
+              "n2": 5,
+              "name": "chain2.py",
+              "sloc": 3,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 5.503,
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 31.699
+            },
+            {
+              "blank": 2,
+              "bugs": 0.00713,
+              "cloc": 1,
+              "cycle": "chain",
+              "cyclomatic": 2,
+              "effort": 99.06,
+              "eta1": 5,
+              "eta2": 4,
+              "exits": 1,
+              "fan_in": 1,
+              "fan_out": 2,
+              "hk": 12,
+              "id": "{target}/pkg/chain3.py",
+              "kind": "file",
+              "length": 10,
+              "lloc": 3,
+              "loc": 7,
+              "mi": 123.54,
+              "mi_sei": 132.29,
+              "n1": 5,
+              "n2": 5,
+              "name": "chain3.py",
+              "sloc": 3,
+              "spaces": 2,
+              "span_sloc": 6,
+              "time": 5.503,
+              "visibility": "public",
+              "vocabulary": 9,
+              "volume": 31.699
+            },
+            {
+              "args": 4,
+              "blank": 2,
+              "branches": 4,
+              "bugs": 0.076,
+              "cloc": 7,
+              "closures": 1,
+              "cognitive": 5,
+              "cyclomatic": 6,
+              "effort": 3447.42,
+              "eta1": 13,
+              "eta2": 8,
+              "exits": 3,
+              "id": "{target}/pkg/complex.py",
+              "kind": "file",
+              "length": 42,
+              "lloc": 7,
+              "loc": 16,
+              "mi": 98.618,
+              "mi_sei": 110.762,
+              "n1": 19,
+              "n2": 23,
+              "name": "complex.py",
+              "sloc": 8,
+              "spaces": 2,
+              "span_sloc": 15,
+              "time": 191.523,
+              "visibility": "public",
+              "vocabulary": 21,
+              "volume": 184.477
+            },
+            {
+              "blank": 3,
+              "branches": 1,
+              "bugs": 0.0141,
+              "cloc": 3,
+              "cyclomatic": 3,
+              "effort": 276.299,
+              "eta1": 7,
+              "eta2": 6,
+              "fan_out": 3,
+              "id": "{target}/tests/test_pkg.py",
+              "kind": "file",
+              "length": 16,
+              "lloc": 3,
+              "loc": 9,
+              "mi": 115.401,
+              "mi_sei": 131.726,
+              "n1": 8,
+              "n2": 8,
+              "name": "test_pkg.py",
+              "sloc": 3,
+              "spaces": 2,
+              "span_sloc": 8,
+              "time": 15.349,
+              "visibility": "public",
+              "vocabulary": 13,
+              "volume": 59.207
+            }
+          ],
+          "stats": {
+            "blank": 3.666,
+            "bugs": 0.025,
+            "cloc": 4.777,
+            "cognitive": 3,
+            "cyclomatic": 3.25,
+            "effort": 887.758,
+            "fan_in": 2.142,
+            "fan_out": 2.5,
+            "hk": 172.8,
+            "length": 24.222,
+            "mi": 110.505,
+            "mi_sei": 121.593,
+            "sloc": 5.555,
+            "time": 49.319,
+            "vocabulary": 15.222,
+            "volume": 104.6
+          },
+          "ui": {
+            "card": [
+              "hk",
+              "sloc"
+            ],
+            "columns": [
+              "kind",
+              "cycle",
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "volume",
+              "bugs",
+              "effort",
+              "time",
+              "length",
+              "vocabulary",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank"
+            ],
+            "default_sort": "cycle",
+            "filter": [
+              "cycle"
+            ],
+            "size": [
+              "sloc",
+              "hk"
+            ],
+            "sort": [
+              "cycle",
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "volume",
+              "bugs",
+              "effort",
+              "time",
+              "length",
+              "vocabulary",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank"
+            ],
+            "summary": [
+              "sloc",
+              "hk",
+              "fan_in",
+              "fan_out",
+              "volume",
+              "bugs",
+              "effort",
+              "time",
+              "length",
+              "vocabulary",
+              "cyclomatic",
+              "cognitive",
+              "mi",
+              "mi_sei",
+              "lloc",
+              "cloc",
+              "blank"
+            ]
+          }
+        }
+      },
+      "principles": [
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/CPX.md",
+          "id": "CPX",
+          "label": "CPX",
+          "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
+          "sort_metric": "cognitive",
+          "title": "CPX — Reduce Complexity"
         },
         {
-          "kind": "mutual",
-          "nodes": [
-            "{target}/pkg/a.py",
-            "{target}/pkg/b.py"
-          ]
+          "connections": [
+            "common"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/ADP.md",
+          "id": "ADP",
+          "label": "ADP",
+          "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
+          "sort_metric": "cycle",
+          "title": "ADP — Acyclic Dependencies Principle"
+        },
+        {
+          "connections": [
+            "in",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/SRP.md",
+          "id": "SRP",
+          "label": "SRP",
+          "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
+          "sort_metric": "sloc",
+          "title": "SRP — Single Responsibility Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/OCP.md",
+          "id": "OCP",
+          "label": "OCP",
+          "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
+          "sort_metric": "cyclomatic",
+          "title": "OCP — Open/Closed Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/LSP.md",
+          "id": "LSP",
+          "label": "LSP",
+          "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
+          "sort_metric": "hk",
+          "title": "LSP — Liskov Substitution Principle"
+        },
+        {
+          "connections": [
+            "in"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/ISP.md",
+          "id": "ISP",
+          "label": "ISP",
+          "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
+          "sort_metric": "items",
+          "title": "ISP — Interface Segregation Principle"
+        },
+        {
+          "connections": [
+            "common",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/DIP.md",
+          "id": "DIP",
+          "label": "DIP",
+          "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
+          "sort_metric": "fan_out",
+          "title": "DIP — Dependency Inversion Principle"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/DRY.md",
+          "id": "DRY",
+          "label": "DRY",
+          "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
+          "sort_metric": "sloc",
+          "title": "DRY — Don't Repeat Yourself"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/KISS.md",
+          "id": "KISS",
+          "label": "KISS",
+          "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
+          "sort_metric": "cognitive",
+          "title": "KISS — Keep It Simple"
+        },
+        {
+          "connections": [
+            "common",
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/LoD.md",
+          "id": "LoD",
+          "label": "LoD",
+          "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
+          "sort_metric": "fan_out",
+          "title": "Law of Demeter — Principle of Least Knowledge"
+        },
+        {
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/MISU.md",
+          "id": "MISU",
+          "label": "MISU",
+          "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
+          "sort_metric": "cyclomatic",
+          "title": "MISU — Make Invalid States Unrepresentable"
+        },
+        {
+          "connections": [
+            "common"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/CoI.md",
+          "id": "CoI",
+          "label": "CoI",
+          "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
+          "sort_metric": "items",
+          "title": "CoI — Composition Over Inheritance"
+        },
+        {
+          "connections": [
+            "out"
+          ],
+          "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/YAGNI.md",
+          "id": "YAGNI",
+          "label": "YAGNI",
+          "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
+          "sort_metric": "sloc",
+          "title": "YAGNI — You Aren't Gonna Need It"
         }
       ],
-      "edge_attributes": {},
-      "edge_kinds": {
-        "uses": {
-          "description": "Import dependency — this file imports from the other.",
-          "flow": true,
-          "label": "uses"
-        }
-      },
-      "edges": [
-        {
-          "kind": "uses",
-          "line": 21,
-          "source": "{target}/pkg/a.py",
-          "target": "ext:base64"
-        },
-        {
-          "kind": "uses",
-          "line": 6,
-          "source": "{target}/pkg/a.py",
-          "target": "ext:json"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/pkg/a.py",
-          "target": "ext:os"
-        },
-        {
-          "kind": "uses",
-          "line": 8,
-          "source": "{target}/pkg/a.py",
-          "target": "{target}/pkg/__init__.py"
-        },
-        {
-          "kind": "uses",
-          "line": 8,
-          "source": "{target}/pkg/a.py",
-          "target": "{target}/pkg/b.py"
-        },
-        {
-          "kind": "uses",
-          "line": 9,
-          "source": "{target}/pkg/a.py",
-          "target": "{target}/pkg/c.py"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/pkg/b.py",
-          "target": "ext:importlib"
-        },
-        {
-          "kind": "uses",
-          "line": 6,
-          "source": "{target}/pkg/b.py",
-          "target": "{target}/pkg/__init__.py"
-        },
-        {
-          "kind": "uses",
-          "line": 6,
-          "source": "{target}/pkg/b.py",
-          "target": "{target}/pkg/a.py"
-        },
-        {
-          "kind": "uses",
-          "line": 7,
-          "source": "{target}/pkg/b.py",
-          "target": "{target}/pkg/c.py"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/pkg/c.py",
-          "target": "ext:requests"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/pkg/chain1.py",
-          "target": "{target}/pkg/__init__.py"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/pkg/chain1.py",
-          "target": "{target}/pkg/chain2.py"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/pkg/chain2.py",
-          "target": "{target}/pkg/__init__.py"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/pkg/chain2.py",
-          "target": "{target}/pkg/chain3.py"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/pkg/chain3.py",
-          "target": "{target}/pkg/__init__.py"
-        },
-        {
-          "kind": "uses",
-          "line": 2,
-          "source": "{target}/pkg/chain3.py",
-          "target": "{target}/pkg/chain1.py"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/tests/test_pkg.py",
-          "target": "{target}/pkg/__init__.py"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/tests/test_pkg.py",
-          "target": "{target}/pkg/a.py"
-        },
-        {
-          "kind": "uses",
-          "line": 4,
-          "source": "{target}/tests/test_pkg.py",
-          "target": "{target}/pkg/b.py"
-        }
-      ],
-      "node_attributes": {
-        "args": {
-          "description": "Number of function / closure arguments.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Args",
-          "name": "Arguments",
-          "short": "Args",
-          "value_type": "int"
-        },
-        "blank": {
-          "description": "Empty or whitespace-only lines.",
-          "group": "loc",
-          "label": "Blank",
-          "name": "Blank lines",
-          "short": "Blank",
-          "value_type": "int"
-        },
-        "branches": {
-          "description": "Decision points: if / for / while / loop / match arm / try / && / ||. Feeds `cyclomatic`.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Branches",
-          "name": "Decision points",
-          "short": "Branches",
-          "value_type": "int"
-        },
-        "bugs": {
-          "calc": "effort ** (2/3) / 3000",
-          "description": "Estimated delivered bugs — a rough predictor of defect density.",
-          "direction": "lower_better",
-          "formula": "effort^⅔ ÷ 3000",
-          "group": "halstead",
-          "label": "Bugs",
-          "name": "Estimated bugs",
-          "short": "H.bugs",
-          "value_type": "float"
-        },
-        "cloc": {
-          "description": "Comment-only lines (inline comments on code lines are not counted).",
-          "group": "loc",
-          "label": "Comments",
-          "name": "Comment lines",
-          "short": "Comments",
-          "value_type": "int"
-        },
-        "closures": {
-          "description": "Number of closures defined in the unit.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Closures",
-          "name": "Closures defined",
-          "short": "Closures",
-          "value_type": "int"
-        },
-        "cognitive": {
-          "description": "How hard the code is for a human to follow — not just how many paths it has.<br>Like `cyclomatic` it adds +1 for each break in linear flow (`if`, `else`, `match`, loops, `catch`, chained `&&` / `||`), but it also adds an extra +1 for every level of nesting: an `if` inside a loop inside an `if` costs far more than three flat `if`s.<br>That nesting penalty is the point — deeply indented logic is what actually strains a reader, so a high `cognitive` next to a modest `cyclomatic` flags tangled, hard-to-read code.<br>Summed across every function in the file.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Cognitive",
-          "name": "Cognitive complexity",
-          "short": "Cognitive",
-          "value_type": "int"
-        },
-        "cycle": {
-          "description": "Cycle kind this node participates in.",
-          "group": "coupling",
-          "label": "Cycle",
-          "name": "Dependency cycle",
-          "short": "Cycle",
-          "value_type": "str"
-        },
-        "cyclomatic": {
-          "calc": "spaces + branches",
-          "description": "Number of independent paths through the code — roughly the minimum number of test cases needed to cover every branch.<br>A function starts at 1 and gains +1 per decision point: each `if` / `else if`, every `match` / `switch` arm, every loop, and each `&&` / `||` in a condition.<br>Summed across every function in the file, so it grows with both size and branching — the file's total branching burden.<br>Counts paths only, ignoring how deeply they nest. For a readability-weighted view see `cognitive`.",
-          "direction": "lower_better",
-          "formula": "spaces + branches",
-          "group": "complexity",
-          "label": "Cyclomatic",
-          "name": "Cyclomatic complexity",
-          "omit_at": 1.0,
-          "short": "Cyclomatic",
-          "value_type": "int"
-        },
-        "effort": {
-          "calc": "(eta1 / 2) * (n2 / eta2) * volume",
-          "description": "Mental effort to implement the algorithm.",
-          "direction": "lower_better",
-          "formula": "(eta1 ÷ 2) × (n2 ÷ eta2) × volume",
-          "group": "halstead",
-          "label": "Effort",
-          "name": "Implementation effort",
-          "short": "H.effort",
-          "value_type": "float"
-        },
-        "eta1": {
-          "description": "Distinct operators (η₁): the count of unique operator token kinds. Python counts the keywords `and or not is in if elif else for while try except finally with return yield await async def del raise pass break continue global exec assert import from as print`, arithmetic / bitwise / comparison / assignment operators (`+ - * / // % ** & | ^ << ~ < <= == != >= > <> := = += -= *= /= //= %= **= >>= <<= &= ^= |= @=`), and `. , @ -> *`.",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "η₁",
-          "name": "Unique operators",
-          "short": "η₁",
-          "value_type": "int"
-        },
-        "eta2": {
-          "description": "Distinct operands (η₂): the count of unique operand texts. Python counts identifiers, numeric literals (`integer`, `float`), the constants `True` / `False` / `None`, and string literals — except a bare docstring (a string that is the sole statement of its block), which is treated as a comment, not an operand.",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "η₂",
-          "name": "Unique operands",
-          "short": "η₂",
-          "value_type": "int"
-        },
-        "exits": {
-          "description": "Number of exit points (return/throw) in the unit.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Exits",
-          "name": "Exit points",
-          "short": "Exits",
-          "value_type": "int"
-        },
-        "external": {
-          "label": "External",
-          "value_type": "bool"
-        },
-        "fan_in": {
-          "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
-          "group": "coupling",
-          "label": "Fan-in",
-          "name": "Incoming dependencies",
-          "short": "Fan-in",
-          "value_type": "int"
-        },
-        "fan_out": {
-          "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
-          "group": "coupling",
-          "label": "Fan-out",
-          "name": "Outgoing dependencies",
-          "short": "Fan-out",
-          "value_type": "int"
-        },
-        "fan_out_external": {
-          "description": "Number of distinct external libraries this node depends on.",
-          "group": "coupling",
-          "label": "Fan-out (external)",
-          "name": "External dependencies",
-          "short": "Fan-out (external)",
-          "value_type": "int"
-        },
-        "hk": {
-          "abbreviate": true,
-          "calc": "sloc * (fan_in * fan_out) ** 2",
-          "description": "Henry-Kafura information-flow complexity: a module that is both a busy crossroads (high fan-in × fan-out) and large — the most expensive place in the codebase to change.",
-          "direction": "lower_better",
-          "formula": "sloc × (fan_in × fan_out)²",
-          "group": "coupling",
-          "label": "HK",
-          "name": "God-object risk",
-          "short": "HK",
-          "value_type": "float"
-        },
-        "length": {
-          "calc": "n1 + n2",
-          "description": "Program length — total operator + operand occurrences.",
-          "direction": "lower_better",
-          "formula": "n1 + n2",
-          "group": "halstead",
-          "label": "Length",
-          "name": "Total tokens",
-          "short": "H.len",
-          "value_type": "float"
-        },
-        "lloc": {
-          "description": "Logical lines — counts statements, not physical lines.",
-          "group": "loc",
-          "label": "Logical",
-          "name": "Logical lines",
-          "short": "Logical",
-          "value_type": "int"
-        },
-        "loc": {
-          "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
-          "group": "loc",
-          "label": "Lines",
-          "name": "Total lines",
-          "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
-          "value_type": "int"
-        },
-        "mi": {
-          "calc": "171 - 5.2*Math.log(volume) - 0.23*cyclomatic - 16.2*Math.log(span_sloc)",
-          "description": "Maintainability Index (0–100, higher is more maintainable). Derived from Halstead volume, cyclomatic complexity, and SLOC.",
-          "direction": "higher_better",
-          "formula": "171 − 5.2·ln(volume) − 0.23·cyclomatic − 16.2·ln(span_sloc)",
-          "group": "maintainability",
-          "label": "MI",
-          "name": "Maintainability index",
-          "short": "MI",
-          "value_type": "float"
-        },
-        "mi_sei": {
-          "calc": "171 - 5.2*Math.log2(volume) - 0.23*cyclomatic - 16.2*Math.log2(span_sloc) + 50*Math.sin(Math.sqrt(cloc / span_sloc * 2.4))",
-          "description": "SEI variant of the Maintainability Index — adds a bonus for comment density.",
-          "direction": "higher_better",
-          "formula": "171 − 5.2·log₂(volume) − 0.23·cyclomatic − 16.2·log₂(span_sloc) + 50·sin(√(cloc ÷ span_sloc × 2.4))",
-          "group": "maintainability",
-          "label": "MI (SEI)",
-          "name": "Maintainability (SEI)",
-          "short": "MI SEI",
-          "value_type": "float"
-        },
-        "n1": {
-          "description": "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated).",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "N₁",
-          "name": "Total operators",
-          "short": "N₁",
-          "value_type": "int"
-        },
-        "n2": {
-          "description": "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated).",
-          "direction": "lower_better",
-          "group": "halstead",
-          "label": "N₂",
-          "name": "Total operands",
-          "short": "N₂",
-          "value_type": "int"
-        },
-        "sloc": {
-          "description": "Source lines of code — lines with at least one non-whitespace, non-comment character. Blank and comment-only lines are not counted (unlike `loc`, the raw file line count).",
-          "group": "loc",
-          "label": "Source",
-          "name": "Source lines",
-          "short": "SLOC",
-          "value_type": "int"
-        },
-        "spaces": {
-          "description": "Unit count: the source file (1) plus each function / impl / trait / closure space. Feeds `cyclomatic`.",
-          "direction": "lower_better",
-          "group": "complexity",
-          "label": "Spaces",
-          "name": "Code units",
-          "short": "Spaces",
-          "value_type": "int"
-        },
-        "span_sloc": {
-          "description": "Line span of the unit (end_row − start_row) — the size input the Maintainability Index (`mi` / `mi_sei`) is computed from.",
-          "direction": "lower_better",
-          "group": "maintainability",
-          "label": "Span",
-          "name": "Line span",
-          "short": "Span",
-          "value_type": "int"
-        },
-        "time": {
-          "calc": "effort / 18",
-          "description": "Estimated implementation time, in seconds.",
-          "direction": "lower_better",
-          "formula": "effort ÷ 18",
-          "group": "halstead",
-          "label": "Time",
-          "name": "Coding time (s)",
-          "short": "H.time(s)",
-          "value_type": "float"
-        },
-        "visibility": {
-          "label": "Visibility",
-          "value_type": "str"
-        },
-        "vocabulary": {
-          "calc": "eta1 + eta2",
-          "description": "Vocabulary — distinct operators + operands.",
-          "direction": "lower_better",
-          "formula": "eta1 + eta2",
-          "group": "halstead",
-          "label": "Vocabulary",
-          "name": "Distinct symbols",
-          "short": "H.vocab",
-          "value_type": "float"
-        },
-        "volume": {
-          "calc": "length * Math.log2(vocabulary)",
-          "description": "Algorithm size in bits, from distinct operators and operands.",
-          "direction": "lower_better",
-          "formula": "length × log₂(vocabulary)",
-          "group": "halstead",
-          "label": "Volume",
-          "name": "Code volume",
-          "short": "H.vol",
-          "value_type": "float"
-        }
-      },
-      "node_kinds": {
-        "external": {
-          "external": true,
-          "fill": "#f6e2c0",
-          "label": "Library",
-          "plural": "Libraries",
-          "stroke": "#b3801f"
-        },
-        "file": {
-          "fill": "#dbe9f4",
-          "label": "File",
-          "plural": "Files",
-          "stroke": "#4d6f9c"
-        }
-      },
-      "nodes": [
-        {
-          "external": true,
-          "id": "ext:base64",
-          "kind": "external",
-          "name": "base64"
-        },
-        {
-          "external": true,
-          "id": "ext:importlib",
-          "kind": "external",
-          "name": "importlib"
-        },
-        {
-          "external": true,
-          "id": "ext:json",
-          "kind": "external",
-          "name": "json"
-        },
-        {
-          "external": true,
-          "id": "ext:os",
-          "kind": "external",
-          "name": "os"
-        },
-        {
-          "external": true,
-          "id": "ext:requests",
-          "kind": "external",
-          "name": "requests"
-        },
-        {
-          "blank": 1,
-          "bugs": 0.00174,
-          "cloc": 8,
-          "effort": 12,
-          "eta1": 3,
-          "eta2": 1,
-          "fan_in": 6,
-          "id": "{target}/pkg/__init__.py",
-          "kind": "file",
-          "length": 4,
-          "lloc": 2,
-          "loc": 10,
-          "mi": 124.361,
-          "mi_sei": 153.513,
-          "n1": 3,
-          "n2": 1,
-          "name": "__init__.py",
-          "sloc": 1,
-          "spaces": 1,
-          "span_sloc": 9,
-          "time": 0.666,
-          "visibility": "public",
-          "vocabulary": 4,
-          "volume": 8
-        },
-        {
-          "args": 1,
-          "blank": 9,
-          "bugs": 0.0531,
-          "cloc": 11,
-          "cycle": "mutual",
-          "cyclomatic": 4,
-          "effort": 2013.517,
-          "eta1": 8,
-          "eta2": 21,
-          "exits": 3,
-          "fan_in": 2,
-          "fan_out": 3,
-          "fan_out_external": 3,
-          "hk": 468,
-          "id": "{target}/pkg/a.py",
-          "kind": "file",
-          "length": 64,
-          "lloc": 11,
-          "loc": 28,
-          "mi": 86.842,
-          "mi_sei": 91.762,
-          "n1": 30,
-          "n2": 34,
-          "name": "a.py",
-          "sloc": 13,
-          "spaces": 4,
-          "span_sloc": 27,
-          "time": 111.862,
-          "visibility": "public",
-          "vocabulary": 29,
-          "volume": 310.91
-        },
-        {
-          "blank": 6,
-          "branches": 1,
-          "bugs": 0.0487,
-          "cloc": 8,
-          "cognitive": 1,
-          "cycle": "mutual",
-          "cyclomatic": 4,
-          "effort": 1766.48,
-          "eta1": 12,
-          "eta2": 18,
-          "exits": 2,
-          "fan_in": 2,
-          "fan_out": 3,
-          "fan_out_external": 1,
-          "hk": 360,
-          "id": "{target}/pkg/b.py",
-          "kind": "file",
-          "length": 45,
-          "lloc": 9,
-          "loc": 22,
-          "mi": 92.692,
-          "mi_sei": 99.283,
-          "n1": 21,
-          "n2": 24,
-          "name": "b.py",
-          "sloc": 10,
-          "spaces": 3,
-          "span_sloc": 21,
-          "time": 98.137,
-          "visibility": "public",
-          "vocabulary": 30,
-          "volume": 220.81
-        },
-        {
-          "blank": 6,
-          "bugs": 0.0105,
-          "cloc": 3,
-          "cyclomatic": 3,
-          "effort": 176.927,
-          "eta1": 5,
-          "eta2": 8,
-          "exits": 2,
-          "fan_in": 2,
-          "fan_out_external": 1,
-          "id": "{target}/pkg/c.py",
-          "kind": "file",
-          "length": 17,
-          "lloc": 5,
-          "loc": 15,
-          "mi": 106.02,
-          "mi_sei": 110.421,
-          "n1": 8,
-          "n2": 9,
-          "name": "c.py",
-          "sloc": 6,
-          "spaces": 3,
-          "span_sloc": 14,
-          "time": 9.829,
-          "visibility": "public",
-          "vocabulary": 13,
-          "volume": 62.907
-        },
-        {
-          "blank": 2,
-          "bugs": 0.00713,
-          "cloc": 1,
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 99.06,
-          "eta1": 5,
-          "eta2": 4,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 2,
-          "hk": 12,
-          "id": "{target}/pkg/chain1.py",
-          "kind": "file",
-          "length": 10,
-          "lloc": 3,
-          "loc": 7,
-          "mi": 123.54,
-          "mi_sei": 132.29,
-          "n1": 5,
-          "n2": 5,
-          "name": "chain1.py",
-          "sloc": 3,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 5.503,
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 31.699
-        },
-        {
-          "blank": 2,
-          "bugs": 0.00713,
-          "cloc": 1,
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 99.06,
-          "eta1": 5,
-          "eta2": 4,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 2,
-          "hk": 12,
-          "id": "{target}/pkg/chain2.py",
-          "kind": "file",
-          "length": 10,
-          "lloc": 3,
-          "loc": 7,
-          "mi": 123.54,
-          "mi_sei": 132.29,
-          "n1": 5,
-          "n2": 5,
-          "name": "chain2.py",
-          "sloc": 3,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 5.503,
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 31.699
-        },
-        {
-          "blank": 2,
-          "bugs": 0.00713,
-          "cloc": 1,
-          "cycle": "chain",
-          "cyclomatic": 2,
-          "effort": 99.06,
-          "eta1": 5,
-          "eta2": 4,
-          "exits": 1,
-          "fan_in": 1,
-          "fan_out": 2,
-          "hk": 12,
-          "id": "{target}/pkg/chain3.py",
-          "kind": "file",
-          "length": 10,
-          "lloc": 3,
-          "loc": 7,
-          "mi": 123.54,
-          "mi_sei": 132.29,
-          "n1": 5,
-          "n2": 5,
-          "name": "chain3.py",
-          "sloc": 3,
-          "spaces": 2,
-          "span_sloc": 6,
-          "time": 5.503,
-          "visibility": "public",
-          "vocabulary": 9,
-          "volume": 31.699
-        },
-        {
-          "args": 4,
-          "blank": 2,
-          "branches": 4,
-          "bugs": 0.076,
-          "cloc": 7,
-          "closures": 1,
-          "cognitive": 5,
-          "cyclomatic": 6,
-          "effort": 3447.42,
-          "eta1": 13,
-          "eta2": 8,
-          "exits": 3,
-          "id": "{target}/pkg/complex.py",
-          "kind": "file",
-          "length": 42,
-          "lloc": 7,
-          "loc": 16,
-          "mi": 98.618,
-          "mi_sei": 110.762,
-          "n1": 19,
-          "n2": 23,
-          "name": "complex.py",
-          "sloc": 8,
-          "spaces": 2,
-          "span_sloc": 15,
-          "time": 191.523,
-          "visibility": "public",
-          "vocabulary": 21,
-          "volume": 184.477
-        },
-        {
-          "blank": 3,
-          "branches": 1,
-          "bugs": 0.0141,
-          "cloc": 3,
-          "cyclomatic": 3,
-          "effort": 276.299,
-          "eta1": 7,
-          "eta2": 6,
-          "fan_out": 3,
-          "id": "{target}/tests/test_pkg.py",
-          "kind": "file",
-          "length": 16,
-          "lloc": 3,
-          "loc": 9,
-          "mi": 115.401,
-          "mi_sei": 131.726,
-          "n1": 8,
-          "n2": 8,
-          "name": "test_pkg.py",
-          "sloc": 3,
-          "spaces": 2,
-          "span_sloc": 8,
-          "time": 15.349,
-          "visibility": "public",
-          "vocabulary": 13,
-          "volume": 59.207
-        }
-      ],
-      "stats": {
-        "blank": 3.666,
-        "bugs": 0.025,
-        "cloc": 4.777,
-        "cognitive": 3,
-        "cyclomatic": 3.25,
-        "effort": 887.758,
-        "fan_in": 2.142,
-        "fan_out": 2.5,
-        "hk": 172.8,
-        "length": 24.222,
-        "mi": 110.505,
-        "mi_sei": 121.593,
-        "sloc": 5.555,
-        "time": 49.319,
-        "vocabulary": 15.222,
-        "volume": 104.6
-      },
-      "ui": {
-        "card": [
-          "hk",
-          "sloc"
-        ],
-        "columns": [
-          "kind",
-          "cycle",
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "volume",
-          "bugs",
-          "effort",
-          "time",
-          "length",
-          "vocabulary",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank"
-        ],
-        "default_sort": "cycle",
-        "filter": [
-          "cycle"
-        ],
-        "size": [
-          "sloc",
-          "hk"
-        ],
-        "sort": [
-          "cycle",
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "volume",
-          "bugs",
-          "effort",
-          "time",
-          "length",
-          "vocabulary",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank"
-        ],
-        "summary": [
-          "sloc",
-          "hk",
-          "fan_in",
-          "fan_out",
-          "volume",
-          "bugs",
-          "effort",
-          "time",
-          "length",
-          "vocabulary",
-          "cyclomatic",
-          "cognitive",
-          "mi",
-          "mi_sei",
-          "lloc",
-          "cloc",
-          "blank"
+      "prompt": {
+        "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
+        "doc_note": "**First, before reading the source**, run `code-ranker docs {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
+        "focus": "**Focus the research and report primarily on the modules below.**",
+        "intro": "I want to apply this to some modules in my system.",
+        "task": [
+          "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
+          "- If you find more serious violations elsewhere during research, mention them in the report too.",
+          "- Show a summary of the report in chat.",
+          "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
         ]
       }
     }
   },
-  "plugin": "python",
-  "principles": [
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/CPX.md",
-      "id": "CPX",
-      "label": "CPX",
-      "prompt": "These modules are too complex and I want to reduce their complexity.\nReduce it by splitting large units into smaller single-responsibility ones,\nextracting repeated patterns into shared helpers, flattening deeply nested\ncontrol flow, and breaking large functions into focused helpers.",
-      "sort_metric": "cognitive",
-      "title": "CPX — Reduce Complexity"
-    },
-    {
-      "connections": [
-        "common"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/ADP.md",
-      "id": "ADP",
-      "label": "ADP",
-      "prompt": "The dependency graph between modules must form a DAG. When module A depends\non module B, no chain of dependencies should bring B back to A.\n\nIdentify any cycles in the modules below. For each cycle, propose a concrete\nrefactoring (extract a shared abstraction, invert a dependency, split a module)\nthat makes the graph acyclic without breaking existing functionality.\n\nWhen splitting a module to break a cycle, the new structure should:\n- Preserve existing API contracts\n- Minimise coupling in the new structure\n- Follow the Single Responsibility Principle\n- Not introduce new dependency cycles",
-      "sort_metric": "cycle",
-      "title": "ADP — Acyclic Dependencies Principle"
-    },
-    {
-      "connections": [
-        "in",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/SRP.md",
-      "id": "SRP",
-      "label": "SRP",
-      "prompt": "A module should have one reason to change — it should serve one actor\nand encapsulate one coherent set of decisions.\n\nFor each module below, identify whether it has more than one responsibility.\nPropose how to split responsibilities so each module changes for only one reason,\nand specify the new module boundaries.",
-      "sort_metric": "sloc",
-      "title": "SRP — Single Responsibility Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/OCP.md",
-      "id": "OCP",
-      "label": "OCP",
-      "prompt": "A module should be open for extension but closed for modification: new behaviour\nshould be addable without editing existing, working code.\n\nFor each module below, identify extension points that currently require editing\nexisting code (e.g. growing match/switch/if-else chains). Propose an extension\nmechanism (polymorphism, strategy, plug-in registration) so new cases can be added\nwithout modifying these modules.",
-      "sort_metric": "cyclomatic",
-      "title": "OCP — Open/Closed Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/LSP.md",
-      "id": "LSP",
-      "label": "LSP",
-      "prompt": "Every implementation of an interface must honour its full contract — return-value\ninvariants, error/exception behaviour, side effects, and resource ownership — not\njust the method signatures. A subtype must be substitutable for its base without\nsurprising callers.\n\nIdentify the interface implementations in the modules below. For each, check it can\nreplace any other implementation of the same interface without breaking callers.\nFlag violations and propose fixes.",
-      "sort_metric": "hk",
-      "title": "LSP — Liskov Substitution Principle"
-    },
-    {
-      "connections": [
-        "in"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/ISP.md",
-      "id": "ISP",
-      "label": "ISP",
-      "prompt": "Clients should not be forced to depend on methods they do not use. Prefer several\nsmall, focused interfaces over one wide interface.\n\nIdentify interfaces in the modules below that are wider than their consumers need.\nPropose how to split them into narrower interfaces so each consumer depends only on\nwhat it actually uses.",
-      "sort_metric": "items",
-      "title": "ISP — Interface Segregation Principle"
-    },
-    {
-      "connections": [
-        "common",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/DIP.md",
-      "id": "DIP",
-      "label": "DIP",
-      "prompt": "High-level modules should not depend on low-level modules; both should depend on\nabstractions, and abstractions should not depend on details.\n\nFind places in the modules below where a high-level module depends directly on a\nconcrete low-level type. Propose an abstraction (interface) to invert each such\ndependency, and specify where the concrete implementation should be wired in.",
-      "sort_metric": "fan_out",
-      "title": "DIP — Dependency Inversion Principle"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/DRY.md",
-      "id": "DRY",
-      "label": "DRY",
-      "prompt": "Every piece of knowledge must have a single authoritative representation.\nDRY is about knowledge duplication, not just code duplication.\n\nIdentify concepts, rules, or policies that are duplicated across the modules\nbelow. For each duplication, propose a canonical location and the refactoring\nneeded to consolidate it.",
-      "sort_metric": "sloc",
-      "title": "DRY — Don't Repeat Yourself"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/KISS.md",
-      "id": "KISS",
-      "label": "KISS",
-      "prompt": "When two designs solve the same problem, prefer the simpler one — fewer\nabstractions, fewer indirection layers, fewer moving parts.\n\nIdentify over-engineered or needlessly complex constructs in the modules below.\nFor each, describe the simpler alternative and estimate the risk of simplifying.",
-      "sort_metric": "cognitive",
-      "title": "KISS — Keep It Simple"
-    },
-    {
-      "connections": [
-        "common",
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/LoD.md",
-      "id": "LoD",
-      "label": "LoD",
-      "prompt": "A method should only call methods on: itself, its direct fields,\nits parameters, and objects it constructs locally.\nAvoid `x.foo().bar().baz()` chains that traverse object graphs.\n\nIdentify method chains or deep field traversals in the modules below that\nviolate LoD. For each, propose a narrow accessor or a facade that exposes only\nwhat the caller needs, reducing coupling.",
-      "sort_metric": "fan_out",
-      "title": "Law of Demeter — Principle of Least Knowledge"
-    },
-    {
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/MISU.md",
-      "id": "MISU",
-      "label": "MISU",
-      "prompt": "Move correctness from runtime checks into the type system, so invalid states\ncannot be constructed and fail at compile time rather than at runtime.\n\nIdentify data structures or function signatures in the modules below where invalid\nstates are representable at runtime. For each, propose a type-level encoding\n(sum type / enum, newtype, typestate) that makes the invalid state unrepresentable\nby construction.",
-      "sort_metric": "cyclomatic",
-      "title": "MISU — Make Invalid States Unrepresentable"
-    },
-    {
-      "connections": [
-        "common"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/CoI.md",
-      "id": "CoI",
-      "label": "CoI",
-      "prompt": "Build behaviour by composing small, focused pieces rather than through deep\ninheritance hierarchies.\n\nIdentify large types that accumulate behaviour in the modules below. Propose how to\ndecompose them into smaller composable parts, and show how consumers would assemble\nthe behaviour they need.",
-      "sort_metric": "items",
-      "title": "CoI — Composition Over Inheritance"
-    },
-    {
-      "connections": [
-        "out"
-      ],
-      "doc_url": "https://github.com/ffedoroff/code-ranker/blob/main/languages/python/YAGNI.md",
-      "id": "YAGNI",
-      "label": "YAGNI",
-      "prompt": "Build for the problem you have now, not one you imagine you might have later.\nDon't add an abstraction, a generic parameter, or a public API for a hypothetical\nfuture use.\n\nIdentify abstractions, generics, or public APIs in the modules below that were\nadded speculatively. For each, assess whether multiple real callers use it today,\nand propose simplification if not.",
-      "sort_metric": "sloc",
-      "title": "YAGNI — You Aren't Gonna Need It"
-    }
+  "plugins": [
+    "python"
   ],
-  "prompt": {
-    "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
-    "doc_note": "**First, before reading the source**, run `code-ranker docs {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
-    "focus": "**Focus the research and report primarily on the modules below.**",
-    "intro": "I want to apply this to some modules in my system.",
-    "task": [
-      "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
-      "- If you find more serious violations elsewhere during research, mention them in the report too.",
-      "- Show a summary of the report in chat.",
-      "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
-    ]
-  },
   "roots": {
     "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/python/tests/sample"
   },
-  "schema_version": "4.0",
+  "schema_version": "5.0",
   "target": "/home/user/code-ranker/crates/code-ranker-plugins/src/languages/python/tests/sample",
   "timings": [
     {
       "detail": "14 nodes from 9 files",
       "ms": 0,
-      "stage": "python"
+      "stage": "python: parse"
     },
     {
       "detail": "9 nodes annotated",
       "ms": 0,
-      "stage": "complexity"
+      "stage": "python: complexity"
     },
     {
       "detail": "nodes=14 edges=20",
       "ms": 0,
-      "stage": "projection"
+      "stage": "python: projection"
     }
   ],
   "versions": {
-    "code-ranker": "4.0.0"
+    "code-ranker": "5.0.0"
   },
   "workspace": "/home/user/code-ranker"
 }

@@ -36,7 +36,7 @@ viewer) — plus a small project-free `docs` command (below):
 ```
 code-ranker check  [input] [--plugins <a,b,…>] [--baseline <snapshot>] [options]
 code-ranker report [input] [--plugins <a,b,…>] [--language <name>] [--baseline <snapshot>] [--output.<fmt>.path <path>] [options]
-code-ranker docs   <subject> [--plugin <name>] [--config <PATH|KEY=VALUE>]   # reference docs (no analysis)
+code-ranker docs   [<lang> [<subject>]] [--config <PATH|KEY=VALUE>]   # reference docs (no analysis; language is first positional)
 ```
 
 The single positional `[input]` (default `.`) is **polymorphic**: a
@@ -48,7 +48,7 @@ snapshot input. A single run analyzes **all** relevant languages and produces on
 report covering every language.
 
 - `check` is the linter: it evaluates cycle rules, thresholds, and custom
-  `[rules.checks]` predicates, prints diagnostics, exits non-zero on any
+  `[plugins.<lang>.rules.checks]` predicates, prints diagnostics, exits non-zero on any
   violation, and writes **no files**.
   With `--baseline <snapshot>` it switches to a **relative gate** that
   fails only on *new* violations versus the baseline (pre-existing ones
@@ -58,26 +58,19 @@ report covering every language.
   always exits `0`. Without `--baseline` the HTML is a single-snapshot
   viewer; with `--baseline <snapshot>` it becomes a baseline↔current diff
   view with a verdict, named `…-diff.html`.
-- `docs <subject>` prints a reference doc to stdout (an unknown subject exits
-  non-zero). It runs **no analysis** and takes **no `[input]`** — config is
-  auto-discovered from the current directory, and the **singular** `--plugin <name>`
-  flag (explicit > the first of `plugins` > auto-detect from cwd markers) resolves the
-  **one** language whose docs to serve.
-  A reference doc is **strictly per-language**, so every subject but `ai` **requires a
-  resolved language**: with none detected the command fails with the same diagnostic
-  `check` / `report` give — name one with `--plugin` or set `plugins`
-  in `code-ranker.toml`. The `<subject>` selects the output: `metrics` / `principles`
-  (the metric / principle index), a metric **category** (`loc`, `complexity`,
-  `halstead`, `maintainability`, `coupling` → its label + member metrics), a **metric**
-  key (`sloc`, `hk`, the language's own `unsafe`/`items`, … → its spec card, with the
-  prose doc appended where one exists), a **principle** id (`SRP`, `ADP`, … → its full
-  doc), or no/unknown subject (a catalog of every subject). Subject matching is
-  separator/case-insensitive (`fan_in` = `Fan-in` = `FAN in`). The one exception is
-  **`docs ai`** (the offline AI-agent playbook from the embedded `base/AI.md`): with a
-  language resolved it prints the full playbook **plus** the principle/metric catalog;
-  with none resolvable it prints a brief product intro **plus** how to select a language
-  and **omits** the catalog — so `docs ai` always succeeds and guides the user to a
-  working setup.
+- `docs [<lang> [<subject>]]` prints reference docs to stdout. It runs **no analysis**
+  and takes **no `[input]`** — there is **no `--plugin` flag**; the language is the
+  **first positional argument**. Bare `docs` lists every language (project-detected ones
+  annotated) plus `base`. `docs <lang>` prints that language's full subject catalog.
+  `docs <lang> <subject>` prints the subject doc for that language. `base` is a valid
+  language for language-agnostic docs. A `<subject>` given without a language (e.g.
+  `docs hk`, `docs ai`) is an **error** — the command exits non-zero and lists the
+  project's languages with a hint to use `docs <lang> <subject>`. Subject matching is
+  separator/case-insensitive (`fan_in` = `Fan-in` = `FAN in`). The `<subject>` selects:
+  `metrics` / `principles` (index), a metric **category** (`loc`, `complexity`,
+  `halstead`, `maintainability`, `coupling`), a **metric** key (`sloc`, `hk`, the
+  language's own `unsafe`/`items`, …), or a **principle** id (`SRP`, `ADP`, …).
+  `docs <lang> ai` prints the full AI-agent playbook + catalog for that language.
 
 `report` selects artifacts and their destinations through one flag family,
 `--output.<fmt>.path <path>` (`<fmt>` is `json`, `html`, `sarif`, `codequality`,
@@ -160,39 +153,41 @@ scalars; `ignore.paths` is merged):
 
 ```toml
 version = "5.0"          # required config-schema version
-plugins = ["rust", "markdown"]   # active languages; omit/empty ⇒ auto-detect all, overridden by --plugins
 
-[languages.base]         # virtual base: overrides applied to EVERY active language
+[plugins]
+enabled = ["rust", "markdown"]   # active languages; omit/empty ⇒ auto-detect all, overridden by --plugins
+
+[plugins.base]           # virtual base: overrides applied to EVERY active language
 skip_dirs = ["vendor"]
 
-[languages.rust]         # per-language overrides: ANY plugin-config key, deep-merged
-extensions = ["rs"]      # base wins under it; this wins over [languages.base]
-
-[ignore]
+[plugins.base.ignore]
 paths        = ["**/generated/**"]  # glob patterns matched against node path
 tests        = true      # skip the language's test files; ON BY DEFAULT (legacy alias: test_modules)
 dev_only_crates = true   # strip crates reachable only via [dev-dependencies]
                          # (uses `cargo metadata` for transitive accuracy)
 
-[rules.cycles]
+[plugins.base.rules.cycles]
 mutual     = true        # default: on
 chain      = true        # default: on
 
-[rules.thresholds.file]      # a single file (files graph)
+[plugins.base.rules.thresholds.file]      # a single file (files graph)
 loc        = 800
 sloc       = 600             # any per-file metric the engine emits is accepted
 hk         = 500_000
 cyclomatic = 10
 
-[rules.checks.de1101]        # custom check: a CEL bool predicate per file node →
-when    = "tloc > 100"       #   a `check.<id>` violation (config-only linter)
+[plugins.base.rules.checks.de1101]        # custom check: a CEL bool predicate per file node →
+when    = "tloc > 100"                     #   a `check.<id>` violation (config-only linter)
 message = "{tloc} lines of inline test code in a production file"
 
-[output.json]                # default JSON snapshot destination (report command)
+[plugins.rust]           # per-language overrides: ANY plugin-config key, deep-merged
+extensions = ["rs"]      # base wins under it; this wins over [plugins.base]
+
+[output.json]                # default JSON snapshot destination (report command) — GLOBAL
 path    = "{project-dir}-{ts}.json"   # placeholders: {project-dir} {ts} {git-hash} {git-hash-N}
 enabled = true               # whether to write this format by default
 
-[output.html]                # default HTML viewer destination (report command)
+[output.html]                # default HTML viewer destination (report command) — GLOBAL
 path    = "{project-dir}-{ts}.html"   # a --output.html.path flag still overrides
 enabled = true
 ```
@@ -200,11 +195,12 @@ enabled = true
 **CLI flags**:
 
 - `--plugins <a,b,…>` — set the active languages (comma list / repeatable); overrides
-  the config `plugins`. Omitted everywhere ⇒ auto-detect every language present
+  the `[plugins].enabled` list. Omitted everywhere ⇒ auto-detect every language present
 - `--language <name>` (`report`) — focus the `scorecard` / `prompt` on one language;
   required only when a `--prompt`/`--focus` selector resolves across several languages
-- `--config languages.<lang>.<key>=value` — inline override of any plugin-config key
-  (scalars / comma-lists); `languages.base.*` targets the shared base language
+- `--config plugins.<lang>.<key>=value` — inline override of any plugin-config key
+  (scalars / comma-lists); `plugins.base.*` targets the shared base language;
+  `plugins.enabled=a,b` overrides the active language list
 - `--output.<fmt>.path <PATH>` (`report`; `<fmt>` is `json`, `html`, `prompt`, or
   `scorecard`) — select
   that artifact format and set its destination (a path, a name template with
@@ -269,8 +265,8 @@ colliding with history.
 
 **Current-values config block (`--suggest-config`)**: with `--suggest-config`,
 `human` output prints — after the findings — the project's current measured values
-as ready-to-paste `code-ranker.toml` blocks: the `[rules.cycles]` counts per kind,
-and the per-file thresholds (the worst single unit). A team copies the block to pin today's numbers as a baseline that passes
+as ready-to-paste `code-ranker.toml` blocks: the `[plugins.base.rules.cycles]` counts per kind,
+and the `[plugins.base.rules.thresholds.file]` per-file thresholds (the worst single unit). A team copies the block to pin today's numbers as a baseline that passes
 now and fails on regression. Off by default; the machine formats
 (`json`/`github`/`sarif`) omit it.
 
@@ -385,6 +381,9 @@ code-ranker check  [input] [--plugins <a,b,…>] [--threshold ...] [--cycle-rule
 # Steps 1+2 — analyze (or read) the input and write a snapshot and/or HTML viewer
 # (also the AI prompt / console scorecard via --output.prompt / --output.scorecard)
 code-ranker report [input] [--plugins <a,b,…>] [--language <name>] [--output.<fmt>.path <path>] [--baseline <snapshot>] [--focus <NAME>] [--focus-path <PATH>] [--severity <tier>] [--top <N>]
+
+# Reference docs (no analysis; language is first positional, no --plugin flag)
+code-ranker docs [<lang> [<subject>]]
 ```
 
 The positional `[input]` (default `.`) is polymorphic: a directory is

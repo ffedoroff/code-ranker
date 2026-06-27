@@ -13,7 +13,7 @@ There are two places config lives — know which one you want:
 
 | Layer | File | Who edits it | What it controls |
 |---|---|---|---|
-| **Project** | `code-ranker.toml` (in your repo) | you, per project | custom `[metrics]`, `[rules]` thresholds/cycles/**checks**, `[report]` views, `[principles]`, `[ignore]`, `[levels]`, `plugins`, `[languages.<lang>]` / `[languages.base]` overrides, output |
+| **Project** | `code-ranker.toml` (in your repo) | you, per project | `[plugins]` (active set), `[plugins.<lang>]` / `[plugins.base]` per-language config (`[metrics]`, `[rules]`, `[ignore]`, `[levels]`, `[principles]`, `[report]`, …), global `[output]` / `[templates]` |
 | **Language** | `<lang>.toml` (shipped in the binary) | a language plugin author | the node-kind vocabulary, principles, and the **report list overrides** (`[report]`) |
 
 Custom metrics and thresholds are **project** config (runtime). The report
@@ -29,7 +29,7 @@ the complete flag ↔ config-key map — see
 
 ## 1. Project config (`code-ranker.toml`)
 
-### 1.1 Custom node metrics — `[metrics.<key>]`
+### 1.1 Custom node metrics — `[plugins.base.metrics.<key>]`
 
 A node metric is a [CEL](https://github.com/cel-spec/cel-spec) formula over the
 values already on each file node. It is computed at analysis time and emitted with
@@ -39,11 +39,11 @@ shown.
 
 > **It is not added to the default table `columns` or card.** Those lists come
 > from the metric catalog plus a `[report]` override. To show your metric as a
-> column / card number, add it with a **project `[report]`** in `code-ranker.toml`
-> (§1.6) — `[report] columns = { add = ["tsr"] }`.
+> column / card number, add it with a **`[plugins.base.report]`** in `code-ranker.toml`
+> (§1.6) — `[plugins.base.report] columns = { add = ["tsr"] }`.
 
 ```toml
-[metrics.comment_ratio]
+[plugins.base.metrics.comment_ratio]
 formula_cel    = "sloc > 0.0 ? cloc / sloc * 100.0 : 0.0"  # CEL; guard against /0
 formula_pretty = "cloc / sloc * 100"   # readable form shown in tooltips/popup
 # formula_js   = "cloc / sloc * 100"   # JS for the live "= numbers" line; defaults to `formula_cel`
@@ -98,7 +98,7 @@ emitted into the report's per-graph `stats` block (the summary numbers). Use the
 `agg` reducer:
 
 ```toml
-[metrics.cognitive_p90]
+[plugins.base.metrics.cognitive_p90]
 scope       = "graph"
 formula_cel = "agg('cognitive', 'p90', 'not_empty')"
 label       = "Cognitive (p90)"
@@ -127,7 +127,7 @@ shows the per-file ratio as a table column right after `hk`. The full config is
 ```toml
 # 1) The per-file ratio. Guarded so files with no source don't divide by zero;
 #    its value is dropped (omit_at = 0) where it has no signal.
-[metrics.tsr]
+[plugins.base.metrics.tsr]
 formula_cel = "sloc > 0.0 ? tloc / sloc : 0.0"
 label       = "TLOC/SLOC"
 direction   = "lower_better"
@@ -137,7 +137,7 @@ group       = "loc"
 #    is 0 (the omit floor) on files with loc <= 300, the `not_empty` population
 #    excludes them automatically. No special "filter" syntax is needed: a guarded
 #    metric + `not_empty` *is* the population filter.
-[metrics.tsr_big]
+[plugins.base.metrics.tsr_big]
 formula_cel = "loc > 300.0 ? (sloc > 0.0 ? tloc / sloc : 0.0) : 0.0"
 label       = "TLOC/SLOC (loc>300)"
 direction   = "lower_better"
@@ -146,14 +146,14 @@ group       = "loc"
 # 3) The aggregate: the worst ratio among the TOP 10 of those large files.
 #    `top10_max` = keep the 10 largest values, then take their max. Into `stats`.
 #    (Swap the reducer freely: `top10_avg` averages the same 10, `p90`, `sum`, …)
-[metrics.tsr_big_avg]
+[plugins.base.metrics.tsr_big_avg]
 scope       = "graph"
 formula_cel = "agg('tsr_big', 'top10_max', 'not_empty')"
 label       = "TLOC/SLOC avg (top 10, loc>300)"
 
 # 4) Show the per-file ratios as table columns — right after `hk` — and feature
-#    `tsr` on the node card. (A project [report] override; §1.6.)
-[report]
+#    `tsr` on the node card. (A per-language [report] override; §1.6.)
+[plugins.base.report]
 columns = { after = { hk = ["tsr", "tsr_big"] } }
 card    = { add = ["tsr"] }
 ```
@@ -199,30 +199,30 @@ the note in §1.1.)
 > condition" with the primitives that exist. The same pattern works for any
 > predicate (`fan_in > 5`, `cyclomatic > 20`, …).
 
-### 1.4 Thresholds & cycle rules — `[rules]`
+### 1.4 Thresholds & cycle rules — `[plugins.base.rules]`
 
 ```toml
-[rules.thresholds.file]            # values accept _ separators and K/M/G suffixes
-hk         = 300K                  # Henry-Kafura budget per file
+[plugins.base.rules.thresholds.file]  # values accept _ separators and K/M/G suffixes
+hk         = 300K                     # Henry-Kafura budget per file
 cyclomatic = 200
 sloc       = 800
 
-[rules.cycles]
-mutual = "off"                     # off | a max budget (e.g. mutual = 0, chain = 2)
+[plugins.base.rules.cycles]
+mutual = "off"                        # off | a max budget (e.g. mutual = 0, chain = 2)
 chain  = 2
 ```
 
 A breach becomes a `check` violation. Thresholdable keys are the built-in
 metrics — `sloc` `loc` `lloc` `cloc` `blank` `cyclomatic` `cognitive` `hk`
 `fan_in` `fan_out` `mi` `volume` `bugs` … plus the structural `items` / `unsafe`
-— **and any custom `[metrics.<key>]` you defined**:
+— **and any custom `[plugins.base.metrics.<key>]` you defined**:
 
 ```toml
-[metrics.tsr]
+[plugins.base.metrics.tsr]
 formula_cel = "sloc > 0.0 ? tloc / sloc : 0.0"
 group       = "loc"
 
-[rules.thresholds.file]
+[plugins.base.rules.thresholds.file]
 tsr = 1.5      # `check` now flags every file whose test-to-source ratio > 1.5
 ```
 
@@ -237,44 +237,49 @@ line below it.
 ### 1.5 Other project keys (brief)
 
 ```toml
-plugins = ["rust"]                 # or omit for auto-detect-all
-[languages.rust]                   # per-language override of ANY plugin key
+[plugins]
+enabled = ["rust"]                 # or omit for auto-detect-all
+
+[plugins.rust]                     # per-language override of ANY plugin key
 metrics.unsafe_density = { formula_cel = "items > 0.0 ? unsafe / items : 0.0" }
-[languages.base]                   # shared base applied to every language first
+
+[plugins.base]                     # shared base applied to every language first
 metrics.comment_ratio = { formula_cel = "sloc > 0.0 ? cloc / sloc * 100.0 : 0.0" }
-[ignore]
+
+[plugins.base.ignore]
 paths = ["generated/**"]           # globs pruned before metrics/cycles
 tests = true                       # drop the language's test files
 dev_only_crates = true             # (rust) drop dev-only dependency nodes
-[levels]
+
+[plugins.base.levels]
 functions = true                   # also emit the per-function level
 ```
 
-`plugins` is the array of active languages; omit it (or leave it empty) to
-auto-detect every language present in the workspace. Each `[languages.<lang>]`
+`[plugins] enabled` is the list of active languages; omit it (or leave it empty)
+to auto-detect every language present in the workspace. Each `[plugins.<lang>]`
 block overrides **any** key from that language's built-in TOML — not just metrics:
 `extensions`, `detect_markers`, `skip_dirs`, `edge_kinds`, `node_attributes`,
-`[[principles]]`, `metrics`, `levels`, … — deep-merged onto the language's
-effective config. `[languages.base]` is a **virtual** base language: its overrides
-apply to every real language first, then a specific `[languages.<lang>]` wins over
-it. See [config-resolution.md](config-resolution.md) for the full precedence.
+`[[principles]]`, `metrics`, `levels`, `ignore`, `rules`, `report`, … — deep-merged
+onto the language's effective config. `[plugins.base]` is a **virtual** base language:
+its overrides apply to every real language first, then a specific `[plugins.<lang>]`
+wins over it. See [config-resolution.md](config-resolution.md) for the full precedence.
 
-### 1.6 Report views — `[report]` (surface a custom metric in the table / card / stats)
+### 1.6 Report views — `[plugins.base.report]` (surface a custom metric in the table / card / stats)
 
-A custom `[metrics.<key>]` lands in the JSON and node popup but **not** in the
+A custom metric lands in the JSON and node popup but **not** in the
 default table columns, card, or stats — those lists come from the metric catalog.
-Add a project-level `[report]` to your `code-ranker.toml` to patch them. It uses
-exactly the **list-override DSL** described in §2.1 (`add` / `remove` / `replace` /
-`after` / `before` / `prepend` / `clear`), layered on top of the catalog **and**
-the active language's own `[report]`:
+Add a `[plugins.base.report]` (or `[plugins.<lang>.report]`) to your `code-ranker.toml`
+to patch them. It uses exactly the **list-override DSL** described in §2.1
+(`add` / `remove` / `replace` / `after` / `before` / `prepend` / `clear`), layered
+on top of the catalog **and** the active language's own built-in `[report]`:
 
 ```toml
-[report]
+[plugins.base.report]
 columns = { after = { hk = ["tsr", "tsr_big"] } }  # place after `hk` in the table
-card    = { add = ["tsr"] }                        # feature on the node card
-stats   = { add = ["tsr_big_avg"] }                # add to the JSON stats block
-size    = { add = ["tsr"] }                        # SVG circle-size mode (§3)
-filter  = { add = ["tsr_big"] }                    # SVG node filter (§3)
+card    = { add = ["tsr"] }                         # feature on the node card
+stats   = { add = ["tsr_big_avg"] }                 # add to the JSON stats block
+size    = { add = ["tsr"] }                         # SVG circle-size mode (§3)
+filter  = { add = ["tsr_big"] }                     # SVG node filter (§3)
 ```
 
 - `columns` drives the HTML table and the JSON `ui.columns` (and the derived sort
@@ -288,16 +293,17 @@ filter  = { add = ["tsr_big"] }                    # SVG node filter (§3)
 Only keys that actually exist on a node survive (the orchestrator prunes the
 patched list), so listing a metric the current language doesn't emit is harmless.
 
-### 1.7 Prompt-Generator principles — `[principles.<ID>]`
+### 1.7 Prompt-Generator principles — `[plugins.base.principles.<ID>]`
 
 A **principle** ranks files by one metric and ships a
 ready-to-paste AI prompt. The plugin catalog has the usual SOLID / complexity
-principles; add your own (over a custom metric) with `[principles.<ID>]` — the table key
-is the principle id. It feeds the `scorecard` (narrow to it with `--focus`), the `prompt`, and the
-viewer's Prompt-Generator buttons:
+principles; add your own (over a custom metric) with `[plugins.base.principles.<ID>]`
+(or `[plugins.<lang>.principles.<ID>]` for one language) — the table key is the
+principle id. It feeds the `scorecard` (narrow to it with `--focus`), the `prompt`,
+and the viewer's Prompt-Generator buttons:
 
 ```toml
-[principles.TSR]
+[plugins.base.principles.TSR]
 title       = "TSR — Trim inline test bulk"  # heading of the generated prompt
 sort_metric = "tsr"                          # the metric the worst-first list ranks by
 prompt      = """
@@ -308,8 +314,8 @@ modules into sibling test files, keeping coverage identical.
 ```
 
 Only `sort_metric` is essential (the metric the principle ranks by); `label` / `title`
-default to the id. A project principle with the **same id** as a plugin principle
-overrides it; a new id appends. Run it:
+default to the id. A principle defined under `[plugins.base.principles.<ID>]` with
+the **same id** as a plugin principle overrides it; a new id appends. Run it:
 
 ```sh
 # scorecard narrowed to the metric, warning tier, worst file:
@@ -323,11 +329,11 @@ For the `--severity` counts to be meaningful the metric should carry `warning` /
 `info` thresholds (§1.1); without them the scorecard falls back to `hk`'s tiers for
 the count, though the narrowed worst-file list still ranks by the metric.
 
-### 1.8 Custom checks — `[rules.checks.<id>]` (write a linter rule in config)
+### 1.8 Custom checks — `[plugins.base.rules.checks.<id>]` (write a linter rule in config)
 
-`[rules.thresholds.file]` only expresses `metric > limit`. A **custom check** is
-the general form: a CEL **boolean** `when` predicate over each file node, plus a
-`message`. When the predicate is true for a file, `check` reports a violation
+`[plugins.base.rules.thresholds.file]` only expresses `metric > limit`. A **custom
+check** is the general form: a CEL **boolean** `when` predicate over each file node,
+plus a `message`. When the predicate is true for a file, `check` reports a violation
 pinned to that file — a config-only linter rule, no Rust.
 
 > **Full CEL reference:** [`cel-reference.md`](./cel-reference.md) documents the
@@ -366,7 +372,7 @@ itself:
 | `.size()` `.exists(x, …)` `.all(x, …)` `.filter(x, …)` | CEL list macros over any list above |
 
 ```toml
-[rules.checks.test_source_ratio]
+[plugins.base.rules.checks.test_source_ratio]
 # Flag files whose inline test code outweighs their production code — but only on
 # files over 100 lines (small files are noise). `.double()` makes `/` a real
 # (float) division; bare int `/` would truncate the ratio to 0.
@@ -376,7 +382,7 @@ group   = "TST"          # concern label in diagnostics (free-form; default "LNT
 why     = "When inline tests outgrow the production code, the file is dominated by test bulk."
 fix     = "Move the inline `#[cfg(test)]` tests into a sibling test module."
 
-[rules.checks.no_direct_sqlx]
+[plugins.base.rules.checks.no_direct_sqlx]
 # A dependency/layer rule over the edges: this file must not import the sqlx crate.
 when    = 'depends_on("ext:sqlx")'
 message = "depends directly on the `sqlx` crate"
@@ -384,15 +390,15 @@ group   = "DEP"
 
 # Reusable named helpers, expanded into a check's `when` (a helper may use an
 # earlier one). Add reuse/readability, not new power.
-[rules.defs]
+[plugins.base.rules.defs]
 is_test_file = 'name.endsWith("_tests.rs") || path.contains("/tests/")'
 ```
 
 - **`when`** is required — any CEL boolean expression (`&&` / `||` / `!` / `? :`,
-  comparisons, the functions/lists above, and `[rules.defs]` helpers). Evaluated
-  per file node; a predicate that errors or yields a non-boolean simply doesn't
-  fire (never panics). A `when` that fails to *compile* (or a cyclic `defs` set)
-  becomes a loud violation so a typo can't pass silently.
+  comparisons, the functions/lists above, and `[plugins.base.rules.defs]` helpers).
+  Evaluated per file node; a predicate that errors or yields a non-boolean simply
+  doesn't fire (never panics). A `when` that fails to *compile* (or a cyclic `defs`
+  set) becomes a loud violation so a typo can't pass silently.
 - **`message`** is required; `why` / `fix` / `title` are optional diagnostic copy.
   All four interpolate `{key}` from the node's values (any attribute or a derived
   path field).
@@ -482,9 +488,9 @@ patches the aggregate keys averaged into the JSON `stats` block; `size` and
 `filter` drive the SVG map's circle-size modes and node filters (§3).
 
 > The **same `[report]` section works in the project `code-ranker.toml`** (§1.6) —
-> the patches layer: catalog → language `[report]` → project `[report]`. A plugin
-> author sets the language defaults; a project tweaks them on top without forking
-> the plugin.
+> the patches layer: catalog → language built-in `[report]` → `[plugins.base.report]`
+> → `[plugins.<lang>.report]`. A plugin author sets the language defaults; a project
+> tweaks them on top without forking the plugin.
 
 ---
 
@@ -501,7 +507,7 @@ built entirely from two more `ui` lists, so the viewer hardcodes none of them:
   `sloc` and `hk`; add your own:
 
   ```toml
-  [report]
+  [plugins.base.report]
   size = { add = ["tsr"] }   # a "TLOC/SLOC" circle-size mode next to SLOC / HK
   ```
 
@@ -516,7 +522,7 @@ built entirely from two more `ui` lists, so the viewer hardcodes none of them:
   `loc > 300` files that feed the aggregate:
 
   ```toml
-  [report]
+  [plugins.base.report]
   filter = { add = ["tsr_big"] }   # toggle: show only the large files
   ```
 
@@ -534,22 +540,23 @@ HTML report and the map offers a **TLOC/SLOC** size mode and a **tsr_big** filte
 ## Quick reference
 
 ```text
-node metric     [metrics.k] formula_cel="<CEL over node values>"   (+ label/direction/group/…)
+node metric     [plugins.base.metrics.k] formula_cel="<CEL over node values>"   (+ label/direction/group/…)
+                (or [plugins.<lang>.metrics.k] for one language only)
   ui fields     name=tooltip-title  short=table-header  description=tooltip-body
                 formula_pretty=readable-formula   warning=/info= two-tier severity thresholds
-aggregate       [metrics.k] scope="graph" formula_cel="agg('m','reducer','population')"
+aggregate       [plugins.base.metrics.k] scope="graph" formula_cel="agg('m','reducer','population')"
   reducers      sum avg|mean min max count median p<q>  top<N> top<N>_<reducer>
   populations   not_empty (signal only)  |  all (missing = floor)
   "where cond"  put the predicate in a node metric: cond ? value : 0  → not_empty drops the rest
-check threshold [rules.thresholds.file] k = <limit>   (K/M/G suffixes; built-ins AND custom metrics)
-custom check    [rules.checks.ID] when="<CEL bool>" message="…"  (runs as a 2nd pass over the built graph)
+check threshold [plugins.base.rules.thresholds.file] k = <limit>   (K/M/G suffixes; built-ins AND custom metrics)
+custom check    [plugins.base.rules.checks.ID] when="<CEL bool>" message="…"  (runs as a 2nd pass over the built graph)
   node in scope any attribute key  ·  path/name/stem/ext/dir  ·  CEL-native contains/startsWith/endsWith/matches  ·  n.double()
   graph in scope deps/rdeps (edge label lists)  ·  files/siblings  ·  depends_on/depended_on_by/file_exists  ·  list macros .size()/.exists/.all/.filter
   copy          message/why/fix/title  (interpolate {key})  ·  group (free-form, default LNT)
-  helpers       [rules.defs] name="<cel expr>"  expanded into when (reuse; a helper may use an earlier one)
+  helpers       [plugins.base.rules.defs] name="<cel expr>"  expanded into when (reuse; a helper may use an earlier one)
 list patch      key = { clear=true, remove=[..], replace={old="new"},
                         after={anchor=[..]}, before={anchor=[..]}, prepend=[..], add=[..] }
-report views    [report] columns|card|stats = <list patch>   (works in <lang>.toml AND code-ranker.toml)
-map controls    [report] size|filter = <list patch>   (SVG circle-size modes / node filters; built-ins sloc,hk / cycle)
-principle          [principles.ID] sort_metric="k" title="…" prompt="…"   (scorecard --focus k / prompt)
+report views    [plugins.base.report] columns|card|stats = <list patch>   (works in <lang>.toml AND under [plugins.*] in code-ranker.toml)
+map controls    [plugins.base.report] size|filter = <list patch>   (SVG circle-size modes / node filters; built-ins sloc,hk / cycle)
+principle          [plugins.base.principles.ID] sort_metric="k" title="…" prompt="…"   (scorecard --focus k / prompt)
 ```

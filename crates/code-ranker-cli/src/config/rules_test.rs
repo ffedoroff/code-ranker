@@ -20,16 +20,16 @@ fn rule_doc_resolves_why_fix_from_specs_and_cycle_kinds() {
     );
 
     // A threshold id resolves to its metric's node-attribute spec.
-    let m = rule_doc("threshold.file.hk", &na, &ck).expect("metric doc");
+    let m = rule_doc("threshold.file.hk", "rust", &na, &ck).expect("metric doc");
     assert_eq!(m.title.as_deref(), Some("Henry–Kafura"));
     assert_eq!(m.why.as_deref(), Some("why-hk"));
     assert_eq!(m.fix.as_deref(), Some("fix-hk"));
     // A cycle id resolves to the cycle-kind spec.
-    let c = rule_doc("cycle.mutual", &na, &ck).expect("cycle doc");
+    let c = rule_doc("cycle.mutual", "rust", &na, &ck).expect("cycle doc");
     assert_eq!(c.why.as_deref(), Some("why-cyc"));
     assert_eq!(c.fix.as_deref(), Some("fix-cyc"));
     // An unknown metric has no spec → no doc.
-    assert!(rule_doc("threshold.file.bogus", &na, &ck).is_none());
+    assert!(rule_doc("threshold.file.bogus", "rust", &na, &ck).is_none());
 }
 
 #[test]
@@ -43,10 +43,10 @@ fn rule_doc_auto_derives_fix_for_a_metric_without_remediation() {
         AttributeSpec::new(ValueType::Int, "Source"),
     );
     let ck = BTreeMap::new();
-    let m = rule_doc("threshold.file.sloc", &na, &ck).expect("metric doc");
+    let m = rule_doc("threshold.file.sloc", "rust", &na, &ck).expect("metric doc");
     assert_eq!(
         m.fix.as_deref(),
-        Some("Run `code-ranker docs sloc` and follow its instructions.")
+        Some("Run `code-ranker docs rust sloc` and follow its instructions.")
     );
 }
 
@@ -109,7 +109,10 @@ fn apply_cycle_rules_clears_disabled_cycle_attr_on_nodes() {
 
 #[test]
 fn rule_tuning_emits_cli_and_config_hints() {
-    assert!(rule_tuning("cycle.mutual").contains("--cycle-rule mutual=off"));
-    assert!(rule_tuning("threshold.file.hk").contains("--threshold file.hk=N"));
-    assert_eq!(rule_tuning("bogus.id"), "");
+    assert!(rule_tuning("cycle.mutual", "rust").contains("plugins.rust.rules.cycles.mutual=off"));
+    assert!(
+        rule_tuning("threshold.file.hk", "rust")
+            .contains("plugins.rust.rules.thresholds.file.hk=N")
+    );
+    assert_eq!(rule_tuning("bogus.id", "rust"), "");
 }

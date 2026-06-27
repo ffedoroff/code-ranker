@@ -335,11 +335,11 @@ fn rust_sample_check_sarif() {
         let fp = r["partialFingerprints"]["codeRankerRuleLocation/v1"]
             .as_str()
             .unwrap_or_else(|| panic!("result has a versioned partial fingerprint: {r}"));
-        // The fingerprint is `rule:location` — it encodes the rule id and the
-        // file uri but never the line, so a shift does not reopen the finding.
+        // The fingerprint is `language:rule:location` — it encodes the language,
+        // rule id and file uri but never the line, so a shift does not reopen it.
         let rule = r["ruleId"].as_str().expect("ruleId");
         assert!(
-            fp.starts_with(&format!("{rule}:")),
+            fp.contains(&format!("{rule}:")),
             "fingerprint encodes the rule id: {fp}"
         );
         if let Some(uri) = r["locations"][0]["physicalLocation"]["artifactLocation"]["uri"].as_str()
@@ -431,7 +431,8 @@ fn rust_sample_check_github_annotations() {
 fn rust_sample_check_suggest_config() {
     let (_ok, stdout, _e) = run_check_capture("rust", &["--suggest-config"]);
     assert!(
-        stdout.contains("[rules.cycles]") && stdout.contains("[rules.thresholds.file]"),
+        stdout.contains("[plugins.base.rules.cycles]")
+            && stdout.contains("[plugins.base.rules.thresholds.file]"),
         "suggested config blocks: {stdout}"
     );
     assert!(
@@ -564,49 +565,23 @@ fn rust_sample_prompt_flag_targets_metric_lens() {
     );
 }
 
-/// `docs ai` with **no resolvable plugin** (an empty directory — no markers) exits
-/// `0` and prints the brief intro plus how to select a plugin, **withholding** the
-/// principle/metric catalog until a language is chosen.
+/// `docs ai` **without a language** is an error: `ai` is a subject, and docs are
+/// per-language, so the language must come first (`docs <lang> ai`).
 #[test]
-fn ai_unresolved_omits_catalog_and_shows_plugin_setup() {
-    let dir = std::env::temp_dir().join("cr-e2e-ai-unresolved");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+fn ai_without_language_errors() {
     let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
-        .current_dir(&dir)
+        .current_dir(sample_dir("rust"))
         .args(["docs", "ai"])
         .output()
         .expect("spawn docs ai");
     assert!(
-        res.status.success(),
-        "docs ai must exit 0 even with no plugin: {}",
-        String::from_utf8_lossy(&res.stderr)
+        !res.status.success(),
+        "docs ai (no language) must exit non-zero"
     );
-    let stdout = String::from_utf8_lossy(&res.stdout);
+    let stderr = String::from_utf8_lossy(&res.stderr);
     assert!(
-        stdout.contains("code-ranker — AI agent skill"),
-        "brief product intro present: {stdout}"
-    );
-    assert!(
-        stdout.contains("## Commands")
-            && stdout.contains("**`help`**")
-            && stdout.contains("**`report"),
-        "lists the main commands (check/report/docs/help)"
-    );
-    assert!(
-        stdout.contains("## Select a language") && stdout.contains("--plugin"),
-        "tells the user how to select a plugin"
-    );
-    // The doc template's placeholders are filled (live plugin list + version), not leaked.
-    assert!(
-        stdout.contains("rust")
-            && !stdout.contains("{plugins}")
-            && !stdout.contains("{config_version}"),
-        "Select-a-language placeholders are substituted: {stdout}"
-    );
-    assert!(
-        !stdout.contains("## Principles & metrics") && !stdout.contains("### ADP"),
-        "catalog withheld until a plugin is resolved: {stdout}"
+        stderr.contains("docs <lang> ai") || stderr.contains("not a language"),
+        "points the user at the per-language form: {stderr}"
     );
 }
 
@@ -616,7 +591,7 @@ fn ai_unresolved_omits_catalog_and_shows_plugin_setup() {
 fn ai_resolved_prints_full_catalog_without_setup() {
     let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
         .current_dir(sample_dir("rust"))
-        .args(["docs", "ai"])
+        .args(["docs", "rust", "ai"])
         .output()
         .expect("spawn docs ai");
     assert!(
@@ -838,7 +813,7 @@ fn rust_sample_docs_subject_prints_embedded_markdown() {
     let run = |subject: &str| -> (bool, String) {
         let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
             .current_dir(sample_dir("rust"))
-            .args(["docs", subject])
+            .args(["docs", "rust", subject])
             .output()
             .expect("spawn docs");
         (
@@ -896,37 +871,28 @@ fn rust_sample_docs_subject_prints_embedded_markdown() {
     assert!(
         stdout4.contains("Unknown docs subject `nope`")
             && stdout4.contains("principles — SOLID")
-            && stdout4.contains("Call `docs`"),
+            && stdout4.contains("Call `docs rust`"),
         "catalog shown for an unknown subject: {stdout4}"
     );
 }
 
-/// `docs` is strictly per-language: with no plugin resolvable (an empty directory —
-/// no markers), every subject but `ai` fails with the same diagnostic `check` /
-/// `report` give, pointing the user at `--plugin`.
+/// `docs` is strictly per-language: a subject given without a language (e.g.
+/// `docs metrics`) errors and points the user at the `docs <lang> <subject>` form.
 #[test]
-fn docs_requires_a_resolved_plugin() {
-    let dir = std::env::temp_dir().join("cr-e2e-docs-no-plugin");
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
+fn docs_subject_without_language_errors() {
     let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
-        .current_dir(&dir)
+        .current_dir(sample_dir("rust"))
         .args(["docs", "metrics"])
         .output()
         .expect("spawn docs metrics");
     assert!(
         !res.status.success(),
-        "docs with no resolvable plugin must exit non-zero"
+        "docs with a subject but no language must exit non-zero"
     );
     let stderr = String::from_utf8_lossy(&res.stderr);
     assert!(
-        stderr.contains("--plugin"),
-        "error points the user at --plugin: {stderr}"
-    );
-    // With no config present, the error also says to create a `code-ranker.toml`.
-    assert!(
-        stderr.contains("code-ranker.toml") && stderr.contains("plugin ="),
-        "error suggests pinning the plugin in config: {stderr}"
+        stderr.contains("not a language") && stderr.contains("docs <lang>"),
+        "error points the user at the per-language form: {stderr}"
     );
     // The error is printed once (our stamped `error:` line) — the runtime does not
     // also emit its own `Error:` line.
@@ -934,13 +900,6 @@ fn docs_requires_a_resolved_plugin() {
         !stderr.contains("Error:"),
         "error is not double-printed: {stderr}"
     );
-    // `docs ai` still works there — it prints the intro on how to pick a plugin.
-    let ai = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
-        .current_dir(&dir)
-        .args(["docs", "ai"])
-        .output()
-        .expect("spawn docs ai");
-    assert!(ai.status.success(), "docs ai succeeds with no plugin");
 }
 
 /// `--focus <metric>` frames the scorecard by that metric. `--focus cycle`
@@ -1267,7 +1226,13 @@ fn is_excepted(metric: &str, lang: &str) -> bool {
 /// True if `metric` is non-zero on at least one internal (non-external) file node
 /// of this golden.
 fn metric_present(golden: &Value, metric: &str) -> bool {
-    golden["graphs"]["files"]["nodes"]
+    // Each golden carries a single language; read its files-level nodes.
+    golden["languages"]
+        .as_object()
+        .expect("languages object")
+        .values()
+        .next()
+        .expect("one language")["graphs"]["files"]["nodes"]
         .as_array()
         .expect("nodes array")
         .iter()
@@ -1352,7 +1317,7 @@ fn user_defined_metric_is_computed_and_emitted() {
     std::fs::write(
         p.join("code-ranker.toml"),
         vcfg(
-            "[metrics.comment_ratio]\n\
+            "[plugins.base.metrics.comment_ratio]\n\
              formula_cel = \"sloc > 0.0 ? cloc / sloc * 100.0 : 0.0\"\n\
              label = \"Comments %\"\n\
              direction = \"higher_better\"\n\
@@ -1366,7 +1331,7 @@ fn user_defined_metric_is_computed_and_emitted() {
         .env("CARGO_NET_OFFLINE", "true")
         .arg("report")
         .arg(".")
-        .arg("--plugin")
+        .arg("--plugins")
         .arg("python")
         .arg("--config")
         .arg(p.join("code-ranker.toml"))
@@ -1376,7 +1341,7 @@ fn user_defined_metric_is_computed_and_emitted() {
     assert!(status.success(), "report should succeed");
 
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-    let files = &v["graphs"]["files"];
+    let files = &v["languages"]["python"]["graphs"]["files"];
     assert!(
         files["node_attributes"]["comment_ratio"].is_object(),
         "the user metric must appear in node_attributes (renders as a column)"
@@ -1411,7 +1376,7 @@ fn user_defined_aggregate_lands_in_stats() {
     std::fs::write(
         p.join("code-ranker.toml"),
         vcfg(
-            "[metrics.cyc_mean]\n\
+            "[plugins.base.metrics.cyc_mean]\n\
              scope = \"graph\"\n\
              formula_cel = \"agg('cyclomatic', 'avg', 'not_empty')\"\n",
         ),
@@ -1423,7 +1388,7 @@ fn user_defined_aggregate_lands_in_stats() {
         .env("CARGO_NET_OFFLINE", "true")
         .arg("report")
         .arg(".")
-        .arg("--plugin")
+        .arg("--plugins")
         .arg("python")
         .arg("--config")
         .arg(p.join("code-ranker.toml"))
@@ -1433,7 +1398,7 @@ fn user_defined_aggregate_lands_in_stats() {
     assert!(status.success(), "report should succeed");
 
     let v: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-    let stats = &v["graphs"]["files"]["stats"];
+    let stats = &v["languages"]["python"]["graphs"]["files"]["stats"];
     assert!(
         stats.get("cyc_mean").is_some(),
         "graph-scope aggregate must appear in stats: {stats}"
@@ -1461,7 +1426,7 @@ fn functions_level_is_opt_in() {
             .env("CARGO_NET_OFFLINE", "true")
             .arg("report")
             .arg(".")
-            .arg("--plugin")
+            .arg("--plugins")
             .arg("python")
             .arg("--config")
             .arg(p.join("code-ranker.toml"))
@@ -1475,13 +1440,13 @@ fn functions_level_is_opt_in() {
     // Off by default → only the files level.
     let off = run("");
     assert!(
-        off["graphs"]["functions"].is_null(),
+        off["languages"]["python"]["graphs"]["functions"].is_null(),
         "functions level must be opt-in"
     );
 
     // On → a functions level with per-function nodes.
-    let on = run("[levels]\nfunctions = true\n");
-    let fns = &on["graphs"]["functions"];
+    let on = run("[plugins.base.levels]\nfunctions = true\n");
+    let fns = &on["languages"]["python"]["graphs"]["functions"];
     assert!(fns.is_object(), "functions level present when enabled");
     let nodes = fns["nodes"].as_array().expect("function nodes");
     let f = nodes.iter().find(|n| n["name"] == "f").expect("function f");
@@ -1502,7 +1467,7 @@ fn empty_metric_warns_on_stderr() {
     std::fs::write(p.join("m.py"), "def f(x):\n    return x\n").unwrap();
     std::fs::write(
         p.join("code-ranker.toml"),
-        vcfg("[metrics.bad]\nformula_cel = \"slocc / 100.0\"\n"), // `slocc` is a typo for `sloc`
+        vcfg("[plugins.base.metrics.bad]\nformula_cel = \"slocc / 100.0\"\n"), // `slocc` is a typo for `sloc`
     )
     .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
@@ -1510,7 +1475,7 @@ fn empty_metric_warns_on_stderr() {
         .env("CARGO_NET_OFFLINE", "true")
         .arg("report")
         .arg(".")
-        .arg("--plugin")
+        .arg("--plugins")
         .arg("python")
         .arg("--config")
         .arg(p.join("code-ranker.toml"))
@@ -1528,11 +1493,10 @@ fn empty_metric_warns_on_stderr() {
     );
 }
 
-/// Bare `docs` (no subject) prints the subject catalog and exits `0` — the catalog
-/// *is* the help. Run from the Rust sample so a plugin auto-resolves (every subject
-/// but `ai` is strictly per-language).
+/// Bare `docs` (no language) lists the project's detected languages and how to
+/// drill in, and exits `0`. Run from the Rust sample so `rust` auto-detects.
 #[test]
-fn docs_bare_prints_the_catalog_and_exits_zero() {
+fn docs_bare_lists_languages_and_exits_zero() {
     let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
         .current_dir(sample_dir("rust"))
         .arg("docs")
@@ -1545,9 +1509,33 @@ fn docs_bare_prints_the_catalog_and_exits_zero() {
     );
     let stdout = String::from_utf8_lossy(&res.stdout);
     assert!(
-        stdout.contains("code-ranker docs <subject>"),
-        "catalog header present: {stdout}"
+        stdout.contains("plugins (languages):") && stdout.contains("base"),
+        "single language list with base: {stdout}"
     );
+    assert!(
+        stdout.contains("rust — detected in this project"),
+        "annotates the detected language: {stdout}"
+    );
+    assert!(
+        stdout.contains("code-ranker docs <lang>"),
+        "shows how to drill into a language: {stdout}"
+    );
+}
+
+/// `docs <lang>` (a language, no subject) prints that language's subject catalog.
+#[test]
+fn docs_language_only_prints_the_catalog() {
+    let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(sample_dir("rust"))
+        .args(["docs", "rust"])
+        .output()
+        .expect("spawn docs rust");
+    assert!(
+        res.status.success(),
+        "docs <lang> must exit 0: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&res.stdout);
     assert!(
         stdout.contains("principles") && stdout.contains("ADP"),
         "principles group + a member listed: {stdout}"
@@ -1559,7 +1547,7 @@ fn docs_bare_prints_the_catalog_and_exits_zero() {
 fn docs_principles_index_lists_every_principle() {
     let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
         .current_dir(sample_dir("rust"))
-        .args(["docs", "principles"])
+        .args(["docs", "rust", "principles"])
         .output()
         .expect("spawn docs principles");
     assert!(res.status.success(), "docs principles failed");
@@ -1577,7 +1565,7 @@ fn docs_principles_index_lists_every_principle() {
 fn docs_unknown_subject_prints_catalog_and_fails() {
     let res = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
         .current_dir(sample_dir("rust"))
-        .args(["docs", "no-such-subject"])
+        .args(["docs", "rust", "no-such-subject"])
         .output()
         .expect("spawn docs");
     assert!(!res.status.success(), "unknown subject must exit non-zero");
@@ -1588,8 +1576,9 @@ fn docs_unknown_subject_prints_catalog_and_fails() {
     );
 }
 
-/// `report --export-full-config PATH` writes the merged `[project]` + `[plugin]`
-/// config and runs no analysis (the `Some(path)` arm in `main`).
+/// `report --export-full-config PATH` writes the merged `[project]` + one
+/// `[languages.<lang>]` per registered language and runs no analysis (the
+/// `Some(path)` arm in `main`).
 #[test]
 fn report_export_full_config_writes_both_sections() {
     let sample = sample_dir("rust");
@@ -1612,7 +1601,7 @@ fn report_export_full_config_writes_both_sections() {
     );
     let body = std::fs::read_to_string(&out).expect("config dump written");
     assert!(
-        body.contains("[project]") && body.contains("[plugin]"),
+        body.contains("[project]") && body.contains("[languages.rust]"),
         "both sections present: {body}"
     );
 }
@@ -1663,5 +1652,86 @@ fn report_fails_when_no_plugin_resolves() {
     assert!(
         stderr.contains("auto-detect") || stderr.contains("--plugin"),
         "error points at pinning a language: {stderr}"
+    );
+}
+
+/// Multi-language run: a workspace with both JavaScript (`package.json` marker +
+/// `.js`) and Markdown (`.md`) is analysed in ONE pass — `plugins` lists both
+/// (sorted) and `languages` carries a graph for each. (find 1 / step 8)
+#[test]
+fn multi_language_run_covers_every_detected_language() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let p = dir.path();
+    std::fs::write(p.join("package.json"), "{ \"name\": \"x\" }\n").unwrap();
+    std::fs::write(
+        p.join("index.js"),
+        "import './util.js';\nexport const a = 1;\n",
+    )
+    .unwrap();
+    std::fs::write(p.join("util.js"), "export const b = 2;\n").unwrap();
+    std::fs::write(p.join("README.md"), "# Title\n\nSee [docs](./guide.md).\n").unwrap();
+    std::fs::write(p.join("guide.md"), "# Guide\n\nBody.\n").unwrap();
+    let out = p.join("out.json");
+    // Run from the temp dir (so no repo config is discovered) → auto-detect all.
+    let status = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(p)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(".")
+        .arg(format!("--output.json.path={}", out.display()))
+        .status()
+        .expect("spawn code-ranker");
+    assert!(status.success(), "multi-language report should succeed");
+
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    assert_eq!(
+        v["plugins"].as_array().unwrap(),
+        &vec![Value::from("javascript"), Value::from("markdown")],
+        "both languages active and sorted"
+    );
+    assert!(
+        v["languages"]["javascript"]["graphs"]["files"]["nodes"]
+            .as_array()
+            .is_some_and(|n| !n.is_empty()),
+        "javascript graph present and non-empty"
+    );
+    assert!(
+        v["languages"]["markdown"]["graphs"]["files"]["nodes"]
+            .as_array()
+            .is_some_and(|n| !n.is_empty()),
+        "markdown graph present and non-empty"
+    );
+}
+
+/// A language whose marker is present but that yields NO nodes (here JavaScript:
+/// `package.json` exists but there are no `.js` files) is dropped from the active
+/// set — only the language that produced a graph remains. (find 2 / step 8)
+#[test]
+fn empty_graph_language_is_dropped() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let p = dir.path();
+    // package.json makes JavaScript DETECT, but there are no .js files to analyse.
+    std::fs::write(p.join("package.json"), "{ \"name\": \"x\" }\n").unwrap();
+    std::fs::write(p.join("README.md"), "# Title\n\nBody.\n").unwrap();
+    let out = p.join("out.json");
+    let status = Command::new(env!("CARGO_BIN_EXE_code-ranker"))
+        .current_dir(p)
+        .env("CARGO_NET_OFFLINE", "true")
+        .arg("report")
+        .arg(".")
+        .arg(format!("--output.json.path={}", out.display()))
+        .status()
+        .expect("spawn code-ranker");
+    assert!(status.success(), "report should succeed");
+
+    let v: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    assert_eq!(
+        v["plugins"].as_array().unwrap(),
+        &vec![Value::from("markdown")],
+        "the empty-graph language (javascript) is dropped"
+    );
+    assert!(
+        v["languages"].get("javascript").is_none(),
+        "dropped language has no snapshot entry"
     );
 }

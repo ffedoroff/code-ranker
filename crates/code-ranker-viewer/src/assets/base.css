@@ -30,6 +30,16 @@ header code { color: #1abc9c; }
 /* Big mode word, now a toggle button — "toggle" between the two controls (click /
    hotkey `t` to switch baseline⇄current), "view" after the single control in
    review (disabled). Sized to match the header title; flex `order` reseats it. */
+/* Language switcher (Rust / TypeScript / …) — shown only for multi-language reports. */
+.lang-switch { display: flex; gap: 4px; padding: 8px 16px 0; align-items: flex-end; }
+.lang-switch[hidden] { display: none; }
+.lang-switch a { font: inherit; font-size: 12px; font-weight: 500; color: #455a73;
+                 text-decoration: none; padding: 4px 11px; border-radius: 4px 4px 0 0;
+                 background: #eef0f2; border: 1px solid #d7e0ea; border-bottom: 0;
+                 cursor: pointer; user-select: none; transition: background .15s, color .15s; }
+.lang-switch a:hover { background: #d7e0ea; }
+.lang-switch a.selected { background: #3498db; color: #fff; border-color: #3498db; }
+
 /* Level switcher (Files / Functions / …) — shown only for multi-level reports. */
 .report-switch { display: flex; gap: 6px; padding: 10px 16px 0; align-items: flex-end; }
 .report-switch[hidden] { display: none; }

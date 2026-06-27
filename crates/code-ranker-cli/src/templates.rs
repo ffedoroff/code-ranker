@@ -275,6 +275,7 @@ pub(crate) fn ai_doc() -> Result<String> {
 /// still raw — `ai::fill_select` fills them). That is the product description, the
 /// command list, and the plugin-setup template; the analysis playbook + catalog after
 /// it stay withheld until a language is chosen.
+#[allow(dead_code)] // exercised by tests; the `ai` command now requires a language.
 pub(crate) fn ai_doc_intro() -> Result<String> {
     let md = corpus_doc("base/AI.md").context("base/AI.md is not embedded in this build")?;
     let head = md.split(AI_SELECT_END).next().unwrap_or(md);

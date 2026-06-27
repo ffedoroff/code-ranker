@@ -21,7 +21,7 @@
             "text": "{target}/index.md: broken links 1 exceeds limit 0 (inf× over budget)"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "threshold.file.broken_links:{target}/index.md"
+            "codeRankerRuleLocation/v1": "markdown:threshold.file.broken_links:{target}/index.md"
           },
           "properties": {
             "graph": "files",
@@ -48,7 +48,7 @@
             "text": "{target}/api.md: chain cycle: {target}/api.md → {target}/index.md → {target}/guide.md → (back to start)"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "cycle.chain:{target}/api.md"
+            "codeRankerRuleLocation/v1": "markdown:cycle.chain:{target}/api.md"
           },
           "properties": {
             "graph": "files",
@@ -90,7 +90,7 @@
               }
             }
           ],
-          "version": "3.0.0-alpha.1"
+          "version": "4.0.0"
         }
       }
     }

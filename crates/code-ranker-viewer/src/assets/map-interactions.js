@@ -721,7 +721,10 @@ function statusLineFor(node, level) {
 // the figures the status bar shows for a crate/group box, and for the external
 // caller/dependency neighbour boxes in the drilled view.
 function computeGroupStats(level, grouper) {
-  const cyc = window.CYCLES?.[level]?.nodeCycleStatus;
+  // CYCLES is keyed [lang][level]; resolve the active language first.
+  const _lang = (typeof currentLang === 'function' ? currentLang() : null)
+             || Object.keys(window.CYCLES || {})[0];
+  const cyc = (_lang ? window.CYCLES?.[_lang] : null)?.[level]?.nodeCycleStatus;
   const stats = new Map();
   for (const n of unionGraph(level).nodes) {
     const grp = grouper(n);

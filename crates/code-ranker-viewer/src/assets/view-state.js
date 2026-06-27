@@ -3,12 +3,39 @@
 // visibility + metric sizing, side toggle, recomputeAll, renderView, and
 // applyViewState (hoisted out of the former app.js DOMContentLoaded closure).
 
+// ── Language helpers ─────────────────────────────────────────────────────────
+// The active language name (plugin key in snapshot.languages). Defaults to the
+// first key in the snapshot on load; updated by setLang() / switchToLang().
+function currentLang() { return window.lang || null; }
+
+function setLang(name) { window.lang = name; }
+
+// All language keys from a snapshot, in stable BTreeMap order (already sorted
+// by the Rust serialiser).
+function langKeys(snap) {
+  return Object.keys((snap || {}).languages || {});
+}
+
+// ── Snapshot sub-object accessors ────────────────────────────────────────────
+
 // Which snapshot the diagrams / tables / modal show: 'baseline' or 'current'.
 // In review mode (no baseline) it is always 'baseline'.
 // `current` is the primary snapshot (the report's current state, normally always
 // present); `baseline` is the optional baseline. activeSnap returns whichever the
 // shown side has, falling back to the other so a single-snapshot report works.
+// Returns the LANGUAGE sub-object: { graphs, principles, prompt }.
 function activeSnap() {
+  const snap = window.viewSide === 'baseline'
+    ? (window.BASELINE ?? window.CURRENT)
+    : (window.CURRENT ?? window.BASELINE);
+  if (!snap) return null;
+  const lang = currentLang() || langKeys(snap)[0];
+  return lang ? (snap.languages?.[lang] ?? null) : null;
+}
+
+// The top-level header fields (git, target, roots, versions) stay at the
+// snapshot root regardless of the active language.
+function activeHeader() {
   return window.viewSide === 'baseline'
     ? (window.BASELINE ?? window.CURRENT)
     : (window.CURRENT ?? window.BASELINE);
@@ -30,6 +57,7 @@ function activeGraph(level) {
   return activeSnap()?.graphs?.[level] || { nodes: [], edges: [] };
 }
 
+
 // The graph drawn on the main map. External (3rd-party library) nodes and the
 // edges into them are dropped here — they would clutter the file map. They are
 // still kept in the snapshot and shown in the per-node neighbourhood modal.
@@ -48,8 +76,10 @@ function activeLocalGraph(level) {
 // node that exists on both sides pinned in place: toggling Baseline/Current no longer
 // reflows the graph, only the genuinely added/removed parts appear or disappear.
 // (In review mode the diff is baseline-vs-baseline, so everything is `unchanged`.)
+// DIFF is keyed [lang][level] in the new schema.
 function unionGraph(level) {
-  return window.DIFF?.[level] || { nodes: [], edges: [] };
+  const lang = currentLang();
+  return (lang ? window.DIFF?.[lang]?.[level] : null) || { nodes: [], edges: [] };
 }
 
 // Flip which side's exclusive elements are visible on a frame, without relayout.
@@ -80,6 +110,7 @@ function applySideSizing(frame, level) {
   // Per-side circle resize only applies to metric modes in the drilled file view.
   if (!sizeMode || (window.drillGroup || null) === null) return;
   const mode = sizeMode;
+  // activeSnap() already returns the language sub-object { graphs, … }
   const byId = new Map((activeSnap()?.graphs?.[level]?.nodes || []).map(n => [n.id, n]));
   frame.querySelectorAll('g.node').forEach(g => {
     const n   = byId.get(g.dataset.nodeId);
@@ -144,7 +175,7 @@ function toggleViewSide() {
 
 // Recompute everything after the user swaps a snapshot via the upload controls.
 function recomputeAll() {
-  const EMPTY = { graphs: {} };
+  const EMPTY = { languages: {} };
   const baseline = window.BASELINE;
   const current  = window.CURRENT;
   // Either side may be absent (review). Fall back the missing side to the present

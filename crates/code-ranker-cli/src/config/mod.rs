@@ -16,4 +16,4 @@ pub use load::load;
 pub(crate) use model::merge_project_principles;
 pub use model::{CycleRules, OutputArtifact, OutputConfig, RulesConfig, TemplatesConfig};
 pub use rules::{apply_cycle_rules, rule_doc, rule_tuning};
-pub use violations::{Violation, check_violations};
+pub use violations::{Violation, check_violations_all};

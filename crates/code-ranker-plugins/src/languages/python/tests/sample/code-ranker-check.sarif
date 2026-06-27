@@ -21,7 +21,7 @@
             "text": "{target}/pkg/chain1.py: chain cycle: {target}/pkg/chain1.py → {target}/pkg/chain3.py → {target}/pkg/chain2.py → (back to start)"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "cycle.chain:{target}/pkg/chain1.py"
+            "codeRankerRuleLocation/v1": "python:cycle.chain:{target}/pkg/chain1.py"
           },
           "properties": {
             "graph": "files",
@@ -48,7 +48,7 @@
             "text": "{target}/pkg/a.py: mutual cycle between {target}/pkg/a.py ↔ {target}/pkg/b.py"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "cycle.mutual:{target}/pkg/a.py"
+            "codeRankerRuleLocation/v1": "python:cycle.mutual:{target}/pkg/a.py"
           },
           "properties": {
             "graph": "files",
@@ -90,7 +90,7 @@
               }
             }
           ],
-          "version": "3.0.0-alpha.1"
+          "version": "4.0.0"
         }
       }
     }

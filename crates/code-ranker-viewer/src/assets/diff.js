@@ -1,48 +1,65 @@
 // ── Diff ──────────────────────────────────────────────────────────────────────
+// Compute per-language, per-level diffs. Result shape: { [lang]: { [level]: { nodes, edges } } }.
+// Each side may be absent (a language only in one snapshot → all added or all removed).
 function computeDiff(baseline, current) {
   const result = {};
-  for (const level of ['files']) {
-    const bg = (baseline.graphs || {})[level] || { nodes: [], edges: [] };
-    const ag = (current.graphs  || {})[level] || { nodes: [], edges: [] };
+  // All languages from either side.
+  const allLangs = new Set([
+    ...Object.keys((baseline || {}).languages || {}),
+    ...Object.keys((current  || {}).languages || {}),
+  ]);
+  for (const lang of allLangs) {
+    const bLang = (baseline?.languages || {})[lang] || {};
+    const aLang = (current?.languages  || {})[lang] || {};
+    // All levels from either side of this language.
+    const allLevels = new Set([
+      ...Object.keys(bLang.graphs || {}),
+      ...Object.keys(aLang.graphs || {}),
+    ]);
+    result[lang] = {};
+    for (const level of allLevels) {
+      const bg = (bLang.graphs || {})[level] || { nodes: [], edges: [] };
+      const ag = (aLang.graphs || {})[level] || { nodes: [], edges: [] };
 
-    const bgMap = new Map(bg.nodes.filter(n => !isExternalNode(n, level)).map(n => [n.id, n]));
-    const agMap = new Map(ag.nodes.filter(n => !isExternalNode(n, level)).map(n => [n.id, n]));
+      const bgMap = new Map(bg.nodes.filter(n => !isExternalNode(n, level)).map(n => [n.id, n]));
+      const agMap = new Map(ag.nodes.filter(n => !isExternalNode(n, level)).map(n => [n.id, n]));
 
-    const nodeStatus = new Map();
-    for (const id of agMap.keys()) nodeStatus.set(id, bgMap.has(id) ? 'unchanged' : 'added');
-    for (const id of bgMap.keys()) if (!agMap.has(id)) nodeStatus.set(id, 'removed');
+      const nodeStatus = new Map();
+      for (const id of agMap.keys()) nodeStatus.set(id, bgMap.has(id) ? 'unchanged' : 'added');
+      for (const id of bgMap.keys()) if (!agMap.has(id)) nodeStatus.set(id, 'removed');
 
-    const edgeKey = e => `${e.source}\x00${e.target}\x00${e.kind}`;
-    const localEdges = edges => edges.filter(e => nodeStatus.has(e.source) && nodeStatus.has(e.target));
+      const edgeKey = e => `${e.source}\x00${e.target}\x00${e.kind}`;
+      const localEdges = edges => edges.filter(e => nodeStatus.has(e.source) && nodeStatus.has(e.target));
 
-    const bgEdgeMap = new Map(localEdges(bg.edges).map(e => [edgeKey(e), e]));
-    const agEdgeMap = new Map(localEdges(ag.edges).map(e => [edgeKey(e), e]));
+      const bgEdgeMap = new Map(localEdges(bg.edges).map(e => [edgeKey(e), e]));
+      const agEdgeMap = new Map(localEdges(ag.edges).map(e => [edgeKey(e), e]));
 
-    const edgeStatus = new Map();
-    for (const key of agEdgeMap.keys()) edgeStatus.set(key, bgEdgeMap.has(key) ? 'unchanged' : 'added');
-    for (const key of bgEdgeMap.keys()) if (!agEdgeMap.has(key)) edgeStatus.set(key, 'removed');
+      const edgeStatus = new Map();
+      for (const key of agEdgeMap.keys()) edgeStatus.set(key, bgEdgeMap.has(key) ? 'unchanged' : 'added');
+      for (const key of bgEdgeMap.keys()) if (!agEdgeMap.has(key)) edgeStatus.set(key, 'removed');
 
-    const nodes = [];
-    for (const [id, status] of nodeStatus)
-      nodes.push({ ...(status === 'removed' ? bgMap.get(id) : agMap.get(id)), status });
+      const nodes = [];
+      for (const [id, status] of nodeStatus)
+        nodes.push({ ...(status === 'removed' ? bgMap.get(id) : agMap.get(id)), status });
 
-    const edges = [];
-    for (const [key, status] of edgeStatus)
-      edges.push({ ...(status === 'removed' ? bgEdgeMap.get(key) : agEdgeMap.get(key)), status });
+      const edges = [];
+      for (const [key, status] of edgeStatus)
+        edges.push({ ...(status === 'removed' ? bgEdgeMap.get(key) : agEdgeMap.get(key)), status });
 
-    for (const e of edges) {
-      if (e.status === 'unchanged') continue;
-      if (nodeStatus.get(e.source) === 'unchanged') nodeStatus.set(e.source, 'affected');
-      if (nodeStatus.get(e.target) === 'unchanged') nodeStatus.set(e.target, 'affected');
+      for (const e of edges) {
+        if (e.status === 'unchanged') continue;
+        if (nodeStatus.get(e.source) === 'unchanged') nodeStatus.set(e.source, 'affected');
+        if (nodeStatus.get(e.target) === 'unchanged') nodeStatus.set(e.target, 'affected');
+      }
+      nodes.forEach(n => { n.status = nodeStatus.get(n.id); });
+      edges.forEach(e => {
+        if (e.status === 'unchanged' &&
+            (nodeStatus.get(e.source) !== 'unchanged' || nodeStatus.get(e.target) !== 'unchanged'))
+          e.status = 'affected';
+      });
+
+      result[lang][level] = { nodes, edges };
     }
-    nodes.forEach(n => { n.status = nodeStatus.get(n.id); });
-    edges.forEach(e => {
-      if (e.status === 'unchanged' &&
-          (nodeStatus.get(e.source) !== 'unchanged' || nodeStatus.get(e.target) !== 'unchanged'))
-        e.status = 'affected';
-    });
-
-    result[level] = { nodes, edges };
   }
   return result;
 }
@@ -62,36 +79,51 @@ function buildSCCOf(graph, level) {
   return { sccOf, sccCount: cycles.length };
 }
 
+// Compute per-language, per-level cycle membership. Result shape:
+// { [lang]: { [level]: { nodeCycleStatus, edgeCycleStatus, cycleBaseline, cycleCurrent, cycleBoth } } }.
 function computeCycles(baseline, current) {
   const result = {};
-  for (const level of ['files']) {
-    const bg = (baseline.graphs || {})[level] || { nodes: [], edges: [], cycles: [] };
-    const ag = (current.graphs  || {})[level] || { nodes: [], edges: [], cycles: [] };
+  const allLangs = new Set([
+    ...Object.keys((baseline || {}).languages || {}),
+    ...Object.keys((current  || {}).languages || {}),
+  ]);
+  for (const lang of allLangs) {
+    const bLang = (baseline?.languages || {})[lang] || {};
+    const aLang = (current?.languages  || {})[lang] || {};
+    const allLevels = new Set([
+      ...Object.keys(bLang.graphs || {}),
+      ...Object.keys(aLang.graphs || {}),
+    ]);
+    result[lang] = {};
+    for (const level of allLevels) {
+      const bg = (bLang.graphs || {})[level] || { nodes: [], edges: [], cycles: [] };
+      const ag = (aLang.graphs || {})[level] || { nodes: [], edges: [], cycles: [] };
 
-    const { sccOf: bgSCCOf } = buildSCCOf(bg, level);
-    const { sccOf: agSCCOf } = buildSCCOf(ag, level);
+      const { sccOf: bgSCCOf } = buildSCCOf(bg, level);
+      const { sccOf: agSCCOf } = buildSCCOf(ag, level);
 
-    const nodeCycleStatus = new Map();
-    for (const id of new Set([...bgSCCOf.keys(), ...agSCCOf.keys()])) {
-      const b = bgSCCOf.has(id), a = agSCCOf.has(id);
-      nodeCycleStatus.set(id, b && a ? 'both' : b ? 'baseline-only' : 'current-only');
+      const nodeCycleStatus = new Map();
+      for (const id of new Set([...bgSCCOf.keys(), ...agSCCOf.keys()])) {
+        const b = bgSCCOf.has(id), a = agSCCOf.has(id);
+        nodeCycleStatus.set(id, b && a ? 'both' : b ? 'baseline-only' : 'current-only');
+      }
+
+      const edgeCycleStatus = (from, to) => {
+        const inB = bgSCCOf.has(from) && bgSCCOf.get(from) === bgSCCOf.get(to);
+        const inA = agSCCOf.has(from) && agSCCOf.get(from) === agSCCOf.get(to);
+        if (!inB && !inA) return 'none';
+        return inB && inA ? 'both' : inB ? 'baseline-only' : 'current-only';
+      };
+
+      let cycleBaseline = 0, cycleCurrent = 0, cycleBoth = 0;
+      for (const cs of nodeCycleStatus.values()) {
+        if (cs === 'baseline-only') cycleBaseline++;
+        else if (cs === 'current-only') cycleCurrent++;
+        else cycleBoth++;
+      }
+
+      result[lang][level] = { nodeCycleStatus, edgeCycleStatus, cycleBaseline, cycleCurrent, cycleBoth };
     }
-
-    const edgeCycleStatus = (from, to) => {
-      const inB = bgSCCOf.has(from) && bgSCCOf.get(from) === bgSCCOf.get(to);
-      const inA = agSCCOf.has(from) && agSCCOf.get(from) === agSCCOf.get(to);
-      if (!inB && !inA) return 'none';
-      return inB && inA ? 'both' : inB ? 'baseline-only' : 'current-only';
-    };
-
-    let cycleBaseline = 0, cycleCurrent = 0, cycleBoth = 0;
-    for (const cs of nodeCycleStatus.values()) {
-      if (cs === 'baseline-only') cycleBaseline++;
-      else if (cs === 'current-only') cycleCurrent++;
-      else cycleBoth++;
-    }
-
-    result[level] = { nodeCycleStatus, edgeCycleStatus, cycleBaseline, cycleCurrent, cycleBoth };
   }
   return result;
 }

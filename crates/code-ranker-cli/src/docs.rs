@@ -1,27 +1,22 @@
-//! The `docs <subject>` command: print a reference doc to stdout. No analysis — it
-//! resolves the merged config (auto-discovered from the current directory) and the
-//! language plugin, then builds the principle + metric + category specs from the
-//! config and plugin (the same specs an analyzed snapshot carries, minus the graph).
-//! A reference doc is **strictly per-language**: every subject but `ai` requires a
-//! resolved plugin and fails (same diagnostic as `check` / `report`) when none does.
-//! Subjects match separator/case-insensitively (`fan_in` = `Fan-in` = `FAN in`):
+//! The `docs <lang> <subject>` command: print a reference doc to stdout. No
+//! analysis. Docs are **per-language**, so the language comes FIRST (a registered
+//! plugin name, or `base` for the language-agnostic catalog). Forms:
 //!
-//! - `ai` → the offline AI-agent playbook (resolved plugin → full playbook + catalog;
-//!   none → a brief intro + how to pick a plugin — the one subject that does not
-//!   hard-fail without a plugin);
-//! - `metrics` / `principles` → an index of every metric / design principle;
-//! - `<category>` → that category (`loc`, `complexity`, …) + its member metrics;
-//! - `<metric>` → its spec card (incl. language metrics like Rust's `unsafe`), plus
-//!   its prose doc when one exists;
-//! - `<principle>` → its full doc (or a synthetic card for a doc-less custom one);
-//! - anything else (or no subject) → a catalog of every subject.
+//! - `docs` → list the project's detected languages + every documentable one;
+//! - `docs <lang>` → that language's full subject catalog;
+//! - `docs <lang> <subject>` → the doc for the subject.
 //!
-//! Categories and metrics are read from the plugin's level specs + the central
-//! catalog; principle ids and custom metrics declared in the project config
-//! (`[principles.<ID>]` / `[metrics.<key>]`) are first-class subjects too.
+//! A `<subject>` given without a language errors and points at the per-language
+//! form. `<subject>` is `ai` (the offline AI-agent playbook), `metrics` /
+//! `principles` (an index of each), a `<category>` (`loc`, `complexity`, …), a
+//! `<metric>` (its spec card + prose doc), or a `<principle>` id. Subjects match
+//! separator/case-insensitively (`fan_in` = `Fan-in` = `FAN in`).
+//!
+//! Specs are built from the language plugin's level specs + the central catalog;
+//! `base` uses the neutral built-in catalog. Project `[plugins.<lang>.principles]`
+//! / `[plugins.<lang>.metrics]` are first-class subjects too.
 
 use anyhow::{Result, bail};
-use code_ranker_graph::version::CONFIG_VERSION;
 use code_ranker_plugin_api::Principle;
 use code_ranker_plugin_api::level::{AttributeGroup, AttributeSpec};
 use code_ranker_plugin_api::plugin::PluginInput;
@@ -42,41 +37,51 @@ struct DocSpecs {
     templates: TemplatesConfig,
 }
 
-/// Print the doc for `subject` (or the catalog when it is absent / unknown).
+/// Print a per-language reference doc. The FIRST argument is the language (a
+/// registered plugin or `base`); the optional second is the subject. Bare `docs`
+/// lists the project's languages; `docs <lang>` prints that language's catalog.
 pub(crate) fn run(
+    language: Option<&str>,
     subject: Option<&str>,
-    plugin_arg: Option<&str>,
     config_entries: &[String],
 ) -> Result<()> {
-    // `docs ai` is special: the playbook stands on its own and, with no plugin
-    // resolved, prints the intro that explains how to pick one (no hard error).
-    if subject.is_some_and(|s| templates::normalize_id(s) == "ai") {
-        return run_ai(plugin_arg, config_entries);
-    }
-
-    // Every other subject is strictly per-language — a reference doc describes one
-    // plugin's principles + metrics — so a plugin MUST resolve. When none does, fail
-    // with the same diagnostic `check` / `report` give (ambiguous / no marker → name
-    // one with `--plugin`, or set `plugin` in `code-ranker.toml`).
     let input = std::path::Path::new(".");
     let loaded = config::load(input, config_entries, &[], &[], &[]).ok();
-    let config_file = loaded.as_ref().and_then(|l| l.source_file.clone());
     let cfg = loaded.map(|loaded| loaded.config);
-    let cfg_plugin = cfg.as_ref().and_then(|c| c.plugin.clone());
-    let plugin_name = plugin::resolve_plugin(
-        plugin_arg,
-        cfg_plugin.as_deref(),
-        input,
-        config_file.as_deref(),
-    )?;
 
-    let specs = build_specs(&plugin_name, cfg);
-
-    let Some(subject) = subject else {
-        // Bare `docs`: the catalog is the help, so exit 0.
+    // Bare `docs`: list the project's detected languages + every documentable one.
+    let Some(language) = language else {
         print!(
             "{}",
-            templates::with_trailing_newline(render_catalog(&specs, None))
+            templates::with_trailing_newline(language_listing(cfg.as_ref(), input))
+        );
+        return Ok(());
+    };
+
+    // The first argument is the language — a registered plugin or `base`. A value
+    // that is not a language is almost always a subject typed without one (e.g.
+    // `docs hk`, `docs ai`); point the user at the per-language form.
+    if !is_known_language(language) {
+        bail!(
+            "`{language}` is not a language — docs are per-language, so the language comes first:\n  \
+             code-ranker docs <lang> {language}\n{}",
+            languages_hint(cfg.as_ref(), input)
+        );
+    }
+
+    // `docs <lang> ai` → the offline AI-agent playbook.
+    if subject.is_some_and(|s| templates::normalize_id(s) == "ai") {
+        emit(templates::ai_doc()?);
+        return Ok(());
+    }
+
+    let specs = build_specs(language, cfg);
+
+    let Some(subject) = subject else {
+        // `docs <lang>`: the full subject catalog for that language.
+        print!(
+            "{}",
+            templates::with_trailing_newline(render_catalog(&specs, language, None))
         );
         return Ok(());
     };
@@ -105,8 +110,8 @@ pub(crate) fn run(
     } else {
         // Unknown subject: print the catalog so the caller sees every option, then
         // fail (non-zero) — it was a real lookup miss, not a help request.
-        emit(render_catalog(&specs, Some(subject)));
-        bail!("unknown docs subject {subject:?} — see the list above");
+        emit(render_catalog(&specs, language, Some(subject)));
+        bail!("unknown docs subject {subject:?} for language {language:?} — see the list above");
     }
     Ok(())
 }
@@ -115,35 +120,67 @@ fn emit(md: String) {
     print!("{}", templates::with_trailing_newline(md));
 }
 
-/// The `docs ai` playbook: resolve the plugin best-effort (like the rest of `docs`,
-/// from `.`), then serve the full playbook or, when none resolves, the intro + a
-/// filled-in *Select a language* template.
-fn run_ai(plugin_arg: Option<&str>, config_entries: &[String]) -> Result<()> {
-    let input = Path::new(".");
-    let cfg_plugin = config::load(input, config_entries, &[], &[], &[])
-        .ok()
-        .and_then(|loaded| loaded.config.plugin);
-    // `docs ai` carries its own *Select a language* template, so the intro only
-    // needs the bare "why" — pass no config hint and keep just its first line.
-    let md = match plugin::resolve_plugin(plugin_arg, cfg_plugin.as_deref(), input, None) {
-        Ok(_) => templates::ai_doc()?,
-        Err(reason) => {
-            let reason = reason.to_string();
-            let why = reason.lines().next().unwrap_or(&reason);
-            fill_select(&templates::ai_doc_intro()?, why)
-        }
-    };
-    emit(md);
-    Ok(())
+/// `base` (the language-agnostic catalog) or any registered plugin name.
+fn is_known_language(lang: &str) -> bool {
+    lang == "base" || plugin::registry().iter().any(|p| p.name() == lang)
 }
 
-/// Fill the *Select a language* template (authored in `base/AI.md`) with the live
-/// values: the resolver diagnostic, the built-in plugin names, the config version.
-fn fill_select(intro: &str, reason: &str) -> String {
-    intro
-        .replace("{reason}", reason)
-        .replace("{plugins}", &plugin::names())
-        .replace("{config_version}", CONFIG_VERSION)
+/// Languages auto-detected in `input` (best-effort; empty on any failure).
+fn detected_languages(cfg: Option<&config::model::Config>, input: &Path) -> Vec<String> {
+    let lang_overrides = cfg.map(|c| c.plugins.languages.clone()).unwrap_or_default();
+    let eff_cfgs: BTreeMap<String, toml::Table> = plugin::registry()
+        .iter()
+        .map(|p| {
+            let name = p.name().to_string();
+            (
+                name.clone(),
+                plugin::effective_plugin_config(&name, &lang_overrides),
+            )
+        })
+        .collect();
+    plugin::detect_all(&eff_cfgs, input, &PluginInput::default())
+}
+
+/// One-line hint naming where to run a subject: the project's detected languages
+/// (or every available one when none detected), plus `base`.
+fn languages_hint(cfg: Option<&config::model::Config>, input: &Path) -> String {
+    let detected = detected_languages(cfg, input);
+    if detected.is_empty() {
+        format!(
+            "Available languages: {} (or `base` for the language-agnostic docs).",
+            plugin::names()
+        )
+    } else {
+        format!(
+            "This project's languages: {} (or `base` for the language-agnostic docs).",
+            detected.join(", ")
+        )
+    }
+}
+
+/// The bare-`docs` listing: the project's detected languages, the other languages
+/// available for docs, and how to drill in.
+fn language_listing(cfg: Option<&config::model::Config>, input: &Path) -> String {
+    let detected = detected_languages(cfg, input);
+    let mut all: Vec<&str> = plugin::registry().iter().map(|p| p.name()).collect();
+    all.sort_unstable();
+
+    let mut out = String::from("plugins (languages):\n");
+    out.push_str(" - base — the language-agnostic catalog (shared defaults)\n");
+    for name in &all {
+        if detected.iter().any(|d| d == name) {
+            out.push_str(&format!(" - {name} — detected in this project\n"));
+        } else {
+            out.push_str(&format!(" - {name}\n"));
+        }
+    }
+    out.push('\n');
+    out.push_str("Run:\n");
+    out.push_str("    code-ranker docs <lang>            # the full subject catalog\n");
+    out.push_str(
+        "    code-ranker docs <lang> <subject>  # a metric / principle / category, or `ai`\n",
+    );
+    out
 }
 
 /// Build the doc specs strictly for one resolved `plugin_name`, no analysis. The
@@ -153,16 +190,32 @@ fn fill_select(intro: &str, reason: &str) -> String {
 /// principles are the plugin catalog overlaid with `[principles.<ID>]`. Config is
 /// best-effort (a broken file degrades to the plugin's own specs).
 fn build_specs(plugin_name: &str, cfg: Option<config::model::Config>) -> DocSpecs {
+    // The plugin's effective config (static base ⊕ user `[languages.base]` /
+    // `[languages.<lang>]`), so docs reflect the same per-language overrides analysis
+    // would apply. With no config it degrades to the plugin's own static defaults.
+    let lang_overrides = cfg
+        .as_ref()
+        .map(|c| c.plugins.languages.clone())
+        .unwrap_or_default();
+    let eff_cfg = plugin::effective_plugin_config(plugin_name, &lang_overrides);
+
+    // The per-language orchestrator config (`[plugins.base]` ⊕ `[plugins.<lang>]`):
+    // its `ignore` / `metrics` / `principles` feed the doc specs. Best-effort.
+    let lc = cfg
+        .as_ref()
+        .and_then(|c| c.language_config(plugin_name).ok())
+        .unwrap_or_default();
+
     // Central, language-neutral metric specs + their category groups, refined by
     // the active plugin (e.g. Rust's `#[cfg(test)]` LOC nuance).
     let (default_metric_specs, metric_groups) = code_ranker_graph::metric_specs();
     let (coupling_specs, coupling_groups) = code_ranker_graph::coupling_specs();
-    let metric_specs = plugin::metric_specs(plugin_name, default_metric_specs);
+    let metric_specs = plugin::metric_specs(plugin_name, &eff_cfg, default_metric_specs);
 
     // The plugin's own structural attribute specs + category groups, taken from the
     // `files` level WITHOUT analysis — this is what surfaces language metrics like
     // Rust's `unsafe` that live in `[node_attributes.*]`, not the central catalog.
-    let files_level = plugin::levels(plugin_name)
+    let files_level = plugin::levels(plugin_name, &eff_cfg)
         .into_iter()
         .find(|l| l.name == "files");
     let mut node_attributes = files_level
@@ -176,33 +229,38 @@ fn build_specs(plugin_name: &str, cfg: Option<config::model::Config>) -> DocSpec
     groups.extend(metric_groups);
     groups.extend(coupling_groups);
 
-    let pinput = cfg
-        .as_ref()
-        .map_or_else(default_plugin_input, |c| PluginInput {
-            ignore: c.ignore.paths.clone(),
-            ignore_tests: c.ignore.tests,
-            gitignore: c.ignore.gitignore,
-            ignore_files: c.ignore.ignore_files,
-            hidden: c.ignore.hidden,
-        });
+    let pinput = if cfg.is_some() {
+        PluginInput {
+            ignore: lc.ignore.paths.clone(),
+            ignore_tests: lc.ignore.tests,
+            gitignore: lc.ignore.gitignore,
+            ignore_files: lc.ignore.ignore_files,
+            hidden: lc.ignore.hidden,
+        }
+    } else {
+        default_plugin_input()
+    };
 
     // Project node-scope declarative metrics (built-ins win a key collision).
-    if let Some(c) = &cfg {
-        for (k, d) in &c.metrics {
-            if d.scope == code_ranker_graph::Scope::Node {
-                node_attributes
-                    .entry(k.clone())
-                    .or_insert_with(|| d.to_attribute_spec());
-            }
+    for (k, d) in &lc.metrics {
+        if d.scope == code_ranker_graph::Scope::Node {
+            node_attributes
+                .entry(k.clone())
+                .or_insert_with(|| d.to_attribute_spec());
         }
     }
 
-    // Principles: plugin catalog overlaid with the project's `[principles.<ID>]`.
-    let catalog = plugin::principles(plugin_name, &pinput);
-    let principles = match &cfg {
-        Some(c) => config::merge_project_principles(catalog, &c.principles),
-        None => catalog,
+    // Principles: the plugin catalog overlaid with the language's `[principles.<ID>]`.
+    // `base` is the language-agnostic catalog (not a registered plugin), so its
+    // principles come from the neutral built-in defaults.
+    let catalog = if plugin_name == "base" {
+        code_ranker_plugins::config::resolved_principles(&code_ranker_plugins::config::load_chain(
+            &[],
+        ))
+    } else {
+        plugin::principles(plugin_name, &eff_cfg, &pinput)
     };
+    let principles = config::merge_project_principles(catalog, &lc.principles);
 
     let templates = cfg.map(|c| c.templates).unwrap_or_default();
 
@@ -441,12 +499,16 @@ fn render_principle(specs: &DocSpecs, subject: &str) -> Result<String> {
 /// note, for an unknown subject. A uniform two-level tree: each group (a metric
 /// category, then `principles`) on its own line, its members indented beneath. Every
 /// name on every line — group or member — is itself a valid `docs <subject>`.
-fn render_catalog(specs: &DocSpecs, unknown: Option<&str>) -> String {
+fn render_catalog(specs: &DocSpecs, lang: &str, unknown: Option<&str>) -> String {
     let mut out = String::new();
     if let Some(s) = unknown {
-        out.push_str(&format!("Unknown docs subject `{s}`.\n\n"));
+        out.push_str(&format!(
+            "Unknown docs subject `{s}` for language `{lang}`.\n\n"
+        ));
     }
-    out.push_str("code-ranker docs <subject> — print a reference doc to stdout (no analysis).\n");
+    out.push_str(&format!(
+        "code-ranker docs {lang} <subject> — print a reference doc to stdout (no analysis).\n"
+    ));
     out.push_str(&categories_block(specs));
     // Principles render as one more group, exactly like a metric category.
     out.push_str("\n  principles — SOLID & related design principles\n");
@@ -457,11 +519,11 @@ fn render_catalog(specs: &DocSpecs, unknown: Option<&str>) -> String {
             .map(|p| format!("    - {}: {}\n", p.id, principle_title(p)))
             .collect::<String>(),
     );
-    out.push_str(
-        "\nCall `docs` with any name above — e.g. `docs principles`, `docs KISS`, \
-         `docs cloc`, `docs complexity`. Also `docs ai` (the agent playbook) and \
-         `docs metrics` (the full metric index).\n",
-    );
+    out.push_str(&format!(
+        "\nCall `docs {lang}` with any name above — e.g. `docs {lang} principles`, \
+         `docs {lang} KISS`, `docs {lang} cloc`, `docs {lang} complexity`. Also \
+         `docs {lang} ai` (the agent playbook) and `docs {lang} metrics` (the full metric index).\n"
+    ));
     out
 }
 

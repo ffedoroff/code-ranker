@@ -41,7 +41,7 @@ pub use checks::{CheckCompileError, CheckDef, CheckHit, CompiledCheck, GraphView
 pub use registry::{Engine, MetricDef, Populations, RegistryError, Scope, apply_to_node};
 pub use relativize::{relativize_graph, relativize_level};
 pub use serialize::{to_canonical_string, to_canonical_string_pretty};
-pub use snapshot::{GitInfo, Snapshot, StageTime};
+pub use snapshot::{GitInfo, LanguageSnapshot, Snapshot, SnapshotInit, StageTime};
 pub use stats::compute_stats;
 
 // The coupling/cycle attribute specs (`fan_in` / `fan_out` / `fan_out_external` /

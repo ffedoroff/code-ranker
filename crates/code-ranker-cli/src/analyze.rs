@@ -37,15 +37,15 @@ pub(crate) fn analyze_input(
 
 /// Snapshot input: read the embedded snapshot and evaluate the current rules
 /// against it — no source tree or toolchain required. Analysis-only flags
-/// (`--plugin` / `--ignore`) are rejected because there is nothing to analyze.
+/// (`--plugins` / `--ignore`) are rejected because there is nothing to analyze.
 fn analyze_from_snapshot(
     args: &AnalyzeArgs,
     cycle_rules: &[String],
     thresholds: &[String],
 ) -> Result<Analyzed> {
-    if args.plugin.is_some() {
+    if !args.plugins.is_empty() {
         anyhow::bail!(
-            "--plugin does not apply to a snapshot input ({}): there is nothing to analyze",
+            "--plugins does not apply to a snapshot input ({}): there is nothing to analyze",
             args.input.display()
         );
     }
@@ -62,17 +62,29 @@ fn analyze_from_snapshot(
         .context("configuration error")?;
     let cfg = loaded.config;
 
-    let mut graphs = snapshot.graphs.clone();
-    if let Some(level) = graphs.get_mut("files") {
-        config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &cfg.rules.cycles);
+    // Resolve each snapshot language's effective rules (`[plugins.base]` ⊕
+    // `[plugins.<lang>]`), then apply cycle rules and gate per language.
+    let mut rules_by_lang: std::collections::BTreeMap<String, config::RulesConfig> =
+        std::collections::BTreeMap::new();
+    for lang in snapshot.languages.keys() {
+        rules_by_lang.insert(lang.clone(), cfg.language_config(lang)?.rules);
     }
-    let violations = config::check_violations(&graphs, &cfg.rules);
+    let mut languages = snapshot.languages.clone();
+    for (lang, ls) in languages.iter_mut() {
+        if let Some(level) = ls.graphs.get_mut("files") {
+            let cycles = rules_by_lang
+                .get(lang)
+                .map(|r| r.cycles)
+                .unwrap_or_default();
+            config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &cycles);
+        }
+    }
+    let violations = config::check_violations_all(&languages, &rules_by_lang);
 
     Ok(Analyzed {
         snapshot,
         violations,
-        cycles: cfg.rules.cycles,
-        rules: cfg.rules,
+        rules_by_lang,
         output: cfg.output,
     })
 }
@@ -142,20 +154,29 @@ mod tests {
     use std::fs;
 
     fn mk_snap() -> Snapshot {
-        Snapshot::new(
-            "cmd".into(),
-            "ws".into(),
-            "tgt".into(),
-            "rust".into(),
-            None,
-            BTreeMap::new(),
-            BTreeMap::new(),
-            None,
-            Vec::new(),
-            BTreeMap::new(),
-            Vec::new(),
-            Default::default(),
-        )
+        use code_ranker_graph::snapshot::{LanguageSnapshot, SnapshotInit};
+        use code_ranker_plugin_api::PromptTemplate;
+        let mut languages = BTreeMap::new();
+        languages.insert(
+            "rust".to_string(),
+            LanguageSnapshot {
+                graphs: BTreeMap::new(),
+                principles: Vec::new(),
+                prompt: PromptTemplate::default(),
+            },
+        );
+        Snapshot::new(SnapshotInit {
+            command: "cmd".into(),
+            workspace: "ws".into(),
+            target: "tgt".into(),
+            plugins: vec!["rust".to_string()],
+            config_file: None,
+            versions: BTreeMap::new(),
+            roots: BTreeMap::new(),
+            git: None,
+            timings: Vec::new(),
+            languages,
+        })
     }
 
     #[test]
@@ -174,7 +195,11 @@ mod tests {
         let back = code_ranker_viewer::extract_embedded_snapshot(&html, "cs-current")
             .expect("cs-current present")
             .unwrap();
-        assert_eq!(back.plugin, "rust", "round-trips through embed/extract");
+        assert_eq!(
+            back.plugins,
+            vec!["rust"],
+            "round-trips through embed/extract"
+        );
         assert!(
             code_ranker_viewer::extract_embedded_snapshot(&html, "cs-baseline").is_none(),
             "null baseline extracts to None"
@@ -188,7 +213,11 @@ mod tests {
 
         let jp = d.path().join("s.json");
         fs::write(&jp, serde_json::to_string(&snap).unwrap()).unwrap();
-        assert_eq!(load_snapshot_any(&jp).unwrap().plugin, "rust", "from .json");
+        assert_eq!(
+            load_snapshot_any(&jp).unwrap().plugins,
+            vec!["rust"],
+            "from .json"
+        );
 
         let hp = d.path().join("r.html");
         fs::write(
@@ -197,8 +226,8 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            load_snapshot_any(&hp).unwrap().plugin,
-            "rust",
+            load_snapshot_any(&hp).unwrap().plugins,
+            vec!["rust"],
             "from embedded .html"
         );
     }

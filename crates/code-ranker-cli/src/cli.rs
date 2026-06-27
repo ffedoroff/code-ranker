@@ -64,10 +64,13 @@ pub(crate) struct AnalyzeArgs {
     #[arg(default_value = ".")]
     pub(crate) input: PathBuf,
 
-    /// Plugin: rust | python | javascript | auto. Default: auto (detect by markers).
+    /// Plugins to activate: `rust`, `python`, `javascript`, etc. Comma-separated
+    /// or repeated (`--plugins rust,markdown` or `--plugins rust --plugins markdown`).
+    /// Empty (the default) → auto-detect all languages whose markers are present.
+    /// Overrides both `plugins = [...]` in the config file and auto-detection.
     /// Only applies when the input is a directory.
-    #[arg(long)]
-    pub(crate) plugin: Option<String>,
+    #[arg(long, value_delimiter = ',')]
+    pub(crate) plugins: Vec<String>,
 
     /// Config file path, or inline `KEY=VALUE` override. Repeatable: files layer
     /// in command-line order (later wins) over the built-in defaults; passing any
@@ -240,6 +243,13 @@ pub(crate) enum Command {
         #[arg(long = "focus", value_name = "METRIC | PRINCIPLE")]
         focus: Option<String>,
 
+        /// Select the active language for `--focus`, `--prompt`, and the scorecard
+        /// when the snapshot contains multiple languages. Required when `--focus` /
+        /// `--prompt <ID>` matches a metric or principle in more than one language;
+        /// unambiguous single-language snapshots do not need it.
+        #[arg(long, value_name = "NAME")]
+        language: Option<String>,
+
         /// Restrict the scorecard / prompt to modules under these paths (repeatable).
         /// The whole project is still analyzed (the graph needs it), but only modules
         /// located under one of these paths are ranked and listed. Paths are
@@ -277,25 +287,28 @@ pub(crate) enum Command {
         prompt_id: Option<String>,
     },
 
-    /// Print a reference doc to stdout — no analysis, no `[input]`. The `<subject>`
-    /// is `ai` (the offline AI-agent playbook), `metrics` or `principles` (an index
-    /// of each), a metric category (`loc`, `complexity`, …), a metric key (`sloc`,
-    /// `hk`, …), or a principle id (`SRP`, `ADP`, … — including project-defined
-    /// `[principles.<ID>]` and `[metrics.<key>]`). With no subject it prints a
-    /// catalog of every option. Config is auto-discovered from the current directory
-    /// (override with `--config`); `--plugin` resolves the language explicitly.
+    /// Print a reference doc to stdout — no analysis, no `[input]`. Docs are
+    /// per-language: the FIRST argument is the language (`rust`, `markdown`, … or
+    /// `base` for the language-agnostic catalog). The `<subject>` is `ai` (the
+    /// offline AI-agent playbook), `metrics` or `principles` (an index of each), a
+    /// metric category (`loc`, `complexity`, …), a metric key (`sloc`, `hk`, …), or
+    /// a principle id (`SRP`, `ADP`, …). Forms:
+    ///   `code-ranker docs`              → list the project's detected languages +
+    ///                                     every language docs are available for;
+    ///   `code-ranker docs <lang>`       → the full subject catalog for that language;
+    ///   `code-ranker docs <lang> <subject>` → the doc for that subject.
+    /// A subject without a language errors and lists the languages that carry it.
     Docs {
+        /// The language (`rust`, `markdown`, …, or `base`). Omit to list available
+        /// languages. Required before any `<subject>`.
+        language: Option<String>,
+
         /// What to print: `ai` | `metrics` | `principles` | a category | a metric
-        /// | a principle id. Omit to list every available subject.
+        /// | a principle id. Omit to print the language's full catalog.
         subject: Option<String>,
 
-        /// Plugin: rust | python | javascript | auto. Resolves the language whose
-        /// principles / metric refinements drive the docs (skips auto-detection).
-        #[arg(long)]
-        plugin: Option<String>,
-
         /// Config file path, or inline `KEY=VALUE` override (repeatable) — consulted
-        /// for the `plugin` key and any project `[principles]` / `[metrics]`.
+        /// for project `[plugins.<lang>]` principles / metrics.
         #[arg(long, value_name = "PATH | KEY=VALUE")]
         config: Vec<String>,
     },

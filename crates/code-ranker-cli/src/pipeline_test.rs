@@ -50,15 +50,15 @@ fn gate_thresholds_uses_gate_as_warning_and_reconciles_info() {
         format!(
             "version = \"{}\"\n{}",
             code_ranker_graph::version::CONFIG_VERSION,
-            r#"[metrics.below]
+            r#"[plugins.base.metrics.below]
 formula_cel = "sloc"
 info = 50
 
-[metrics.above]
+[plugins.base.metrics.above]
 formula_cel = "sloc"
 info = 200
 
-[rules.thresholds.file]
+[plugins.base.rules.thresholds.file]
 hk = 500000
 below = 100
 above = 100
@@ -68,7 +68,7 @@ above = 100
     .unwrap();
     let loaded =
         config::load(dir.path(), &[cfg_path.display().to_string()], &[], &[], &[]).unwrap();
-    let th = gate_thresholds(&loaded.config);
+    let th = gate_thresholds(&loaded.config.language_config("base").unwrap());
 
     // Built-in metric, no `[metrics]` info → `info` mirrors the gate (one tier).
     assert_eq!(th["hk"].warning, 500_000.0);
@@ -87,6 +87,7 @@ fn assemble_level_synthesizes_default_spec_when_none() {
     // `files` Level, then layers the central metric/coupling specs over it.
     use code_ranker_plugin_api::graph::Graph;
     let custom = BTreeMap::new();
+    let cfg = toml::Table::new();
     let level = assemble_level(
         None,
         Graph::default(),
@@ -95,6 +96,7 @@ fn assemble_level_synthesizes_default_spec_when_none() {
         BTreeMap::new(),
         &custom,
         "rust",
+        &cfg,
         &[],
     );
     // An empty graph prunes every metric spec (no node carries it), so the
@@ -124,6 +126,7 @@ fn assemble_level_keeps_grouping_with_a_function() {
         }),
     };
     let custom = BTreeMap::new();
+    let cfg = toml::Table::new();
     let level = assemble_level(
         Some(spec),
         Graph::default(),
@@ -132,14 +135,18 @@ fn assemble_level_keeps_grouping_with_a_function() {
         BTreeMap::new(),
         &custom,
         "rust",
+        &cfg,
         &[],
     );
     let g = level.ui.grouping.expect("function grouping retained");
     assert_eq!(g.function.as_deref(), Some("dir"));
 }
 
+/// Single-marker detection cases: each marker file causes exactly the expected
+/// plugin to be detected via `detect_all`.
 #[test]
 fn detect_plugin_by_single_marker() {
+    use code_ranker_plugin_api::plugin::PluginInput;
     let cases = vec![
         ("Cargo.toml", "rust"),
         ("pyproject.toml", "python"),
@@ -147,32 +154,70 @@ fn detect_plugin_by_single_marker() {
         ("package.json", "javascript"),
         ("tsconfig.json", "typescript"),
     ];
+    let empty_overrides = BTreeMap::new();
     for (marker, expected) in cases {
         let d = tempfile::tempdir().unwrap();
         fs::write(d.path().join(marker), "").unwrap();
-        assert_eq!(
-            plugin::detect(d.path(), &PluginInput::default()).unwrap(),
-            expected,
-            "marker {marker}"
+        let eff_cfgs: BTreeMap<String, toml::Table> = plugin::registry()
+            .iter()
+            .map(|p| {
+                (
+                    p.name().to_string(),
+                    plugin::effective_plugin_config(p.name(), &empty_overrides),
+                )
+            })
+            .collect();
+        let detected = plugin::detect_all(&eff_cfgs, d.path(), &PluginInput::default());
+        assert!(
+            detected.contains(&expected.to_string()),
+            "marker {marker} should detect {expected}, got: {detected:?}"
         );
     }
 }
 
+/// `detect_all` returns an empty list on an empty directory, and multiple
+/// results when both Cargo.toml and package.json are present — no error.
 #[test]
-fn detect_plugin_errors_on_ambiguous_or_empty() {
+fn detect_all_multi_and_empty() {
+    use code_ranker_plugin_api::plugin::PluginInput;
+    let empty_overrides = BTreeMap::new();
+
+    // Empty directory: no detections (previously an error, now just empty).
+    let empty = tempfile::tempdir().unwrap();
+    let eff_cfgs: BTreeMap<String, toml::Table> = plugin::registry()
+        .iter()
+        .map(|p| {
+            (
+                p.name().to_string(),
+                plugin::effective_plugin_config(p.name(), &empty_overrides),
+            )
+        })
+        .collect();
+    let detected = plugin::detect_all(&eff_cfgs, empty.path(), &PluginInput::default());
+    assert!(
+        detected.is_empty(),
+        "empty directory → no detections (no error): {detected:?}"
+    );
+
+    // Two markers → two detections (not an error).
     let amb = tempfile::tempdir().unwrap();
     fs::write(amb.path().join("Cargo.toml"), "").unwrap();
     fs::write(amb.path().join("package.json"), "").unwrap();
-    let err = format!(
-        "{:#}",
-        plugin::detect(amb.path(), &PluginInput::default()).unwrap_err()
+    let detected = plugin::detect_all(&eff_cfgs, amb.path(), &PluginInput::default());
+    assert!(
+        detected.len() >= 2,
+        "two markers → two (or more) detections: {detected:?}"
     );
-    assert!(err.contains("multiple"), "ambiguous error: {err}");
-
-    let empty = tempfile::tempdir().unwrap();
-    let err = format!(
-        "{:#}",
-        plugin::detect(empty.path(), &PluginInput::default()).unwrap_err()
+    assert!(
+        detected.contains(&"rust".to_string()),
+        "rust detected: {detected:?}"
     );
-    assert!(err.contains("no project marker"), "empty error: {err}");
+    assert!(
+        detected.contains(&"javascript".to_string()),
+        "javascript detected: {detected:?}"
+    );
+    // Sorted.
+    let mut sorted = detected.clone();
+    sorted.sort_unstable();
+    assert_eq!(detected, sorted, "detect_all output is sorted");
 }

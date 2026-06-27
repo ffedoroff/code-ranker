@@ -39,47 +39,93 @@ pub const CONFIG_SCHEMA_VERSION: &str = code_ranker_graph::version::CONFIG_VERSI
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Config-schema version (`major.minor`, e.g. `"4.0"`) — **required** in a
+    /// Config-schema version (`major.minor`, e.g. `"5.0"`) — **required** in a
     /// `code-ranker.toml`. Validated against [`CONFIG_SCHEMA_VERSION`] at load.
     /// `Option` so a missing value yields our migrate-hint error, not serde's.
     #[serde(default)]
     pub version: Option<String>,
-    /// Default plugin name (e.g. "rust", "python"). Overridden by --plugin.
+    /// The `[plugins]` table: the active-language list (`enabled = [...]`) plus the
+    /// per-language config blocks (`[plugins.<lang>]`, with the shared `[plugins.base]`).
     #[serde(default)]
-    pub plugin: Option<String>,
-    #[serde(default)]
-    pub ignore: IgnoreConfig,
-    #[serde(default)]
-    pub rules: RulesConfig,
+    pub plugins: PluginsConfig,
+    /// Output artifacts (`[output]`) — **global** (one report per run covers every
+    /// language), so this is not per-language.
     #[serde(default)]
     pub output: OutputConfig,
-    /// User-defined declarative metrics (`[metrics.<key>]`): a CEL `formula_cel` plus
-    /// optional spec fields. Computed per node at snapshot time and emitted like
-    /// any built-in metric. Empty by default — absent → no change to output.
-    #[serde(default)]
-    pub metrics: BTreeMap<String, code_ranker_graph::MetricDef>,
-    /// Optional analysis levels (`[levels]`). Off by default → only the `files`
-    /// level is emitted, so default output is unchanged.
-    #[serde(default)]
-    pub levels: LevelsConfig,
-    /// Project-level report-list patches (`[report]`): `columns` / `card` /
-    /// `stats`, each a list-override (plain array = replace, or an op-table
-    /// `{add,remove,replace,clear,prepend}`). Applied over the language's own
-    /// `[report]` patch, so a project can surface its custom metrics in the table
-    /// / card / JSON stats. Raw table; parsed by `list_override::report_override_section`.
-    #[serde(default)]
-    pub report: toml::Table,
-    /// Project-defined Prompt-Generator principles (`[principles.<ID>]`), keyed by the
-    /// principle id. Appended to the active plugin's catalog (a same-id project principle
-    /// overrides the plugin's), so a project can recommend/scorecard on its own
-    /// custom metric. Empty by default — absent → no change to output.
-    #[serde(default)]
-    pub principles: BTreeMap<String, PrincipleDef>,
     /// Per-file doc-corpus overrides (`[templates.languages.<lang>.<ID>]`): use a
-    /// file from disk in place of the embedded `languages/<lang>/<ID>.md`. Empty by
-    /// default — absent → the embedded corpus is used unchanged.
+    /// file from disk in place of the embedded `languages/<lang>/<ID>.md`. Global.
     #[serde(default)]
     pub templates: TemplatesConfig,
+}
+
+/// The `[plugins]` table. `enabled` is the active-language list; every other key is
+/// a per-language config block (`[plugins.<lang>]`), with the reserved `"base"` key
+/// inherited by every language. `enabled` and `base` are therefore reserved and
+/// cannot be language names. The blocks are free-form: plugin-config keys
+/// (`extensions`, `detect_markers`, …) are consumed via `effective_plugin_config`,
+/// while the orchestrator sections (`ignore`/`rules`/`metrics`/`levels`/`report`/
+/// `principles`) are read via [`Config::language_config`].
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PluginsConfig {
+    /// Active languages (e.g. `["rust", "markdown"]`). Empty → auto-detect all.
+    /// Overridden by `--plugins`.
+    #[serde(default)]
+    pub enabled: Vec<String>,
+    /// Per-language config blocks keyed by language (plus the reserved `"base"`).
+    /// Captures every `[plugins]` key other than `enabled`.
+    #[serde(flatten)]
+    pub languages: BTreeMap<String, toml::Table>,
+}
+
+/// The orchestrator-read config sections that are now **per-language**, resolved
+/// for one language by [`Config::language_config`] (defaults' `[plugins.base]` ⊕
+/// user `[plugins.base]` ⊕ user `[plugins.<lang>]`). Plugin-config keys in the same
+/// block (`extensions`, …) are ignored here — they feed the plugin separately.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LangConfig {
+    pub ignore: IgnoreConfig,
+    pub rules: RulesConfig,
+    pub metrics: BTreeMap<String, code_ranker_graph::MetricDef>,
+    pub levels: LevelsConfig,
+    pub report: toml::Table,
+    pub principles: BTreeMap<String, PrincipleDef>,
+}
+
+/// The orchestrator config-section keys carried inside a `[plugins.<lang>]` block.
+/// (Other keys in the block are plugin config, consumed via `effective_plugin_config`.)
+pub(crate) const LANG_SECTION_KEYS: &[&str] = &[
+    "ignore",
+    "rules",
+    "metrics",
+    "levels",
+    "report",
+    "principles",
+];
+
+impl Config {
+    /// Resolve the per-language orchestrator config for `lang`: the reserved
+    /// `[plugins.base]` block deep-merged with `[plugins.<lang>]`, restricted to the
+    /// orchestrator sections ([`LANG_SECTION_KEYS`]). Built-in defaults live under
+    /// `[plugins.base]` in `defaults.toml`, so the result always carries them.
+    pub fn language_config(&self, lang: &str) -> Result<LangConfig> {
+        let pick = |block: &toml::Table| -> toml::Table {
+            block
+                .iter()
+                .filter(|(k, _)| LANG_SECTION_KEYS.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        };
+        let mut overlay = toml::Table::new();
+        for key in ["base", lang] {
+            if let Some(block) = self.plugins.languages.get(key) {
+                overlay = code_ranker_plugin_api::toml_merge::deep_merge(overlay, pick(block));
+            }
+        }
+        toml::Value::Table(overlay)
+            .try_into()
+            .with_context(|| format!("building the effective config for language {lang:?}"))
+    }
 }
 
 /// Doc-corpus override map (`[templates.languages.<lang>.<ID>]`): `lang → (ID →
@@ -338,7 +384,9 @@ impl MetricThresholds {
     pub fn get(&self, metric: &str) -> Option<f64> {
         self.limits.get(metric).copied()
     }
-    /// Set (or override) the limit for `metric`.
+    /// Set (or override) the limit for `metric`. Used by tests; overrides now write
+    /// raw `[plugins.<lang>]` tables rather than mutating typed thresholds.
+    #[allow(dead_code)]
     pub fn set(&mut self, metric: String, limit: f64) {
         self.limits.insert(metric, limit);
     }

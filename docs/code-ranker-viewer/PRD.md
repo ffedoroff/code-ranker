@@ -108,7 +108,7 @@ controls) are built from the snapshot's `ui.filter` — the built-in
 the nodes where the active filter metric has signal; for `cycle` that is the nodes
 in a cycle and the edges between them (callers/dependencies clusters kept). Cycle
 data is sourced solely from the backend (`graph.cycles`); the per-metric
-`info` / `warning` colour thresholds are derived from the `[rules.thresholds.file]`
+`info` / `warning` colour thresholds are derived from the `[plugins.base.rules.thresholds.file]`
 gate and carried in the snapshot's `node_attributes` (see the CLI **Severity tiers**
 reference).
 
@@ -204,7 +204,7 @@ language and switches the whole report to it (its map, node table, summary, and
 Prompt Generator). The language switcher is hidden when the report covers only one
 language, so single-language reports look unchanged. The viewer shows the `files`
 level by default; when the snapshot
-carries extra levels (e.g. `functions`, emitted by `[levels] functions = true`) a
+carries extra levels (e.g. `functions`, emitted by `[plugins.base.levels] functions = true`) a
 **level switcher** (Files / Functions tabs above the map) selects which level's
 map + node table to show — the switcher is hidden for a single-level report, so
 those look exactly as before. On a fresh load

@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.BASELINE = readEmbeddedSnapshot('cs-baseline');
   window.CURRENT  = readEmbeddedSnapshot('cs-current');
 
-  const EMPTY = { graphs: {} };
+  const EMPTY = { languages: {} };
   window.DIFF   = computeDiff(window.BASELINE ?? window.CURRENT ?? EMPTY, window.CURRENT ?? window.BASELINE ?? EMPTY);
   window.CYCLES = computeCycles(window.BASELINE ?? window.CURRENT ?? EMPTY, window.CURRENT ?? window.BASELINE ?? EMPTY);
   window.META   = computeMeta(window.BASELINE, window.CURRENT);
@@ -34,8 +34,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!window._ntSelected) window._ntSelected = {};
     window._ntSelected[epState.level] = new Set(epState.sel);
   }
-  // Build any extra level views (e.g. `functions`) + the level switcher BEFORE
-  // node-table setup, so the per-level tables are wired up by the loop below.
+  // Restore active language from the URL before building level sections; default
+  // to the first language key in the snapshot (BTreeMap order = alphabetical).
+  const snap = window.CURRENT ?? window.BASELINE;
+  const urlLang = getNavParams().lang;
+  const firstLang = (typeof langKeys === 'function' && snap) ? langKeys(snap)[0] : null;
+  const initialLang = urlLang || firstLang || null;
+  if (initialLang && typeof setLang === 'function') setLang(initialLang);
+
+  // Build any extra level views (e.g. `functions`) + the level/language switchers
+  // BEFORE node-table setup, so the per-level tables are wired up by the loop below.
   updateFilesTab();
   document.querySelectorAll('.view').forEach(sec => setupNodeTable(sec, sec.dataset.view));
   setupSnapPopup();
@@ -78,13 +86,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Restore state from URL (skipped on a fresh load — the default above stands),
   // then set the initial history entry.
-  const { level: urlLevel, node: urlNode, group: urlGroup, mode: urlMode, depth: urlDepth, tier: urlTier, stat: urlStat2 } = np;
+  const { lang: urlLang2, level: urlLevel, node: urlNode, group: urlGroup, mode: urlMode, depth: urlDepth, tier: urlTier, stat: urlStat2 } = np;
+  // Language was already applied above; only switch + rebuild if the URL lang
+  // differs from what was applied (e.g. lang param added after initial render).
+  if (urlLang2 && urlLang2 !== (typeof currentLang === 'function' ? currentLang() : null)) {
+    if (typeof switchToLang === 'function') switchToLang(urlLang2);
+  }
   if (urlLevel && urlLevel !== currentLevel()) switchToLevel(urlLevel);
   if (!freshLoad) applyViewState({ level: urlLevel, group: urlGroup, mode: urlMode, depth: urlDepth, tier: urlTier, stat: urlStat2 }, { rerender: !!(urlGroup || urlMode || urlDepth || urlTier) });
   if (urlNode) openModalForNode(urlNode, urlLevel ?? currentLevel());
   // Replace initial history state so popstate can restore it.
+  const activeLangInit = (typeof currentLang === 'function') ? currentLang() : null;
   history.replaceState(
-    { level: currentLevel(), node: urlNode ?? null, group: window.drillGroup ?? null, mode: window.nodeSizeMode ?? null, depth: window.navDepth?.() ?? 0, tier: window.tier || null, side: window.viewSide, stat: window.navStat?.() ?? null, panel: window._statsOpen ? 'stats' : null },
+    { lang: activeLangInit, level: currentLevel(), node: urlNode ?? null, group: window.drillGroup ?? null, mode: window.nodeSizeMode ?? null, depth: window.navDepth?.() ?? 0, tier: window.tier || null, side: window.viewSide, stat: window.navStat?.() ?? null, panel: window._statsOpen ? 'stats' : null },
     '', location.href
   );
 
@@ -99,7 +113,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lvl  = st.level;
     const nid  = st.node;
     const side = st.side;
+    const lang = st.lang;
     if (window.CURRENT && (side === 'baseline' || side === 'current')) setViewSide(side);
+    // Restore language before level so level sections are built for the right language.
+    if (lang && lang !== (typeof currentLang === 'function' ? currentLang() : null)) {
+      if (typeof switchToLang === 'function') switchToLang(lang);
+    }
     if (lvl && lvl !== currentLevel()) switchToLevel(lvl);
     applyViewState({ level: lvl ?? currentLevel(), group: st.group, mode: st.mode, depth: st.depth, tier: st.tier, stat: st.stat }, { rerender: true });
     if (nid) {

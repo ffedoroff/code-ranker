@@ -46,37 +46,6 @@ fn specs() -> DocSpecs {
 }
 
 #[test]
-fn fill_select_injects_live_values_into_the_doc_template() {
-    let reason = "ambiguous project in .: markers for multiple plugins found (rust, markdown) — pass --plugin to choose";
-    let md = fill_select(&templates::ai_doc_intro().unwrap(), reason);
-
-    assert!(
-        md.contains("code-ranker — AI agent skill"),
-        "intro head present"
-    );
-    assert!(
-        md.contains("## Commands") && md.contains("**`help`**") && md.contains("**`report"),
-        "command list present"
-    );
-    assert!(md.contains("## Select a language"), "setup section present");
-    assert!(
-        md.contains(reason),
-        "{{reason}} replaced with the diagnostic"
-    );
-    assert!(
-        md.contains(&plugin::names()),
-        "{{plugins}} replaced with the registry names"
-    );
-    assert!(
-        md.contains(&format!("version = \"{CONFIG_VERSION}\"")),
-        "{{config_version}} replaced with the live CONFIG_VERSION"
-    );
-    for ph in ["{reason}", "{plugins}", "{config_version}"] {
-        assert!(!md.contains(ph), "placeholder {ph} fully substituted");
-    }
-}
-
-#[test]
 fn category_subject_resolves_case_insensitively() {
     let s = specs();
     assert_eq!(category_key(&s, "LOC").as_deref(), Some("loc"));
@@ -122,9 +91,9 @@ fn render_principle_falls_back_to_a_synthetic_card_without_a_doc() {
 
 #[test]
 fn catalog_lists_every_subject_class() {
-    let out = render_catalog(&specs(), Some("zzz"));
+    let out = render_catalog(&specs(), "rust", Some("zzz"));
     assert!(
-        out.contains("Unknown docs subject `zzz`"),
+        out.contains("Unknown docs subject `zzz` for language `rust`"),
         "lead note: {out}"
     );
     // Categories and their metrics (two-level): `<key> — <description>` header.
@@ -144,8 +113,8 @@ fn catalog_lists_every_subject_class() {
     assert!(out.contains("- TSR: Test Ratio"), "principle member: {out}");
     // Closing note points at ai / metrics and the call-anything hint.
     assert!(
-        out.contains("Call `docs`") && out.contains("docs ai"),
-        "closing note: {out}"
+        out.contains("Call `docs rust`") && out.contains("docs rust ai"),
+        "closing note carries the language: {out}"
     );
 }
 
@@ -176,14 +145,14 @@ fn principles_block_reports_when_the_plugin_defines_none() {
 #[test]
 fn catalog_without_unknown_omits_the_lead_note() {
     // The bare-`docs` path passes `None` — the catalog is the help, so no lead note.
-    let out = render_catalog(&specs(), None);
+    let out = render_catalog(&specs(), "rust", None);
     assert!(
         !out.contains("Unknown docs subject"),
         "no unknown-subject note for the help view: {out}"
     );
     assert!(
-        out.contains("code-ranker docs <subject>"),
-        "still prints the catalog header: {out}"
+        out.contains("code-ranker docs rust <subject>"),
+        "still prints the catalog header with the language: {out}"
     );
 }
 
@@ -255,31 +224,56 @@ fn build_specs_without_config_uses_the_plugin_catalog_and_neutral_input() {
 #[test]
 fn build_specs_overlays_project_metrics_and_principles() {
     let mut cfg = config::model::Config::default();
-    // A node-scope `[metrics.<key>]` becomes a first-class metric subject.
-    let mut def = code_ranker_graph::MetricDef {
-        formula_cel: "sloc * 2".to_string(),
-        ..Default::default()
-    };
-    def.scope = code_ranker_graph::Scope::Node;
-    def.name = Some("Doubled SLOC".to_string());
-    def.description = Some("Twice the source lines.".to_string());
-    cfg.metrics.insert("dbl".to_string(), def);
-    // A graph-scope metric must NOT leak into the node-attribute dictionary.
-    let mut agg = code_ranker_graph::MetricDef {
-        formula_cel: "sum(sloc)".to_string(),
-        ..Default::default()
-    };
-    agg.scope = code_ranker_graph::Scope::Graph;
-    cfg.metrics.insert("total".to_string(), agg);
-    // A `[principles.<ID>]` is appended to the catalog.
-    cfg.principles.insert(
-        "TSR".to_string(),
-        config::model::PrincipleDef {
-            sort_metric: "dbl".to_string(),
-            title: Some("TSR — Test Ratio".to_string()),
-            ..Default::default()
-        },
+    // Populate metrics and principles via the raw [plugins.base] table so that
+    // `language_config("rust")` (called inside `build_specs`) picks them up.
+    let base = cfg.plugins.languages.entry("base".to_string()).or_default();
+
+    // A node-scope `[plugins.base.metrics.dbl]` becomes a first-class metric subject.
+    let mut dbl = toml::Table::new();
+    dbl.insert(
+        "formula_cel".to_string(),
+        toml::Value::String("sloc * 2".to_string()),
     );
+    dbl.insert("scope".to_string(), toml::Value::String("node".to_string()));
+    dbl.insert(
+        "name".to_string(),
+        toml::Value::String("Doubled SLOC".to_string()),
+    );
+    dbl.insert(
+        "description".to_string(),
+        toml::Value::String("Twice the source lines.".to_string()),
+    );
+
+    // A graph-scope metric must NOT leak into the node-attribute dictionary.
+    let mut total = toml::Table::new();
+    total.insert(
+        "formula_cel".to_string(),
+        toml::Value::String("sum(sloc)".to_string()),
+    );
+    total.insert(
+        "scope".to_string(),
+        toml::Value::String("graph".to_string()),
+    );
+
+    let mut metrics = toml::Table::new();
+    metrics.insert("dbl".to_string(), toml::Value::Table(dbl));
+    metrics.insert("total".to_string(), toml::Value::Table(total));
+    base.insert("metrics".to_string(), toml::Value::Table(metrics));
+
+    // A `[plugins.base.principles.TSR]` is appended to the catalog.
+    let mut tsr = toml::Table::new();
+    tsr.insert(
+        "sort_metric".to_string(),
+        toml::Value::String("dbl".to_string()),
+    );
+    tsr.insert(
+        "title".to_string(),
+        toml::Value::String("TSR — Test Ratio".to_string()),
+    );
+    tsr.insert("prompt".to_string(), toml::Value::String(String::new()));
+    let mut principles = toml::Table::new();
+    principles.insert("TSR".to_string(), toml::Value::Table(tsr));
+    base.insert("principles".to_string(), toml::Value::Table(principles));
 
     let specs = build_specs("rust", Some(cfg));
     assert!(

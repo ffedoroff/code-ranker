@@ -1,6 +1,6 @@
-version = "4.0"
+version = "5.0"
 # Self-contained config for the code-ranker "csharp" sample fixture.
-plugin = "csharp"
-
-[ignore]
+[plugins]
+enabled = ["csharp"]
+[plugins.base.ignore]
 tests = false

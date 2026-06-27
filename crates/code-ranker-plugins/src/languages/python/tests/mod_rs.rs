@@ -16,6 +16,7 @@ fn metrics_and_function_units_skip_unreadable_files() {
         }],
         edges: vec![],
     };
-    assert!(PythonPlugin.metrics(&graph).is_empty());
-    assert!(PythonPlugin.function_units(&graph).is_empty());
+    let cfg = PythonPlugin.config();
+    assert!(PythonPlugin.metrics(&cfg, &graph).is_empty());
+    assert!(PythonPlugin.function_units(&cfg, &graph).is_empty());
 }

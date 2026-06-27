@@ -2,7 +2,7 @@
   {
     "check_name": "cycle.chain",
     "description": "{target}/src/chain/one.rs: chain cycle: {target}/src/chain/one.rs → {target}/src/chain/three.rs → {target}/src/chain/two.rs → (back to start)",
-    "fingerprint": "cycle.chain:{target}/src/chain/one.rs",
+    "fingerprint": "rust:cycle.chain:{target}/src/chain/one.rs",
     "location": {
       "lines": {
         "begin": 2
@@ -14,7 +14,7 @@
   {
     "check_name": "cycle.mutual",
     "description": "{target}/src/a.rs: mutual cycle between {target}/src/a.rs ↔ {target}/src/b.rs",
-    "fingerprint": "cycle.mutual:{target}/src/a.rs",
+    "fingerprint": "rust:cycle.mutual:{target}/src/a.rs",
     "location": {
       "lines": {
         "begin": 4

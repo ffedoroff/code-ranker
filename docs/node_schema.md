@@ -111,7 +111,7 @@ Rust snapshot `{target}` + `{registry}`.
 |-------|-------------|
 | `file` | A source file in the analyzed project — carries all per-file metrics |
 | `external` | A third-party library the project depends on, recorded at depth 1 (one node per library, never expanded into its internals; carries no metrics) |
-| `fn` / `method` / `closure` / `function` / `arrow` / `generator` / `lambda` | A sub-file unit on the optional `functions` level (per-language `kind`), carrying the per-unit tier-1/tier-2 metrics; `parent` is its file node id. Present only when `[levels] functions` is enabled. |
+| `fn` / `method` / `closure` / `function` / `arrow` / `generator` / `lambda` | A sub-file unit on the optional `functions` level (per-language `kind`), carrying the per-unit tier-1/tier-2 metrics; `parent` is its file node id. Present only when `[plugins.base.levels] functions` is enabled. |
 
 ### `name` — string, required
 
@@ -166,7 +166,7 @@ type-checked. `direction: lower_better`.
 
 Syntactic **fact sets** the Rust plugin emits per file from its **production**
 AST (test items excluded), each a sorted comma-joined string — fuel for config
-`[rules.checks]` predicates (`contains(derives, "Serialize")`, `matches(...)`),
+`[plugins.base.rules.checks]` predicates (`contains(derives, "Serialize")`, `matches(...)`),
 not numeric surfaces. `derives` = `#[derive(...)]` names; `macros` = macro
 invocation names; `attrs` = attribute names other than `derive`; `imports` =
 qualified paths referenced (≥2 segments, e.g. `http::StatusCode`); `types` /
@@ -212,7 +212,7 @@ counts) come from each plugin's `metrics()` step, which runs its in-tree
 tier-2 metrics below (`cyclomatic`, Halstead `volume`/`effort`/…, `mi`/`mi_sei`) are
 **declarative** — CEL `formula_cel` + spec in `code-ranker-graph/metrics/builtin.toml`,
 evaluated by the registry engine; the orchestrator writes both tiers onto the node
-via `code_ranker_graph::write_metrics`. User metrics (`[metrics.<key>]`) are emitted
+via `code_ranker_graph::write_metrics`. User metrics (`[plugins.base.metrics.<key>]`) are emitted
 the same way. Coupling and `cycle` are added by `code-ranker-graph`.
 
 ### Complexity — `cyclomatic`, `cognitive`, `exits`, `args`, `closures`

@@ -1,6 +1,6 @@
-version = "4.0"
+version = "5.0"
 # Self-contained config for the code-ranker "cpp" sample fixture.
-plugin = "cpp"
-
-[ignore]
+[plugins]
+enabled = ["cpp"]
+[plugins.base.ignore]
 tests = false

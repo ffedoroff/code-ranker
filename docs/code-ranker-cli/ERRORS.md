@@ -26,7 +26,7 @@ code-ranker has **no severity levels**. A rule is either *active* or not:
   count and forbid adding more (e.g. `chain=7`).
 - **Threshold rules** are inactive until you set a number. Once set, any file
   over the limit is a violation.
-- **Custom checks** (`[rules.checks.<id>]`) are inactive until you define one.
+- **Custom checks** (`[plugins.<lang>.rules.checks.<id>]`) are inactive until you define one.
   Each is a CEL boolean predicate over a file node; when true the file is a
   `check.<id>` violation. See `docs/code-ranker-cli/config.md` and
   `docs/customization/README.md` §1.8.
@@ -52,10 +52,11 @@ cases:
 
 | Error | When | Fix |
 |-------|------|-----|
-| **could not determine any language** | Auto-detect matches no plugin in the workspace (no `Cargo.toml` / `pyproject.toml` / `package.json` / … marker, or all overridden markers miss). | Name the language(s) explicitly: `plugins = ["<name>"]` in `code-ranker.toml`, or `--plugins <name>`. |
-| **legacy `plugin` key** | The old scalar `plugin = "..."` key appears in `code-ranker.toml` / `Cargo.toml` metadata. | Replace it with the array `plugins = ["<name>", …]`. |
-| **extension claimed by two plugins** | Two active plugins claim the same file extension (e.g. `.h` by both `c` and `cpp`). Raised at startup, before analysis — one file maps to exactly one language. | Drop one language from `plugins`, or override `extensions` in `[languages.<lang>]` so the file sets are disjoint. |
-| **invalid `--plugins`** | A name in `--plugins` (or the config `plugins` array) is not a known language. | Use a built-in language name (`rust`, `python`, `javascript`, …). |
+| **could not determine any language** | Auto-detect matches no plugin in the workspace (no `Cargo.toml` / `pyproject.toml` / `package.json` / … marker, or all overridden markers miss). | Name the language(s) explicitly: `[plugins] enabled = ["<name>"]` in `code-ranker.toml`, or `--plugins <name>`. |
+| **legacy `plugin` key** | The old scalar `plugin = "..."` key appears in `code-ranker.toml` / `Cargo.toml` metadata. | Replace it with `[plugins] enabled = ["<name>", …]`. |
+| **extension claimed by two plugins** | Two active plugins claim the same file extension (e.g. `.h` by both `c` and `cpp`). Raised at startup, before analysis — one file maps to exactly one language. | Drop one language from `[plugins].enabled`, or override `extensions` in `[plugins.<lang>]` so the file sets are disjoint. |
+| **invalid `--plugins`** | A name in `--plugins` (or the config `[plugins].enabled` list) is not a known language. | Use a built-in language name (`rust`, `python`, `javascript`, …). |
+| **`docs`: subject without a language** | A subject was given to `docs` without a language (e.g. `docs hk`, `docs ai`). | Use `code-ranker docs <lang> <subject>` — bare `docs` lists the available languages. |
 
 For `report` the `scorecard` / `prompt` are **per language**: when a `--focus
 <METRIC\|PRINCIPLE>` or `--prompt <ID>` selector resolves in two or more languages
@@ -81,7 +82,7 @@ So `file.loc` caps any one file.
 
 ## Custom checks
 
-A custom check defined in `[rules.checks.<id>]` fires the rule id `check.<id>`
+A custom check defined in `[plugins.<lang>.rules.checks.<id>]` fires the rule id `check.<id>`
 (e.g. `check.de1101`). Its `message` / `why` / `fix` come from the check
 definition itself (not the metric specs), and its `group` is the check's
 free-form concern label (default `LNT`). A `when` predicate that fails to compile
@@ -103,8 +104,8 @@ The most-used ones (`cyclomatic`, `cognitive`, `hk`, `fan_in`, `fan_out`, `loc`)
 carry a full why/fix rationale below; the rest report the breach with the same
 group and message shape. The `why` / `fix` copy is **data-driven**: `why` is each
 metric's `description` spec, and `fix` is its `remediation` when one is authored
-(a project `[metrics.<key>]` may set a custom fix) — otherwise the built-in metrics
-carry no boilerplate and `fix` is auto-derived as a pointer to `code-ranker docs <key>`.
+(a project `[plugins.<lang>.metrics.<key>]` may set a custom fix) — otherwise the built-in metrics
+carry no boilerplate and `fix` is auto-derived as a pointer to `code-ranker docs <lang> <key>`.
 Cycle rules read the `[cycles.*]` catalog. The specs live in
 `code-ranker-graph/metrics/builtin.toml` and the per-language configs; the tables
 below mirror that data, they do not define it.
@@ -112,7 +113,7 @@ below mirror that data, they do not define it.
 **Value syntax.** A threshold value accepts `_` digit separators and a `K` / `M` /
 `G` multiplier suffix (×10³ / ×10⁶ / ×10⁹, case-insensitive): `5K` = 5 000,
 `1.5M` = 1 500 000. Use it bare everywhere — on the CLI (`--threshold file.hk=5M`)
-and in TOML (`hk = 5M`). Inside a `[rules.thresholds.*]` table a bare suffixed
+and in TOML (`hk = 5M`). Inside a `[plugins.<lang>.rules.thresholds.*]` table a bare suffixed
 value is accepted even though raw TOML would reject it: code-ranker quotes it
 before parsing. A quoted `hk = "5M"` works too, and underscored integers are
 native (`hk = 5_000_000`).
@@ -127,12 +128,12 @@ native (`hk = 5_000_000`).
 In the default `human` output each violation is one block:
 
 ```text
-threshold.file.cognitive  ·  CPX  ·  files graph
+threshold.file.cognitive  ·  rust  ·  CPX  ·  files graph
   where  {target}/src/handlers.rs
   issue  cognitive complexity 67 exceeds limit 25 (2.7× over budget)
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
-  fix    Extract nested blocks into named helpers, use early returns to cut nesting depth…
-  tune   set with --threshold file.cognitive=N   ·   rules.thresholds.file.cognitive in code-ranker.toml
+  fix    Run `code-ranker docs rust cognitive` and follow its instructions.
+  tune   set with --threshold file.cognitive=N   ·   plugins.rust.rules.thresholds.file.cognitive in code-ranker.toml (or plugins.base for all)
   ref    https://github.com/ffedoroff/code-ranker/blob/main/docs/code-ranker-cli/ERRORS.md#group-cpx
 ```
 
@@ -140,7 +141,7 @@ threshold.file.cognitive  ·  CPX  ·  files graph
 - **where** — `id — path`, a clickable location. Omitted for cycle rules.
 - **issue** — the measurement: value, limit, and how far over budget.
 - **why / fix** — the rationale and the concrete remedy.
-- **tune** — the CLI flag and the `code-ranker.toml` key that adjust or disable the rule (identical to the rule id).
+- **tune** — the CLI flag and the `code-ranker.toml` per-language key that adjust or disable the rule. Shown as `plugins.<lang>.rules…` (or `plugins.base` to apply to all languages).
 - **ref** — a link to this page's group section.
 
 ## Output formats
@@ -224,15 +225,15 @@ code-ranker check --threshold file.loc=400 --threshold file.cognitive=25 \
 code-ranker check --threshold file.loc=120 --exit-zero
 ```
 
-Equivalent `code-ranker.toml` (per-file metrics sit directly under
-`[rules.thresholds.file]`):
+Equivalent `code-ranker.toml` (per-file metrics sit under `[plugins.base.rules.thresholds.file]`
+or a language-specific `[plugins.<lang>.rules.thresholds.file]`):
 
 ```toml
-[rules.cycles]
+[plugins.base.rules.cycles]
 mutual = true        # strict — any mutual cycle fails (same as 0)
 chain = 7            # allow up to 7 chain cycles; the 8th fails
 
-[rules.thresholds.file]
+[plugins.base.rules.thresholds.file]
 loc = 400
 cognitive = 25
 hk = 500000

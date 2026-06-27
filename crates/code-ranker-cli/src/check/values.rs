@@ -27,7 +27,7 @@ pub(super) fn print_current_values(
     println!(
         "# cycles: max allowed count per kind (today's count — raise only to allow more; false = off)"
     );
-    println!("[rules.cycles]");
+    println!("[plugins.base.rules.cycles]");
     for (key, kind, rule) in [
         ("mutual", "mutual", cycles.mutual),
         ("chain", "chain", cycles.chain),
@@ -109,7 +109,11 @@ fn print_scope_values(scope: &str, level: &LevelGraph) {
     }
     // Preserve the display order from `keys` (BTreeMap would re-sort).
     let vals: Vec<(&str, f64)> = keys.iter().map(|k| (*k, maxima[*k])).collect();
-    print_toml_block(&format!("[rules.thresholds.{scope}]"), &vals, false);
+    print_toml_block(
+        &format!("[plugins.base.rules.thresholds.{scope}]"),
+        &vals,
+        false,
+    );
 }
 
 /// Print one TOML table, one `metric = value` line per non-zero metric. With

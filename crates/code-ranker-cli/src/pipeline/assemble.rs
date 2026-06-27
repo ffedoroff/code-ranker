@@ -21,6 +21,7 @@ pub(super) fn assemble_level(
     thresholds: BTreeMap<String, code_ranker_plugin_api::level::Thresholds>,
     custom_specs: &BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
     plugin_name: &str,
+    eff_cfg: &toml::Table,
     report_overrides: &[code_ranker_plugin_api::report::ReportOverride],
 ) -> LevelGraph {
     use std::collections::BTreeSet;
@@ -39,9 +40,10 @@ pub(super) fn assemble_level(
     // Master node-attribute dictionary = structural (plugin) + computed.
     let mut node_attributes = spec.node_attributes;
     // Language-neutral default metric specs, refined by the active plugin (e.g.
-    // Rust adds the `#[cfg(test)]` nuance to the LOC descriptions).
+    // Rust adds the `#[cfg(test)]` nuance to the LOC descriptions). Passes the
+    // effective config so any user overrides reach the plugin's refinement.
     let (default_metric_specs, metric_groups) = code_ranker_graph::metric_specs();
-    let metric_specs = plugin::metric_specs(plugin_name, default_metric_specs);
+    let metric_specs = plugin::metric_specs(plugin_name, eff_cfg, default_metric_specs);
     let (coupling_specs, coupling_groups) = code_ranker_graph::coupling_specs();
     node_attributes.extend(metric_specs);
     node_attributes.extend(coupling_specs);

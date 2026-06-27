@@ -25,10 +25,10 @@ platform notes): [installation.md](installation.md).
 - **`report`** — produces artifacts: a JSON snapshot, an HTML viewer, and the
   advisory **`scorecard`** (console triage) / **`prompt`** (LLM prompt). Always
   exits `0`.
-- **`docs <subject>`** — prints a reference doc to the terminal (no analysis; always
-  exits `0`). Run `code-ranker docs ai` to bootstrap this playbook: with a language
-  resolved it prints the full playbook + principle/metric catalog; with none
-  (no markers) it prints a brief intro and how to select one.
+- **`docs <lang> <subject>`** — prints a reference doc to the terminal (no analysis; always
+  exits `0`). Run `code-ranker docs <lang> ai` to bootstrap this playbook: with a language
+  specified it prints the full playbook + principle/metric catalog; bare `docs` lists
+  available languages.
 
 `[input]` is polymorphic: a directory is analyzed; a `.json` snapshot is read
 back with no re-analysis. Keep old `.code-ranker/` snapshots — they are baselines.
@@ -36,7 +36,7 @@ back with no re-analysis. Keep old `.code-ranker/` snapshots — they are baseli
 `check` / `report` analyze **all** languages auto-detected from project markers and
 produce one report covering every language — a directory with markers for several
 (e.g. Rust + Markdown) just analyzes both, no error. To pin the set explicitly, pass
-`--plugins <a,b,...>` or set `plugins = [...]` in a `code-ranker.toml` at the project
+`--plugins <a,b,...>` or set `[plugins] enabled = [...]` in a `code-ranker.toml` at the project
 root. When a `--prompt <ID>` or `--focus` resolves in two or more languages, add
 `--language <name>` to pick which one to focus.
 
@@ -49,7 +49,7 @@ Focus on these; treat everything else as secondary.
   module on a busy crossroads of incoming/outgoing dependencies. Full
   diagnose-and-split workflow (measure one file, list its fan_in/fan_out, find
   the mixed scenarios, split, verify with a before/after diff report): run
-  `code-ranker docs HK` (prints the full principle to the terminal, offline).
+  `code-ranker docs <lang> HK` (prints the full principle to the terminal, offline).
 
 **Strategy:** fix one thing at a time, worst-first. Cycles (ADP) are structural —
 clear them first; then coupling (HK). Focus on one metric or principle with `--focus` and inspect

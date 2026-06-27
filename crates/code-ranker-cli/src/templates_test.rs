@@ -1,19 +1,23 @@
 use super::*;
 use code_ranker_graph::level_graph::LevelGraph;
-use code_ranker_graph::snapshot::Snapshot;
+use code_ranker_graph::snapshot::{LanguageSnapshot, Snapshot, SnapshotInit};
 use code_ranker_plugin_api::Principle;
 use code_ranker_plugin_api::attrs::ValueType;
 use code_ranker_plugin_api::level::AttributeSpec;
 use std::collections::BTreeMap;
+
+/// The single language a test snapshot carries.
+const LANG: &str = "rust";
 
 /// Test shim mirroring the old snapshot-based `resolve_doc`: pulls the principles
 /// and `files`-level node-attribute specs out of a test snapshot and feeds the
 /// spec-based core. Keeps these tests reading naturally now that production
 /// resolves docs from config/plugin specs (no snapshot) via `docs`.
 fn resolve_doc(s: &Snapshot, templates: &TemplatesConfig, id: &str) -> Result<String> {
+    let lang = &s.languages[LANG];
     resolve_doc_from_specs(
-        &s.principles,
-        &s.graphs["files"].node_attributes,
+        &lang.principles,
+        &lang.graphs["files"].node_attributes,
         templates,
         id,
     )
@@ -28,20 +32,27 @@ fn snap(principles: Vec<Principle>, files_attrs: BTreeMap<String, AttributeSpec>
     };
     let mut graphs = BTreeMap::new();
     graphs.insert("files".to_string(), files);
-    Snapshot::new(
-        "report".into(),
-        ".".into(),
-        ".".into(),
-        "rust".into(),
-        None,
-        BTreeMap::new(),
-        BTreeMap::new(),
-        None,
-        vec![],
-        graphs,
-        principles,
-        Default::default(),
-    )
+    let mut languages = BTreeMap::new();
+    languages.insert(
+        LANG.to_string(),
+        LanguageSnapshot {
+            graphs,
+            principles,
+            prompt: Default::default(),
+        },
+    );
+    Snapshot::new(SnapshotInit {
+        command: "report".into(),
+        workspace: ".".into(),
+        target: ".".into(),
+        plugins: vec![LANG.to_string()],
+        config_file: None,
+        versions: BTreeMap::new(),
+        roots: BTreeMap::new(),
+        git: None,
+        timings: vec![],
+        languages,
+    })
 }
 
 fn principle(id: &str, doc_url: &str) -> Principle {
@@ -213,9 +224,10 @@ fn doc_rel_path_serves_lang_override_for_a_metric_doc() {
         )],
         attrs,
     );
-    let na = &s.graphs["files"].node_attributes;
+    let lang = &s.languages[LANG];
+    let na = &lang.graphs["files"].node_attributes;
     assert_eq!(
-        doc_rel_path(&s.principles, na, "HK"),
+        doc_rel_path(&lang.principles, na, "HK"),
         Some("rust/HK.md".to_string())
     );
 }

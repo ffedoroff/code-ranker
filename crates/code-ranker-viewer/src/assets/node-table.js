@@ -72,7 +72,10 @@ function setupNodeTable(section, level) {
   const groupKey = () => levelUi(level).grouping?.key || null;
   function buildAggregates(files) {
     const numCols = cols.filter(c => c.isNum).map(c => c.id);
-    const cyc = window.CYCLES?.[level]?.nodeCycleStatus;   // id → cycle status (cycle members only)
+    // CYCLES is keyed [lang][level]; resolve active language before indexing.
+    const _cycLang = (typeof currentLang === 'function' ? currentLang() : null)
+                  || Object.keys(window.CYCLES || {})[0];
+    const cyc = (_cycLang ? window.CYCLES?.[_cycLang] : null)?.[level]?.nodeCycleStatus;   // id → cycle status (cycle members only)
     const mk = (id, label, kind, cat, members, extra) => {
       const n = { id, name: label, kind, _cat: cat, _count: members.length, ...extra };
       for (const key of numCols) {

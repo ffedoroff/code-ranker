@@ -2,7 +2,7 @@
   {
     "check_name": "cycle.chain",
     "description": "{target}/pkg/chain1.py: chain cycle: {target}/pkg/chain1.py → {target}/pkg/chain3.py → {target}/pkg/chain2.py → (back to start)",
-    "fingerprint": "cycle.chain:{target}/pkg/chain1.py",
+    "fingerprint": "python:cycle.chain:{target}/pkg/chain1.py",
     "location": {
       "lines": {
         "begin": 2
@@ -14,7 +14,7 @@
   {
     "check_name": "cycle.mutual",
     "description": "{target}/pkg/a.py: mutual cycle between {target}/pkg/a.py ↔ {target}/pkg/b.py",
-    "fingerprint": "cycle.mutual:{target}/pkg/a.py",
+    "fingerprint": "python:cycle.mutual:{target}/pkg/a.py",
     "location": {
       "lines": {
         "begin": 8

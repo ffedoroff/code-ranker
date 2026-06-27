@@ -24,7 +24,7 @@ exact command per entry (triage, CI gates, focused checks, baselines, AI prompts
 |---|---|
 | [`check`](#check) | A **verdict**: evaluates thresholds, cycle rules, and (with `--baseline`) regressions, prints diagnostics, and **exits non-zero** on violation. Writes no files. |
 | [`report`](#report) | **Artifacts**: an HTML viewer and/or a JSON snapshot. With `--baseline`, the HTML becomes a diff with a verdict. Can also emit a console **scorecard** triage and an AI **prompt** (see [Recommendations](#recommendations-scorecard--prompt)). Always exits `0`. |
-| [`docs`](#docs) | A reference doc for a `<subject>` to stdout. Never analyzes, always exits `0` (an unknown subject exits non-zero). Resolves a single language (explicit `--plugin` > the first of `plugins` > auto-detect) to choose what to print; serves the AI playbook (`docs ai`), metric/principle indexes, category and metric spec cards, and full principle docs. |
+| [`docs`](#docs) | A reference doc to stdout. Never analyzes, always exits `0` (an unknown subject exits non-zero). Bare `docs` lists languages; `docs <lang>` shows that language's subject catalog; `docs <lang> <subject>` prints the doc. `base` is a valid language for language-agnostic docs. |
 
 There are two analysis commands, split by *what they emit*: `check` produces an exit
 code (a CI gate), `report` produces files (a snapshot and a viewer). Both take the same
@@ -97,9 +97,9 @@ its rule and output keys apply to snapshots too, while analysis-only keys (e.g.
 
 | Flag | Meaning |
 |---|---|
-| `--plugins <a,b,…>` | Active languages, comma-separated and/or repeatable: `rust`, `python`, `javascript` (covers TypeScript), … . Overrides the config `plugins` array. Omitted everywhere ⇒ auto-detect **every** language present and analyze them all in one run — see [Plugin resolution](#plugin-resolution). |
+| `--plugins <a,b,…>` | Active languages, comma-separated and/or repeatable: `rust`, `python`, `javascript` (covers TypeScript), … . Overrides the `[plugins].enabled` list. Omitted everywhere ⇒ auto-detect **every** language present and analyze them all in one run — see [Plugin resolution](#plugin-resolution). |
 | `--language <name>` | (`report` only) Focus the `scorecard` / `prompt` on one language. Not required when only one language is present; required when a `--prompt`/`--focus` selector resolves across several. See [Recommendations](#recommendations-scorecard--prompt). |
-| `--config languages.<lang>.<key>=value` | Inline override of any plugin-config key (scalars / comma-lists). `languages.base.*` targets the shared base language. Deep tables go through a `[languages.<lang>]` TOML block — see [Config](#config). |
+| `--config plugins.<lang>.<key>=value` | Inline override of any plugin-config key (scalars / comma-lists). `plugins.base.*` targets the shared base language. `plugins.enabled=a,b` overrides the active language list. Deep tables go through a `[plugins.<lang>]` TOML block — see [Config](#config). |
 | `--config <PATH \| KEY=VALUE>` | Repeatable. Load config from a file path, **or** override one setting inline (`KEY=VALUE`). Multiple files layer in command-line order (**last wins**) over the built-in defaults; inline `KEY=VALUE` applies after all files; passing any file disables auto-discovery of `code-ranker.toml`. See [Config](#config). |
 | `--ignore <glob>` | Repeatable. Glob to exclude paths from analysis. Merged with config-file globs. |
 | `--git.<field> <VALUE>` | Override one of the snapshot's git metadata fields instead of reading it from `git`. See [Git metadata overrides](#git-metadata-overrides). |
@@ -238,12 +238,12 @@ In the default `human` format each violation is a self-contained block, detailed
 enough to paste straight into an AI assistant as a complete prompt:
 
 ```text
-threshold.file.cognitive  ·  CPX  ·  files graph
+threshold.file.cognitive  ·  rust  ·  CPX  ·  files graph
   where  {target}/src/handlers.rs
   issue  cognitive complexity 67 exceeds limit 25 (2.7× over budget)
   why    Cognitive complexity weights nested and interrupted control flow by how hard a human finds it to follow…
-  fix    Extract nested blocks into named helpers, use early returns to cut nesting depth…
-  tune   set with --threshold file.cognitive=N   ·   rules.thresholds.file.cognitive in code-ranker.toml
+  fix    Run `code-ranker docs rust cognitive` and follow its instructions.
+  tune   set with --threshold file.cognitive=N   ·   plugins.rust.rules.thresholds.file.cognitive in code-ranker.toml (or plugins.base for all)
   ref    https://github.com/ffedoroff/code-ranker/blob/main/docs/code-ranker-cli/ERRORS.md#group-cpx
 ```
 
@@ -271,8 +271,8 @@ instead of reopening it as new.
 
 With `--suggest-config`, the `human` output prints — after the findings — the
 project's current measured values as ready-to-paste `code-ranker.toml` blocks: the
-`[rules.cycles]` counts per kind, plus the per-file thresholds (the worst
-single file max). Numbers use `_` separators.
+`[plugins.base.rules.cycles]` counts per kind, plus the `[plugins.base.rules.thresholds.file]`
+per-file thresholds (the worst single file max). Numbers use `_` separators.
 Copy a block to pin today's numbers as a baseline that passes now and fails on
 regression. Off by default; the machine formats (`json`/`github`/`sarif`) omit it.
 
@@ -313,13 +313,13 @@ no analysis runs — as one TOML document with two top-level sections:
 
 - `[project]` — the merged project config: the built-in defaults (`config/defaults.toml`,
   baked into the binary) **deep-merged** with the discovered / `--config` file. Shows
-  every effective `ignore` / `rules` / `output` / `levels` value, including the ones you
-  did not set (inherited from the defaults).
-- one `[languages.<lang>]` section for **every registered language** (not only the
+  every effective `[output]` / `[templates]` value, including the ones you did not set
+  (inherited from the defaults).
+- one `[plugins.<lang>]` section for **every registered language** (not only the
   active ones) — that language's fully-merged config (its inheritance chain
-  `defaults.toml ⊕ [base] ⊕ <lang>.toml`, then your `[languages.base]` /
-  `[languages.<lang>]` overrides): principles, node/edge kinds, the metric-engine role
-  tables, etc.
+  `defaults.toml ⊕ [base] ⊕ <lang>.toml`, then your `[plugins.base]` /
+  `[plugins.<lang>]` overrides): principles, rules, metrics, node/edge kinds, the
+  metric-engine role tables, etc.
 
 It honours `--plugins` and `--config`, so you can preview any combination:
 
@@ -471,15 +471,15 @@ matching languages (e.g. *"`HK` found in languages rust, markdown — pass `--la
 
 > **Advisory, not a gate.** Unlike [`check`](#check), these never fail the build and carry
 > no exit code. They surface the worst hotspots against **the same thresholds `check`
-> enforces** — the `[rules.thresholds.file]` limits *you* configure — so the report shows
+> enforces** — the `[plugins.<lang>.rules.thresholds.file]` limits *you* configure — so the report shows
 > exactly what fails (or is about to fail) the gate. Both also work from a snapshot input
 > (`report snap.json --output.scorecard`) with no re-analysis.
 
 ### Severity tiers
 
 A ranking metric's tiers come from your gate config. **`warning`** is the
-`[rules.thresholds.file]` limit itself (the line that fails `check`); **`info`** is an
-optional softer line below it, set per metric via a `[metrics.<key>]` `info` field (kept
+`[plugins.<lang>.rules.thresholds.file]` limit itself (the line that fails `check`); **`info`** is an
+optional softer line below it, set per metric via a `[plugins.<lang>.metrics.<key>]` `info` field (kept
 only when it sits below `warning`). A metric with no configured threshold has no tiers and
 no breaches. A module is *in a tier* when its value crosses that line. `--severity`
 selects which tier drives the output:
@@ -505,7 +505,7 @@ namespaces**:
   the ADP view), `sloc` (module size), `cognitive` / `cyclomatic` (complexity), `fan_in` /
   `fan_out` (coupling direction), `items` (interface size), **or** the full threshold rule
   id (`threshold.file.hk`). Matched **by value**, so it works whether or not the metric has
-  a configured `[rules.thresholds.file]` threshold. This narrows the `scorecard`
+  a configured `[plugins.<lang>.rules.thresholds.file]` threshold. This narrows the `scorecard`
   to that metric and frames the `prompt` by the **metric itself** — its own name,
   description, and `remediation` doc (e.g. `languages/base/HK.md`), with **no** SOLID
   design-principle wrapper.
@@ -569,7 +569,7 @@ scopes the ranked modules to a subtree.
 Defaults to the file `.code-ranker/{ts}-{git-hash-3}-{principle}.md` (use
 `--output.prompt.path=stdout` to pipe it). It is **auto-targeted**: it emits the Markdown
 fix-prompt for the **single worst module** — its principle's intent and summary, how to
-read the full principle (the offline `code-ranker docs <id>` command, no network),
+read the full principle (the offline `code-ranker docs <lang> <id>` command, no network),
 a task checklist, the offending module annotated with its metric value, and the relevant
 **flow** connection lists (`uses` — structural `contains`/`reexports` are excluded). The
 `{principle}` in the default filename is the auto-selected principle id.
@@ -600,52 +600,60 @@ code-ranker report . --prompt HK --top 1   # HK fix-prompt for the worst module
 
 To print a **reference doc** itself (a principle's text, a metric's spec card, the AI
 playbook, …) rather than a fix-prompt, use the analysis-free [`docs`](#docs) command —
-e.g. `code-ranker docs HK` or `code-ranker docs ai`.
+e.g. `code-ranker docs rust HK` or `code-ranker docs rust ai`.
 
 ## `docs`
 
 ```
-code-ranker docs <subject> [--plugin <name>] [--config <PATH|KEY=VALUE>]
+code-ranker docs [<lang> [<subject>]] [--config <PATH|KEY=VALUE>]
 ```
 
-`code-ranker docs <subject>` prints a reference doc to stdout. It **never analyzes** and
-takes **no `[input]` positional** — config is auto-discovered from the current directory,
-and the **singular** `--plugin <name>` flag (explicit `--plugin` > the first of the
-`plugins` config/CLI list > auto-detect from cwd markers) resolves the **one** language
-whose docs to serve. A reference doc is **strictly per-language**, so every subject but
-`ai` **requires a resolved language**: with none detected the command fails with the same
-diagnostic `check` / `report` give. An unknown subject exits non-zero. Subject matching is
-**separator/case-insensitive** — `fan_in`, `Fan-in`, and `FAN in` all resolve the same
-metric.
+`code-ranker docs` prints reference docs to stdout. It **never analyzes** and takes **no
+`[input]` positional**. The language is now the **first positional argument** — there is
+**no `--plugin` flag**. Config is auto-discovered from the current directory (for
+language detection only).
 
-`<subject>` selects what to print:
+**Invocation forms:**
+
+| Invocation | What it prints |
+|---|---|
+| `code-ranker docs` | Lists every language — detected project languages annotated — plus `base`. |
+| `code-ranker docs <lang>` | That language's full subject catalog (metrics, principles, categories, …). |
+| `code-ranker docs <lang> <subject>` | The subject doc for that language. |
+| `code-ranker docs <lang> ai` | The AI-agent playbook for that language (full playbook + catalog). |
+| `code-ranker docs base` | The language-agnostic subject catalog (`base` is a valid language). |
+| `code-ranker docs base ai` | The base AI playbook (language-agnostic). |
+| `code-ranker docs <subject>` (no language) | **ERROR** — lists the project's languages and points at `code-ranker docs <lang> <subject>`. |
+
+`<subject>` selects what to print within a language:
 
 | `<subject>` | What it prints |
 |---|---|
-| `ai` | The offline **AI-agent playbook** (from the embedded `base/AI.md`). With a language resolved → the full playbook **plus** the principle/metric catalog; with none → a brief intro and how to pick a language. |
+| `ai` | The offline **AI-agent playbook** (full playbook + principle/metric catalog). Requires a language. |
 | `metrics` | An **index of every metric**, grouped by category. |
 | `principles` | An **index of every design principle**. |
 | a metric **category** (`loc`, `complexity`, `halstead`, `maintainability`, `coupling`) | The category's label/description **plus** its member metrics. |
 | a **metric** key (`sloc`, `hk`, the language's own `unsafe` / `items`, …) | The metric's **spec card** (label / name / description / category / formula). For metrics with a full prose doc (`hk`, `cyclomatic`, `cognitive`, `fan_in`, `fan_out`) the prose doc is appended after the card. |
-| a **principle** id (`SRP`, `ADP`, … including project-defined `[principles.<ID>]`) | The principle's **full doc** (or a synthetic card for a doc-less custom principle). |
-| *(none, or an unknown subject)* | A **catalog of every subject**. No subject exits `0`; an unknown subject exits non-zero. |
+| a **principle** id (`SRP`, `ADP`, … including project-defined principles) | The principle's **full doc** (or a synthetic card for a doc-less custom principle). |
 
-`docs ai` always succeeds — even where `report` / `check` would stop with *"could not
-determine any language … pass --plugins to choose"*: with a language resolved it prints
-the full playbook + catalog (the full project-free playbook); with none it prints a
-brief product intro **plus** a *Select a language* section (how to choose one with
-`--plugin <name>` or the `plugins` array in `code-ranker.toml`, and the built-ins),
-withholding the catalog until a language is chosen.
+Subject matching is **separator/case-insensitive** — `fan_in`, `Fan-in`, and `FAN in`
+all resolve the same metric. An unknown subject exits non-zero.
+
+A `<subject>` given **without a language** (e.g. `docs hk`, `docs ai`, `docs metrics`)
+is always an error: it exits non-zero and prints the project's detected languages with
+a hint to use `code-ranker docs <lang> <subject>`.
 
 ```sh
-code-ranker docs                # the catalog of every subject (needs a resolved language)
-code-ranker docs ai             # auto-detect: full playbook, or how to pick a language
-code-ranker docs ai --plugin rust   # force a language → the full playbook + catalog
-code-ranker docs hk             # the HK metric card + its full doc, to stdout
-code-ranker docs metrics        # the metric index, grouped by category
-code-ranker docs coupling       # the coupling category + its member metrics
-code-ranker docs unsafe         # a language-specific metric (rust)
-code-ranker docs cycle          # the ADP doc (cycle is ADP's metric lens)
+code-ranker docs                    # list every language (detected ones annotated) + base
+code-ranker docs rust               # the rust subject catalog
+code-ranker docs rust ai            # the rust AI playbook
+code-ranker docs rust hk            # the HK metric card + full doc (rust)
+code-ranker docs rust metrics       # the metric index for rust
+code-ranker docs rust coupling      # the coupling category for rust
+code-ranker docs rust unsafe        # a rust-specific metric
+code-ranker docs base               # the base (language-agnostic) catalog
+code-ranker docs base ai            # the base AI playbook
+code-ranker docs rust SRP           # the SRP principle doc
 ```
 
 ## `--baseline` (comparison)
@@ -695,8 +703,8 @@ languages is resolved by this precedence (low → high), where each level **full
 replaces** the lower one (no merge):
 
 1. **Auto-detect** (lowest) — every plugin whose `detect()` matches the workspace.
-2. **Config `plugins`** — the `plugins = [...]` array in `code-ranker.toml` /
-   `Cargo.toml#metadata.code-ranker`.
+2. **Config `[plugins].enabled`** — the `enabled = [...]` list in the `[plugins]` table in
+   `code-ranker.toml` / `Cargo.toml#metadata.code-ranker`.
 3. **Console `--plugins`** (highest) — the comma list / repeated flag.
 
 So a list set in config **or** on the console is used verbatim; auto-detect runs
@@ -705,7 +713,7 @@ wins (applies only when `[input]` is a directory).
 
 **Auto-detect** runs every plugin whose `detect()` matches, evaluated against its
 **effective** config — so an overridden `detect_markers` / `extensions` (via
-`[languages.<lang>]` or `--config languages.<lang>.*`) changes what is detected. The
+`[plugins.<lang>]` or `--config plugins.<lang>.*`) changes what is detected. The
 default markers are:
 
 - `Cargo.toml` → `rust`
@@ -722,10 +730,10 @@ disjoint.
 Errors:
 
 - **No language detected** — auto-detect matches nothing: *"could not determine any
-  language in `<workspace>`; specify `plugins = ["<name>"]` in code-ranker.toml or
+  language in `<workspace>`; specify `[plugins] enabled = ["<name>"]` in code-ranker.toml or
   `--plugins <name>`"*.
 - **Legacy `plugin` key** — the scalar `plugin = "..."` config key is not recognized;
-  the error points to `plugins = [...]`.
+  the error points to `[plugins] enabled = [...]`.
 - **Extension conflict** — two active plugins claim the same file extension; a startup
   error (before analysis), e.g. *"extension `.h` is claimed by both `c` and `cpp` —
   adjust `extensions`/`plugins`"*.
@@ -782,7 +790,7 @@ source on the git host in a new tab.
 Settings merge from several sources; **higher priority wins**:
 
 1. CLI flags (`--plugins`, `--threshold`, `--ignore`, `--output.<fmt>.path`, …)
-2. `--config KEY=VALUE` inline overrides (including `--config languages.<lang>.<key>=value`)
+2. `--config KEY=VALUE` inline overrides (including `--config plugins.<lang>.<key>=value`)
 3. `--config <file>` — repeatable; multiple files layer in command-line order
    (last wins), and any file disables the `code-ranker.toml` auto-discovery below
 4. `code-ranker.toml` (cwd, then workspace root)
@@ -793,8 +801,8 @@ The inline form takes a dotted key into the config schema:
 
 ```sh
 # tighten one rule in CI without editing code-ranker.toml
-code-ranker check --config rules.thresholds.file.cognitive=25 \
-                 --config rules.cycles.chain=7
+code-ranker check --config plugins.base.rules.thresholds.file.cognitive=25 \
+                 --config plugins.base.rules.cycles.chain=7
 
 # override an output destination inline
 code-ranker report --config output.html.path=dist/report.html

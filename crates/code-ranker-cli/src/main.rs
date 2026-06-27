@@ -93,6 +93,7 @@ fn main() {
             output_prompt_path,
             output_scorecard_path,
             focus,
+            language,
             focus_path,
             severity,
             top,
@@ -121,6 +122,7 @@ fn main() {
                 },
                 report::ReportReco {
                     focus,
+                    language,
                     focus_path,
                     severity,
                     top,
@@ -134,10 +136,10 @@ fn main() {
         // playbook, an index, a category, a metric card, or a principle doc. See
         // `docs.rs`.
         Command::Docs {
+            language,
             subject,
-            plugin,
             config,
-        } => docs::run(subject.as_deref(), plugin.as_deref(), &config),
+        } => docs::run(language.as_deref(), subject.as_deref(), &config),
     };
     match res {
         Ok(()) => {

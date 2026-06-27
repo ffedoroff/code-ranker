@@ -37,6 +37,10 @@ pub(crate) struct ReportReco {
     pub(crate) index: Option<usize>,
     /// `--prompt <ID>`: print the named principle/metric prompt to stdout and exit.
     pub(crate) prompt_id: Option<String>,
+    /// `--language <name>`: which language's graphs/principles/prompt to use for
+    /// recommendations and scorecard. Required when a `--focus`/`--prompt` id is
+    /// present in more than one language and the choice would be ambiguous.
+    pub(crate) language: Option<String>,
 }
 
 /// `report` — analyze (or read) the input and write artifacts. Which formats are
@@ -166,20 +170,10 @@ pub(crate) fn run_report(
             .or(a.output.sarif.path.as_deref())
             .expect("output.sarif.path from built-in defaults");
         let dest = render_name(tpl, &target, commit, generated_at);
-        // Diagnostic copy (rule titles / descriptions) is resolved from the
-        // reported snapshot's `files`-level specs — no rule prose in the CLI.
-        let files = a.snapshot.graphs.get("files");
-        let empty_na: std::collections::BTreeMap<
-            String,
-            code_ranker_plugin_api::level::AttributeSpec,
-        > = Default::default();
-        let empty_ck: std::collections::BTreeMap<
-            String,
-            code_ranker_plugin_api::level::CycleKindSpec,
-        > = Default::default();
-        let na = files.map(|g| &g.node_attributes).unwrap_or(&empty_na);
-        let ck = files.map(|g| &g.cycle_kinds).unwrap_or(&empty_ck);
-        let mut sarif = crate::check::sarif_document(&a.violations, na, ck);
+        // Diagnostic copy is merged across all languages (last-wins); same
+        // strategy as `check`'s human/GitHub/prompt diagnostics.
+        let (na, ck) = crate::check::merged_specs_pub(&a.snapshot.languages);
+        let mut sarif = crate::check::sarif_document(&a.violations, &na, &ck);
         sarif.push('\n');
         write_artifact(&dest, &sarif, "sarif")?;
     }
@@ -234,27 +228,28 @@ fn run_direct(args: &AnalyzeArgs, reco: &ReportReco) -> Result<()> {
     // `--prompt <ID>`: compose the named principle/metric prompt (same builder as
     // `--output.prompt`, but for the id you name, to stdout).
     let id = reco.prompt_id.as_deref().expect("prompt_id is set");
-    let level = snap
+    let lang_snap = recommend::resolve_language_snap(snap, reco.language.as_deref(), Some(id))?;
+    let level = lang_snap
         .graphs
         .get("files")
         .context("snapshot has no `files` level to build a prompt from")?;
-    let focus = recommend::resolve_focus(level, &snap.principles, id)?;
+    let focus = recommend::resolve_focus(level, &lang_snap.principles, id)?;
     let synth; // holds the metric-lens principle for the borrow below
     let (principles_for_prompt, principle_id): (&[recommend::Principle], String) = match &focus {
         recommend::Focus::Metric(m) => {
             synth = [recommend::synth_metric_principle(
                 level,
-                &snap.principles,
+                &lang_snap.principles,
                 m,
             )];
             (&synth, m.clone())
         }
-        recommend::Focus::Principle(pid) => (&snap.principles, pid.clone()),
+        recommend::Focus::Principle(pid) => (&lang_snap.principles, pid.clone()),
     };
     let md = recommend::compose_prompt(
         level,
         principles_for_prompt,
-        &snap.prompt,
+        &lang_snap.prompt,
         &principle_id,
         recommend::Severity::Auto,
         reco.top,
@@ -265,10 +260,10 @@ fn run_direct(args: &AnalyzeArgs, reco: &ReportReco) -> Result<()> {
 }
 
 /// Write the recommendation artifacts (`prompt` / `scorecard`) for the analyzed
-/// snapshot. Both read the `files` level. `--focus` picks the lens: a metric frames
-/// the output by the metric itself, a principle by that design principle; without
-/// it the prompt auto-targets the worst-violating principle and the scorecard spans
-/// all.
+/// snapshot. Both read the `files` level of the selected language. `--focus` picks
+/// the lens: a metric frames the output by the metric itself, a principle by that
+/// design principle; without it the prompt auto-targets the worst-violating
+/// principle and the scorecard spans all.
 #[allow(clippy::too_many_arguments)]
 fn write_recommendations(
     snap: &Snapshot,
@@ -281,7 +276,9 @@ fn write_recommendations(
     commit: Option<&str>,
     generated_at: DateTime<Utc>,
 ) -> Result<()> {
-    let level = snap
+    let lang_snap =
+        recommend::resolve_language_snap(snap, reco.language.as_deref(), reco.focus.as_deref())?;
+    let level = lang_snap
         .graphs
         .get("files")
         .context("snapshot has no `files` level to build recommendations from")?;
@@ -291,7 +288,7 @@ fn write_recommendations(
     let focus = reco
         .focus
         .as_deref()
-        .map(|n| recommend::resolve_focus(level, &snap.principles, n))
+        .map(|n| recommend::resolve_focus(level, &lang_snap.principles, n))
         .transpose()?;
 
     if want_prompt {
@@ -305,22 +302,22 @@ fn write_recommendations(
             Some(recommend::Focus::Metric(m)) => {
                 synth = [recommend::synth_metric_principle(
                     level,
-                    &snap.principles,
+                    &lang_snap.principles,
                     m,
                 )];
                 (&synth, m.clone())
             }
-            Some(recommend::Focus::Principle(id)) => (&snap.principles, id.clone()),
+            Some(recommend::Focus::Principle(id)) => (&lang_snap.principles, id.clone()),
             None => (
-                &snap.principles,
-                recommend::worst_principle(level, &snap.principles)
+                &lang_snap.principles,
+                recommend::worst_principle(level, &lang_snap.principles)
                     .context("no principles in the snapshot to recommend from")?,
             ),
         };
         let md = recommend::compose_prompt(
             level,
             principles_for_prompt,
-            &snap.prompt,
+            &lang_snap.prompt,
             &principle_id,
             recommend::Severity::Auto,
             reco.top,
@@ -340,10 +337,18 @@ fn write_recommendations(
                 .map(|s| recommend::parse_severity(s))
                 .collect::<Result<Vec<_>>>()?
         };
+        // Show the plugin name(s) in the scorecard header — join all active
+        // plugins, or just the selected language when one is picked.
+        let plugin_label = reco.language.as_deref().unwrap_or_else(|| {
+            snap.plugins
+                .first()
+                .map(String::as_str)
+                .unwrap_or("unknown")
+        });
         let txt = recommend::render_scorecard(
-            &snap.plugin,
+            plugin_label,
             level,
-            &snap.principles,
+            &lang_snap.principles,
             &severities,
             reco.top,
             focus.as_ref(),

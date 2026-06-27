@@ -118,8 +118,8 @@ merge request *adds*.
 violation marks the job failed-but-allowed (yellow) and the pipeline continues —
 findings still highlighted. **Delete `allow_failure`** to make a violation
 **block** the pipeline. Either way the report is written (`artifacts: when:
-always`). Tune what gates in `code-ranker.toml` (`[rules.thresholds.file]` /
-`[rules.cycles]`) or with flags on the `check` line.
+always`). Tune what gates in `code-ranker.toml` (`[plugins.base.rules.thresholds.file]` /
+`[plugins.base.rules.cycles]`) or with flags on the `check` line.
 
 **SARIF alternative.** `check` also emits SARIF (`--output-format sarif`), which
 GitLab ingests into its *security* views — but only on **GitLab ≥ 18.11 with the
