@@ -154,7 +154,7 @@ nothing eval-related is left in `PROJECT`.
    `code-ranker docs <lang> ai` (overview + catalog) and `docs <lang> <FOCUS>` (the deep
    doc). This is what a real user would do, so it tests the *prompt*, not your
    coaching.
-3. **BEFORE.** `code-ranker report . --output.html.path=$RUN/before.html --output.json.path=$RUN/before.json`.
+3. **BEFORE.** `code-ranker report . --plugins <lang> --output.html.path=$RUN/before.html --output.json.path=$RUN/before.json`.
 4. **Save the focused prompt** (orchestrator, for the record):
    `code-ranker report . --plugins <lang> --prompt <FOCUS> > $RUN/prompt.md`
    — captures the exact fix-prompt this run used into `$RUN/prompt.md`, so prompt ↔

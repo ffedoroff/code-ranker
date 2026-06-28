@@ -136,6 +136,13 @@ fn localize_lang(md: String, lang: &str) -> String {
     }
 }
 
+/// The language token a `docs` command hint should print: a concrete language for a
+/// real plugin, but the generic `<lang>` placeholder for `base` (its catalog is
+/// language-agnostic — mirrors [`localize_lang`]).
+fn command_lang(lang: &str) -> &str {
+    if lang == "base" { "<lang>" } else { lang }
+}
+
 /// `base` (the language-agnostic catalog) or any registered plugin name.
 fn is_known_language(lang: &str) -> bool {
     lang == "base" || plugin::registry().iter().any(|p| p.name() == lang)
@@ -414,6 +421,7 @@ fn principles_block(specs: &DocSpecs) -> String {
 
 /// `docs <lang> metrics`: every metric, grouped by category.
 fn render_metrics_index(specs: &DocSpecs, lang: &str) -> String {
+    let lang = command_lang(lang);
     format!(
         "Metrics — print one with `code-ranker docs {lang} <metric>`:\n{}",
         categories_block(specs)
@@ -422,6 +430,7 @@ fn render_metrics_index(specs: &DocSpecs, lang: &str) -> String {
 
 /// `docs <lang> principles`: every design principle.
 fn render_principles_index(specs: &DocSpecs, lang: &str) -> String {
+    let lang = command_lang(lang);
     format!(
         "Principles — print one with `code-ranker docs {lang} <ID>`:\n\n{}",
         principles_block(specs)
@@ -430,6 +439,7 @@ fn render_principles_index(specs: &DocSpecs, lang: &str) -> String {
 
 /// `docs <lang> <category>`: the category's human label + description + its member metrics.
 fn render_category(specs: &DocSpecs, lang: &str, key: &str) -> String {
+    let lang = command_lang(lang);
     // Single-category view: the human label is the title (the key was just typed),
     // so there is no `key: Label` echo.
     let mut out = category_label(specs, key);

@@ -134,6 +134,24 @@ fn principles_index_lists_each_principle() {
     assert!(out.contains("- TSR: Test Ratio"), "principle listed: {out}");
 }
 
+/// Index hints name a concrete language, but keep the generic `<lang>` placeholder
+/// for `base` (its catalog is language-agnostic — mirrors `localize_lang`).
+#[test]
+fn index_hints_keep_generic_lang_for_base() {
+    assert!(
+        render_metrics_index(&specs(), "rust").contains("`code-ranker docs rust <metric>`"),
+        "concrete language for a real plugin"
+    );
+    assert!(
+        render_metrics_index(&specs(), "base").contains("`code-ranker docs <lang> <metric>`"),
+        "base keeps the generic placeholder"
+    );
+    assert!(
+        render_principles_index(&specs(), "base").contains("`code-ranker docs <lang> <ID>`"),
+        "principles index too"
+    );
+}
+
 #[test]
 fn principles_block_reports_when_the_plugin_defines_none() {
     let mut s = specs();
