@@ -50,7 +50,12 @@ impl LanguagePlugin for CPlugin {
 
     fn detect(&self, cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> bool {
         let c = cfamily::Cfg::from_config(cfg);
-        cfamily::detect(workspace, &c, &crate::walk::ignore_from(input))
+        cfamily::detect(
+            workspace,
+            &c,
+            input.ignore_tests,
+            &crate::walk::ignore_from(input),
+        )
     }
 
     fn levels(&self, cfg: &toml::Table) -> Vec<Level> {

@@ -134,6 +134,21 @@ fn principles_index_lists_each_principle() {
     assert!(out.contains("- TSR: Test Ratio"), "principle listed: {out}");
 }
 
+/// Index hints carry the generic `<lang>` token; `emit` → `localize_lang` makes it
+/// concrete for a real plugin and keeps `<lang>` for `base` (covered by
+/// `localize_lang_substitutes_concrete_language_but_not_base`).
+#[test]
+fn index_hints_use_generic_lang_placeholder() {
+    assert!(
+        render_metrics_index(&specs()).contains("`code-ranker docs <lang> <metric>`"),
+        "metrics index hint"
+    );
+    assert!(
+        render_principles_index(&specs()).contains("`code-ranker docs <lang> <ID>`"),
+        "principles index hint"
+    );
+}
+
 #[test]
 fn principles_block_reports_when_the_plugin_defines_none() {
     let mut s = specs();
@@ -234,6 +249,24 @@ fn build_specs_base_uses_neutral_catalog() {
     assert!(
         specs.node_attributes.contains_key("sloc"),
         "central metrics present for base too"
+    );
+}
+
+/// Served per-language docs make `<lang>` placeholders concrete so commands print
+/// runnable; the language-agnostic `base` catalog keeps the placeholder.
+#[test]
+fn localize_lang_substitutes_concrete_language_but_not_base() {
+    assert_eq!(
+        localize_lang(
+            "`code-ranker docs <lang> hk` then `--plugins <lang>`".into(),
+            "rust",
+        ),
+        "`code-ranker docs rust hk` then `--plugins rust`"
+    );
+    assert_eq!(
+        localize_lang("--plugins <lang>".into(), "base"),
+        "--plugins <lang>",
+        "base keeps the generic placeholder"
     );
 }
 

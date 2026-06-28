@@ -355,7 +355,7 @@ code-ranker report . --output.scorecard
 code-ranker report . --output.scorecard --focus hk --top 5
 
 # AI fix-prompt for a named principle/metric, to stdout
-code-ranker report . --prompt hk --top 1
+code-ranker report . --plugins <lang> --prompt hk --top 1
 ```
 
 The HTML is **self-contained**: the snapshot data is embedded inline, so the single file
@@ -549,12 +549,17 @@ WORST MODULES
  2 warn snapshot.rs     sloc 1.8K +hk
  3 info plugin/rust.rs  fan_out 14
 
-→ code-ranker report . --prompt <PRINCIPLE|METRIC>
+→ code-ranker report . --plugins <lang> --prompt <PRINCIPLE|METRIC>
 ```
 
 `--top N` caps the worst-modules list (default ~15); `--focus <NAME>` narrows the
 scorecard to a single ranking metric (or frames it by a principle); `--focus-path <PATH>`
 scopes the ranked modules to a subtree.
+
+In `--focus <metric>` mode the worst-modules list is ranked by that metric, and each
+row's tier reflects **that metric's own threshold**: `warn` over the warning line,
+`info` over the info line, `—` when the value is under both (ranked, but not a breach)
+or the metric has no configured threshold.
 
 ### `--prompt <ID>` — AI fix-prompt for one principle/metric by name
 
@@ -574,8 +579,8 @@ frames the prompt by the **metric itself** — its own name, description, and `r
 doc (e.g. `plugins/base/HK.md`), with **no** SOLID design-principle wrapper.
 
 ```sh
-code-ranker report . --prompt HK --top 1     # HK fix-prompt, top module
-code-ranker report . --prompt HK > prompt.md # redirect to a file when you need an artifact
+code-ranker report . --plugins <lang> --prompt HK --top 1     # HK fix-prompt, top module
+code-ranker report . --plugins <lang> --prompt HK > prompt.md # redirect to a file when you need an artifact
 ```
 
 To print a **reference doc** itself (a principle's text, a metric's spec card, the AI
@@ -709,9 +714,15 @@ default markers are:
 - `pyproject.toml` / `setup.py` / `setup.cfg` → `python`
 - `package.json` / `tsconfig.json` → `javascript`
 
+`c` / `cpp` / `csharp` / `markdown` have no marker file — they are detected by the
+**presence of a source file** with one of their extensions. That file walk honours
+`[ignore] tests` (and `.gitignore` / hidden rules), so detection sees the same files
+analysis will: a project whose only such files are test fixtures (skipped when
+`[ignore] tests` is on) is **not** auto-detected.
+
 **Multiple matches are normal** — they are all analyzed and merged into one report;
-there is no "ambiguous project" error. A language that yields an empty graph is
-silently dropped.
+there is no "ambiguous project" error. A language that still yields an empty graph
+is dropped with a `produced no nodes` warning.
 
 **Invariant: one file ↔ exactly one language.** The active plugins' file sets are
 disjoint.

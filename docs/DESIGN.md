@@ -962,6 +962,11 @@ must be one of the compiled-in plugins (`rust`, `python`, `javascript`,
 `typescript`, `go`, `c`, `cpp`, `csharp`, `markdown`); each is invoked in-process.
 A language whose graph comes out empty is dropped from the report.
 
+`detect` runs against the same `PluginInput` analysis uses, so marker-less,
+extension-detected plugins (`c`/`cpp`/`csharp`/`markdown`) walk with `[ignore] tests`
+applied: a project whose only matching files are test fixtures is not auto-detected,
+keeping detection consistent with what analysis would actually process.
+
 **Invariant: one file ↔ exactly one language** — plugin file sets are disjoint.
 Two active plugins that claim the same extension is a startup error (before
 analysis), e.g. "extension `.h` is claimed by both `c` and `cpp` — adjust

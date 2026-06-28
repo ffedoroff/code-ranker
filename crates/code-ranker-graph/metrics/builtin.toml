@@ -373,12 +373,12 @@ description = "Cycle kind this node participates in."
 [cycles.mutual]
 label = "Mutual"
 description = "Two units import each other (A ↔ B), so neither can be built, tested, or understood in isolation — the tightest possible coupling."
-remediation = "Run `code-ranker docs ADP` and follow its instructions."
+remediation = "Run `code-ranker docs {lang} ADP` and follow its instructions."
 
 [cycles.chain]
 label = "Chain"
 description = "Three or more units form a strongly-connected component (A → B → C → A); the whole component must be loaded and changed together, defeating modular boundaries."
-remediation = "Run `code-ranker docs ADP` and follow its instructions."
+remediation = "Run `code-ranker docs {lang} ADP` and follow its instructions."
 
 # ── prompt scaffolding ────────────────────────────────────────────────────────
 # The Prompt-Generator framing prose moved OUT of this file into `metrics/prompt.md`

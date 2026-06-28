@@ -41,7 +41,11 @@ impl LanguagePlugin for CsharpPlugin {
     }
 
     fn detect(&self, _cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> bool {
-        structure::detect(workspace, &crate::walk::ignore_from(input))
+        structure::detect(
+            workspace,
+            input.ignore_tests,
+            &crate::walk::ignore_from(input),
+        )
     }
 
     fn levels(&self, cfg: &toml::Table) -> Vec<Level> {

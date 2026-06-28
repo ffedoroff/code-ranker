@@ -72,8 +72,12 @@ pub fn is_test_path(rel_path: &str, cfg: &Cfg) -> bool {
 
 /// True when any source file with one of `cfg.extensions` exists under
 /// `workspace` (used by `detect` — C/C++ have no universal manifest file).
-pub fn detect(workspace: &Path, cfg: &Cfg, ignore: &IgnoreCfg) -> bool {
-    !collect_files(workspace, cfg, false, ignore).is_empty()
+/// Honors `ignore_tests` so detection sees the SAME files analysis will: a
+/// project whose only C/C++ sources are test fixtures (skipped when
+/// `[ignore] tests` is on) is not auto-detected, avoiding a "produced no nodes"
+/// warning for a language that has nothing to analyze.
+pub fn detect(workspace: &Path, cfg: &Cfg, ignore_tests: bool, ignore: &IgnoreCfg) -> bool {
+    !collect_files(workspace, cfg, ignore_tests, ignore).is_empty()
 }
 
 fn collect_files(

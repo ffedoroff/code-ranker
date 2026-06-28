@@ -73,8 +73,14 @@ pub(super) fn is_test_path(rel_path: &str) -> bool {
             .any(|s| file.ends_with(s.as_str()))
 }
 
-pub(super) fn detect(workspace: &Path, ignore: &crate::config::IgnoreCfg) -> bool {
-    !collect_files(workspace, false, ignore).is_empty()
+pub(super) fn detect(
+    workspace: &Path,
+    ignore_tests: bool,
+    ignore: &crate::config::IgnoreCfg,
+) -> bool {
+    // Honor `ignore_tests` so a project whose only `.cs` files are test fixtures
+    // (skipped by analysis) is not auto-detected and then warned about as empty.
+    !collect_files(workspace, ignore_tests, ignore).is_empty()
 }
 
 fn collect_files(

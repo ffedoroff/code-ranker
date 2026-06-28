@@ -56,7 +56,9 @@ pub fn rule_doc(
         return Some(RuleDoc {
             title: c.label.clone(),
             why: c.description.clone(),
-            fix: c.remediation.clone(),
+            // `{lang}` in an authored remediation → the resolved language, so a
+            // `code-ranker docs {lang} ADP` pointer is runnable as printed.
+            fix: c.remediation.clone().map(|r| r.replace("{lang}", lang)),
         });
     }
     let metric = id.rsplit('.').next().unwrap_or(id);
@@ -66,11 +68,15 @@ pub fn rule_doc(
     // generates the AI fix-prompt for this metric, so the built-in catalog carries no
     // duplicated boilerplate and the command always names the correct subject
     // (`report --plugins <lang> --prompt <key>`).
-    let fix = s.remediation.clone().or_else(|| {
-        Some(format!(
-            "Run `code-ranker report --plugins {lang} --prompt {metric}` to generate an AI fix-prompt."
-        ))
-    });
+    let fix = s
+        .remediation
+        .clone()
+        .map(|r| r.replace("{lang}", lang))
+        .or_else(|| {
+            Some(format!(
+                "Run `code-ranker report --plugins {lang} --prompt {metric}` to generate an AI fix-prompt."
+            ))
+        });
     Some(RuleDoc {
         title: s.name.clone().or_else(|| s.label.clone()),
         why: s.description.clone(),

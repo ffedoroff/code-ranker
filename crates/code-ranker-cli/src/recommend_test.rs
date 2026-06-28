@@ -147,6 +147,7 @@ fn compose_prompt_cycle_lists_modules_and_connections() {
         &principles,
         &code_ranker_graph::prompt_template(),
         "ADP",
+        "rust",
         Severity::Auto,
         None,
         &[],
@@ -155,8 +156,8 @@ fn compose_prompt_cycle_lists_modules_and_connections() {
     assert!(md.contains("# ADP — Acyclic"), "title heading: {md}");
     assert!(md.contains("## Summary\n\nthe DAG rule"), "summary body");
     assert!(
-        md.contains("`code-ranker docs ADP`"),
-        "offline doc command (id substituted): {md}"
+        md.contains("`code-ranker docs rust ADP`"),
+        "offline doc command (lang + id substituted): {md}"
     );
     assert!(
         !md.contains("Full principle:"),
@@ -242,6 +243,7 @@ fn compose_prompt_metric_orders_and_respects_top() {
         &principles,
         &code_ranker_graph::prompt_template(),
         "SRP",
+        "rust",
         Severity::Warning,
         Some(1),
         &[],
@@ -278,6 +280,7 @@ fn compose_prompt_unknown_principle_errors() {
         &principles,
         &code_ranker_graph::prompt_template(),
         "NOPE",
+        "rust",
         Severity::Auto,
         None,
         &[],
@@ -349,8 +352,8 @@ fn scorecard_shows_principle_and_worst_modules() {
         "hk breach listed: {sc}"
     );
     assert!(
-        sc.contains("→ code-ranker report . --prompt <PRINCIPLE|METRIC>"),
-        "next-step hint"
+        sc.contains("→ code-ranker report . --plugins rust --prompt <PRINCIPLE|METRIC>"),
+        "next-step hint pins the language"
     );
 }
 
@@ -407,6 +410,39 @@ fn scorecard_narrowed_metric_lists_ranked_modules() {
         sc.find("big.rs") < sc.find("small.rs"),
         "ranked worst-first: {sc}"
     );
+}
+
+/// In the metric-focus view each ranked module is tagged by its OWN tier for that
+/// metric — `warn` over the warning line, `info` over the info line, `—` below
+/// both — never a blanket `warn`. (`level_with` sets sloc info=50 / warning=200.)
+#[test]
+fn scorecard_focus_metric_tags_each_module_by_its_actual_tier() {
+    let level = level_with(vec![
+        file_node("{target}/over.rs", &[("sloc", AttrValue::Int(300))]), // > 200 → warn
+        file_node("{target}/mid.rs", &[("sloc", AttrValue::Int(100))]),  // 50..200 → info
+        file_node("{target}/low.rs", &[("sloc", AttrValue::Int(10))]),   // < 50 → below
+    ]);
+    let sc = render_scorecard(
+        "rust",
+        &level,
+        &[srp_principle()],
+        &[Severity::Warning],
+        Some(3),
+        Some(&Focus::Metric("sloc".into())),
+        &[],
+    )
+    .unwrap();
+    // The second whitespace token of a module line is its tier label.
+    let tier_of = |path: &str| -> String {
+        sc.lines()
+            .find(|l| l.contains(path))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .unwrap_or("")
+            .to_string()
+    };
+    assert_eq!(tier_of("over.rs"), "warn", "over warning line: {sc}");
+    assert_eq!(tier_of("mid.rs"), "info", "over info, under warning: {sc}");
+    assert_eq!(tier_of("low.rs"), "—", "under both → not a breach: {sc}");
 }
 
 /// Narrowing on the cycle (ADP) principle lists every member of the top cycle
@@ -605,6 +641,7 @@ fn compose_prompt_lists_multiple_cycles() {
         &[adp_principle()],
         &code_ranker_graph::prompt_template(),
         "ADP",
+        "rust",
         Severity::Auto,
         Some(2),
         &[],
@@ -790,6 +827,7 @@ fn compose_prompt_metric_lens_omits_duplicate_description() {
         &[principle],
         &code_ranker_graph::prompt_template(),
         "hk",
+        "rust",
         Severity::Auto,
         Some(1),
         &[],
@@ -802,7 +840,7 @@ fn compose_prompt_metric_lens_omits_duplicate_description() {
     );
     assert!(
         !md.contains("**Formula:**"),
-        "formula is dropped from the prompt — it lives in `--doc <id>`: {md}"
+        "formula is dropped from the prompt — it lives in `docs <lang> <id>`: {md}"
     );
 }
 
@@ -903,7 +941,7 @@ fn resolve_language_snap_explicit_resolves_alias() {
             lang_snap(level_with(vec![]), vec![srp_principle()]),
         ),
     ]);
-    let ls = resolve_language_snap(&snap, Some("py"), None).unwrap();
+    let (_, ls) = resolve_language_snap(&snap, Some("py"), None).unwrap();
     assert_eq!(ls.principles[0].id, "SRP", "py alias resolved to python");
 }
 
@@ -935,7 +973,7 @@ fn resolve_language_snap_single_language_ignores_id() {
         "rust",
         lang_snap(level_with(vec![]), vec![srp_principle()]),
     )]);
-    let ls = resolve_language_snap(&snap, None, Some("anything")).unwrap();
+    let (_, ls) = resolve_language_snap(&snap, None, Some("anything")).unwrap();
     assert_eq!(ls.principles[0].id, "SRP", "the only language is used");
 }
 
@@ -951,7 +989,7 @@ fn resolve_language_snap_id_matches_one_principle() {
             lang_snap(LevelGraph::default(), vec![srp_principle()]),
         ),
     ]);
-    let ls = resolve_language_snap(&snap, None, Some("SRP")).unwrap();
+    let (_, ls) = resolve_language_snap(&snap, None, Some("SRP")).unwrap();
     assert_eq!(
         ls.principles[0].id, "SRP",
         "matched the principle's language"
@@ -967,7 +1005,7 @@ fn resolve_language_snap_id_matches_metric_in_one() {
         ("rust", lang_snap(level_with(vec![]), vec![])),
         ("python", lang_snap(LevelGraph::default(), vec![])),
     ]);
-    let ls = resolve_language_snap(&snap, None, Some("hk")).unwrap();
+    let (_, ls) = resolve_language_snap(&snap, None, Some("hk")).unwrap();
     assert!(
         ls.graphs["files"].node_attributes.contains_key("hk"),
         "picked the language whose files level carries the metric"
@@ -1016,7 +1054,7 @@ fn resolve_language_snap_id_none_match_falls_to_first() {
         ),
     ]);
     // "ZZZ" is neither a principle nor a metric anywhere → first key wins.
-    let ls = resolve_language_snap(&snap, None, Some("ZZZ")).unwrap();
+    let (_, ls) = resolve_language_snap(&snap, None, Some("ZZZ")).unwrap();
     assert_eq!(ls.principles[0].id, "SRP", "python sorts before rust");
 }
 
@@ -1033,7 +1071,7 @@ fn resolve_language_snap_no_id_uses_first() {
             lang_snap(LevelGraph::default(), vec![srp_principle()]),
         ),
     ]);
-    let ls = resolve_language_snap(&snap, None, None).unwrap();
+    let (_, ls) = resolve_language_snap(&snap, None, None).unwrap();
     assert_eq!(ls.principles[0].id, "SRP", "python sorts before rust");
 }
 
@@ -1089,6 +1127,7 @@ fn compose_prompt_single_focus_abbreviates_in_and_out_edges() {
         &[principle],
         &code_ranker_graph::prompt_template(),
         "HK",
+        "rust",
         Severity::Auto,
         Some(1),
         &[],

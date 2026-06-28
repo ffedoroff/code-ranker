@@ -61,26 +61,26 @@ One thing per pass, worst-first.
 
 ```sh
 # 1. Find what to fix. The gate verdict:
-code-ranker check .
+code-ranker check . --plugins <lang>
 #    …or focus one metric or principle in the triage (cycle = ADP, then hk, sloc, cognitive, …):
-code-ranker report . --output.scorecard --focus cycle --top 1
+code-ranker report . --plugins <lang> --output.scorecard --focus cycle --top 1
 
 # 2. Get the actionable fix-prompt for a named principle (pick it from the scorecard):
-code-ranker report . --prompt cycle --top 1
+code-ranker report . --plugins <lang> --prompt cycle --top 1
 #    …or get a focused fix-prompt directly (metric- or principle-framed):
-code-ranker report . --prompt hk --top 1
+code-ranker report . --plugins <lang> --prompt hk --top 1
 
 # 3. Review it; propose the fix to the user and get agreement.
 
 # 4. Snapshot the BEFORE state:
-code-ranker report . --output.json.path=.code-ranker/before.json
+code-ranker report . --plugins <lang> --output.json.path=.code-ranker/before.json
 
 # 5. Apply the fix.
 
 # 6. Run all tests.
 
 # 7. Render the before/after report and open it:
-code-ranker report . --baseline .code-ranker/before.json \
+code-ranker report . --plugins <lang> --baseline .code-ranker/before.json \
   --output.json.path=.code-ranker/after.json \
   --output.html.path=.code-ranker/after.html
 open .code-ranker/after.html          # macOS; xdg-open on Linux
@@ -125,10 +125,10 @@ threshold mismatch.
 ## Cheat sheet
 
 ```sh
-code-ranker report . --output.scorecard                       # triage: all principles
-code-ranker report . --output.scorecard --focus hk --top 1    # focus one metric or principle
-code-ranker report . --prompt hk --top 1                      # LLM fix-prompt for a named principle/metric
-code-ranker check  . --baseline base.json --output-format json   # CI regression verdict
+code-ranker report . --plugins <lang> --output.scorecard                    # triage: all principles
+code-ranker report . --plugins <lang> --output.scorecard --focus hk --top 1 # focus one metric or principle
+code-ranker report . --plugins <lang> --prompt hk --top 1                    # LLM fix-prompt for a named principle/metric
+code-ranker check  . --plugins <lang> --baseline base.json --output-format json   # CI regression verdict
 ```
 
 ## Gotchas

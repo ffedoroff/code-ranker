@@ -66,9 +66,9 @@ of these and rebuild (see Setup) — all are baked into the binary:
   `crates/code-ranker-plugins/src/languages/<lang>/config.toml`).
 - **scaffolding** (intro / doc-note / task / focus prose) —
   `crates/code-ranker-graph/metrics/prompt.md`.
-- **the full reference doc** the agent reads via `docs <FOCUS>` —
+- **the full reference doc** the agent reads via `docs <lang> <FOCUS>` —
   `plugins/<lang>/<FOCUS>.md` (e.g. `ADP.md`), and the offline entry point
-  `plugins/base/AI.md` (`docs ai`).
+  `plugins/base/AI.md` (`docs <lang> ai`).
 
 Change the **smallest** lever that fixes the observed failure.
 
@@ -151,12 +151,12 @@ nothing eval-related is left in `PROJECT`.
 1. **Clean start.** `PROJECT` on `main`, working tree clean.
 2. **Fresh agent session**, model = `MODEL`, **empty context**. Bootstrap it with the
    offline playbook only — no extra hints: have it read
-   `code-ranker docs ai` (overview + catalog) and `docs <FOCUS>` (the deep
+   `code-ranker docs <lang> ai` (overview + catalog) and `docs <lang> <FOCUS>` (the deep
    doc). This is what a real user would do, so it tests the *prompt*, not your
    coaching.
-3. **BEFORE.** `code-ranker report . --output.html.path=$RUN/before.html --output.json.path=$RUN/before.json`.
+3. **BEFORE.** `code-ranker report . --plugins <lang> --output.html.path=$RUN/before.html --output.json.path=$RUN/before.json`.
 4. **Save the focused prompt** (orchestrator, for the record):
-   `code-ranker report . --prompt <FOCUS> > $RUN/prompt.md`
+   `code-ranker report . --plugins <lang> --prompt <FOCUS> > $RUN/prompt.md`
    — captures the exact fix-prompt this run used into `$RUN/prompt.md`, so prompt ↔
    behaviour stays correlatable across models.
 5. **Fix** (agent). Ask the agent to fix the single worst (`--top 1`) cycle and **let it
@@ -273,7 +273,7 @@ Layout (one build → one `<timestamp>_<CR_SHA>` folder → one subfolder per ru
 
 Each run is a **fresh session** of `MODEL` with **no carried context** — start a new
 one, never `--continue`/`--resume`. Keep `PROJECT` free of a code-ranker-specific
-`CLAUDE.md`/memory so only `docs ai` primes the agent; otherwise you're testing the
+`CLAUDE.md`/memory so only `docs <lang> ai` primes the agent; otherwise you're testing the
 priming, not the prompt.
 
 **Watch the agent's working directory.** Launch it *inside* `PROJECT` (the interactive
@@ -297,13 +297,13 @@ and note in `metrics.csv` which basis the run used.
 
   Then give it **one** opening message (the bootstrap), nothing else:
 
-  > Read `code-ranker docs ai`, then fix the worst `<FOCUS>` in this
+  > Read `code-ranker docs <lang> ai`, then fix the worst `<FOCUS>` in this
   > project. Show me the plan before changing code.
 
   Headless one-shot (scriptable, but weaker for the multi-step loop):
 
   ```sh
-  cd PROJECT && claude -p "Read \`code-ranker docs ai\`, then fix the worst <FOCUS>…" --model haiku
+  cd PROJECT && claude -p "Read \`code-ranker docs <lang> ai\`, then fix the worst <FOCUS>…" --model haiku
   ```
 
 - **Other agents** (Cursor, …): open a **New Chat** (not a continued thread), select
@@ -314,7 +314,7 @@ and note in `metrics.csv` which basis the run used.
 The transcript is the **primary tuning data** — it shows *where* a cheaper model
 diverged (skipped `docs`, picked the wrong cycle, hacked the metric). Save it raw,
 **verbatim, no summary**, into `$RUN/chat.*`. It must include the bootstrap
-(`docs ai` / `docs <FOCUS>` reads), the task, and **every** assistant turn — its
+(`docs <lang> ai` / `docs <lang> <FOCUS>` reads), the task, and **every** assistant turn — its
 reasoning **and** the tool calls (the `code-ranker` commands + their output), through
 the final fix and the test run.
 
@@ -360,7 +360,7 @@ Columns, grouped by objective (most are extractable from the run's artifacts; th
 | `api_duration_s` | cost | transcript | ↓ the **API-only subset** of `wall_s` (active model time, `result.duration_api_ms`). `wall_s − api_duration_s` ≈ local tool execution + queueing. Blank when there's no session `result` event (subagent log) |
 | `files_changed` | cost | diff | context — edit footprint (not better/worse alone) |
 | `loc_added` / `loc_removed` | cost | PROJECT branch `git diff --shortstat` | precise edit footprint; a fix far larger than the reference's is a smell (also catches committed litter) |
-| `read_doc_ai` / `read_doc_focus` | clarity | transcript | 1/0 — read `docs ai` / `docs <FOCUS>` |
+| `read_doc_ai` / `read_doc_focus` | clarity | transcript | 1/0 — read `docs <lang> ai` / `docs <lang> <FOCUS>` |
 | `doc_reread` | clarity | transcript | ↓ times a doc was read more than once (a re-read signals the prompt/doc wasn't clear the first time) |
 | `planned_before_edit` | clarity | transcript | 1/0 — proposed a plan before editing |
 | `used_generated_prompt` | adherence | transcript | 1/0 — actually fetched the tool's fix-prompt (`--prompt`) vs improvising |

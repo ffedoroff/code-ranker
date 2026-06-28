@@ -161,7 +161,7 @@ function openExportPopup(level, restore) {
 
   // Wrap a principle's title + prompt into the full instruction the AI receives:
   // intent, the summary, how to read the full principle (the offline
-  // `code-ranker report --doc <id>` command — no network URL), and a
+  // `code-ranker docs <lang> <id>` command — no network URL), and a
   // research/report protocol (report violations in the modules below, save the
   // report to `.code-ranker/<timestamp>-<id>.md`).
   const composePrompt = id => {
@@ -182,12 +182,16 @@ function openExportPopup(level, restore) {
       '',
     ];
     // A doc exists (signalled by `doc_url`): point the agent at the offline
-    // `--doc <id>` command rather than a network URL.
+    // `code-ranker docs <lang> <id>` command rather than a network URL. `{lang}`
+    // is the active language so the command is runnable as-is (docs are per-language).
+    const lang = (typeof currentLang === 'function' && currentLang())
+      || Object.keys(window.DIFF || {})[0] || 'base';
+    const fill = s => (s || '').replaceAll('{id}', id).replaceAll('{lang}', lang);
     if (url) {
-      lines.push((t.doc_note || '').replaceAll('{id}', id), '');
+      lines.push(fill(t.doc_note), '');
     }
     lines.push('## Task', '');
-    for (const line of (t.task || [])) lines.push(line.replaceAll('{id}', id));
+    for (const line of (t.task || [])) lines.push(fill(line));
     lines.push('', t.focus || '');
     return lines.join('\n');
   };
@@ -340,7 +344,7 @@ function openExportPopup(level, restore) {
             return (vr != null && vr !== 0) ? `- \`${path(n)}\` (${label}: ${vr})` : `- \`${path(n)}\``;
           }).join('\n');
           // A single target reads as one module, not a ranking. The formula is
-          // dropped (it lives in `--doc <id>`); the description is skipped when it
+          // dropped (it lives in `docs <lang> <id>`); the description is skipped when it
           // already appears verbatim as the Summary above (the metric lens).
           const heading = activeNodes.length === 1 ? `## Target module (${label})` : `## Modules ordered by ${label}`;
           const principlePrompt = snapshotPrinciples().find(p => p.id === activePrincipleKey)?.prompt;

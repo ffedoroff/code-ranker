@@ -322,7 +322,7 @@ the **same id** as a plugin principle overrides it; a new id appends. Run it:
 code-ranker report . --config code-ranker.toml --output.scorecard --focus tsr --severity warning --top 1
 
 # or generate the refactoring prompt for that metric:
-code-ranker report . --config code-ranker.toml --prompt tsr --top 1
+code-ranker report . --plugins <lang> --config code-ranker.toml --prompt tsr --top 1
 ```
 
 For the `--severity` counts to be meaningful the metric should carry `warning` /

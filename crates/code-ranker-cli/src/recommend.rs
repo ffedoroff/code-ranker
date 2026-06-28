@@ -24,7 +24,9 @@ use code_ranker_plugin_api::{
 };
 use std::collections::HashMap;
 
-/// Select the `LanguageSnapshot` to use for recommendations.
+/// Select the `LanguageSnapshot` to use for recommendations, returning both the
+/// resolved language KEY and its snapshot — callers need the name to render
+/// per-language commands (e.g. `code-ranker docs <lang> <id>` in a prompt).
 ///
 /// Resolution order:
 /// 1. `--language` explicitly given → use that language or error.
@@ -37,23 +39,28 @@ pub fn resolve_language_snap<'a>(
     snap: &'a Snapshot,
     language: Option<&str>,
     id: Option<&str>,
-) -> Result<&'a LanguageSnapshot> {
+) -> Result<(&'a str, &'a LanguageSnapshot)> {
     // Explicit `--language` always wins. Resolve an alias (`js` → `javascript`)
     // to the canonical key the snapshot stores under.
     if let Some(lang) = language {
         let canon = crate::plugin::to_canonical(lang);
-        return snap.languages.get(&canon).with_context(|| {
-            let available: Vec<&str> = snap.languages.keys().map(String::as_str).collect();
-            format!(
-                "language {lang:?} not found in snapshot; available: {}",
-                available.join(", ")
-            )
-        });
+        return snap
+            .languages
+            .get_key_value(&canon)
+            .map(|(k, v)| (k.as_str(), v))
+            .with_context(|| {
+                let available: Vec<&str> = snap.languages.keys().map(String::as_str).collect();
+                format!(
+                    "language {lang:?} not found in snapshot; available: {}",
+                    available.join(", ")
+                )
+            });
     }
 
     // Single language: no ambiguity.
     if snap.languages.len() == 1 {
-        return Ok(snap.languages.values().next().expect("len==1"));
+        let (k, v) = snap.languages.iter().next().expect("len==1");
+        return Ok((k.as_str(), v));
     }
 
     // Multiple languages: try to resolve the id across all of them.
@@ -73,7 +80,13 @@ pub fn resolve_language_snap<'a>(
             .collect();
 
         match matches.as_slice() {
-            [one] => return Ok(snap.languages.get(*one).expect("key from languages")),
+            [one] => {
+                let (k, v) = snap
+                    .languages
+                    .get_key_value(*one)
+                    .expect("key from languages");
+                return Ok((k.as_str(), v));
+            }
             [] => {} // fall through to first-language default
             langs => anyhow::bail!(
                 "{focus_id:?} found in languages: {}; specify --language <name> to disambiguate",
@@ -84,8 +97,9 @@ pub fn resolve_language_snap<'a>(
 
     // Fall back to the first language (BTreeMap order, deterministic).
     snap.languages
-        .values()
+        .iter()
         .next()
+        .map(|(k, v)| (k.as_str(), v))
         .context("snapshot has no languages; regenerate the report with `code-ranker report`")
 }
 

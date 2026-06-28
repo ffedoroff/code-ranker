@@ -10,15 +10,24 @@ use anyhow::{Result, bail};
 use code_ranker_graph::level_graph::LevelGraph;
 use code_ranker_plugin_api::{Principle, PromptTemplate, node::Node};
 
+/// Substitute the template placeholders in one scaffolding line: `{id}` → the
+/// active principle/metric id, `{lang}` → the resolved language (so a `docs`
+/// pointer reads `code-ranker docs <lang> <id>`).
+fn fill(line: &str, id: &str, lang: &str) -> String {
+    line.replace("{id}", id).replace("{lang}", lang)
+}
+
 /// Compose the AI prompt for one principle — the same Markdown the HTML viewer's
 /// Prompt Generator produces: intent + summary + principle link + task checklist,
 /// then the ranked offending modules, then the principle's connection lists.
 /// `focus_paths` (empty = no restriction) narrows the ranked modules to a subtree.
+#[allow(clippy::too_many_arguments)] // a flat prompt-builder signature reads clearer than a params struct here
 pub fn compose_prompt(
     level: &LevelGraph,
     principles: &[Principle],
     tmpl: &PromptTemplate,
     principle_id: &str,
+    lang: &str,
     sev: Severity,
     top: Option<usize>,
     focus_paths: &[String],
@@ -64,7 +73,7 @@ pub fn compose_prompt(
     // Scaffolding prose (intro / doc-note / task protocol / focus) is DATA from
     // the snapshot's `prompt` template; only the Markdown skeleton + the principle's
     // own title/summary are assembled here. The doc-note points at the offline
-    // `--doc <id>` command (no network URL).
+    // `code-ranker docs <lang> <id>` command (no network URL).
     let mut head = String::new();
     head.push_str(&format!("# {}\n\n", principle.title));
     head.push_str(&tmpl.intro);
@@ -72,14 +81,14 @@ pub fn compose_prompt(
     head.push_str(&principle.prompt);
     head.push_str("\n\n");
     // A doc exists for this principle/metric (signalled by `doc_url`): point the
-    // agent at the offline `--doc <id>` command rather than a network URL.
+    // agent at the offline `code-ranker docs <lang> <id>` command rather than a network URL.
     if principle.doc_url.is_some() {
-        head.push_str(&tmpl.doc_note.replace("{id}", principle_id));
+        head.push_str(&fill(&tmpl.doc_note, principle_id, lang));
         head.push_str("\n\n");
     }
     head.push_str("## Task\n\n");
     for line in &tmpl.task {
-        head.push_str(&line.replace("{id}", principle_id));
+        head.push_str(&fill(line, principle_id, lang));
         head.push('\n');
     }
     head.push('\n');
@@ -128,7 +137,7 @@ pub fn compose_prompt(
             let m = &principle.sort_metric;
             let label = attr_short(level, m);
             // A single target reads as one module, not a ranking; the formula and a
-            // repeated description are dropped (they live in `--doc <id>`).
+            // repeated description are dropped (they live in `code-ranker docs <lang> <id>`).
             let mut s = if modules.len() == 1 {
                 format!("## Target module ({label})\n\n")
             } else {
