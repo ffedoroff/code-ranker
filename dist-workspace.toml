@@ -10,7 +10,13 @@ ci = "github"
 # The installers to generate for each app
 installers = ["shell", "powershell", "npm"]
 publish-jobs = ["npm"]
-publish-prereleases = true
+# GitHub-build-only prereleases. The `host` job still creates the GitHub Release
+# + binaries (it is gated only on `publishing`), but every publish-job (npm) is
+# SKIPPED for a prerelease tag because its `if` is `!is_prerelease ||
+# publish_prereleases`. crates.io / PyPI / Docker are separate workflows that run
+# ONLY from publish.yml, so dispatching release.yml directly never touches them.
+# Set back to true to push prereleases to npm as well.
+publish-prereleases = false
 # release.yml is hand-edited away from dist's default tag-push trigger (it runs
 # only on manual dispatch via publish.yml). Tell dist NOT to run its generated-CI
 # consistency check, or `dist host`/`dist plan` red-Xes on those intentional edits.

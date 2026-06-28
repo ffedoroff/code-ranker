@@ -15,7 +15,7 @@ Structural-analysis tool for **Rust** (production-ready) plus **Python, TypeScri
 
 **👉 Map your codebase's worst structural problems in 30 seconds — [jump to the Rust quick start](#rust-quick-start) and run it on your repo now.**
 
-**Status:** 5.0.0 — the Rust analyzer is production-ready; the other languages are beta, so their output shapes may still change.
+**Status:** 5.0.0-pre-alpha — the Rust analyzer is production-ready; the other languages are beta, so their output shapes may still change.
 
 ## Rust quick start
 
