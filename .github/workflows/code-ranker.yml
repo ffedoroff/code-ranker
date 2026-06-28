@@ -1,11 +1,17 @@
+# Dogfood: run the PUBLIC code-ranker-ci scripts on this repo, but build
+# code-ranker from these branch sources (not the released binary).
 name: code-ranker
 on:
   pull_request:
-  push: { branches: [main] }
+  push:
 jobs:
-  report:
-    uses: ffedoroff/code-ranker-ci/.github/workflows/report.yml@v1
+  code-ranker:
+    uses: ffedoroff/code-ranker-ci/.github/workflows/report.yml@main
+    with:
+      install_from_source: true   # build code-ranker from this checkout
+      do_check: false             # advisory on our own PRs (don't red the build)
     permissions:
       id-token: write
       contents: read
       pull-requests: write
+      security-events: write
