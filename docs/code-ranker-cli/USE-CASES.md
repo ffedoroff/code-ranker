@@ -102,7 +102,7 @@ code-ranker report . --baseline .code-ranker/before.json --output.html.path=.cod
 **Get a copy-paste AI fix-prompt for a named principle/metric (pick it from the scorecard).**
 
 ```sh
-code-ranker report . --prompt HK --top 1
+code-ranker report . --plugins <lang> --prompt HK --top 1
 ```
 
 ---
@@ -306,13 +306,13 @@ prompt is printed to stdout.
 **Emit the fix-prompt to stdout (for an agent to read on a failed gate).**
 
 ```sh
-code-ranker report . --prompt HK --top 1
+code-ranker report . --plugins <lang> --prompt HK --top 1
 ```
 
 **Save the fix-prompt to a file (redirect stdout).**
 
 ```sh
-code-ranker report . --prompt HK > prompt.md
+code-ranker report . --plugins <lang> --prompt HK > prompt.md
 ```
 
 ---

@@ -54,7 +54,7 @@ fn category_subject_resolves_case_insensitively() {
 
 #[test]
 fn render_category_lists_label_description_and_members() {
-    let out = render_category(&specs(), "loc");
+    let out = render_category(&specs(), "rust", "loc");
     assert!(out.contains("Lines of Code"), "header (human label): {out}");
     assert!(
         out.contains("Lines of code breakdown"),
@@ -120,7 +120,7 @@ fn catalog_lists_every_subject_class() {
 
 #[test]
 fn metrics_index_lists_categories_and_members() {
-    let out = render_metrics_index(&specs());
+    let out = render_metrics_index(&specs(), "rust");
     assert!(
         out.contains("loc — Lines of code breakdown"),
         "category: {out}"
@@ -130,7 +130,7 @@ fn metrics_index_lists_categories_and_members() {
 
 #[test]
 fn principles_index_lists_each_principle() {
-    let out = render_principles_index(&specs());
+    let out = render_principles_index(&specs(), "rust");
     assert!(out.contains("- TSR: Test Ratio"), "principle listed: {out}");
 }
 
@@ -138,7 +138,7 @@ fn principles_index_lists_each_principle() {
 fn principles_block_reports_when_the_plugin_defines_none() {
     let mut s = specs();
     s.principles.clear();
-    let out = render_principles_index(&s);
+    let out = render_principles_index(&s, "rust");
     assert!(out.contains("(none"), "empty principles note: {out}");
 }
 
@@ -234,6 +234,24 @@ fn build_specs_base_uses_neutral_catalog() {
     assert!(
         specs.node_attributes.contains_key("sloc"),
         "central metrics present for base too"
+    );
+}
+
+/// Served per-language docs make `<lang>` placeholders concrete so commands print
+/// runnable; the language-agnostic `base` catalog keeps the placeholder.
+#[test]
+fn localize_lang_substitutes_concrete_language_but_not_base() {
+    assert_eq!(
+        localize_lang(
+            "`code-ranker docs <lang> hk` then `--plugins <lang>`".into(),
+            "rust",
+        ),
+        "`code-ranker docs rust hk` then `--plugins rust`"
+    );
+    assert_eq!(
+        localize_lang("--plugins <lang>".into(), "base"),
+        "--plugins <lang>",
+        "base keeps the generic placeholder"
     );
 }
 

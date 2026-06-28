@@ -28,9 +28,31 @@ struct Row {
     top: String,
 }
 
+/// The severity tag shown on a worst-modules row. In the unfocused view it is the
+/// node's worst breach; in the metric-focus view it is the focused metric's own
+/// tier for that node — `Below` when the value is under the threshold (or the
+/// metric has none), so a ranked-but-not-breaching module is labeled honestly
+/// rather than always shown as `warn`.
+#[derive(Clone, Copy)]
+enum Tier {
+    Warn,
+    Info,
+    Below,
+}
+
+impl Tier {
+    fn label(self) -> &'static str {
+        match self {
+            Tier::Warn => "warn",
+            Tier::Info => "info",
+            Tier::Below => "—",
+        }
+    }
+}
+
 /// One row of the worst-modules list.
 struct ModRow {
-    is_warning: bool,
+    tier: Tier,
     path: String,
     head: String,
     rest: Vec<String>,
@@ -163,9 +185,11 @@ pub fn render_scorecard(
     }
 
     // ── Next-step hint ───────────────────────────────────────────────────────
-    out.push_str(
-        "\n→ code-ranker report . --prompt <PRINCIPLE|METRIC>   (AI fix-prompt to stdout)\n",
-    );
+    // Pin `--plugins <lang>` so the fix-prompt targets the same language this
+    // scorecard is for (a multi-language repo would otherwise re-resolve it).
+    out.push_str(&format!(
+        "\n→ code-ranker report . --plugins {plugin} --prompt <PRINCIPLE|METRIC>   (AI fix-prompt to stdout)\n"
+    ));
 
     Ok(out)
 }
@@ -318,7 +342,7 @@ fn cycle_mod_rows(out: &mut String, level: &LevelGraph, top: Option<usize>) -> V
     for (g, members) in &groups {
         for n in members {
             mod_rows.push(ModRow {
-                is_warning: true,
+                tier: Tier::Warn,
                 path: clean_path(&n.id),
                 head: g.kind.clone(),
                 rest: Vec::new(),
@@ -340,19 +364,30 @@ fn metric_mod_rows(
     focus_paths: &[String],
 ) -> Vec<ModRow> {
     let reco = reco_for(level, m);
+    // The focused metric's own tiers: tag each ranked module by where its value
+    // actually lands (warn > warning, info > info), `Below` otherwise — never a
+    // blanket `warn`. A metric with no configured threshold → every row `Below`.
+    let th = super::thresholds_for(level, m);
     reco.sorted
         .iter()
         .filter(|n| in_focus(n, focus_paths))
         .take(limit)
         .map(|n| {
-            let head = match num(n, m) {
+            let v = num(n, m);
+            let head = match v {
                 Some(v) if v != 0.0 => {
                     format!("{} {}", attr_short(level, m), fmt_val(v))
                 }
                 _ => attr_short(level, m).to_string(),
             };
+            let value = v.unwrap_or(0.0);
+            let tier = match th {
+                Some(t) if value > t.warning => Tier::Warn,
+                Some(t) if value > t.info => Tier::Info,
+                _ => Tier::Below,
+            };
             ModRow {
-                is_warning: true,
+                tier,
                 path: clean_path(&n.id),
                 head,
                 rest: Vec::new(),
@@ -412,7 +447,7 @@ fn breach_row(level: &LevelGraph, n: &Node, breaches: &[Breach]) -> ModRow {
         .map(|b| breach_label(level, &b.metric, None))
         .collect();
     ModRow {
-        is_warning: n_warn > 0,
+        tier: if n_warn > 0 { Tier::Warn } else { Tier::Info },
         path: clean_path(&n.id),
         head,
         rest,
@@ -438,7 +473,7 @@ fn breach_label(level: &LevelGraph, metric: &str, value: Option<f64>) -> String 
 fn render_mod_rows(out: &mut String, mod_rows: &[ModRow]) {
     let path_w = mod_rows.iter().map(|r| r.path.len()).max().unwrap_or(0);
     for (i, r) in mod_rows.iter().enumerate() {
-        let tier = if r.is_warning { "warn" } else { "info" };
+        let tier = r.tier.label();
         let mut line = format!("{:>2} {:<4} {:<path_w$}  {}", i + 1, tier, r.path, r.head);
         if !r.rest.is_empty() {
             line.push_str(&format!("  +{}", r.rest.join(", ")));

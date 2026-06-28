@@ -193,10 +193,10 @@ write it to **stdout**, then exit — no HTML/JSON artifacts.
 
 ```bash
 # "give me the HK prompt" → prints it immediately
-code-ranker report . --prompt HK
+code-ranker report . --plugins <lang> --prompt HK
 
 # narrow the ranked modules it lists
-code-ranker report . --prompt HK --top 5 --focus-path src/engine
+code-ranker report . --plugins <lang> --prompt HK --top 5 --focus-path src/engine
 ```
 
 - `<ID>` is a principle id (`HK`, `ADP`, `SRP`, …) or a metric key; unknown ids fail
@@ -208,7 +208,7 @@ code-ranker report . --prompt HK --top 5 --focus-path src/engine
   link.
 - It is the explicit, name-it-yourself, print-to-stdout path — the quick "show me HK"
   path — and (being a standalone dump) accepts any `--top N` to widen the ranked module
-  list. Redirect to a file when you need an artifact: `code-ranker report . --prompt HK > prompt.md`.
+  list. Redirect to a file when you need an artifact: `code-ranker report . --plugins <lang> --prompt HK > prompt.md`.
 
 ### 7.2 `docs <lang> <subject>` — print the raw principle doc ✅
 
@@ -250,8 +250,8 @@ corpus, `prompt.md` is **internal template prose**: it sits next to `builtin.tom
 | Field | Role |
 |---|---|
 | `intro` | one-line intent under the title |
-| `doc_note` | how to read the full principle — points at the offline `code-ranker docs <lang> <id>` command (`{id}` substituted), not a network URL |
-| `task` | the task-protocol bullets (`{id}` → active principle id) |
+| `doc_note` | how to read the full principle — points at the offline `code-ranker docs <lang> <id>` command (`{id}` → active principle/metric id, `{lang}` → resolved language), not a network URL |
+| `task` | the task-protocol bullets (`{id}` → active principle id, `{lang}` → resolved language) |
 | `focus` | closing emphasis line |
 | `cycle_note` | note prepended to a single dependency-cycle's module list |
 

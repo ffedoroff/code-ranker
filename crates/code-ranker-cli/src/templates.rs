@@ -135,38 +135,6 @@ const TLDR_INDEX_MARKER: &str = "<!-- doc:tldr-index -->";
 const AI_SELECT_START: &str = "<!-- ai:select-start -->";
 const AI_SELECT_END: &str = "<!-- ai:select-end -->";
 
-/// A base doc's one-paragraph summary for the index: its `**TL;DR**` paragraph
-/// (lines from the `**TL;DR**` line to the next blank line, joined into one), or
-/// the first prose paragraph after the H1 when there is no explicit TL;DR.
-fn doc_summary(md: &str) -> Option<String> {
-    let lines: Vec<&str> = md.lines().collect();
-    let para_from = |start: usize| -> Option<String> {
-        let mut buf = Vec::new();
-        for l in &lines[start..] {
-            let t = l.trim();
-            if t.is_empty() || t.starts_with('#') {
-                if buf.is_empty() {
-                    continue;
-                }
-                break;
-            }
-            buf.push(t);
-        }
-        (!buf.is_empty()).then(|| buf.join(" "))
-    };
-    if let Some(i) = lines
-        .iter()
-        .position(|l| l.trim_start().starts_with("**TL;DR**"))
-    {
-        return para_from(i);
-    }
-    let h1 = lines
-        .iter()
-        .position(|l| l.starts_with("# "))
-        .map_or(0, |i| i + 1);
-    para_from(h1)
-}
-
 /// A doc or prompt printed to stdout must end in exactly one trailing newline so
 /// the shell prompt resumes on its own line. Returns `md` with a newline ensured.
 /// Shared by the `docs` stdout paths so the rule lives in one
@@ -178,22 +146,19 @@ pub(crate) fn with_trailing_newline(mut md: String) -> String {
     md
 }
 
-/// One catalog entry: a `### <title>` heading + a `docs <stem>` pointer, plus the
-/// doc's one-paragraph summary when it has one. Split out from [`tldr_index`] so the
-/// no-summary arm is exercised by a unit test without needing a summary-less doc in
-/// the real corpus.
-fn catalog_entry(title: &str, stem: &str, summary: Option<&str>) -> String {
-    let head = format!("### {title}\n\nFull doc: `code-ranker docs {stem}`");
-    match summary {
-        Some(s) => format!("{head}\n\n{s}"),
-        None => head,
-    }
+/// One catalog entry on a SINGLE line: a `### <title>` heading plus the
+/// language-scoped `docs <lang> <stem>` pointer to the full doc. Deliberately
+/// compact (no TL;DR summary) so the AI playbook's catalog stays scannable —
+/// one line per principle / metric.
+fn catalog_entry(title: &str, lang: &str, stem: &str) -> String {
+    format!("### {title} Full doc: `code-ranker docs {lang} {stem}`")
 }
 
 /// Build the catalog the `<!-- doc:tldr-index -->` marker expands to: every
-/// `base/<ID>.md` (except `AI.md` itself), alphabetical, each as a `### <title>`
-/// heading + a `--doc <ID>` pointer to the full doc + its one-paragraph summary.
-fn tldr_index() -> String {
+/// `base/<ID>.md` (except `AI.md` itself), alphabetical, one line each (see
+/// [`catalog_entry`]). `lang` is the resolved plugin so every pointer reads
+/// `code-ranker docs <lang> <ID>` (docs are per-language).
+fn tldr_index(lang: &str) -> String {
     let mut entries: Vec<(String, String)> = CORPUS
         .iter()
         .filter_map(|(rel, contents)| {
@@ -206,7 +171,7 @@ fn tldr_index() -> String {
                 .find_map(|l| l.strip_prefix("# "))
                 .unwrap_or(stem)
                 .trim();
-            let entry = catalog_entry(title, stem, doc_summary(contents).as_deref());
+            let entry = catalog_entry(title, lang, stem);
             Some((stem.to_ascii_lowercase(), entry))
         })
         .collect();
@@ -215,17 +180,17 @@ fn tldr_index() -> String {
         .into_iter()
         .map(|(_, e)| e)
         .collect::<Vec<_>>()
-        .join("\n\n")
+        .join("\n")
 }
 
 /// Replace a `<!-- doc:tldr-index -->` marker with the generated catalog; a no-op
 /// for docs that don't carry it. Also drops the `base/AI.md` *Select a language*
 /// section ([`strip_select_section`]) — it is the `ai` command's unresolved-only
-/// template and must never appear in a served doc (`--doc AI`, `ai` when resolved).
-fn expand_tldr_index(md: &str) -> String {
+/// template and must never appear in a served doc (`docs <lang> AI`, `ai` when resolved).
+fn expand_tldr_index(md: &str, lang: &str) -> String {
     let md = strip_select_section(md);
     if md.contains(TLDR_INDEX_MARKER) {
-        md.replace(TLDR_INDEX_MARKER, &tldr_index())
+        md.replace(TLDR_INDEX_MARKER, &tldr_index(lang))
     } else {
         md
     }
@@ -253,21 +218,22 @@ pub(crate) fn resolve_doc_from_specs(
     templates: &TemplatesConfig,
     id: &str,
 ) -> Result<String> {
-    Ok(expand_tldr_index(&resolve_doc_raw(
-        principles,
-        node_attributes,
-        templates,
-        id,
-    )?))
+    // The tldr-index marker only ever lives in `base/AI.md` (served via `ai_doc`),
+    // so a single-doc resolution never actually expands it; `base` is an inert
+    // fallback language for the (unreachable here) marker case.
+    Ok(expand_tldr_index(
+        &resolve_doc_raw(principles, node_attributes, templates, id)?,
+        "base",
+    ))
 }
 
 /// The offline AI-agent overview (`base/AI.md`) with its catalog index expanded —
 /// served straight from the embedded corpus with **no snapshot, no project
 /// analysis, and no plugin detection**. Backs the `docs ai` subcommand, so the
 /// playbook prints in any directory regardless of language markers.
-pub(crate) fn ai_doc() -> Result<String> {
+pub(crate) fn ai_doc(lang: &str) -> Result<String> {
     let md = corpus_doc("base/AI.md").context("base/AI.md is not embedded in this build")?;
-    Ok(expand_tldr_index(md))
+    Ok(expand_tldr_index(md, lang))
 }
 
 /// The brief intro from `base/AI.md` for the `ai` command's unresolved mode:

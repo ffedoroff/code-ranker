@@ -124,7 +124,7 @@ code-dependency (`uses`) edges that drive fan_in/fan_out. No `jq`, no snapshot t
 query:
 
 ```bash
-code-ranker report --prompt HK --top 1
+code-ranker report --plugins <lang> --prompt HK --top 1
 ```
 
 The connection list says *which* modules couple; it does not say *why*. For that,

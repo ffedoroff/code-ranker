@@ -198,7 +198,8 @@ fn run_direct(args: &AnalyzeArgs, reco: &ReportReco) -> Result<()> {
 
     // `--prompt <ID>`: compose the named principle/metric prompt to stdout.
     let id = reco.prompt_id.as_deref().expect("prompt_id is set");
-    let lang_snap = recommend::resolve_language_snap(snap, reco.language.as_deref(), Some(id))?;
+    let (lang, lang_snap) =
+        recommend::resolve_language_snap(snap, reco.language.as_deref(), Some(id))?;
     let level = lang_snap
         .graphs
         .get("files")
@@ -221,6 +222,7 @@ fn run_direct(args: &AnalyzeArgs, reco: &ReportReco) -> Result<()> {
         principles_for_prompt,
         &lang_snap.prompt,
         &principle_id,
+        lang,
         recommend::Severity::Auto,
         reco.top,
         &reco.focus_path,
@@ -241,7 +243,7 @@ fn write_scorecard(
     commit: Option<&str>,
     generated_at: DateTime<Utc>,
 ) -> Result<()> {
-    let lang_snap =
+    let (lang, lang_snap) =
         recommend::resolve_language_snap(snap, reco.language.as_deref(), reco.focus.as_deref())?;
     let level = lang_snap
         .graphs
@@ -265,16 +267,11 @@ fn write_scorecard(
                 .map(|s| recommend::parse_severity(s))
                 .collect::<Result<Vec<_>>>()?
         };
-        // Show the plugin name(s) in the scorecard header — join all active
-        // plugins, or just the selected language when one is picked.
-        let plugin_label = reco.language.as_deref().unwrap_or_else(|| {
-            snap.plugins
-                .first()
-                .map(String::as_str)
-                .unwrap_or("unknown")
-        });
+        // Header / next-step hint must name the language whose level is shown — the
+        // one `resolve_language_snap` picked (honoring `--language` / `--focus`), not
+        // an arbitrary first plugin (which mislabeled the card on multi-language repos).
         let txt = recommend::render_scorecard(
-            plugin_label,
+            lang,
             level,
             &lang_snap.principles,
             &severities,

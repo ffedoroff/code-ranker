@@ -76,7 +76,7 @@ pub(crate) fn run(
 
     // `docs <lang> ai` → the offline AI-agent playbook.
     if subject.is_some_and(|s| templates::normalize_id(s) == "ai") {
-        emit(templates::ai_doc()?);
+        emit(templates::ai_doc(language)?, language);
         return Ok(());
     }
 
@@ -84,10 +84,7 @@ pub(crate) fn run(
 
     let Some(subject) = subject else {
         // `docs <lang>`: the full subject catalog for that language.
-        print!(
-            "{}",
-            templates::with_trailing_newline(render_catalog(&specs, language, None))
-        );
+        emit(render_catalog(&specs, language, None), language);
         return Ok(());
     };
 
@@ -95,34 +92,48 @@ pub(crate) fn run(
     // so `fan_in`, `Fan-in`, and `FAN in` all resolve the same metric.
     let want = templates::normalize_id(subject);
     if want == "metrics" {
-        emit(render_metrics_index(&specs));
+        emit(render_metrics_index(&specs, language), language);
     } else if want == "principles" {
-        emit(render_principles_index(&specs));
+        emit(render_principles_index(&specs, language), language);
     } else if let Some(cat) = category_key(&specs, subject) {
-        emit(render_category(&specs, &cat));
+        emit(render_category(&specs, language, &cat), language);
     } else if let Some(p) = specs
         .principles
         .iter()
         .find(|p| templates::normalize_id(&p.id) == want)
     {
-        emit(render_principle(&specs, &p.id)?);
+        emit(render_principle(&specs, &p.id)?, language);
     } else if let Some(key) = specs
         .node_attributes
         .keys()
         .find(|k| templates::normalize_id(k) == want)
     {
-        emit(render_metric(&specs, key));
+        emit(render_metric(&specs, key), language);
     } else {
         // Unknown subject: print the catalog so the caller sees every option, then
         // fail (non-zero) — it was a real lookup miss, not a help request.
-        emit(render_catalog(&specs, language, Some(subject)));
+        emit(render_catalog(&specs, language, Some(subject)), language);
         bail!("unknown docs subject {subject:?} for language {language:?} — see the list above");
     }
     Ok(())
 }
 
-fn emit(md: String) {
-    print!("{}", templates::with_trailing_newline(md));
+fn emit(md: String, lang: &str) {
+    print!(
+        "{}",
+        templates::with_trailing_newline(localize_lang(md, lang))
+    );
+}
+
+/// Make instructional `<lang>` placeholders concrete in served per-language docs, so
+/// commands print runnable as-is (`docs rust hk`, `--plugins rust`). `base` is the
+/// language-agnostic catalog, so its generic `<lang>` stays a placeholder.
+fn localize_lang(md: String, lang: &str) -> String {
+    if lang == "base" {
+        md
+    } else {
+        md.replace("<lang>", lang)
+    }
 }
 
 /// `base` (the language-agnostic catalog) or any registered plugin name.
@@ -401,31 +412,33 @@ fn principles_block(specs: &DocSpecs) -> String {
         .collect()
 }
 
-/// `docs metrics`: every metric, grouped by category.
-fn render_metrics_index(specs: &DocSpecs) -> String {
+/// `docs <lang> metrics`: every metric, grouped by category.
+fn render_metrics_index(specs: &DocSpecs, lang: &str) -> String {
     format!(
-        "Metrics — print one with `code-ranker docs <metric>`:\n{}",
+        "Metrics — print one with `code-ranker docs {lang} <metric>`:\n{}",
         categories_block(specs)
     )
 }
 
-/// `docs principles`: every design principle.
-fn render_principles_index(specs: &DocSpecs) -> String {
+/// `docs <lang> principles`: every design principle.
+fn render_principles_index(specs: &DocSpecs, lang: &str) -> String {
     format!(
-        "Principles — print one with `code-ranker docs <ID>`:\n\n{}",
+        "Principles — print one with `code-ranker docs {lang} <ID>`:\n\n{}",
         principles_block(specs)
     )
 }
 
-/// `docs <category>`: the category's human label + description + its member metrics.
-fn render_category(specs: &DocSpecs, key: &str) -> String {
+/// `docs <lang> <category>`: the category's human label + description + its member metrics.
+fn render_category(specs: &DocSpecs, lang: &str, key: &str) -> String {
     // Single-category view: the human label is the title (the key was just typed),
     // so there is no `key: Label` echo.
     let mut out = category_label(specs, key);
     if let Some(d) = specs.groups.get(key).and_then(|g| g.description.as_deref()) {
         out.push_str(&format!("\n{d}"));
     }
-    out.push_str("\n\nMetrics — print one with `code-ranker docs <metric>`:\n");
+    out.push_str(&format!(
+        "\n\nMetrics — print one with `code-ranker docs {lang} <metric>`:\n"
+    ));
     for (k, spec) in metrics_in_category(specs, key) {
         out.push_str(&format!("  - {k}: {}", metric_name(spec, k)));
         if let Some(d) = spec.description.as_deref() {

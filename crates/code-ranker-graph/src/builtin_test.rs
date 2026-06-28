@@ -12,8 +12,8 @@ fn prompt_template_parses_from_markdown() {
         "I want to apply this to some modules in my system."
     );
     assert!(
-        t.doc_note.contains("`code-ranker docs {id}`"),
-        "doc_note points at the offline --doc command: {:?}",
+        t.doc_note.contains("`code-ranker docs {lang} {id}`"),
+        "doc_note points at the offline per-language docs command: {:?}",
         t.doc_note
     );
     // `## task` keeps one entry per bullet, verbatim (the leading `- ` stays).

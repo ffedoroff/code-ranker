@@ -19,11 +19,13 @@ This is the short guide for driving it — the commands below operate the tool.
 - **`report [input]`** — produces **artifacts**: a JSON snapshot, a self-contained
   HTML viewer, and the advisory **`scorecard`** (console triage) / **`prompt`** (an
   LLM fix-prompt). Always exits `0` — the analysis + refactoring entry point.
-- **`docs <subject>`** — print a reference doc to stdout (no analysis). `docs ai`
-  prints this playbook (with a language plugin resolved it appends the full
-  principle/metric catalog); `docs metrics` / `docs principles` index every metric /
-  principle; `docs <category>` (`loc`, `complexity`, …) lists a category; `docs <ID>`
-  prints one metric or principle (`docs hk`, `docs SRP`). Always exits `0`.
+- **`docs <lang> <subject>`** — print a reference doc to stdout (no analysis). The
+  language comes first (`rust`, `python`, …, or `base` for the language-agnostic
+  catalog). `docs <lang> ai` prints this playbook plus the full principle/metric
+  catalog; `docs <lang> metrics` / `docs <lang> principles` index every metric /
+  principle; `docs <lang> <category>` (`loc`, `complexity`, …) lists a category;
+  `docs <lang> <ID>` prints one metric or principle (`docs rust hk`,
+  `docs rust SRP`). Always exits `0`.
 - **`help`** — usage for the binary or any command (`code-ranker --help`,
   `code-ranker <command> --help`, or `-h <command>`). Lists every flag.
 
@@ -43,7 +45,7 @@ Pick one of: **{plugins}**. Either name it per run (applies to `check` / `report
 too):
 
 ```sh
-code-ranker check . --plugin <name>
+code-ranker check . --plugins <name>
 ```
 
 …or set it once in a `code-ranker.toml` at the project root, so every command picks
@@ -51,10 +53,11 @@ it up:
 
 ```toml
 version = "{config_version}"
-plugin = "<name>"
+[plugins]
+enabled = ["<name>"]
 ```
 
-Then re-run `code-ranker docs ai` for the full playbook and the principle/metric catalog.
+Then re-run `code-ranker docs <name> ai` for the full playbook and the principle/metric catalog.
 <!-- ai:select-end -->
 
 ## The two that matter most
@@ -70,12 +73,12 @@ inspect the worst tier with `--severity warning`.
 ## The fix loop
 
 ```sh
-code-ranker check .                                           # 1. the gate verdict
-code-ranker report . --output.scorecard --focus ADP --top 1   # 2. focus one metric/principle, worst-first
-code-ranker docs <principle>                                  # 3. READ the deep doc — before you touch code
+code-ranker check . --plugins <lang>                          # 1. the gate verdict
+code-ranker report . --plugins <lang> --output.scorecard --focus ADP --top 1   # 2. focus one metric/principle, worst-first
+code-ranker docs <lang> <principle>                           # 3. READ the deep doc — before you touch code
 ```
 
-**Step 3 is not optional — read the `docs <principle>` page before proposing a
+**Step 3 is not optional — read the `docs <lang> <principle>` page before proposing a
 fix.** It names the *language-specific cause* of this violation and the *smallest
 correct remedy* for it, often with a worked example. Agents that skip it reach for a
 heavier, wrong-shaped refactor that can leave the real cycle intact, introduce a new
@@ -87,7 +90,7 @@ principle, by that design principle.
 
 ## Principles & metrics
 
-Each entry summarizes one principle or metric; run `code-ranker docs <ID>`
+Each entry summarizes one principle or metric; run `code-ranker docs <lang> <ID>`
 to print its full doc (offline, straight to the terminal).
 
 <!-- doc:tldr-index -->

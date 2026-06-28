@@ -285,10 +285,9 @@ fn resolve_doc_ai_index_expands_tldr_marker() {
         "catalog lists ADP"
     );
     assert!(
-        doc.contains("Full doc: `code-ranker docs ADP`"),
-        "each entry points at its --doc id"
+        doc.contains("Full doc: `code-ranker docs base ADP`"),
+        "each entry points at its language-scoped docs id"
     );
-    assert!(doc.contains("**TL;DR**"), "entries carry their TL;DR");
     assert!(
         !doc.contains("### code-ranker — AI agent skill"),
         "AI.md excludes itself from its own index"
@@ -299,7 +298,9 @@ fn resolve_doc_ai_index_expands_tldr_marker() {
 fn ai_doc_matches_resolve_doc_and_needs_no_snapshot() {
     // `ai_doc()` backs the project-free `ai` subcommand: it must produce exactly
     // what `docs AI` does, but without a snapshot or plugin.
-    let doc = ai_doc().unwrap();
+    // `base` matches the inert language `resolve_doc_from_specs` uses, so the two
+    // paths produce byte-identical output.
+    let doc = ai_doc("base").unwrap();
     let via_resolve = resolve_doc(
         &snap(vec![], BTreeMap::new()),
         &TemplatesConfig::default(),
@@ -388,38 +389,18 @@ fn resolve_doc_resolves_base_doc_by_filename_stem() {
 }
 
 #[test]
-fn doc_summary_prefers_tldr_then_first_paragraph() {
-    let with_tldr = "# T\n\n**TL;DR**: line one\nline two\n\n## Next\nbody";
-    assert_eq!(
-        doc_summary(with_tldr).as_deref(),
-        Some("**TL;DR**: line one line two")
-    );
-    let no_tldr = "# T\n\nFirst prose paragraph.\nstill it.\n\n## Next";
-    assert_eq!(
-        doc_summary(no_tldr).as_deref(),
-        Some("First prose paragraph. still it.")
-    );
-}
+fn catalog_entry_is_one_line_with_language_scoped_pointer() {
+    // One line per entry: `### <title> Full doc: `code-ranker docs <lang> <stem>``,
+    // no TL;DR summary, and the pointer carries the resolved language.
+    let e = catalog_entry("Henry–Kafura", "js", "HK");
+    assert_eq!(e, "### Henry–Kafura Full doc: `code-ranker docs js HK`");
+    assert!(!e.contains('\n'), "single line: {e}");
 
-#[test]
-fn catalog_entry_includes_summary_when_present_and_omits_when_absent() {
-    let with = catalog_entry("Henry–Kafura", "HK", Some("A coupling metric."));
-    assert!(
-        with.starts_with("### Henry–Kafura"),
-        "heading first: {with}"
+    // `base` (the language-agnostic catalog) flows through verbatim.
+    assert_eq!(
+        catalog_entry("Edge Case", "base", "EC"),
+        "### Edge Case Full doc: `code-ranker docs base EC`"
     );
-    assert!(
-        with.contains("Full doc: `code-ranker docs HK`"),
-        "carries the --doc pointer: {with}"
-    );
-    assert!(
-        with.ends_with("A coupling metric."),
-        "summary appended: {with}"
-    );
-
-    // No summary → heading + pointer only, no trailing paragraph (the `None` arm).
-    let without = catalog_entry("Edge Case", "EC", None);
-    assert_eq!(without, "### Edge Case\n\nFull doc: `code-ranker docs EC`");
 }
 
 #[test]
