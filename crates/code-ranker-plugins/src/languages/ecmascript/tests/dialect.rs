@@ -201,12 +201,12 @@ fn typescript_trigger_set_documented_in_spec() {
     // the TypeScript metrics spec, so the trigger list and the spec's "Keyword
     // look-alike guard set" cannot drift apart.
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let path = format!("{root}/languages/typescript/metrics.md");
+    let path = format!("{root}/plugins/ts/metrics.md");
     let spec = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     for kw in TS_TRIGGERS {
         assert!(
             spec.contains(&format!("`{kw}`")),
-            "trigger `{kw}` is not documented in languages/typescript/metrics.md — spec and FP test drifted"
+            "trigger `{kw}` is not documented in plugins/ts/metrics.md — spec and FP test drifted"
         );
     }
 }

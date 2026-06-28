@@ -6,16 +6,18 @@ use super::*;
 fn detects_by_go_mod() {
     let d = tempfile::tempdir().unwrap();
     let p = GoPlugin;
-    assert!(!p.detect(d.path(), &PluginInput::default()));
+    let cfg = p.config();
+    assert!(!p.detect(&cfg, d.path(), &PluginInput::default()));
     std::fs::write(d.path().join("go.mod"), "module m\n").unwrap();
-    assert!(p.detect(d.path(), &PluginInput::default()));
+    assert!(p.detect(&cfg, d.path(), &PluginInput::default()));
 }
 
 #[test]
 fn name_and_levels() {
     let p = GoPlugin;
+    let cfg = p.config();
     assert_eq!(p.name(), "go");
-    let levels = p.levels();
+    let levels = p.levels(&cfg);
     assert!(levels.iter().any(|l| l.name == "files"));
     assert!(levels.iter().any(|l| l.name == "functions"));
 }
@@ -31,9 +33,10 @@ fn metrics_and_function_units_over_a_temp_project() {
     .unwrap();
 
     let p = GoPlugin;
-    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
-    assert!(!p.metrics(&g).is_empty(), "file metrics produced");
-    let units = p.function_units(&g);
+    let cfg = p.config();
+    let g = p.analyze(&cfg, d.path(), &PluginInput::default()).unwrap();
+    assert!(!p.metrics(&cfg, &g).is_empty(), "file metrics produced");
+    let units = p.function_units(&cfg, &g);
     assert!(units.iter().any(|(n, _)| n.name == "A"), "function unit A");
 }
 
@@ -56,6 +59,7 @@ fn metrics_skip_non_file_and_unreadable_nodes() {
         ],
         edges: vec![],
     };
-    assert!(GoPlugin.metrics(&g).is_empty());
-    assert!(GoPlugin.function_units(&g).is_empty());
+    let cfg = GoPlugin.config();
+    assert!(GoPlugin.metrics(&cfg, &g).is_empty());
+    assert!(GoPlugin.function_units(&cfg, &g).is_empty());
 }

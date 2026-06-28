@@ -39,48 +39,69 @@ pub const CONFIG_SCHEMA_VERSION: &str = code_ranker_graph::version::CONFIG_VERSI
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Config-schema version (`major.minor`, e.g. `"4.0"`) — **required** in a
+    /// Config-schema version (`major.minor`, e.g. `"5.0"`) — **required** in a
     /// `code-ranker.toml`. Validated against [`CONFIG_SCHEMA_VERSION`] at load.
     /// `Option` so a missing value yields our migrate-hint error, not serde's.
     #[serde(default)]
     pub version: Option<String>,
-    /// Default plugin name (e.g. "rust", "python"). Overridden by --plugin.
+    /// The `[plugins]` table: the active-language list (`enabled = [...]`) plus the
+    /// per-language config blocks (`[plugins.<lang>]`, with the shared `[plugins.base]`).
     #[serde(default)]
-    pub plugin: Option<String>,
-    #[serde(default)]
-    pub ignore: IgnoreConfig,
-    #[serde(default)]
-    pub rules: RulesConfig,
+    pub plugins: PluginsConfig,
+    /// Output artifacts (`[output]`) — **global** (one report per run covers every
+    /// language), so this is not per-language.
     #[serde(default)]
     pub output: OutputConfig,
-    /// User-defined declarative metrics (`[metrics.<key>]`): a CEL `formula_cel` plus
-    /// optional spec fields. Computed per node at snapshot time and emitted like
-    /// any built-in metric. Empty by default — absent → no change to output.
-    #[serde(default)]
-    pub metrics: BTreeMap<String, code_ranker_graph::MetricDef>,
-    /// Optional analysis levels (`[levels]`). Off by default → only the `files`
-    /// level is emitted, so default output is unchanged.
-    #[serde(default)]
-    pub levels: LevelsConfig,
-    /// Project-level report-list patches (`[report]`): `columns` / `card` /
-    /// `stats`, each a list-override (plain array = replace, or an op-table
-    /// `{add,remove,replace,clear,prepend}`). Applied over the language's own
-    /// `[report]` patch, so a project can surface its custom metrics in the table
-    /// / card / JSON stats. Raw table; parsed by `list_override::report_override_section`.
-    #[serde(default)]
-    pub report: toml::Table,
-    /// Project-defined Prompt-Generator principles (`[principles.<ID>]`), keyed by the
-    /// principle id. Appended to the active plugin's catalog (a same-id project principle
-    /// overrides the plugin's), so a project can recommend/scorecard on its own
-    /// custom metric. Empty by default — absent → no change to output.
-    #[serde(default)]
-    pub principles: BTreeMap<String, PrincipleDef>,
     /// Per-file doc-corpus overrides (`[templates.languages.<lang>.<ID>]`): use a
-    /// file from disk in place of the embedded `languages/<lang>/<ID>.md`. Empty by
-    /// default — absent → the embedded corpus is used unchanged.
+    /// file from disk in place of the embedded `languages/<lang>/<ID>.md`. Global.
     #[serde(default)]
     pub templates: TemplatesConfig,
 }
+
+/// The `[plugins]` table. `enabled` is the active-language list; every other key is
+/// a per-language config block (`[plugins.<lang>]`), with the reserved `"base"` key
+/// inherited by every language. `enabled` and `base` are therefore reserved and
+/// cannot be language names. The blocks are free-form: plugin-config keys
+/// (`extensions`, `detect_markers`, …) are consumed via `effective_plugin_config`,
+/// while the orchestrator sections (`ignore`/`rules`/`metrics`/`levels`/`report`/
+/// `principles`) are read via [`Config::language_config`].
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct PluginsConfig {
+    /// Active languages (e.g. `["rust", "markdown"]`). Empty → auto-detect all.
+    /// Overridden by `--plugins`.
+    #[serde(default)]
+    pub enabled: Vec<String>,
+    /// Per-language config blocks keyed by language (plus the reserved `"base"`).
+    /// Captures every `[plugins]` key other than `enabled`.
+    #[serde(flatten)]
+    pub languages: BTreeMap<String, toml::Table>,
+}
+
+/// The orchestrator-read config sections that are now **per-language**, resolved
+/// for one language by [`Config::language_config`] (defaults' `[plugins.base]` ⊕
+/// user `[plugins.base]` ⊕ user `[plugins.<lang>]`). Plugin-config keys in the same
+/// block (`extensions`, …) are ignored here — they feed the plugin separately.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct LangConfig {
+    pub ignore: IgnoreConfig,
+    pub rules: RulesConfig,
+    pub metrics: BTreeMap<String, code_ranker_graph::MetricDef>,
+    pub levels: LevelsConfig,
+    pub report: toml::Table,
+    pub principles: BTreeMap<String, PrincipleDef>,
+}
+
+/// The orchestrator config-section keys carried inside a `[plugins.<lang>]` block.
+/// (Other keys in the block are plugin config, consumed via `effective_plugin_config`.)
+pub(crate) const LANG_SECTION_KEYS: &[&str] = &[
+    "ignore",
+    "rules",
+    "metrics",
+    "levels",
+    "report",
+    "principles",
+];
 
 /// Doc-corpus override map (`[templates.languages.<lang>.<ID>]`): `lang → (ID →
 /// file path)`. A configured path is read from disk in place of the embedded
@@ -184,9 +205,8 @@ pub struct OutputConfig {
     pub html: OutputArtifact,
     pub sarif: OutputArtifact,
     pub codequality: OutputArtifact,
-    /// `prompt` / `scorecard` are flag-driven (off unless `--output.<fmt>` is
-    /// passed); their `path` here only supplies the default destination template.
-    pub prompt: OutputArtifact,
+    /// `scorecard` is flag-driven (off unless `--output.scorecard` is passed); its
+    /// `path` here only supplies the default destination template.
     pub scorecard: OutputArtifact,
 }
 
@@ -338,7 +358,9 @@ impl MetricThresholds {
     pub fn get(&self, metric: &str) -> Option<f64> {
         self.limits.get(metric).copied()
     }
-    /// Set (or override) the limit for `metric`.
+    /// Set (or override) the limit for `metric`. Used by tests; overrides now write
+    /// raw `[plugins.<lang>]` tables rather than mutating typed thresholds.
+    #[allow(dead_code)]
     pub fn set(&mut self, metric: String, limit: f64) {
         self.limits.insert(metric, limit);
     }
@@ -415,92 +437,6 @@ pub(crate) fn parse_number(s: &str) -> Result<f64> {
         format!("invalid number {s:?} (expected e.g. 500000, 5_000_000, 5K, 1.5M)")
     })?;
     Ok(n * mult)
-}
-
-/// TOML rejects a bare `300K` (a `K`/`M`/`G` suffix makes it neither a number nor
-/// a string), so without help a user must write `hk = "300K"`. This pre-pass lets
-/// them write `hk = 300K` by quoting bare suffixed numbers **only inside a
-/// `*thresholds*` table**, before the text reaches the TOML parser. Plain and
-/// underscored integers stay native; already-quoted values and everything outside
-/// a thresholds table are left untouched. The matching CLI form (`--threshold
-/// file.hk=300K`) needs no help — it goes straight through [`parse_number`].
-pub(crate) fn quote_suffixed_thresholds(text: &str) -> String {
-    let mut out = String::with_capacity(text.len() + 16);
-    let mut in_thresholds = false;
-    for line in text.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with('[') {
-            // Section header (`[t]` or `[[t]]`): a thresholds table enables quoting.
-            let name = trimmed.trim_start_matches('[');
-            in_thresholds = name
-                .split(']')
-                .next()
-                .is_some_and(|s| s.contains("thresholds"));
-        } else if in_thresholds && let Some(quoted) = quote_suffixed_value_line(line) {
-            out.push_str(&quoted);
-            out.push('\n');
-            continue;
-        }
-        out.push_str(line);
-        out.push('\n');
-    }
-    out
-}
-
-/// If `line` is a `key = <bare-suffixed-number>` assignment, return it with the
-/// value quoted (formatting and any trailing comment preserved); else `None`.
-fn quote_suffixed_value_line(line: &str) -> Option<String> {
-    let eq = line.find('=')?;
-    let key = line[..eq].trim();
-    if key.is_empty()
-        || !key
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-    {
-        return None;
-    }
-    let after = &line[eq + 1..];
-    let (val_seg, comment) = match after.find('#') {
-        Some(h) => after.split_at(h),
-        None => (after, ""),
-    };
-    if !is_bare_suffixed_number(val_seg.trim()) {
-        return None;
-    }
-    let lead: String = val_seg.chars().take_while(|c| c.is_whitespace()).collect();
-    let trail: String = val_seg
-        .chars()
-        .rev()
-        .take_while(|c| c.is_whitespace())
-        .collect();
-    Some(format!(
-        "{}={lead}\"{}\"{trail}{comment}",
-        &line[..eq],
-        val_seg.trim()
-    ))
-}
-
-/// Does `v` look like a bare `K`/`M`/`G`-suffixed number (`300K`, `1.5M`,
-/// `5_000K`)? Already-quoted values and plain numbers return `false`.
-fn is_bare_suffixed_number(v: &str) -> bool {
-    let Some(last) = v.chars().last() else {
-        return false;
-    };
-    if !matches!(last, 'k' | 'K' | 'm' | 'M' | 'g' | 'G') {
-        return false;
-    }
-    let body = &v[..v.len() - 1];
-    let mut seen_digit = false;
-    let mut seen_dot = false;
-    for c in body.chars() {
-        match c {
-            '0'..='9' => seen_digit = true,
-            '_' => {}
-            '.' if !seen_dot => seen_dot = true,
-            _ => return false,
-        }
-    }
-    seen_digit
 }
 
 #[cfg(test)]

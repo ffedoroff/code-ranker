@@ -9,6 +9,7 @@ pub mod load;
 pub mod metrics;
 pub mod model;
 pub mod rules;
+pub mod thresholds;
 pub mod violations;
 
 pub use ignore::apply_ignore;
@@ -16,4 +17,4 @@ pub use load::load;
 pub(crate) use model::merge_project_principles;
 pub use model::{CycleRules, OutputArtifact, OutputConfig, RulesConfig, TemplatesConfig};
 pub use rules::{apply_cycle_rules, rule_doc, rule_tuning};
-pub use violations::{Violation, check_violations};
+pub use violations::{Violation, check_violations_all};

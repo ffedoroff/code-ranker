@@ -1,0 +1,14 @@
+[
+  {
+    "check_name": "threshold.file.broken_links",
+    "description": "{target}/index.md: broken links 1 exceeds limit 0 (inf× over budget)",
+    "fingerprint": "md:threshold.file.broken_links:{target}/index.md",
+    "location": {
+      "lines": {
+        "begin": 1
+      },
+      "path": "index.md"
+    },
+    "severity": "major"
+  }
+]

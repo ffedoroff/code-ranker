@@ -1,9 +1,10 @@
 //! The serializable analysis artifact ([`Snapshot`]) and its header types
 //! ([`GitInfo`], [`StageTime`]).
 //!
-//! Shape (schema version `"2"`): the snapshot keeps the historical header
-//! (workspace/target/plugin/roots/versions/git/timings) and carries a `graphs`
-//! map `level_name -> LevelGraph`. The per-level payload lives in
+//! Shape (schema version `"5"`): the snapshot keeps the historical header
+//! (workspace/target/plugins/roots/versions/git/timings) and carries a `languages`
+//! map `lang_name -> LanguageSnapshot`, each of which holds the per-language
+//! graphs, principles, and prompt template.  The per-level payload lives in
 //! [`crate::level_graph`]; canonical serialization in [`crate::serialize`]; id
 //! relativization in [`crate::relativize`].
 
@@ -27,6 +28,23 @@ pub struct StageTime {
     pub detail: String,
 }
 
+/// Per-language analysis output stored inside the snapshot.
+///
+/// Each active language plugin contributes one entry in [`Snapshot::languages`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanguageSnapshot {
+    /// Analysis levels for this language, keyed by level name (e.g. `"files"`,
+    /// `"functions"`).
+    pub graphs: BTreeMap<String, LevelGraph>,
+    /// Prompt-Generator principles (refactoring principles), language-adapted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub principles: Vec<Principle>,
+    /// Prompt-Generator scaffolding prose (language-neutral framing), so the CLI
+    /// `prompt` format and the HTML viewer render the same text from one source.
+    #[serde(default)]
+    pub prompt: code_ranker_plugin_api::PromptTemplate,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     pub schema_version: String,
@@ -36,7 +54,8 @@ pub struct Snapshot {
     pub workspace: String,
     /// The analyzed project directory (absolute path, stored once here).
     pub target: String,
-    pub plugin: String,
+    /// Sorted list of active plugin names for this analysis run.
+    pub plugins: Vec<String>,
     /// Config file used for this analysis, if any was found.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub config_file: Option<String>,
@@ -48,15 +67,8 @@ pub struct Snapshot {
     pub git: Option<GitInfo>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub timings: Vec<StageTime>,
-    /// Analysis levels, keyed by level name. Today only `"files"` is produced.
-    pub graphs: BTreeMap<String, LevelGraph>,
-    /// Prompt-Generator principles (refactoring principles), language-adapted.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub principles: Vec<Principle>,
-    /// Prompt-Generator scaffolding prose (language-neutral framing), so the CLI
-    /// `prompt` format and the HTML viewer render the same text from one source.
-    #[serde(default)]
-    pub prompt: code_ranker_plugin_api::PromptTemplate,
+    /// Per-language analysis results, keyed by plugin name.
+    pub languages: BTreeMap<String, LanguageSnapshot>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,37 +81,38 @@ pub struct GitInfo {
     pub origin: Option<String>,
 }
 
+/// Named-field constructor for [`Snapshot`], replacing the old 12-argument
+/// positional function.  All callers should fill every field explicitly; use
+/// `Default::default()` for truly optional ones.
+pub struct SnapshotInit {
+    pub command: String,
+    pub workspace: String,
+    pub target: String,
+    /// Sorted list of active plugin names.
+    pub plugins: Vec<String>,
+    pub config_file: Option<String>,
+    pub versions: BTreeMap<String, String>,
+    pub roots: BTreeMap<String, String>,
+    pub git: Option<GitInfo>,
+    pub timings: Vec<StageTime>,
+    pub languages: BTreeMap<String, LanguageSnapshot>,
+}
+
 impl Snapshot {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        command: String,
-        workspace: String,
-        target: String,
-        plugin: String,
-        config_file: Option<String>,
-        versions: BTreeMap<String, String>,
-        roots: BTreeMap<String, String>,
-        git: Option<GitInfo>,
-        timings: Vec<StageTime>,
-        graphs: BTreeMap<String, LevelGraph>,
-        principles: Vec<Principle>,
-        prompt: code_ranker_plugin_api::PromptTemplate,
-    ) -> Self {
+    pub fn new(init: SnapshotInit) -> Self {
         Self {
             schema_version: SCHEMA_VERSION.to_string(),
             generated_at: Utc::now(),
-            command,
-            workspace,
-            target,
-            plugin,
-            config_file,
-            versions,
-            roots,
-            git,
-            timings,
-            graphs,
-            principles,
-            prompt,
+            command: init.command,
+            workspace: init.workspace,
+            target: init.target,
+            plugins: init.plugins,
+            config_file: init.config_file,
+            versions: init.versions,
+            roots: init.roots,
+            git: init.git,
+            timings: init.timings,
+            languages: init.languages,
         }
     }
 }

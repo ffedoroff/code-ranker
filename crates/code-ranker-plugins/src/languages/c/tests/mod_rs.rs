@@ -6,9 +6,10 @@ use super::*;
 fn detects_by_c_source_presence() {
     let d = tempfile::tempdir().unwrap();
     let p = CPlugin;
-    assert!(!p.detect(d.path(), &PluginInput::default()));
+    let cfg = p.config();
+    assert!(!p.detect(&cfg, d.path(), &PluginInput::default()));
     std::fs::write(d.path().join("main.c"), "int main(){return 0;}\n").unwrap();
-    assert!(p.detect(d.path(), &PluginInput::default()));
+    assert!(p.detect(&cfg, d.path(), &PluginInput::default()));
 }
 
 #[test]
@@ -20,9 +21,14 @@ fn metrics_and_function_units_over_a_temp_project() {
     )
     .unwrap();
     let p = CPlugin;
-    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
-    assert!(!p.metrics(&g).is_empty(), "file metrics produced");
-    assert!(p.function_units(&g).iter().any(|(n, _)| n.name == "add"));
+    let cfg = p.config();
+    let g = p.analyze(&cfg, d.path(), &PluginInput::default()).unwrap();
+    assert!(!p.metrics(&cfg, &g).is_empty(), "file metrics produced");
+    assert!(
+        p.function_units(&cfg, &g)
+            .iter()
+            .any(|(n, _)| n.name == "add")
+    );
     assert_eq!(p.name(), "c");
 }
 
@@ -45,6 +51,7 @@ fn metrics_skip_non_file_and_unreadable_nodes() {
         ],
         edges: vec![],
     };
-    assert!(CPlugin.metrics(&g).is_empty());
-    assert!(CPlugin.function_units(&g).is_empty());
+    let cfg = CPlugin.config();
+    assert!(CPlugin.metrics(&cfg, &g).is_empty());
+    assert!(CPlugin.function_units(&cfg, &g).is_empty());
 }

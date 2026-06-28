@@ -7,19 +7,19 @@ does **not** force a config migration unless the config format itself changed.
 
 | # | Surface | Constant | Lives in | Current |
 |---|---------|----------|----------|---------|
-| 1 | **app** — the release | `[workspace.package] version` (`env!("CARGO_PKG_VERSION")`) | root `Cargo.toml` | `4.0.0` |
-| 2 | **config + CLI** — the user-facing input interface | `CONFIG_VERSION` | `crates/code-ranker-graph/src/version.rs` | `4.0` |
-| 3 | **JSON snapshot + viewer** — the data format and its consumer | `SCHEMA_VERSION` | `crates/code-ranker-graph/src/version.rs` | `4.0` |
+| 1 | **app** — the release | `[workspace.package] version` (`env!("CARGO_PKG_VERSION")`) | root `Cargo.toml` | `5.0.0` |
+| 2 | **config + CLI** — the user-facing input interface | `CONFIG_VERSION` | `crates/code-ranker-graph/src/version.rs` | `5.0` |
+| 3 | **JSON snapshot + viewer** — the data format and its consumer | `SCHEMA_VERSION` | `crates/code-ranker-graph/src/version.rs` | `5.0` |
 
 Versions 2 and 3 are the app **`major.minor`** of the release that last changed
 that surface (so a reader can tell which app generation a config/snapshot targets).
-They may share a value — both `4.0` today — but move independently. The number
+They may share a value — both `5.0` today — but move independently. The number
 lives **only** at its constant; every consumer imports it, never hardcodes it
 (fixtures and data files included — fixtures `format!` it from the constant).
 
 ## 1. app version
 
-Plain SemVer of the release (`4.0.0`). Bumped with `make bump VERSION=…`,
+Plain SemVer of the release (`5.0.0`). Bumped with `make bump VERSION=…`,
 which rewrites `Cargo.toml`, `README.md` and the `code-ranker`/`--version` doc
 mentions. Every normal release bumps it; it does **not** imply a format change.
 
@@ -89,19 +89,7 @@ If the surface was **already bumped earlier in this same branch** (vs `main`):
   existing one (a second additive tweak is still just one minor step for the
   release).
 - a **breaking** change after a **minor** bump → **escalate**: replace the minor
-  with a **major** (e.g. `4.0 → 4.1` becomes `4.0 → 5.0`). Never end with two
-  separate bumps in one branch.
-
-### Worked examples
-
-- Branch adds one optional `[rules]` key → `CONFIG_VERSION` minor (`4.0 → 4.1`).
-  `SCHEMA_VERSION` untouched (JSON unchanged).
-- Same branch later renames a snapshot field → `SCHEMA_VERSION` **major**
-  (`4.0 → 5.0`); the earlier `CONFIG_VERSION` minor stays as-is (different surface).
-- Branch first adds an optional flag (`CONFIG_VERSION` `4.0 → 4.1`), then removes a
-  different flag → the removal is breaking, so escalate **the same** bump to
-  `CONFIG_VERSION` `4.0 → 5.0` (not a separate second bump).
-- Branch only refactors internals / fixes a bug with no format change → bump
-  **nothing** here (the app version still moves on release, per §1).
+  with a **major** (e.g. a minor `x.0 → x.1` becomes a major `x.0 → (x+1).0`). Never
+  end with two separate bumps in one branch.
 
 The `/update-docs` checklist runs this procedure as its format-compatibility step.

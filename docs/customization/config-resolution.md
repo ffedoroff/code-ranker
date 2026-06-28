@@ -55,14 +55,14 @@ What it carries today:
 
 | Section | Default |
 |---|---|
-| `plugin` | unset → `auto` (marker detection) |
-| `[ignore]` | `paths = []`, `tests = true`, `dev_only_crates = false`, `gitignore/ignore_files/hidden = true` |
-| `[rules.cycles]` | `mutual = true`, `chain = true` (strict) |
-| `[rules.thresholds.file]` | empty — **no per-file limits by default** |
+| `[plugins]` | `enabled` unset / empty → auto-detect every language present |
+| `[plugins.base.ignore]` | `paths = []`, `tests = true`, `dev_only_crates = false`, `gitignore/ignore_files/hidden = true` |
+| `[plugins.base.rules.cycles]` | `mutual = true`, `chain = true` (strict) |
+| `[plugins.base.rules.thresholds.file]` | empty — **no per-file limits by default** |
 | `[output.json]` / `[output.html]` | on, path `.code-ranker/{ts}-{git-hash-3}.{ext}` |
 | `[output.sarif]` / `[output.codequality]` | off (written only on demand) |
-| `[output.prompt]` / `[output.scorecard]` | path defaults; off unless requested |
-| `[levels]` | `functions = false` (only the `files` level is emitted) |
+| `[output.scorecard]` | path default `stdout`; off unless requested |
+| `[plugins.base.levels]` | `functions = false` (only the `files` level is emitted) |
 
 ### Layer 3 — the discovered or explicit config file(s)
 
@@ -95,6 +95,34 @@ files the log shows the merge order: `a.toml ⊕ b.toml`.
 > (`{add,remove,replace,clear,prepend}`) composes across file layers too — a later
 > `--config` file can *patch* a list an earlier one set, not just replace it.
 
+### The per-language overlay — `[plugins.<lang>]` and `[plugins.base]`
+
+A project's `code-ranker.toml` can override **any** key of a language's built-in
+config — not just `[metrics]` — through two per-language layers:
+
+- **`[plugins.base]`** — a **virtual** base language. It is not a real plugin;
+  its overrides apply to **every** active language as a shared base.
+- **`[plugins.<lang>]`** — overrides for one specific language. It wins over
+  `[plugins.base]`.
+
+Either block overrides any key the language's TOML carries (`extensions`,
+`detect_markers`, `skip_dirs`, `edge_kinds`, `node_attributes`, `[[principles]]`,
+`metrics`, `levels`, `ignore`, `rules`, `report`, …), deep-merged onto that
+language's effective config with the [same merge semantics](#merge-semantics) (the
+list-op DSL composes here too). The **effective per-language plugin config**
+therefore resolves low→high:
+
+```
+  defaults.toml  ⊕  [family base.toml]  ⊕  <lang>.toml      (built-in, embedded)
+      ⊕  [plugins.base]  ⊕  [plugins.<lang>]                (user, project config)
+      ⊕  --config plugins.base.*  ⊕  --config plugins.<lang>.*   (CLI)
+```
+
+So the built-in language chain (§4) is the base, the user's `[plugins.base]`
+then `[plugins.<lang>]` overlay it, and the matching inline `--config` flags ride
+highest. An overridden `detect_markers` / `extensions` feeds back into
+auto-detection — a language is auto-detected against its **effective** config.
+
 ### Layers 4 & 5 — the transient per-run flag overrides
 
 After the file layers are merged and deserialized into the `Config`, two more
@@ -117,20 +145,21 @@ Every CLI flag below overrides the corresponding TOML key for the current run.
 
 | Console flag | Overrides TOML key | Notes |
 |---|---|---|
-| `--plugin rust\|python\|…\|auto` | `plugin` | beats both the config value and auto-detection |
+| `--plugins <a,b,…>` (comma-separated / repeatable) | `[plugins] enabled` | the active-language list; replaces config `[plugins].enabled` and beats auto-detection |
+| `--language <name>` | *(no TOML key)* | `report` / `recommend` only — picks which single language the scorecard + prompt focus on; required only when a `--prompt <ID>` / `--focus` resolves in 2+ languages |
 | `--config FILE` (repeatable) | *(whole file layer)* | layered in CLI order, later wins; skips auto-discovery |
-| `--config KEY=VALUE` (repeatable) | the named key | allowlisted keys only — see §3 |
-| `--ignore GLOB` (repeatable) | `[ignore] paths` | **appends** to the configured globs |
-| `--cycle-rule KIND=on\|off\|N` | `[rules.cycles] mutual\|chain` | `on`/`0` = strict, `off` = disabled, `N` = allow up to N |
-| `--threshold file.METRIC=N` | `[rules.thresholds.file] METRIC` | `N` accepts `_` separators + `K/M/G` suffixes |
+| `--config KEY=VALUE` (repeatable) | the named key | allowlisted keys + `plugins.<lang>.<key>` — see §3 |
+| `--ignore GLOB` (repeatable) | `[plugins.base.ignore] paths` | **appends** to the configured globs |
+| `--cycle-rule KIND=on\|off\|N` | `[plugins.base.rules.cycles] mutual\|chain` | `on`/`0` = strict, `off` = disabled, `N` = allow up to N |
+| `--threshold file.METRIC=N` | `[plugins.base.rules.thresholds.file] METRIC` | `N` accepts `_` separators + `K/M/G` suffixes |
 | `--output.json` / `--output.html` / `--output.sarif` / `--output.codequality` | `[output.<fmt>] enabled` | forces that format on (`report` only) |
 | `--output.<fmt>.path PATH` | `[output.<fmt>] path` | overrides the filename template |
-| `--output.prompt` / `--output.scorecard` | `[output.<kind>]` | turns the recommendation output on |
-| `--output.prompt.path` / `--output.scorecard.path` | `[output.<kind>] path` | `scorecard` defaults to `stdout` |
+| `--output.scorecard` | `[output.scorecard]` | turns the recommendation output on |
+| `--output.scorecard.path` | `[output.scorecard] path` | defaults to `stdout` |
 | `--git.branch` / `--git.commit` / `--git.dirty-files` / `--git.origin` | *(snapshot metadata — no TOML key)* | CI escape hatch; replaces what `git` would report |
 
 Flags with **no TOML equivalent** (they shape this run's output, not the config):
-`--baseline`, `--focus-path`, `--focus`, `--output-format`, `--top`,
+`--baseline`, `--prompt`, `--focus-path`, `--focus`, `--output-format`, `--top`,
 `--exit-zero`, `--suggest-config`, `--severity`, `--export-full-config`.
 
 Full flag reference: [CLI.md](../code-ranker-cli/CLI.md).
@@ -143,26 +172,28 @@ Inline overrides are **not** arbitrary TOML paths — they are matched against a
 fixed allowlist in
 [`config/load/overrides.rs`](../../crates/code-ranker-cli/src/config/load/overrides.rs).
 An unrecognized key is a hard error (`unknown config key …`). Anything outside
-this list (e.g. a custom `[metrics.<key>]`, a `[report]` view, a `[rules.checks]`)
+this list (e.g. a custom `[plugins.base.metrics.<key>]`, a `[plugins.base.report]`
+view, a `[plugins.base.rules.checks]`)
 **must go in a file** — there is no inline form for it.
 
 | Inline key | Type | Effect |
 |---|---|---|
-| `plugin` | string | pin the plugin |
-| `ignore.tests` (alias `ignore.test_modules`) | on/off | drop test files |
-| `ignore.dev_only_crates` | on/off | (rust) drop dev-only dependency nodes |
-| `ignore.gitignore` / `ignore.ignore_files` / `ignore.hidden` | on/off | walk filters |
-| `ignore.paths` | csv | **append** comma-separated globs |
-| `rules.cycles.<kind>` | on/off/N | same as `--cycle-rule <kind>=…` |
-| `rules.thresholds.file.<metric>` | number | same as `--threshold file.<metric>=…` |
+| `plugins.enabled` | csv | set the active-language list (same as `--plugins`) |
+| `plugins.<lang>.<key>` | scalar / csv | override any plugin key for one language (or `plugins.base.<key>` for the shared base); scalars and comma-lists only — deep nested tables / arrays-of-tables need the `[plugins.<lang>]` TOML block |
+| `plugins.base.ignore.tests` (alias `plugins.base.ignore.test_modules`) | on/off | drop test files |
+| `plugins.base.ignore.dev_only_crates` | on/off | (rust) drop dev-only dependency nodes |
+| `plugins.base.ignore.gitignore` / `plugins.base.ignore.ignore_files` / `plugins.base.ignore.hidden` | on/off | walk filters |
+| `plugins.base.ignore.paths` | csv | **append** comma-separated globs |
+| `plugins.base.rules.cycles.<kind>` | on/off/N | same as `--cycle-rule <kind>=…` |
+| `plugins.base.rules.thresholds.file.<metric>` | number | same as `--threshold file.<metric>=…` |
 | `output.json.path` / `output.html.path` | string | output template |
 | `output.json.enabled` / `output.html.enabled` | on/off | force format on/off |
 
 ```bash
 # inline equivalents — no file needed
-code-ranker check --config rules.thresholds.file.sloc=800 \
-                  --config rules.cycles.chain=7 \
-                  --config ignore.tests=off
+code-ranker check --config plugins.base.rules.thresholds.file.sloc=800 \
+                  --config plugins.base.rules.cycles.chain=7 \
+                  --config plugins.base.ignore.tests=off
 ```
 
 A threshold key is validated *after* the full config (including any file
@@ -204,11 +235,11 @@ A principle's `doc_url` inherits from a shared corpus the same way config inheri
 `defaults.toml`. It resolves (in [`specs.rs`](../../crates/code-ranker-plugins/src/config/specs.rs))
 to `{doc_base}/{doc_lang}/{id}.md` for the ids a language **overrides**, and to
 `{doc_base}/base/{id}.md` otherwise — `base/` is the language-neutral fallback
-corpus under [`languages/`](../../languages/). Which ids a language overrides is
+corpus under [`plugins/`](../../plugins/). Which ids a language overrides is
 declared by `doc_overrides` in its `<lang>.toml`:
 
 - `doc_overrides = "*"` — a full own corpus; every principle routes to the
-  language's own folder (rust / python / typescript; javascript shares typescript).
+  language's own folder (rust / python / ts; js shares ts).
 - `doc_overrides = ["SRP", …]` — a partial corpus; only those ids route to the
   language's folder, the rest fall back to `base/`.
 - absent — no own corpus; every `doc_url` resolves to `base/` (e.g. go, c, cpp,
@@ -216,7 +247,7 @@ declared by `doc_overrides` in its `<lang>.toml`:
 
 So adding a language needs no doc authoring to get working links (it inherits
 `base/`); a language ships its own docs incrementally by dropping files in
-`languages/<lang>/` and listing their ids in `doc_overrides`.
+`plugins/<lang>/` and listing their ids in `doc_overrides`.
 
 Authoring a `<lang>.toml`, including the report list overrides, is covered in
 [§2 of the customization guide](README.md#2-language-config-langtoml--for-plugin-authors).
@@ -248,12 +279,14 @@ principle catalog or edge-kind vocab.
 Don't guess what won — dump it:
 
 ```bash
-# layers 1–3 for [project] + the merged [plugin] config, to a file
+# layers 1–3 for [project] + the merged [plugins.<lang>] config (every language), to a file
 code-ranker report . --export-full-config effective.toml
 ```
 
 `--export-full-config` writes `[project]` (built-in defaults ⊕ `--config` files)
-plus `[plugin]` (the merged language config for the active `--plugin`). It does
+plus a `[plugins.<lang>]` block for **every registered language** (not only the
+active ones — the merged effective config for each, including its
+`[plugins.<lang>]` / `[plugins.base]` overlay). It does
 **not** include the transient layer-4/5 flag overrides — those are per-run only.
 
 See also: [customization guide](README.md) · [CLI reference](../code-ranker-cli/CLI.md).

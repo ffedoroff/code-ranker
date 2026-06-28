@@ -28,7 +28,7 @@ Cycle detection lives in `crates/code-ranker-graph/src/cycles.rs`:
 > production depends *back* on it (rare), and the `any-test-member → test_embed`
 > rule was coarse — one test node in a large SCC re-labelled the whole real cycle
 > as `test_embed`, which was off by default and so hid it. Test files are instead
-> handled by the `[ignore] tests` filter when unwanted; a test file that genuinely
+> handled by the `[plugins.base.ignore] tests` filter when unwanted; a test file that genuinely
 > sits in a cycle is now reported as a plain `mutual` / `chain` like any other.
 
 Edges in one loop may mix kinds — what matters is that **every** edge in the loop

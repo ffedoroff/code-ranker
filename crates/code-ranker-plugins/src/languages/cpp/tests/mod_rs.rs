@@ -6,9 +6,10 @@ use super::*;
 fn detects_by_cpp_source_presence() {
     let d = tempfile::tempdir().unwrap();
     let p = CppPlugin;
-    assert!(!p.detect(d.path(), &PluginInput::default()));
+    let cfg = p.config();
+    assert!(!p.detect(&cfg, d.path(), &PluginInput::default()));
     std::fs::write(d.path().join("main.cpp"), "int main(){return 0;}\n").unwrap();
-    assert!(p.detect(d.path(), &PluginInput::default()));
+    assert!(p.detect(&cfg, d.path(), &PluginInput::default()));
     assert_eq!(p.name(), "cpp");
 }
 
@@ -21,9 +22,14 @@ fn metrics_and_function_units_over_a_temp_project() {
     )
     .unwrap();
     let p = CppPlugin;
-    let g = p.analyze(d.path(), &PluginInput::default()).unwrap();
-    assert!(!p.metrics(&g).is_empty());
-    assert!(p.function_units(&g).iter().any(|(n, _)| n.name == "add"));
+    let cfg = p.config();
+    let g = p.analyze(&cfg, d.path(), &PluginInput::default()).unwrap();
+    assert!(!p.metrics(&cfg, &g).is_empty());
+    assert!(
+        p.function_units(&cfg, &g)
+            .iter()
+            .any(|(n, _)| n.name == "add")
+    );
 }
 
 #[test]
@@ -45,6 +51,7 @@ fn metrics_skip_non_file_and_unreadable_nodes() {
         ],
         edges: vec![],
     };
-    assert!(CppPlugin.metrics(&g).is_empty());
-    assert!(CppPlugin.function_units(&g).is_empty());
+    let cfg = CppPlugin.config();
+    assert!(CppPlugin.metrics(&cfg, &g).is_empty());
+    assert!(CppPlugin.function_units(&cfg, &g).is_empty());
 }

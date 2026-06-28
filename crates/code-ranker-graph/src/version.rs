@@ -19,7 +19,7 @@
 /// for an additive/back-compatible change (new optional key or flag), a **major**
 /// for a breaking one (renamed/removed key, flag or section). Set it to the app
 /// `major.minor` of the release that ships the change.
-pub const CONFIG_VERSION: &str = "4.0";
+pub const CONFIG_VERSION: &str = "5.0";
 
 /// The **JSON snapshot + viewer** format version. Written as the snapshot's
 /// `schema_version`, rejected on mismatch when a snapshot is read back
@@ -29,4 +29,4 @@ pub const CONFIG_VERSION: &str = "4.0";
 /// **Bump when** the snapshot JSON shape changes (a field added/renamed/removed,
 /// or the viewer's read contract changes) — same minor/major rule as
 /// [`CONFIG_VERSION`], set to the app `major.minor` of the shipping release.
-pub const SCHEMA_VERSION: &str = "4.0";
+pub const SCHEMA_VERSION: &str = "5.0";

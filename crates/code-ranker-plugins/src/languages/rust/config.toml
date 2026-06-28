@@ -20,6 +20,10 @@
 doc_lang = "rust"
 doc_overrides = "*"
 
+# Short aliases accepted anywhere a language is named (`--plugins` / `--language` /
+# `docs` / `[plugins.<lang>]`). DATA, not code; must stay unique across languages.
+aliases = ["rs"]
+
 # Project-detect marker filenames — DATA, not code (see `../README.md` §3). Rust
 # detects a workspace by its `Cargo.toml` manifest; `detect()` reads this list.
 # (Rust collects sources via `cargo metadata` + `syn`, not by walking a file
@@ -281,23 +285,9 @@ description = "Empty or whitespace-only lines. In Rust, measured on production c
 [specs.eta1]
 description = "Distinct operators (η₁): the count of unique operator token kinds. Rust counts punctuation & delimiters (`( { [ , . ; -> => ? .. ..=`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % & | ^ << >> == != < > <= >= && || += -= *= /= %= &= |= ^= <<= >>=`), the keywords `async await continue for if let loop match move return unsafe while fn`, `mut` (mutable_specifier) and primitive types, plus the context-sensitive `|| / !`."
 
-[specs.n1]
-description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
-
 [specs.eta2]
 description = "Distinct operands (η₂): the count of unique operand texts. Rust counts identifiers, `self`, the `_` wildcard, and literals — string, raw-string, integer, float, boolean and char."
 
-[specs.n2]
-description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Rust-specific structural node/edge attributes (display specs). The shared
-# `path`/`loc`/`visibility`/`external` come from `defaults.toml`; Rust adds these.
-# ──────────────────────────────────────────────────────────────────────────────
-
-# Rust's own metric category — groups the language-specific attributes below under
-# one "Rust-specific" heading (the per-language analogue of `builtin.toml`'s central
-# `[categories.*]`), so `docs` lists them together instead of as "(uncategorized)".
 [attribute_groups.rust]
 label = "Rust-specific"
 description = "unsafe, items, traits & other Rust-only facts"

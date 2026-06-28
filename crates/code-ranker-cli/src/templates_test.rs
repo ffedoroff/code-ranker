@@ -1,19 +1,23 @@
 use super::*;
 use code_ranker_graph::level_graph::LevelGraph;
-use code_ranker_graph::snapshot::Snapshot;
+use code_ranker_graph::snapshot::{LanguageSnapshot, Snapshot, SnapshotInit};
 use code_ranker_plugin_api::Principle;
 use code_ranker_plugin_api::attrs::ValueType;
 use code_ranker_plugin_api::level::AttributeSpec;
 use std::collections::BTreeMap;
+
+/// The single language a test snapshot carries.
+const LANG: &str = "rust";
 
 /// Test shim mirroring the old snapshot-based `resolve_doc`: pulls the principles
 /// and `files`-level node-attribute specs out of a test snapshot and feeds the
 /// spec-based core. Keeps these tests reading naturally now that production
 /// resolves docs from config/plugin specs (no snapshot) via `docs`.
 fn resolve_doc(s: &Snapshot, templates: &TemplatesConfig, id: &str) -> Result<String> {
+    let lang = &s.languages[LANG];
     resolve_doc_from_specs(
-        &s.principles,
-        &s.graphs["files"].node_attributes,
+        &lang.principles,
+        &lang.graphs["files"].node_attributes,
         templates,
         id,
     )
@@ -28,20 +32,27 @@ fn snap(principles: Vec<Principle>, files_attrs: BTreeMap<String, AttributeSpec>
     };
     let mut graphs = BTreeMap::new();
     graphs.insert("files".to_string(), files);
-    Snapshot::new(
-        "report".into(),
-        ".".into(),
-        ".".into(),
-        "rust".into(),
-        None,
-        BTreeMap::new(),
-        BTreeMap::new(),
-        None,
-        vec![],
-        graphs,
-        principles,
-        Default::default(),
-    )
+    let mut languages = BTreeMap::new();
+    languages.insert(
+        LANG.to_string(),
+        LanguageSnapshot {
+            graphs,
+            principles,
+            prompt: Default::default(),
+        },
+    );
+    Snapshot::new(SnapshotInit {
+        command: "report".into(),
+        workspace: ".".into(),
+        target: ".".into(),
+        plugins: vec![LANG.to_string()],
+        config_file: None,
+        versions: BTreeMap::new(),
+        roots: BTreeMap::new(),
+        git: None,
+        timings: vec![],
+        languages,
+    })
 }
 
 fn principle(id: &str, doc_url: &str) -> Principle {
@@ -65,10 +76,7 @@ fn metric_spec() -> AttributeSpec {
 #[test]
 fn resolve_doc_serves_base_fallback() {
     let s = snap(
-        vec![principle(
-            "SRP",
-            "https://x/blob/main/languages/base/SRP.md",
-        )],
+        vec![principle("SRP", "https://x/blob/main/plugins/base/SRP.md")],
         BTreeMap::new(),
     );
     let doc = resolve_doc(&s, &TemplatesConfig::default(), "SRP").unwrap();
@@ -80,10 +88,7 @@ fn resolve_doc_assembles_a_language_manifest() {
     // rust/ADP.md is a manifest (`<!-- doc:base … -->`), so the resolved doc
     // is the composition over base/ADP.md, not the raw manifest text.
     let s = snap(
-        vec![principle(
-            "ADP",
-            "https://x/blob/main/languages/rust/ADP.md",
-        )],
+        vec![principle("ADP", "https://x/blob/main/plugins/rust/ADP.md")],
         BTreeMap::new(),
     );
     let doc = resolve_doc(&s, &TemplatesConfig::default(), "ADP").unwrap();
@@ -112,10 +117,7 @@ fn resolve_doc_manifest_uses_base_override_when_present() {
         .insert("base".to_string(), base_overrides);
 
     let s = snap(
-        vec![principle(
-            "ADP",
-            "https://x/blob/main/languages/rust/ADP.md",
-        )],
+        vec![principle("ADP", "https://x/blob/main/plugins/rust/ADP.md")],
         BTreeMap::new(),
     );
     let doc = resolve_doc(&s, &templates, "ADP").unwrap();
@@ -139,10 +141,7 @@ fn resolve_doc_override_wins_verbatim() {
     templates.languages.insert("rust".to_string(), srp);
 
     let s = snap(
-        vec![principle(
-            "SRP",
-            "https://x/blob/main/languages/rust/SRP.md",
-        )],
+        vec![principle("SRP", "https://x/blob/main/plugins/rust/SRP.md")],
         BTreeMap::new(),
     );
     let doc = resolve_doc(&s, &templates, "SRP").unwrap();
@@ -154,10 +153,7 @@ fn resolve_doc_cycle_resolves_to_adp() {
     // `cycle` is ADP's metric lens (not a node attribute), so `--doc cycle` serves
     // the ADP doc — resolved through the ADP principle, same as `--doc ADP`.
     let s = snap(
-        vec![principle(
-            "ADP",
-            "https://x/blob/main/languages/rust/ADP.md",
-        )],
+        vec![principle("ADP", "https://x/blob/main/plugins/rust/ADP.md")],
         BTreeMap::new(),
     );
     let doc = resolve_doc(&s, &TemplatesConfig::default(), "cycle").unwrap();
@@ -207,15 +203,13 @@ fn doc_rel_path_serves_lang_override_for_a_metric_doc() {
     let mut attrs = BTreeMap::new();
     attrs.insert("hk".to_string(), metric_spec());
     let s = snap(
-        vec![principle(
-            "ADP",
-            "https://x/blob/main/languages/rust/ADP.md",
-        )],
+        vec![principle("ADP", "https://x/blob/main/plugins/rust/ADP.md")],
         attrs,
     );
-    let na = &s.graphs["files"].node_attributes;
+    let lang = &s.languages[LANG];
+    let na = &lang.graphs["files"].node_attributes;
     assert_eq!(
-        doc_rel_path(&s.principles, na, "HK"),
+        doc_rel_path(&lang.principles, na, "HK"),
         Some("rust/HK.md".to_string())
     );
 }
@@ -223,10 +217,7 @@ fn doc_rel_path_serves_lang_override_for_a_metric_doc() {
 #[test]
 fn resolve_doc_unknown_id_errors() {
     let s = snap(
-        vec![principle(
-            "SRP",
-            "https://x/blob/main/languages/base/SRP.md",
-        )],
+        vec![principle("SRP", "https://x/blob/main/plugins/base/SRP.md")],
         BTreeMap::new(),
     );
     let err = resolve_doc(&s, &TemplatesConfig::default(), "ZZZ").unwrap_err();
@@ -254,13 +245,13 @@ fn corpus_is_embedded_and_keyed_by_rel_path() {
 #[test]
 fn url_tail_extracts_corpus_path() {
     assert_eq!(
-        url_tail("https://x/blob/main/languages/base/HK.md").as_deref(),
+        url_tail("https://x/blob/main/plugins/base/HK.md").as_deref(),
         Some("base/HK.md")
     );
     assert_eq!(
-        url_tail("Download from https://x/main/languages/rust/SRP.md now").as_deref(),
+        url_tail("Download from https://x/main/plugins/rust/SRP.md now").as_deref(),
         Some("rust/SRP.md"),
-        "anchored on /languages/, trailing prose trimmed"
+        "anchored on /plugins/, trailing prose trimmed"
     );
     assert_eq!(url_tail("https://x/elsewhere/HK.md"), None);
 }
@@ -277,10 +268,7 @@ fn resolve_doc_ai_index_expands_tldr_marker() {
     // The AI overview resolves by filename fallback, and its
     // `<!-- doc:tldr-index -->` marker expands to the per-doc catalog.
     let s = snap(
-        vec![principle(
-            "ADP",
-            "https://x/blob/main/languages/rust/ADP.md",
-        )],
+        vec![principle("ADP", "https://x/blob/main/plugins/rust/ADP.md")],
         BTreeMap::new(),
     );
     let doc = resolve_doc(&s, &TemplatesConfig::default(), "AI").unwrap();

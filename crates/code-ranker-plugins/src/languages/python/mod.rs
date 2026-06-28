@@ -37,23 +37,23 @@ impl LanguagePlugin for PythonPlugin {
         "python"
     }
 
-    fn detect(&self, workspace: &Path, _input: &PluginInput) -> bool {
+    fn detect(&self, cfg: &toml::Table, workspace: &Path, _input: &PluginInput) -> bool {
         // Project-detect marker filenames are DATA: read from `config.toml`'s
         // `detect_markers` (the detect logic stays in Rust).
-        crate::config::string_list(&CONFIG, "detect_markers")
+        crate::config::string_list(cfg, "detect_markers")
             .iter()
             .any(|f| workspace.join(f).exists())
     }
 
-    fn levels(&self) -> Vec<Level> {
+    fn levels(&self, cfg: &toml::Table) -> Vec<Level> {
         // The `uses` edge kind is shared vocab: read it from `[edge_kinds]` in
         // the merged config (Python inherits it verbatim from `defaults.toml`).
-        let edge_kinds = crate::config::edge_kinds(&CONFIG);
+        let edge_kinds = crate::config::edge_kinds(cfg);
 
         // Structural node-attribute display specs are DATA: Python inherits the
         // shared `path`/`loc`/`visibility`/`external` from `defaults.toml` (it
         // adds none of its own), read via the merged config.
-        let node_attributes = crate::config::node_attributes(&CONFIG);
+        let node_attributes = crate::config::node_attributes(cfg);
 
         vec![
             Level {
@@ -75,14 +75,14 @@ impl LanguagePlugin for PythonPlugin {
                 node_attributes: BTreeMap::new(),
                 edge_attributes: BTreeMap::new(),
                 attribute_groups: BTreeMap::new(),
-                node_kinds: function_node_kinds(),
+                node_kinds: function_node_kinds(cfg),
                 cycle_kinds: default_cycle_kinds(),
                 grouping: None,
             },
         ]
     }
 
-    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, _cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         structure::analyze(
             workspace,
             input.ignore_tests,
@@ -90,30 +90,34 @@ impl LanguagePlugin for PythonPlugin {
         )
     }
 
-    fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
+    fn metrics(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(String, MetricInputs)> {
         file_metrics(graph)
     }
 
-    fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
+    fn function_units(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(Node, MetricInputs)> {
         function_nodes(graph)
     }
 
-    fn principles(&self, _input: &PluginInput) -> Vec<Principle> {
+    fn principles(&self, cfg: &toml::Table, _input: &PluginInput) -> Vec<Principle> {
         // The common catalog from `defaults.toml`, with `doc_url` resolved to
         // `{doc_base}/python/<slug>.md` (Python adds no principles of its own).
-        crate::config::resolved_principles(&CONFIG)
+        crate::config::resolved_principles(cfg)
     }
 
-    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        code_ranker_plugin_api::list_override::report_override(&CONFIG)
+    fn report_overrides(
+        &self,
+        cfg: &toml::Table,
+    ) -> code_ranker_plugin_api::report::ReportOverride {
+        code_ranker_plugin_api::list_override::report_override(cfg)
     }
 
     fn metric_specs(
         &self,
+        cfg: &toml::Table,
         defaults: BTreeMap<String, AttributeSpec>,
     ) -> BTreeMap<String, AttributeSpec> {
         // Python `[specs.<key>]` overrides (the exact Halstead tokens it counts).
-        crate::config::apply_spec_overrides(defaults, &CONFIG)
+        crate::config::apply_spec_overrides(defaults, cfg)
     }
 }
 
@@ -141,8 +145,8 @@ fn file_metrics(graph: &Graph) -> Vec<(String, MetricInputs)> {
 /// rendered via this dictionary — the viewer hardcodes no kind by name). Read
 /// from `[node_kinds]` in the merged config; Python inherits `function` /
 /// `method` verbatim from `defaults.toml` and adds none of its own.
-fn function_node_kinds() -> BTreeMap<String, NodeKindSpec> {
-    crate::config::node_kinds(&CONFIG)
+fn function_node_kinds(cfg: &toml::Table) -> BTreeMap<String, NodeKindSpec> {
+    crate::config::node_kinds(cfg)
 }
 
 /// Build function-level units for every `file` node, parsing each file (by its

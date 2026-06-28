@@ -108,7 +108,7 @@ controls) are built from the snapshot's `ui.filter` — the built-in
 the nodes where the active filter metric has signal; for `cycle` that is the nodes
 in a cycle and the edges between them (callers/dependencies clusters kept). Cycle
 data is sourced solely from the backend (`graph.cycles`); the per-metric
-`info` / `warning` colour thresholds are derived from the `[rules.thresholds.file]`
+`info` / `warning` colour thresholds are derived from the `[plugins.base.rules.thresholds.file]`
 gate and carried in the snapshot's `node_attributes` (see the CLI **Severity tiers**
 reference).
 
@@ -128,27 +128,26 @@ an LLM, pre-populated with the top-N heaviest nodes and their coupling
 context, asking for refactoring recommendations. The prompt format MUST
 be copyable as plain text for direct paste into any LLM interface.
 
-The **same recommendation engine is exposed on the CLI** as two `report`
-output formats, so the guidance is reachable without opening the HTML
-(driven from the snapshot's gate-derived `node_attributes[*].thresholds`
-`info` / `warning` tiers — advisory, never a gate):
+The **same recommendation engine is exposed on the CLI** by `report`, so the
+guidance is reachable without opening the HTML (driven from the snapshot's
+gate-derived `node_attributes[*].thresholds` `info` / `warning` tiers —
+advisory, never a gate):
 
-- `--output.prompt[.path]` — the LLM prompt for **one** principle, the same
+- `--prompt <ID>` — the LLM prompt for **one** named principle or metric, the same
   Markdown the HTML Prompt Generator produces (intent, summary, principle-doc
   link, a task checklist, the ranked offending modules, and the principle's
-  connection lists). Defaults to a per-principle file
-  `.code-ranker/{ts}-{git-hash-3}-{principle}.md` (or `stdout`).
+  connection lists). Printed to stdout; redirect to a file when you need an artifact.
 - `--output.scorecard[.path]` — a console **triage** overview (a per-principle
   table of `warning` / `info` counts + the worst module, then the worst modules
-  overall, then a hint to the prompt for the worst principle). Defaults to
+  overall, then a next-step hint pointing at `--prompt <ID>`). Defaults to
   `stdout`.
 
 The `scorecard` is narrowed by `--focus <NAME>` (one ranking metric or principle: `hk`, `cycle`,
 `sloc`, `cognitive`, …; without it the table spans all principles) and `--severity
 <info|warning|auto>` (the tier; repeatable; `auto` = warning-if-any-else-info), and
-capped by `--top <N>`. The `prompt` is **auto-targeted at the single worst module**
-and **requires `--top 1`** — there is no CLI principle selector. These flags apply
-only with a `prompt` / `scorecard` format; an explicit `--index` is rejected with a
+capped by `--top <N>`. The `--prompt <ID>` fix-prompt names its target itself and
+honours `--top`, `--focus-path`, and `--language`. These flags apply only with the
+`scorecard` format (or `--prompt`); an explicit `--index` is rejected with a
 hint to use `--top`.
 
 The CLI side of this engine is documented in
@@ -168,7 +167,7 @@ step pull the same prompt/triage non-interactively.
 
 The HTML report SHOULD support a principles-audit prompt mode that maps
 the top coupling findings to the canonical principle corpus under
-`languages/<language>/` (full corpora: `rust/`, `python/`, `typescript/`;
+`plugins/<language>/` (full corpora: `rust/`, `python/`, `ts/`;
 other languages fall back to the language-neutral `base/` corpus)
 and instructs the LLM to audit the codebase against each principle.
 
@@ -198,8 +197,13 @@ diff between the baseline snapshot and the current `[input]`: nodes and
 edges added, removed, or affected. The diff includes an overall
 verdict: `improved`, `degraded`, or `neutral`. The interactive
 diff HTML uses Graphviz WASM (bundled in the binary) for client-side
-DOT→SVG layout. The viewer shows the `files` level by default; when the snapshot
-carries extra levels (e.g. `functions`, emitted by `[levels] functions = true`) a
+DOT→SVG layout. The report covers every analyzed language; a **language dropdown**
+in the report header shows the active language and switches the whole report to it
+(its map, node table, summary, and Prompt Generator). It opens on the **largest**
+language (most nodes + edges) by default. The dropdown is hidden when the report
+covers only one language, so single-language reports look unchanged. The viewer shows the `files`
+level by default; when the snapshot
+carries extra levels (e.g. `functions`, emitted by `[plugins.base.levels] functions = true`) a
 **level switcher** (Files / Functions tabs above the map) selects which level's
 map + node table to show — the switcher is hidden for a single-level report, so
 those look exactly as before. On a fresh load

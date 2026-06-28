@@ -14,6 +14,10 @@
   <div class="header-row">
     <a class="header-brand" href="https://github.com/ffedoroff/code-ranker" target="_blank" rel="noopener" title="code-ranker on GitHub"><span class="header-brand-name">code-ranker</span><span class="header-ver">__CR_VERSION__</span></a>
     <span class="header-title" id="title"></span>
+    <!-- Language switcher: a dropdown of the snapshot's languages, populated by
+         updateFilesTab() from snapshot.languages keys; hidden for a single-language
+         report. Switching rebuilds the level sections + diff/cycles for that language. -->
+    <select class="lang-select" id="lang-switch" hidden aria-label="Report language" title="Switch the report language"></select>
     <div class="header-meta">
       <!-- Each snapshot control shows its branch + commit. Click the body → show
            that side on the map; click the ⚙ gear → details + upload/remove actions. -->

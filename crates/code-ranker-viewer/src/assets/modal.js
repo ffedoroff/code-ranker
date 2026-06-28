@@ -113,8 +113,9 @@ function getModal() {
         // breadcrumb in the new representation.
         if (opt.dataset.tier !== window.viewTier?.(level)) window.switchTier?.(opt.dataset.tier, level);
         const m = window._modalNode;
+        const _mLang = (typeof currentLang === 'function' ? currentLang() : null) || Object.keys(window.DIFF || {})[0];
         const node = m && ((typeof activeGraph === 'function' ? activeGraph(m.level).nodes : []).find(n => n.id === m.id)
-                           ?? window.DIFF?.[m.level]?.nodes?.find(n => n.id === m.id));
+                           ?? window.DIFF?.[_mLang]?.[m.level]?.nodes?.find(n => n.id === m.id));
         if (node) document.getElementById('node-modal-hdr-title').innerHTML = window.nodeHeaderHtml(node, m.level);
         document.querySelectorAll('.tier-menu:not([hidden])').forEach(mn => mn.setAttribute('hidden', ''));
         return;
@@ -234,8 +235,9 @@ function closeModal() {
   // unchanged (same folder, even if a different file — or the same file) → leave
   // the map exactly where it was, just drop the node.
   if (m && openId && level && level === activeLevel && window.drillIntoGroup) {
+    const _cLang    = (typeof currentLang === 'function' ? currentLang() : null) || Object.keys(window.DIFF || {})[0];
     const lookup    = id => (typeof activeGraph === 'function' ? activeGraph(level).nodes : []).find(n => n.id === id)
-                          ?? window.DIFF?.[level]?.nodes?.find(n => n.id === id);
+                          ?? window.DIFF?.[_cLang]?.[level]?.nodes?.find(n => n.id === id);
     const closeTgt  = (n => n ? focusFolderTarget(level, n) : null)(lookup(m.id));
     const openTgt   = (n => n ? focusFolderTarget(level, n) : null)(lookup(openId));
     if (closeTgt && closeTgt.key && closeTgt.key !== '_root'

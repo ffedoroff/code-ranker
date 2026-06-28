@@ -33,7 +33,7 @@
 # the shared fallback corpus a language inherits when it has no own doc, mirroring
 # how config inherits this `defaults.toml`. A language ships its own corpus by
 # setting `doc_lang` + `doc_overrides` (see `rust/config.toml`).
-doc_base = "https://github.com/ffedoroff/code-ranker/blob/main/languages"
+doc_base = "https://github.com/ffedoroff/code-ranker/blob/main/plugins"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Field-omission defaults for the metric engine's role config — the fallbacks a
@@ -145,6 +145,15 @@ label = "External"
 # bodies are TOML multiline strings (the trailing `\` keeps them newline-free at
 # the end, matching the rendered output exactly).
 # ──────────────────────────────────────────────────────────────────────────────
+
+# Halstead total-count specs (N₁ / N₂) are language-AGNOSTIC prose, so they
+# live in the base; η₁ / η₂ list each language’s token set and stay per-language.
+[specs.n1]
+description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
+
+[specs.n2]
+description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."
+
 
 [[principles]]
 id = "CPX"

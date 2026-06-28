@@ -1,7 +1,7 @@
 //! The language plugins.
 //!
-//! Each language lives in its own submodule (`rust`, `python`, `javascript`,
-//! `typescript`, `go`); the JavaScript and TypeScript plugins share the
+//! Each language lives in its own submodule (`rust`, `python`, `js`,
+//! `ts`, `go`); the JavaScript and TypeScript plugins share the
 //! grammar-agnostic engine in [`ecmascript`]. The plugin structs are
 //! re-exported at the crate root via `lib.rs`.
 
@@ -11,8 +11,8 @@ pub mod cpp;
 pub mod csharp;
 pub mod ecmascript;
 pub mod go;
-pub mod javascript;
-pub mod markdown;
+pub mod js;
+pub mod md;
 pub mod python;
 pub mod rust;
-pub mod typescript;
+pub mod ts;

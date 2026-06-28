@@ -1,0 +1,250 @@
+{
+  "command": "code-ranker report crates/code-ranker-plugins/src/languages/md/tests/sample --config crates/code-ranker-plugins/src/languages/md/tests/sample/code-ranker.toml --output.json.path=crates/code-ranker-plugins/src/languages/md/tests/sample/code-ranker-report.json",
+  "config_file": "crates/code-ranker-plugins/src/languages/md/tests/sample/code-ranker.toml",
+  "generated_at": "2026-06-27T21:10:55.050737Z",
+  "git": {
+    "branch": "docs/v5-multilang-format",
+    "commit": "28fd0fd8fc77",
+    "dirty_files": 8,
+    "origin": "git@github.com:ffedoroff/code-ranker.git"
+  },
+  "languages": {
+    "md": {
+      "graphs": {
+        "files": {
+          "attribute_groups": {
+            "coupling": {
+              "description": "how tightly modules depend on each other",
+              "label": "Coupling"
+            },
+            "loc": {
+              "description": "physical line counts",
+              "label": "Lines of Code"
+            }
+          },
+          "cycle_kinds": {},
+          "cycles": [],
+          "edge_attributes": {},
+          "edge_kinds": {
+            "uses": {
+              "description": "Import dependency — this file imports from the other.",
+              "flow": true,
+              "label": "uses"
+            }
+          },
+          "edges": [
+            {
+              "kind": "uses",
+              "source": "{target}/api.md",
+              "target": "{target}/guide.md"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/api.md",
+              "target": "{target}/index.md"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/guide.md",
+              "target": "{target}/api.md"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/guide.md",
+              "target": "{target}/index.md"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/index.md",
+              "target": "{target}/api.md"
+            },
+            {
+              "kind": "uses",
+              "source": "{target}/index.md",
+              "target": "{target}/guide.md"
+            }
+          ],
+          "node_attributes": {
+            "broken_links": {
+              "description": "Links to a local file (not a URL or `#anchor`) that does not exist on disk. A documentation-quality signal — gate it to zero in `check`.",
+              "direction": "lower_better",
+              "label": "Broken links",
+              "remediation": "Fix or remove each dead link — correct the path, restore the target file, or drop the reference.",
+              "short": "Broken",
+              "thresholds": {
+                "info": 0.0,
+                "warning": 0.0
+              },
+              "value_type": "int"
+            },
+            "fan_in": {
+              "description": "Many other units depend on this one, making it risky to change and a single point of failure — though some hubs (shared types) carry high fan-in legitimately.",
+              "group": "coupling",
+              "label": "Fan-in",
+              "name": "Incoming dependencies",
+              "short": "Fan-in",
+              "value_type": "int"
+            },
+            "fan_out": {
+              "description": "This unit depends on many others, so it breaks when any of them change and is hard to test in isolation.",
+              "group": "coupling",
+              "label": "Fan-out",
+              "name": "Outgoing dependencies",
+              "short": "Fan-out",
+              "value_type": "int"
+            },
+            "headings": {
+              "description": "Number of ATX headings (`#` … `######`) — the document's section count.",
+              "label": "Headings",
+              "remediation": "Split the document into focused pages, or group sections under fewer top-level headings.",
+              "short": "H",
+              "value_type": "int"
+            },
+            "links": {
+              "description": "Total inline Markdown links `[text](dest)` (local files, URLs and anchors alike).",
+              "label": "Links",
+              "remediation": "Group related references, or split the document so each page carries a focused set of links.",
+              "short": "Links",
+              "value_type": "int"
+            },
+            "loc": {
+              "description": "Raw file line count, including blank and comment lines (unlike `sloc`). Large files tend to hold several responsibilities and are harder to review, test, and reuse.",
+              "group": "loc",
+              "label": "Lines",
+              "name": "Total lines",
+              "remediation": "Split by responsibility into smaller units, extract helpers, and separate data definitions from behavior. For an average breach, break up the largest units first (--top).",
+              "value_type": "int"
+            },
+            "max_depth": {
+              "description": "Deepest heading level used (1 = only `#`, 6 = down to `######`). A proxy for how deeply the document is nested.",
+              "direction": "lower_better",
+              "label": "Max heading depth",
+              "remediation": "Flatten the section hierarchy — promote deeply nested headings, or split them into separate documents.",
+              "short": "H-depth",
+              "value_type": "int"
+            }
+          },
+          "node_kinds": {
+            "file": {
+              "fill": "#dbe9f4",
+              "label": "File",
+              "plural": "Files",
+              "stroke": "#4d6f9c"
+            }
+          },
+          "nodes": [
+            {
+              "fan_in": 2,
+              "fan_out": 2,
+              "headings": 1,
+              "id": "{target}/api.md",
+              "kind": "file",
+              "links": 2,
+              "loc": 4,
+              "max_depth": 1,
+              "name": "api.md"
+            },
+            {
+              "fan_in": 2,
+              "fan_out": 2,
+              "headings": 1,
+              "id": "{target}/guide.md",
+              "kind": "file",
+              "links": 2,
+              "loc": 4,
+              "max_depth": 1,
+              "name": "guide.md"
+            },
+            {
+              "broken_links": 1,
+              "fan_in": 2,
+              "fan_out": 2,
+              "headings": 1,
+              "id": "{target}/index.md",
+              "kind": "file",
+              "links": 4,
+              "loc": 6,
+              "max_depth": 1,
+              "name": "index.md"
+            }
+          ],
+          "stats": {
+            "fan_in": 2,
+            "fan_out": 2
+          },
+          "ui": {
+            "card": [],
+            "columns": [
+              "kind",
+              "fan_in",
+              "fan_out",
+              "headings",
+              "max_depth",
+              "links",
+              "broken_links"
+            ],
+            "filter": [],
+            "size": [],
+            "sort": [
+              "fan_in",
+              "fan_out",
+              "headings",
+              "max_depth",
+              "links",
+              "broken_links"
+            ],
+            "summary": [
+              "fan_in",
+              "fan_out",
+              "headings",
+              "max_depth",
+              "links",
+              "broken_links"
+            ]
+          }
+        }
+      },
+      "prompt": {
+        "cycle_note": "This is **one** dependency cycle; every module in it is listed below so the whole loop is visible. Fix one cycle at a time — `--top 2`+ lists several separate cycles at once and obscures how each one connects.",
+        "doc_note": "**First, before reading the source**, run `code-ranker docs {id}` — it prints the full principle and, for your language, the usual cause of this exact violation and the smallest correct fix, often with a worked example and how to confirm it. Read it first: it normally names the remedy outright, so you apply it instead of re-deriving the mechanism from the code.",
+        "focus": "**Focus the research and report primarily on the modules below.**",
+        "intro": "I want to apply this to some modules in my system.",
+        "task": [
+          "- Prepare a precise, detailed estimate and a report of where the modules below violate it.",
+          "- If you find more serious violations elsewhere during research, mention them in the report too.",
+          "- Show a summary of the report in chat.",
+          "- If any violation is found, suggest saving the report to a file as a plan for a detailed review, named `.code-ranker/<YYYYMMDD-HHMMSS>-{id}.md`."
+        ]
+      }
+    }
+  },
+  "plugins": [
+    "md"
+  ],
+  "roots": {
+    "target": "/Users/roman/work/code-ranker/crates/code-ranker-plugins/src/languages/md/tests/sample"
+  },
+  "schema_version": "5.0",
+  "target": "/Users/roman/work/code-ranker/crates/code-ranker-plugins/src/languages/md/tests/sample",
+  "timings": [
+    {
+      "detail": "3 nodes from 3 files",
+      "ms": 20,
+      "stage": "md: parse"
+    },
+    {
+      "detail": "0 nodes annotated",
+      "ms": 0,
+      "stage": "md: complexity"
+    },
+    {
+      "detail": "nodes=3 edges=6",
+      "ms": 13,
+      "stage": "md: projection"
+    }
+  ],
+  "versions": {
+    "code-ranker": "5.0.0"
+  },
+  "workspace": "/Users/roman/work/code-ranker"
+}

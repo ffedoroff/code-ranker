@@ -1,9 +1,11 @@
 # Node JSON Schema
 
 Reference for the node objects emitted in code-ranker snapshot files
-(`.code-ranker/{ts}-{git-hash-3}.json`, `schema_version: "4.0"`), under
-`graphs.files.nodes`. There is a single graph level — `files` — so every node is
-either a source `file` or a third-party `external` library.
+(`.code-ranker/{ts}-{git-hash-3}.json`, `schema_version: "5.0"`), under
+`languages.<lang>.graphs.files.nodes`. The snapshot carries one entry per analyzed
+language under `languages`; each language has its own `graphs` map with one level —
+`files` — (optionally also `functions`), so every node is either a source `file` or
+a third-party `external` library.
 
 The model is a **generic property graph**: a node has a free-form string `kind`,
 a `name`, and a **flat attribute map** (no nested `complexity` / `coupling` /
@@ -109,7 +111,7 @@ Rust snapshot `{target}` + `{registry}`.
 |-------|-------------|
 | `file` | A source file in the analyzed project — carries all per-file metrics |
 | `external` | A third-party library the project depends on, recorded at depth 1 (one node per library, never expanded into its internals; carries no metrics) |
-| `fn` / `method` / `closure` / `function` / `arrow` / `generator` / `lambda` | A sub-file unit on the optional `functions` level (per-language `kind`), carrying the per-unit tier-1/tier-2 metrics; `parent` is its file node id. Present only when `[levels] functions` is enabled. |
+| `fn` / `method` / `closure` / `function` / `arrow` / `generator` / `lambda` | A sub-file unit on the optional `functions` level (per-language `kind`), carrying the per-unit tier-1/tier-2 metrics; `parent` is its file node id. Present only when `[plugins.base.levels] functions` is enabled. |
 
 ### `name` — string, required
 
@@ -164,7 +166,7 @@ type-checked. `direction: lower_better`.
 
 Syntactic **fact sets** the Rust plugin emits per file from its **production**
 AST (test items excluded), each a sorted comma-joined string — fuel for config
-`[rules.checks]` predicates (`contains(derives, "Serialize")`, `matches(...)`),
+`[plugins.base.rules.checks]` predicates (`contains(derives, "Serialize")`, `matches(...)`),
 not numeric surfaces. `derives` = `#[derive(...)]` names; `macros` = macro
 invocation names; `attrs` = attribute names other than `derive`; `imports` =
 qualified paths referenced (≥2 segments, e.g. `http::StatusCode`); `types` /
@@ -195,9 +197,6 @@ The matching SCC is also listed in the level's `cycles` array.
 | `"mutual"` | two nodes that directly depend on each other (SCC size = 2) |
 | `"chain"` | cycle involving three or more nodes (SCC size ≥ 3) |
 
-> **Renamed.** This attribute was `cycle_kind` in the old nested schema; in
-> schema `"3"` it is the flat key `cycle`.
-
 ---
 
 ## Metric attributes (flat)
@@ -213,14 +212,14 @@ counts) come from each plugin's `metrics()` step, which runs its in-tree
 tier-2 metrics below (`cyclomatic`, Halstead `volume`/`effort`/…, `mi`/`mi_sei`) are
 **declarative** — CEL `formula_cel` + spec in `code-ranker-graph/metrics/builtin.toml`,
 evaluated by the registry engine; the orchestrator writes both tiers onto the node
-via `code_ranker_graph::write_metrics`. User metrics (`[metrics.<key>]`) are emitted
+via `code_ranker_graph::write_metrics`. User metrics (`[plugins.base.metrics.<key>]`) are emitted
 the same way. Coupling and `cycle` are added by `code-ranker-graph`.
 
 ### Complexity — `cyclomatic`, `cognitive`, `exits`, `args`, `closures`
 
 | key | metric | notes |
 |-----|--------|-------|
-| `cyclomatic` | **Cyclomatic complexity** (McCabe) — per function `branches + 1`, summed over the file's functions plus the file unit's own base path (the analyzer-of-record whole-file value; see `languages/<lang>/metrics.md §cyclomatic`). | A function-less file (pure declarations) is omitted (`omit_at` 1) rather than shown as a bare `1`. |
+| `cyclomatic` | **Cyclomatic complexity** (McCabe) — per function `branches + 1`, summed over the file's functions plus the file unit's own base path (the analyzer-of-record whole-file value; see `plugins/<lang>/metrics.md §cyclomatic`). | A function-less file (pure declarations) is omitted (`omit_at` 1) rather than shown as a bare `1`. |
 | `cognitive` | **Cognitive complexity** (SonarSource) — penalises nesting, summed over the file's functions. | Omitted when `0` (no functions, or none with cognitive load). |
 | `exits` | Number of exit points (`return` / `throw`). | |
 | `args` | Number of function / closure arguments. | |
@@ -284,7 +283,7 @@ Non-flow edges (`contains`, `reexports`, `super`) are excluded from all of these
 
 ## Edges
 
-Edges live in `graphs.files.edges`, each a flat object:
+Edges live in `languages.<lang>.graphs.files.edges`, each a flat object:
 
 ```json
 { "source": "<node-id>", "kind": "uses | reexports | contains | super", "target": "<node-id>", "line": 12 }

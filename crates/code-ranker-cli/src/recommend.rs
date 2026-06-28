@@ -1,4 +1,5 @@
-//! The recommendation engine behind the `prompt` and `scorecard` report formats.
+//! The recommendation engine behind the `--prompt <ID>` output and the `scorecard`
+//! report format.
 //!
 //! It is the console counterpart of the HTML viewer's Prompt Generator: the same
 //! ranking (`reco_for` ≈ `recoFor` in `export-popup.js`) and the same Markdown
@@ -12,8 +13,9 @@
 //! frames it by the metric itself, a **principle** id (`LSP`) by that design
 //! principle. Resolution lives in [`resolve_focus`].
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use code_ranker_graph::level_graph::{CycleGroup, LevelGraph};
+use code_ranker_graph::snapshot::{LanguageSnapshot, Snapshot};
 pub use code_ranker_plugin_api::Principle;
 use code_ranker_plugin_api::{
     attrs::{AttrValue, ValueType},
@@ -21,6 +23,71 @@ use code_ranker_plugin_api::{
     node::Node,
 };
 use std::collections::HashMap;
+
+/// Select the `LanguageSnapshot` to use for recommendations.
+///
+/// Resolution order:
+/// 1. `--language` explicitly given → use that language or error.
+/// 2. Single language → use it (no ambiguity).
+/// 3. Multiple languages + `id` given → search all; if `id` matches exactly
+///    one language, use it; if 2+ match → error listing them.
+/// 4. Multiple languages + no `id` → use the first (BTreeMap order); this
+///    path is taken only for scorecard/prompt without `--focus`.
+pub fn resolve_language_snap<'a>(
+    snap: &'a Snapshot,
+    language: Option<&str>,
+    id: Option<&str>,
+) -> Result<&'a LanguageSnapshot> {
+    // Explicit `--language` always wins. Resolve an alias (`js` → `javascript`)
+    // to the canonical key the snapshot stores under.
+    if let Some(lang) = language {
+        let canon = crate::plugin::to_canonical(lang);
+        return snap.languages.get(&canon).with_context(|| {
+            let available: Vec<&str> = snap.languages.keys().map(String::as_str).collect();
+            format!(
+                "language {lang:?} not found in snapshot; available: {}",
+                available.join(", ")
+            )
+        });
+    }
+
+    // Single language: no ambiguity.
+    if snap.languages.len() == 1 {
+        return Ok(snap.languages.values().next().expect("len==1"));
+    }
+
+    // Multiple languages: try to resolve the id across all of them.
+    if let Some(focus_id) = id {
+        let matches: Vec<&str> = snap
+            .languages
+            .iter()
+            .filter_map(|(lang, ls)| {
+                // A match is: it is a principle id, or a metric key in the files level.
+                let is_principle = ls.principles.iter().any(|p| p.id == focus_id);
+                let is_metric = ls
+                    .graphs
+                    .get("files")
+                    .is_some_and(|g| g.node_attributes.contains_key(focus_id));
+                (is_principle || is_metric).then_some(lang.as_str())
+            })
+            .collect();
+
+        match matches.as_slice() {
+            [one] => return Ok(snap.languages.get(*one).expect("key from languages")),
+            [] => {} // fall through to first-language default
+            langs => anyhow::bail!(
+                "{focus_id:?} found in languages: {}; specify --language <name> to disambiguate",
+                langs.join(", ")
+            ),
+        }
+    }
+
+    // Fall back to the first language (BTreeMap order, deterministic).
+    snap.languages
+        .values()
+        .next()
+        .context("snapshot has no languages; regenerate the report with `code-ranker report`")
+}
 
 mod prompt;
 mod scorecard;
@@ -266,7 +333,7 @@ pub fn reco_for<'a>(level: &'a LevelGraph, metric: &str) -> Reco<'a> {
             .then(bi.total_cmp(&ai))
     });
     // No configured threshold → no breaches (the metric still ranks for display,
-    // but never claims violations and so never wins `worst_principle`).
+    // but never claims violations and so never contributes to the scorecard counts).
     let (warning_count, info_count) = match th {
         Some(th) => (
             sorted
@@ -343,26 +410,6 @@ pub(super) fn tier_count(reco: &Reco, sev: Severity) -> usize {
             }
         }
     }
-}
-
-/// The principle with the most violations: highest `warning` count, tie-broken by
-/// `info` count, then by catalog order (the first principle wins on a tie). `None`
-/// only if there are no principles.
-pub fn worst_principle(level: &LevelGraph, principles: &[Principle]) -> Option<String> {
-    let mut best: Option<(&Principle, usize, usize)> = None;
-    for p in principles {
-        let r = reco_for(level, &p.sort_metric);
-        // Strictly-greater so the FIRST principle wins on a tie (catalog order).
-        let better = match best {
-            None => true,
-            Some((_, bw, bi)) => (r.warning_count, r.info_count) > (bw, bi),
-        };
-        if better {
-            best = Some((p, r.warning_count, r.info_count));
-        }
-    }
-    best.map(|(p, _, _)| p.id.clone())
-        .or_else(|| principles.first().map(|p| p.id.clone()))
 }
 
 /// Count of project source files in the level.

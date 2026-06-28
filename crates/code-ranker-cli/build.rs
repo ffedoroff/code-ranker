@@ -1,13 +1,13 @@
-//! Embed the `languages/` principle/metric doc corpus into the binary.
+//! Embed the `plugins/` principle/metric doc corpus into the binary.
 //!
-//! Walks the repo-root `languages/` tree and generates `$OUT_DIR/corpus.rs` — a
+//! Walks the repo-root `plugins/` tree and generates `$OUT_DIR/corpus.rs` — a
 //! `CORPUS: &[(rel_path, contents)]` slice built from `include_str!`, so the tool
 //! can serve a principle's Markdown (e.g. `--doc HK`) from the binary itself with
 //! no filesystem at runtime. Dependency-free (no `include_dir` crate).
 //!
-//! The single source of truth lives at the repo root (`../../languages`), OUTSIDE
+//! The single source of truth lives at the repo root (`../../plugins`), OUTSIDE
 //! this crate. So that `cargo install code-ranker` from crates.io still embeds the
-//! corpus, the publish workflow copies that tree into a package-local `languages/`
+//! corpus, the publish workflow copies that tree into a package-local `plugins/`
 //! right before `cargo publish` (mirroring the per-crate README copy) — and this
 //! build script prefers that package-local copy, falling back to the repo-root tree
 //! for workspace/dev builds. If NEITHER exists (an unexpected isolated build) the
@@ -24,8 +24,8 @@ fn main() {
     // Prefer the package-local copy (present in the published tarball), else the
     // repo-root tree (workspace/dev builds). Best-effort: a missing corpus is NOT
     // an error — it must never break `cargo publish`/`cargo install`. See module docs.
-    let local = Path::new(&manifest).join("languages");
-    let root = Path::new(&manifest).join("../../languages");
+    let local = Path::new(&manifest).join("plugins");
+    let root = Path::new(&manifest).join("../../plugins");
     let resolved = local.canonicalize().or_else(|_| root.canonicalize());
     match resolved {
         Ok(corpus) => {
@@ -36,7 +36,7 @@ fn main() {
         }
         Err(_) => {
             println!(
-                "cargo:warning=languages/ corpus not found at ./languages or ../../languages \
+                "cargo:warning=plugins/ corpus not found at ./plugins or ../../plugins \
                  — embedding an empty corpus; `--doc` will report \"not embedded\". Published \
                  builds carry a package-local copy (see crates-io.yml); workspace builds use the \
                  repo-root tree."

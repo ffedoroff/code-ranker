@@ -1,7 +1,8 @@
 //! Config loading: discover `code-ranker.toml` (or `Cargo.toml` metadata),
 //! apply inline `KEY=VALUE` and `--cycle-rule` / `--threshold` CLI overrides.
 
-use super::model::{Config, DEFAULTS, quote_suffixed_thresholds};
+use super::model::{Config, DEFAULTS, LANG_SECTION_KEYS, LangConfig};
+use super::thresholds::quote_suffixed_thresholds;
 use anyhow::{Context, Result};
 use code_ranker_plugin_api::log;
 use code_ranker_plugin_api::toml_merge::deep_merge;
@@ -14,17 +15,12 @@ mod overrides;
 // live in a sibling module and depend only on the `model` types, so this
 // import does not form a parent↔child cycle.
 use overrides::{apply_cli_overrides, apply_inline_overrides};
-// The remaining override helpers — and the model types they exercise — are
-// referenced only by `load_test.rs` (via `super::*`); import them under
-// `#[cfg(test)]` so normal builds stay warning-free.
+// The remaining override helpers are referenced only by `load_test.rs` (via
+// `super::*`); import them under `#[cfg(test)]` so normal builds stay warning-free.
 #[cfg(test)]
-use super::model::{CycleRule, MetricThresholds};
-#[cfg(test)]
-use overrides::{
-    parse_cycle_rule, parse_on_off, parse_threshold_path, set_cycle, set_metric, set_threshold,
-    split_kv,
-};
+use overrides::{parse_cycle_rule, parse_on_off, parse_threshold_path, split_kv};
 
+#[derive(Debug)]
 pub struct LoadedConfig {
     pub config: Config,
     pub source_file: Option<String>,
@@ -66,6 +62,17 @@ pub fn load(
         None => log::verbose("config: built-in defaults (no config file found)"),
     }
     let merged = layers.into_iter().fold(builtin_table(), deep_merge);
+
+    // Hard-error on the legacy singular `plugin` key before serde gets a chance to
+    // reject it with a cryptic `unknown field`. This lets us give a directed
+    // migration message instead.
+    if merged.contains_key("plugin") {
+        anyhow::bail!(
+            "`plugin = \"x\"` is no longer supported; use `plugins = [\"x\"]` instead \
+             (version 5.0 schema)"
+        );
+    }
+
     let mut config: Config = merged
         .clone()
         .try_into()
@@ -73,6 +80,7 @@ pub fn load(
 
     apply_inline_overrides(&mut config, &inline)?;
     apply_cli_overrides(&mut config, ignore_paths, cycle_rules, thresholds)?;
+    normalize_plugin_aliases(&mut config);
     validate_thresholds(&config)?;
     validate_schema_version(&config, &source_file)?;
     Ok(LoadedConfig {
@@ -80,6 +88,38 @@ pub fn load(
         source_file,
         merged,
     })
+}
+
+/// Normalize language aliases (e.g. `js` → `javascript`) to canonical names across
+/// the config, so every downstream lookup — the active `enabled` set and the
+/// per-language `[plugins.<lang>]` blocks (read by `effective_plugin_config` /
+/// `language_config`) — sees only canonical keys. Unknown tokens are left as-is
+/// (resolution / dispatch reports them with the proper hint). The reserved `base`
+/// key is never an alias, so it passes through; a block that collides with an
+/// already-canonical block is deep-merged into it.
+fn normalize_plugin_aliases(config: &mut Config) {
+    for name in &mut config.plugins.enabled {
+        *name = crate::plugin::to_canonical(name);
+    }
+    let blocks = std::mem::take(&mut config.plugins.languages);
+    for (key, block) in blocks {
+        let canon = if key == "base" {
+            key
+        } else {
+            crate::plugin::to_canonical(&key)
+        };
+        match config.plugins.languages.remove(&canon) {
+            Some(existing) => {
+                config
+                    .plugins
+                    .languages
+                    .insert(canon, deep_merge(existing, block));
+            }
+            None => {
+                config.plugins.languages.insert(canon, block);
+            }
+        }
+    }
 }
 
 /// The built-in default config as a raw table — the merge base every discovered
@@ -91,20 +131,55 @@ fn builtin_table() -> Table {
         .expect("embedded defaults.toml parses as a table")
 }
 
-/// Validate every configured threshold key once the full config is known: a key
-/// is legal if it is a registry per-file metric OR a project `[metrics.<key>]`.
-/// Deferred here (not in the deserializer) so a custom metric — invisible to the
-/// `MetricThresholds` deserializer — is accepted while a typo still fails fast.
-fn validate_thresholds(cfg: &Config) -> Result<()> {
-    for key in cfg.rules.thresholds.file.limits.keys() {
-        if super::metrics::is_threshold_metric(key) || cfg.metrics.contains_key(key) {
-            continue;
+impl Config {
+    /// Resolve the per-language orchestrator config for `lang`: the reserved
+    /// `[plugins.base]` block deep-merged with `[plugins.<lang>]`, restricted to the
+    /// orchestrator sections ([`LANG_SECTION_KEYS`]). Built-in defaults live under
+    /// `[plugins.base]` in `defaults.toml`, so the result always carries them.
+    /// Lives here, next to the loader's merge machinery, rather than in `model`
+    /// (the data-shape module), keeping config *resolution* out of the data model.
+    pub fn language_config(&self, lang: &str) -> Result<LangConfig> {
+        let pick = |block: &toml::Table| -> toml::Table {
+            block
+                .iter()
+                .filter(|(k, _)| LANG_SECTION_KEYS.contains(&k.as_str()))
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        };
+        let mut overlay = toml::Table::new();
+        for key in ["base", lang] {
+            if let Some(block) = self.plugins.languages.get(key) {
+                overlay = deep_merge(overlay, pick(block));
+            }
         }
-        anyhow::bail!(
-            "unknown threshold metric {key:?}; expected a per-file metric (e.g. sloc, loc, \
-             cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, bugs) or a custom \
-             [metrics.{key}] defined in this config"
-        );
+        toml::Value::Table(overlay)
+            .try_into()
+            .with_context(|| format!("building the effective config for language {lang:?}"))
+    }
+}
+
+/// Validate every configured threshold key once the full config is known: a key
+/// is legal if it is a registry per-file metric, a project `[metrics.<key>]`, OR
+/// a metric key declared under any `[languages.*].metrics` table (a per-language
+/// custom metric is a valid global-threshold target).
+/// Deferred here (not in the deserializer) so custom metrics — invisible to the
+/// `MetricThresholds` deserializer — are accepted while a typo still fails fast.
+fn validate_thresholds(cfg: &Config) -> Result<()> {
+    // Thresholds are per-language now: validate each configured language's effective
+    // `[rules.thresholds.file]` (base ⊕ <lang>) against that language's metric
+    // vocabulary (registry metrics ∪ its own `[metrics.<key>]`).
+    for lang in cfg.plugins.languages.keys() {
+        let lc = cfg.language_config(lang)?;
+        for key in lc.rules.thresholds.file.limits.keys() {
+            if super::metrics::is_threshold_metric(key) || lc.metrics.contains_key(key) {
+                continue;
+            }
+            anyhow::bail!(
+                "unknown threshold metric {key:?} under [plugins.{lang}]; expected a per-file \
+                 metric (e.g. sloc, loc, cyclomatic, cognitive, hk, fan_in, fan_out, mi, volume, \
+                 bugs) or a custom [plugins.{lang}.metrics.{key}] / [plugins.base.metrics.{key}]"
+            );
+        }
     }
     Ok(())
 }

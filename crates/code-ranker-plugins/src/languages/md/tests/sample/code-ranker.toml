@@ -1,0 +1,7 @@
+version = "5.0"
+# Self-contained config for the code-ranker "markdown" sample fixture.
+[plugins]
+enabled = ["markdown"]
+# Documentation-quality gate: no broken local links allowed.
+[plugins.base.rules.thresholds.file]
+broken_links = 0

@@ -13,6 +13,8 @@ doc_lang = "go"
 # File-collection extensions, project-detect markers, and walk skip-dirs — DATA.
 extensions = ["go"]
 detect_markers = ["go.mod"]
+# Short aliases accepted anywhere a language is named. Unique across languages.
+aliases = ["golang"]
 skip_dirs = ["vendor", "testdata", "node_modules"]
 
 # Test-path conventions — DATA (the predicate LOGIC stays in `structure.rs`).
@@ -109,11 +111,5 @@ statement_kinds.named = [
 [specs.eta1]
 description = "Distinct operators (η₁): the count of unique operator token kinds. Go counts punctuation & delimiters (`( { [ , . ; :`), arithmetic / bitwise / comparison / assignment operators (`+ - * / % ++ -- == != < > <= >= && || ! & | ^ << >> &^ = := += -= *= /= %= &= |= ^= <<= >>= &^=`), the channel / variadic / unary tokens (`<- ... ~`), and the keywords `break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var`."
 
-[specs.n1]
-description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
-
 [specs.eta2]
 description = "Distinct operands (η₂): the count of unique operand texts. Go counts identifiers (incl. field / package / type identifiers, labels and the blank `_`), literals (int, float, imaginary, rune, interpreted- and raw-string), and the predeclared `true` / `false` / `nil` / `iota`."
-
-[specs.n2]
-description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

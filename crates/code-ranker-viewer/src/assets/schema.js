@@ -6,13 +6,18 @@
 // attribute_groups / node_kinds / cycle_kinds / ui) and the top-level
 // `principles`. No metric/kind is hardcoded by name anywhere in the frontend.
 
-// The level's dictionaries (specs) — read from the active snapshot, which is the
-// authority for how to render. Falls back to the other side so a single-snapshot
-// report works.
+// The level's dictionaries (specs) — read from the active snapshot's language
+// sub-object, which is the authority for how to render. Falls back to the other
+// side so a single-snapshot report works.
 function specSnap() {
-  return (window.viewSide === 'baseline')
+  const snap = (window.viewSide === 'baseline')
     ? (window.BASELINE ?? window.CURRENT)
     : (window.CURRENT ?? window.BASELINE);
+  if (!snap) return null;
+  const lang = (typeof currentLang === 'function' ? currentLang() : null)
+             || (typeof langKeys === 'function' ? langKeys(snap)[0] : null)
+             || Object.keys(snap.languages || {})[0];
+  return lang ? (snap.languages?.[lang] ?? null) : null;
 }
 function levelSpec(level) {
   return specSnap()?.graphs?.[level] || {};

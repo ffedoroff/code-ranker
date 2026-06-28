@@ -5,7 +5,9 @@
 function buildDiagramSVG(node, level) {
   // Nodes that are selected on the main map get the same yellow highlight here.
   const selectedIds = window._ntSelected?.[level];
-  const diff      = window.DIFF?.[level];
+  // DIFF is keyed [lang][level]; resolve active language before indexing.
+  const _dLang    = (typeof currentLang === 'function' ? currentLang() : null) || Object.keys(window.DIFF || {})[0];
+  const diff      = _dLang ? window.DIFF?.[_dLang]?.[level] : null;
   // Use the ACTIVE side's raw snapshot (externals included, unlike DIFF). Tying
   // this to the shown side keeps the popup in-status: viewing the baseline shows
   // only baseline neighbours (no added/current-only nodes), and viewing current
@@ -191,8 +193,10 @@ function buildDiagramSVG(node, level) {
   });
   const VH = cursor + MARG;
 
-  // Cycle highlight state
-  const cycleNodes = window.CYCLES?.[level]?.nodeCycleStatus;
+  // Cycle highlight state. CYCLES is keyed [lang][level]; resolve active language.
+  const _popLang   = (typeof currentLang === 'function' ? currentLang() : null)
+                  || Object.keys(window.CYCLES || {})[0];
+  const cycleNodes = (_popLang ? window.CYCLES?.[_popLang] : null)?.[level]?.nodeCycleStatus;
   const isCycleNode = id => {
     const cs = cycleNodes?.get(id);
     if (cs == null || cs === 'none') return false;

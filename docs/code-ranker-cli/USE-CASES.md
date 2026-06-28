@@ -10,7 +10,7 @@ Two commands underlie everything:
   files. Thresholds come from `code-ranker.toml` (or `--threshold` overrides).
 - **`report`** — produces **artifacts** (JSON snapshot, HTML viewer) and the **advisory**
   outputs (`scorecard` triage, `prompt` for an AI). The advisory tiers (`warn` / `info`)
-  are driven by the **same `[rules.thresholds.file]` limits the gate enforces** — `warn` is the
+  are driven by the **same `[plugins.<lang>.rules.thresholds.file]` limits the gate enforces** — `warn` is the
   gate line, `info` an optional softer line below it — so the report shows what fails (or is
   about to fail) `check`. Always exits `0`.
 
@@ -22,8 +22,8 @@ Ranking metrics used below (the `--focus` metric or principle that narrows the s
 `cognitive` / `cyclomatic` (complexity), `fan_in` / `fan_out` (coupling direction),
 `items` (interface size).
 
-The **`prompt`** output is always **auto-targeted**: it emits the fix-prompt for the
-single worst module and **requires `--top 1`** (prompts are long).
+The **`--prompt <ID>`** fix-prompt is **name-it-yourself**: you pass the principle or
+metric (picked from the scorecard) and it prints the fix-prompt to stdout.
 
 ---
 
@@ -99,10 +99,10 @@ code-ranker report . --output.json.path=.code-ranker/before.json
 code-ranker report . --baseline .code-ranker/before.json --output.html.path=.code-ranker/after.html
 ```
 
-**Get a copy-paste AI fix-prompt for the single worst module (auto-targeted).**
+**Get a copy-paste AI fix-prompt for a named principle/metric (pick it from the scorecard).**
 
 ```sh
-code-ranker report . --output.prompt.path=stdout --top 1
+code-ranker report . --prompt HK --top 1
 ```
 
 ---
@@ -300,18 +300,19 @@ code-ranker report . --baseline .code-ranker/before.json --output.html
 
 ## 8. AI prompts
 
-The prompt is **auto-targeted** at the single worst module and **requires `--top 1`**.
+Name the principle or metric with `--prompt <ID>` (pick it from the scorecard). The
+prompt is printed to stdout.
 
 **Emit the fix-prompt to stdout (for an agent to read on a failed gate).**
 
 ```sh
-code-ranker report . --output.prompt.path=stdout --top 1
+code-ranker report . --prompt HK --top 1
 ```
 
-**Save the fix-prompt to a file (templated name).**
+**Save the fix-prompt to a file (redirect stdout).**
 
 ```sh
-code-ranker report . --output.prompt --top 1
+code-ranker report . --prompt HK > prompt.md
 ```
 
 ---
@@ -327,7 +328,7 @@ code-ranker check . --threshold file.cognitive=25
 **Override a config value inline via `--config KEY=VALUE`.**
 
 ```sh
-code-ranker check . --config rules.thresholds.file.hk=200000
+code-ranker check . --config plugins.base.rules.thresholds.file.hk=200000
 ```
 
 **Layer an extra config file on top of the project's (last wins).**
@@ -355,13 +356,31 @@ code-ranker report . --export-full-config .code-ranker/effective.toml
 **Analyze a Python project with a complexity budget.**
 
 ```sh
-code-ranker check ./api --plugin python --threshold file.cognitive=25
+code-ranker check ./api --plugins python --threshold file.cognitive=25
 ```
 
 **Triage a JavaScript/TypeScript project.**
 
 ```sh
-code-ranker report ./web --plugin javascript --output.scorecard
+code-ranker report ./web --plugins js --output.scorecard
+```
+
+**Analyze several languages in one run (every language present is auto-detected).**
+
+```sh
+code-ranker report .
+```
+
+**Restrict a mixed repo to exactly two languages.**
+
+```sh
+code-ranker check . --plugins rust,markdown
+```
+
+**Triage one language in a multi-language report.**
+
+```sh
+code-ranker report . --language rust --output.scorecard
 ```
 
 **Re-check an existing snapshot with no re-analysis (fast, offline).**

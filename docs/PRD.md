@@ -100,7 +100,7 @@ language-specific, non-exportable, or single-level.
 | Term | Definition |
 |------|------------|
 | Plugin | A built-in language analyzer (`rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`, `csharp`, `markdown`) compiled into the `code-ranker` binary that analyzes a workspace and produces a single file graph in-process |
-| Snapshot | A single self-contained JSON file combining metadata and the one `files` graph produced by a single analysis run |
+| Snapshot | A single self-contained JSON file combining metadata and the per-language `files` graphs (under `languages.<lang>.graphs`) produced by a single analysis run |
 | Graph | A directed graph whose nodes are source files (`file`) and third-party libraries (`external`), and whose edges are file dependencies (`uses`, `reexports`) |
 | External node | A third-party library recorded at depth 1 — one node per library (`ext:<name>`), never expanded into its internals |
 | Node weight | The coupling metric for a file: sum of its incoming and outgoing internal edge counts |
@@ -223,7 +223,7 @@ required.
 | Step | Scope |
 |------|-------|
 | Step 1 | Additional language plugins: Python, JavaScript, Go, C#, PHP; framework-specific plugins (Django, WordPress, etc.) with domain-specific metadata |
-| Step 2 | AI prompt generation for principles review using the `languages/` corpus (per-language: `languages/rust/`, `languages/python/`, `languages/typescript/`) |
+| Step 2 | AI prompt generation for principles review using the `plugins/` corpus (per-language: `plugins/rust/`, `plugins/python/`, `plugins/ts/`) |
 
 ### 4.2 Out of Scope (All Versions)
 
@@ -231,7 +231,7 @@ required.
   appear as opaque depth-1 nodes; their internals are never read)
 - Call-graph analysis (no `Calls` edges, no semantic call resolution).
   Per-function **metrics** are available as an opt-in `functions` level
-  (`[levels] functions`), but functions are metric nodes only — they carry no
+  (`[plugins.base.levels] functions`), but functions are metric nodes only — they carry no
   edges and form no call graph.
 - Automated code modification or refactoring suggestions
 - IDE/LSP integration and interactive visualization
@@ -272,27 +272,28 @@ filename makes snapshots self-organizing without a registry.
 
 The plugins are built into the `code-ranker` binary; the valid plugin names are
 `rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`, `csharp`, and
-`markdown` (JS and TS are **separate** plugins, no aliases; C and C++ share the
-`cfamily` `#include`-graph module as peers). The `--plugin <name>` option (on
-`check` / `report`) selects one of these built-ins. There is no external or
-dynamic plugin loading.
+`markdown` (C and C++ share the `cfamily` `#include`-graph module as peers). A run
+analyzes **all** active languages and produces one report covering every language.
+There is no external or dynamic plugin loading.
 
-The plugin is resolved in the following order, stopping at the first match:
+The active **set** of plugins is resolved in three levels, each fully replacing
+the lower (no merge), highest wins:
 
-1. **Explicit `--plugin <name>`** on the command line (any value other
-   than `auto`) wins.
-2. Otherwise the **`plugin` key in the config file** (`code-ranker.toml` /
-   `Cargo.toml#metadata.code-ranker`), if set and not `auto`.
-3. Otherwise **auto-detect by project markers** in the workspace root
-   (`Cargo.toml` → `rust`; `pyproject.toml` / `setup.py` / `setup.cfg`
-   → `python`; `package.json` → `javascript`; `tsconfig.json` → `typescript`).
-   A project carrying both `package.json` and `tsconfig.json` is ambiguous and
-   requires an explicit `--plugin`.
+1. **Auto-detect** (lowest) — run every plugin whose `detect` matches the
+   workspace against its effective config (`Cargo.toml` → `rust`;
+   `pyproject.toml` / `setup.py` / `setup.cfg` → `python`; `package.json` →
+   `javascript`; `tsconfig.json` → `typescript`; …). Multiple matches is the
+   normal multi-language case — there is no "ambiguous project" error.
+2. **`[plugins] enabled = [...]` in the config file** (`code-ranker.toml` /
+   `Cargo.toml#metadata.code-ranker`), if set → that list verbatim.
+3. **`--plugins <a,b,...>`** on the command line (highest) → that list verbatim.
 
-If `--plugin` resolves to a name that is not a built-in, or if `auto`
-detection finds more than one marker or none, the analyzing command MUST
-exit non-zero with a human-readable error naming the valid plugins and
-asking for an explicit `--plugin`.
+A language whose graph comes out empty is dropped. If **zero** languages are
+detected and none is configured, the analyzing command MUST exit non-zero with a
+human-readable error naming the valid plugins and asking for `[plugins].enabled` /
+`--plugins`. Two active plugins claiming the same file extension is a startup
+error before analysis (one file maps to exactly one language). The scalar
+`plugin` config key is not recognized — it errors pointing to `[plugins].enabled`.
 
 **Rationale**: Built-in-only selection keeps the tool a single binary with
 nothing to install: every supported language ships compiled in, and adding
@@ -305,7 +306,7 @@ process.
 
 - [x] `p1` - **ID**: `cpt-code-ranker-fr-rust-plugin`
 
-The platform MUST ship a built-in Rust plugin (`--plugin rust`) for Cargo
+The platform MUST ship a built-in Rust plugin (`--plugins rust`) for Cargo
 workspaces. The plugin MUST:
 
 - Derive the Rust module graph from `cargo metadata` and `mod`
@@ -375,11 +376,11 @@ workspaces. The plugin MUST:
   Henry-Kafura (`HK = sloc × (fan_in × fan_out)²`) — all written into the node's
   flat `attrs`. Edges to external nodes are excluded from `fan_in`/`fan_out`/`hk`
   and counted in `fan_out_external` instead. The advisory scorecard / viewer /
-  prompt tiers are derived from the project's own `[rules.thresholds.file]` gate
+  prompt tiers are derived from the project's own `[plugins.base.rules.thresholds.file]` gate
   (not language-calibrated), so the report shows exactly what fails `check`.
   The recommendation catalog is the shared 13 design principles (from
   `defaults.toml`); each coupling/complexity **metric** carries its own
-  fix-prompt doc under `languages/base/` (`HK`, `Fan-in`, `Fan-out`, `Cognitive`,
+  fix-prompt doc under `plugins/base/` (`HK`, `Fan-in`, `Fan-out`, `Cognitive`,
   `Cyclomatic`; the cycle metric reuses `ADP`), resolved from the metric key
   (`hk`→`HK`, `fan_in`→`Fan-in`) — separator/case-insensitive
 
@@ -448,7 +449,7 @@ the `metadata` object on nodes/edges (e.g. Django, WordPress concepts);
 such extensions MUST be backward-compatible with the base schema and keep
 `kind` as `file` / `external`.
 
-**Python plugin** (`--plugin python`) is shipped as a built-in in
+**Python plugin** (`--plugins python`) is shipped as a built-in in
 `code-ranker-cli`. It uses `tree-sitter-python` to emit one `File` node
 per `.py` file and resolve imports: imports of project files become
 file→file `uses` edges (including `__init__.py` package imports pointing
@@ -461,7 +462,7 @@ shared generic engine via the Python `Dialect` (`engine::compute` → a
 `MetricInputs`); the orchestrator writes the derived metrics onto each `File`
 node via `code_ranker_graph::write_metrics`.
 
-**JavaScript / TypeScript plugin** (`--plugin javascript`) is shipped as a
+**JavaScript / TypeScript plugin** (`--plugins js`) is shipped as a
 built-in in `code-ranker-cli`; one plugin handles `.js`, `.jsx`, `.ts`, and
 `.tsx`. It uses `tree-sitter-javascript` and `tree-sitter-typescript` to
 emit one `File` node per source file and resolve ES `import` statements
@@ -548,7 +549,7 @@ subcommand at 10k nodes.
 - [x] `p1` - **ID**: `cpt-code-ranker-nfr-portability`
 
 JSON snapshot artifacts MUST conform to the Graph JSON Schema
-(`schema_version: "4.0"`) and MUST be readable by the report generator and
+(`schema_version: "5.0"`) and MUST be readable by the report generator and
 baseline comparison without migration within a major schema version. Generated
 HTML reports MUST open correctly in Chrome, Firefox, and Safari without
 installation.
@@ -601,7 +602,7 @@ requires every count to mean exactly what it claims.
 
 **Stability**: unstable (pre-1.0)
 
-Each supported language — `rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`, `csharp`, `markdown` — has a built-in analyzer, selected with `--plugin <name>` (see `cpt-code-ranker-fr-plugin-discovery`). Analyzers run **in-process and offline**: no subprocess, no external plugin binary, and no external/dynamic plugin loading, so a run needs nothing beyond the `code-ranker` binary. Test files are skipped by default (language-specific detection) and `.gitignore`/hidden files are honoured. Adding a language is an internal change to the binary; the analyzer contract, metric pipeline and registration mechanism are documented in [`DESIGN.md`](DESIGN.md), not in this product document.
+Each supported language — `rust`, `python`, `javascript`, `typescript`, `go`, `c`, `cpp`, `csharp`, `markdown` — has a built-in analyzer; the active set is selected with `--plugins <a,b,...>` (see `cpt-code-ranker-fr-plugin-discovery`), and `--language <name>` focuses a single language for `report` / `recommend` scorecards and prompts. Analyzers run **in-process and offline**: no subprocess, no external plugin binary, and no external/dynamic plugin loading, so a run needs nothing beyond the `code-ranker` binary. Test files are skipped by default (language-specific detection) and `.gitignore`/hidden files are honoured. Adding a language is an internal change to the binary; the analyzer contract, metric pipeline and registration mechanism are documented in [`DESIGN.md`](DESIGN.md), not in this product document.
 
 ## 8. Use Cases
 
@@ -616,7 +617,7 @@ the `code-ranker` binary is installed.
 
 **Main Flow**:
 
-1. Developer runs `code-ranker report . --plugin rust` (analyzes the
+1. Developer runs `code-ranker report . --plugins rust` (analyzes the
    workspace and writes both a snapshot and an HTML viewer in one step)
 2. `code-ranker` writes `.code-ranker/axum-api-20260522-112233.json` (the
    snapshot) and `.code-ranker/axum-api-20260522-112233.html` (the viewer)
@@ -625,7 +626,7 @@ the `code-ranker` binary is installed.
 4. Developer identifies the heaviest files and decides what to refactor
 
 (For a non-blocking lint that gates on cycles/thresholds and writes no
-files, the developer can instead run `code-ranker check . --plugin rust`.)
+files, the developer can instead run `code-ranker check . --plugins rust`.)
 
 **Postconditions**: A self-contained HTML viewer exists at
 `.code-ranker/axum-api-20260522-112233.html`; no network access was required
@@ -707,7 +708,7 @@ as a self-contained HTML report.
   snapshots; the verdict (`improved` / `degraded` / `neutral`) is present
 - [x] All P1 tools operate with zero outbound network calls
 - [x] Generated HTML reports contain no external resource references
-- [x] JSON artifacts conform to the Graph JSON Schema (`schema_version: "4.0"`)
+- [x] JSON artifacts conform to the Graph JSON Schema (`schema_version: "5.0"`)
 - [x] A `--baseline` comparison exits non-zero with a structured error on
   schema version mismatch
 - [ ] Every metric value equals the true count of what it measures — no false
@@ -720,7 +721,7 @@ as a self-contained HTML report.
 | `cargo_metadata` crate | Cargo workspace enumeration (local vs. external crates) | p1 |
 | `syn` crate | Rust source parsing for the module tree and `use` statements | p1 |
 | `tree-sitter` (+ `-rust` / `-python` / `-javascript` / `-typescript` / `-go` / `-c` / `-cpp` / `-c-sharp`) | Source parsing for the shared generic tier-1 metric engine (`code-ranker-plugins/src/engine/`, parameterized per language by a `Dialect` — a single faithful port of `rust-code-analysis`'s node-kind rules) and for the Python / JS / TS / Go / C# plugins' graph extraction (C/C++ recover the `#include` graph by text scan, so they use their grammar only for metrics; Markdown is grammar-free) | p1 |
-| `cel` crate | Evaluates the declarative tier-2 metric formulas (`metrics/builtin.toml`) and user `[metrics.<key>]` formulas; the metric registry engine | p1 |
+| `cel` crate | Evaluates the declarative tier-2 metric formulas (`metrics/builtin.toml`) and user `[plugins.base.metrics.<key>]` formulas; the metric registry engine | p1 |
 | Python 3.9+ | Runtime for the built-in Python language plugin | p3 |
 
 ## 11. Assumptions

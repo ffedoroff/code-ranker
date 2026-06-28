@@ -88,6 +88,6 @@ code-ranker:
 # Hard gate: delete the `allow_failure: true` line above and a code-ranker rule
 # violation (threshold / cycle) blocks the pipeline. The Code Quality report is
 # still written and highlighted in the MR either way (`artifacts: when: always`).
-# Tune what gates via code-ranker.toml ([rules.thresholds.file] / [rules.cycles])
+# Tune what gates via code-ranker.toml ([plugins.base.rules.thresholds.file] / [plugins.base.rules.cycles])
 # or CLI flags on the `check` line (e.g. --threshold file.sloc=800 --cycle-rule chain=0).
 # ---------------------------------------------------------------------------

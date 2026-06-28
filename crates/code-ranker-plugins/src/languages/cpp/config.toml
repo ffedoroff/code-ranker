@@ -13,6 +13,8 @@ doc_lang = "cpp"
 # shared and inherited from `../cfamily/config.toml`.
 extensions = ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "ipp"]
 test_suffixes = ["_test.cpp", "_test.cc", "_test.cxx"]
+# Short aliases accepted anywhere a language is named. Unique across languages.
+aliases = ["c++", "cxx"]
 
 # `default` (a plain function) is inherited from cfamily; C++ adds `method`.
 [units]

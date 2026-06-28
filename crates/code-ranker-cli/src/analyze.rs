@@ -37,15 +37,15 @@ pub(crate) fn analyze_input(
 
 /// Snapshot input: read the embedded snapshot and evaluate the current rules
 /// against it — no source tree or toolchain required. Analysis-only flags
-/// (`--plugin` / `--ignore`) are rejected because there is nothing to analyze.
+/// (`--plugins` / `--ignore`) are rejected because there is nothing to analyze.
 fn analyze_from_snapshot(
     args: &AnalyzeArgs,
     cycle_rules: &[String],
     thresholds: &[String],
 ) -> Result<Analyzed> {
-    if args.plugin.is_some() {
+    if !args.plugins.is_empty() {
         anyhow::bail!(
-            "--plugin does not apply to a snapshot input ({}): there is nothing to analyze",
+            "--plugins does not apply to a snapshot input ({}): there is nothing to analyze",
             args.input.display()
         );
     }
@@ -62,17 +62,29 @@ fn analyze_from_snapshot(
         .context("configuration error")?;
     let cfg = loaded.config;
 
-    let mut graphs = snapshot.graphs.clone();
-    if let Some(level) = graphs.get_mut("files") {
-        config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &cfg.rules.cycles);
+    // Resolve each snapshot language's effective rules (`[plugins.base]` ⊕
+    // `[plugins.<lang>]`), then apply cycle rules and gate per language.
+    let mut rules_by_lang: std::collections::BTreeMap<String, config::RulesConfig> =
+        std::collections::BTreeMap::new();
+    for lang in snapshot.languages.keys() {
+        rules_by_lang.insert(lang.clone(), cfg.language_config(lang)?.rules);
     }
-    let violations = config::check_violations(&graphs, &cfg.rules);
+    let mut languages = snapshot.languages.clone();
+    for (lang, ls) in languages.iter_mut() {
+        if let Some(level) = ls.graphs.get_mut("files") {
+            let cycles = rules_by_lang
+                .get(lang)
+                .map(|r| r.cycles)
+                .unwrap_or_default();
+            config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &cycles);
+        }
+    }
+    let violations = config::check_violations_all(&languages, &rules_by_lang);
 
     Ok(Analyzed {
         snapshot,
         violations,
-        cycles: cfg.rules.cycles,
-        rules: cfg.rules,
+        rules_by_lang,
         output: cfg.output,
     })
 }
@@ -136,84 +148,5 @@ fn ensure_schema(version: &str, path: &Path) -> Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeMap;
-    use std::fs;
-
-    fn mk_snap() -> Snapshot {
-        Snapshot::new(
-            "cmd".into(),
-            "ws".into(),
-            "tgt".into(),
-            "rust".into(),
-            None,
-            BTreeMap::new(),
-            BTreeMap::new(),
-            None,
-            Vec::new(),
-            BTreeMap::new(),
-            Vec::new(),
-            Default::default(),
-        )
-    }
-
-    #[test]
-    fn viewer_embeds_snapshot_inline_and_round_trips() {
-        let snap = mk_snap();
-        // review: current = snapshot, baseline = null
-        let html = code_ranker_viewer::render_html_viewer(None, Some(&snap));
-        assert!(
-            html.contains(r#"<script type="application/json" id="cs-current">"#),
-            "embeds current snapshot inline"
-        );
-        assert!(
-            html.contains(r#"id="cs-baseline">null</script>"#),
-            "baseline is null in review mode"
-        );
-        let back = code_ranker_viewer::extract_embedded_snapshot(&html, "cs-current")
-            .expect("cs-current present")
-            .unwrap();
-        assert_eq!(back.plugin, "rust", "round-trips through embed/extract");
-        assert!(
-            code_ranker_viewer::extract_embedded_snapshot(&html, "cs-baseline").is_none(),
-            "null baseline extracts to None"
-        );
-    }
-
-    #[test]
-    fn load_snapshot_any_reads_json_and_html() {
-        let snap = mk_snap();
-        let d = tempfile::tempdir().unwrap();
-
-        let jp = d.path().join("s.json");
-        fs::write(&jp, serde_json::to_string(&snap).unwrap()).unwrap();
-        assert_eq!(load_snapshot_any(&jp).unwrap().plugin, "rust", "from .json");
-
-        let hp = d.path().join("r.html");
-        fs::write(
-            &hp,
-            code_ranker_viewer::render_html_viewer(None, Some(&snap)),
-        )
-        .unwrap();
-        assert_eq!(
-            load_snapshot_any(&hp).unwrap().plugin,
-            "rust",
-            "from embedded .html"
-        );
-    }
-
-    #[test]
-    fn load_snapshot_rejects_schema_version_mismatch() {
-        let d = tempfile::tempdir().unwrap();
-        let jp = d.path().join("old.json");
-        // A snapshot tagged with a different schema version must be rejected
-        // with a structured error (not silently mis-parsed).
-        let mut v = serde_json::to_value(mk_snap()).unwrap();
-        v["schema_version"] = serde_json::Value::String("1".into());
-        fs::write(&jp, serde_json::to_string(&v).unwrap()).unwrap();
-        let err = format!("{:#}", load_snapshot_any(&jp).unwrap_err());
-        assert!(err.contains("schema_version"), "schema error: {err}");
-        assert!(err.contains("\"1\""), "names the offending version: {err}");
-    }
-}
+#[path = "analyze_test.rs"]
+mod tests;

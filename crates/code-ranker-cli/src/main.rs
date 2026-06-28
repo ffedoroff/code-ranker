@@ -88,11 +88,10 @@ fn main() {
             output_sarif_path,
             output_codequality,
             output_codequality_path,
-            output_prompt,
             output_scorecard,
-            output_prompt_path,
             output_scorecard_path,
             focus,
+            language,
             focus_path,
             severity,
             top,
@@ -110,17 +109,16 @@ fn main() {
                     html: output_html,
                     sarif: output_sarif,
                     codequality: output_codequality,
-                    prompt: output_prompt,
                     scorecard: output_scorecard,
                     json_path: output_json_path,
                     html_path: output_html_path,
                     sarif_path: output_sarif_path,
                     codequality_path: output_codequality_path,
-                    prompt_path: output_prompt_path,
                     scorecard_path: output_scorecard_path,
                 },
                 report::ReportReco {
                     focus,
+                    language,
                     focus_path,
                     severity,
                     top,
@@ -134,10 +132,10 @@ fn main() {
         // playbook, an index, a category, a metric card, or a principle doc. See
         // `docs.rs`.
         Command::Docs {
+            language,
             subject,
-            plugin,
             config,
-        } => docs::run(subject.as_deref(), plugin.as_deref(), &config),
+        } => docs::run(language.as_deref(), subject.as_deref(), &config),
     };
     match res {
         Ok(()) => {

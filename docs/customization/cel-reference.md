@@ -178,16 +178,24 @@ block):
   floor) · `all` (every internal node, missing counted at the floor).
 
 ```toml
-[metrics.comment_ratio]
+[plugins.base.metrics.comment_ratio]
 formula_cel = "sloc > 0.0 ? cloc / sloc * 100.0 : 0.0"   # float division, guarded
 
-[metrics.cognitive_p90]
+[plugins.base.metrics.cognitive_p90]
 scope       = "graph"
 formula_cel = "agg('cognitive', 'p90', 'not_empty')"
 ```
 
 > Strings/paths are **not** in scope in a metric formula — only numbers. Path and
 > string predicates belong in `[rules.checks]`.
+>
+> **Per-language metrics.** A metric under `[plugins.base.metrics.<key>]` applies to
+> every language. To define a metric for one language only, put it under
+> `[plugins.<lang>].metrics` (e.g. `[plugins.rust.metrics.unsafe_density]`);
+> to share one across all languages as a base, use `[plugins.base.metrics]`. The
+> CEL, scope, and field semantics are identical — only the scope of the override
+> differs. (See [config-resolution.md](config-resolution.md) for the full
+> per-language precedence.)
 
 ### 4.2 `[rules.checks.<id>]` predicates
 
@@ -230,29 +238,29 @@ node against the **whole project's distribution** — a threshold no fixed numbe
 can express portably:
 
 ```toml
-[rules.checks.complexity_outlier]
+[plugins.base.rules.checks.complexity_outlier]
 # Flag files in the project's worst 10% by cyclomatic complexity.
 when    = "cyclomatic.double() > agg('cyclomatic', 'p90', 'not_empty')"
 message = "{name}: cyclomatic {cyclomatic} is in the project's top 10%"
 
-[rules.checks.oversized]
+[plugins.base.rules.checks.oversized]
 # More than twice the median file size.
 when    = "loc.double() > 2.0 * agg('loc', 'median', 'not_empty')"
 ```
 
 The aggregate is computed once over every internal node; reducers and populations
-are exactly those listed in §4.1. (A `[metrics] scope="graph"` aggregate writes a
+are exactly those listed in §4.1. (A `[plugins.base.metrics]` entry with `scope="graph"` writes a
 *project* number into `stats`; here the same number is compared *per file*.)
 
-**Helpers — `[rules.defs]`** — name a reusable sub-expression, expanded into
+**Helpers — `[plugins.base.rules.defs]`** — name a reusable sub-expression, expanded into
 `when` before compilation (a helper may use an earlier one; a cycle is an error):
 
 ```toml
-[rules.defs]
+[plugins.base.rules.defs]
 is_test_file = 'name.endsWith("_tests.rs") || path.contains("/tests/")'
 in_domain    = 'path.contains("/domain/")'
 
-[rules.checks.no_infra_in_domain]
+[plugins.base.rules.checks.no_infra_in_domain]
 when    = 'in_domain && deps.exists(d, d.contains("/infrastructure/"))'
 message = "{path}: a domain file depends on infrastructure"
 group   = "ARCH"
@@ -273,66 +281,66 @@ An unknown `{key}` is left verbatim.
 
 ```toml
 # Metric: a guarded ratio (floats → real division)
-[metrics.tsr]
+[plugins.base.metrics.tsr]
 formula_cel = "sloc > 0.0 ? tloc / sloc : 0.0"
 
 # Check: test bulk over a production file, exempting test files
-[rules.checks.inline_test_bulk]
+[plugins.base.rules.checks.inline_test_bulk]
 when    = 'tloc > 100 && !name.endsWith("_tests.rs") && !path.contains("/tests/")'
 message = "{tloc} lines of inline test code in {name}"
 
 # Check: a ratio in a predicate (ints → .double())
-[rules.checks.too_much_test]
+[plugins.base.rules.checks.too_much_test]
 when    = "loc > 100 && sloc > 0 && tloc.double() / sloc.double() > 0.5"
 message = "test/source ratio too high ({tloc}/{sloc})"
 
 # Check: forbidden dependency (edges)
-[rules.checks.no_sqlx]
+[plugins.base.rules.checks.no_sqlx]
 when    = 'depends_on("ext:sqlx")'
 message = "imports the sqlx crate directly"
 
 # Check: a list-comprehension macro over the dependency set. `filter` is the
 # macro; `size()` is the collection function that counts the result. (A bare
 # `deps.size() > 20` needs no macro and just equals `fan_out > 20`.)
-[rules.checks.wide_ext_hub]
+[plugins.base.rules.checks.wide_ext_hub]
 when    = 'deps.filter(d, d.startsWith("ext:")).size() > 20'
 message = "{name}: depends on many external crates — a coupling hub"
 
 # Metric: the same macro in a formula. Graph lists (`deps`/`files`/…) are
 # checks-only (§4.2), so a metric macro runs over a *literal* list — here the
 # file's own complexity signals — counting how many exceed a floor.
-[metrics.complexity_signals]
+[plugins.base.metrics.complexity_signals]
 formula_cel = "[cyclomatic, cognitive, branches].filter(x, x > 10.0).size().double()"
 
 # Check: relative threshold (this node vs the project distribution)
-[rules.checks.complexity_outlier]
+[plugins.base.rules.checks.complexity_outlier]
 when    = "cyclomatic.double() > agg('cyclomatic', 'p90', 'not_empty')"
 message = "{name}: cyclomatic {cyclomatic} is in the project's worst 10%"
 
 # Metric: branch on path (blank the metric for generated code)
-[metrics.real_hk]
+[plugins.base.metrics.real_hk]
 formula_cel = 'path.contains("/generated/") ? 0.0 : hk'
 
 # Metrics: size-normalized complexity — branching *per 100 source lines*. A raw
 # `cognitive`/`cyclomatic` count just tracks size; dividing by `sloc` measures
 # DENSITY, in intuitive units (e.g. 42 = 42 points of cognitive load per 100 lines).
 # Guard the divide (`sloc == 0 -> 0`).
-[metrics.cognitive_per_100sloc]
+[plugins.base.metrics.cognitive_per_100sloc]
 formula_cel = "sloc > 0.0 ? cognitive / sloc * 100.0 : 0.0"
 
-[metrics.cyclomatic_per_100sloc]
+[plugins.base.metrics.cyclomatic_per_100sloc]
 formula_cel = "sloc > 0.0 ? cyclomatic / sloc * 100.0 : 0.0"
 
 # Check: a SHORT-but-DENSE file — the most complexity packed into the fewest lines,
 # judged RELATIVE to this repo (no fixed number ports across codebases). Custom
-# `[metrics]` are aggregatable, so we threshold each density against its own p90:
+# metrics are aggregatable, so we threshold each density against its own p90:
 #   1. top-decile cognitive density    cognitive_per_100sloc  > p90
 #   2. top-decile branching density     cyclomatic_per_100sloc > p90
 #   3. genuinely short                   sloc < project median  → true density, not bulk
 # (3) is what excludes large-and-dense files: a 200-line file can top the density
 # deciles yet isn't "short". A multi-line `when` (TOML `'''…'''`) stays readable —
 # CEL ignores the newlines; a node missing an attr just doesn't fire (never errors).
-[rules.checks.dense_complexity]
+[plugins.base.rules.checks.dense_complexity]
 when = '''
   cognitive_per_100sloc  > agg('cognitive_per_100sloc',  'p90', 'not_empty') &&
   cyclomatic_per_100sloc > agg('cyclomatic_per_100sloc', 'p90', 'not_empty') &&
@@ -348,10 +356,10 @@ group   = "SRP"
 
 ## 6. Checklist for agents
 
-1. **Pick the context.** A number per file → `[metrics]`. A pass/fail rule →
-   `[rules.checks]`.
-2. **Ratios:** float-divide. In `[metrics]` just `a / b`; in `[rules.checks]`
-   write `a.double() / b.double()`, and guard `b > 0`.
+1. **Pick the context.** A number per file → `[plugins.base.metrics]`. A pass/fail rule →
+   `[plugins.base.rules.checks]`.
+2. **Ratios:** float-divide. In a `metrics` formula just `a / b`; in a `rules.checks`
+   predicate write `a.double() / b.double()`, and guard `b > 0`.
 3. **Edges/collections** (`deps`/`depends_on`/`files`/…) are checks-only.
    **Path fields, math functions, and `agg(...)`** work in both contexts.
    **Relative threshold?** use `agg(metric, reducer, 'not_empty')` in a check —

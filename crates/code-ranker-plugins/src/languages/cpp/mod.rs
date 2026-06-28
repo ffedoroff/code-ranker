@@ -29,7 +29,6 @@ static CONFIG: LazyLock<toml::Table> = LazyLock::new(|| {
         include_str!("config.toml"),
     ])
 });
-static CFG: LazyLock<cfamily::Cfg> = LazyLock::new(|| cfamily::Cfg::from_config(&CONFIG));
 
 // Self-register this plugin (collected by `code_ranker_plugin_api::registry`); no
 // central list anywhere names a language.
@@ -49,16 +48,17 @@ impl LanguagePlugin for CppPlugin {
         "cpp"
     }
 
-    fn detect(&self, workspace: &Path, input: &PluginInput) -> bool {
-        cfamily::detect(workspace, &CFG, &crate::walk::ignore_from(input))
+    fn detect(&self, cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> bool {
+        let c = cfamily::Cfg::from_config(cfg);
+        cfamily::detect(workspace, &c, &crate::walk::ignore_from(input))
     }
 
-    fn levels(&self) -> Vec<Level> {
+    fn levels(&self, cfg: &toml::Table) -> Vec<Level> {
         vec![
             Level {
                 name: "files".into(),
-                edge_kinds: crate::config::edge_kinds(&CONFIG),
-                node_attributes: crate::config::node_attributes(&CONFIG),
+                edge_kinds: crate::config::edge_kinds(cfg),
+                node_attributes: crate::config::node_attributes(cfg),
                 edge_attributes: BTreeMap::new(),
                 attribute_groups: BTreeMap::new(),
                 node_kinds: default_node_kinds(),
@@ -71,43 +71,48 @@ impl LanguagePlugin for CppPlugin {
                 node_attributes: BTreeMap::new(),
                 edge_attributes: BTreeMap::new(),
                 attribute_groups: BTreeMap::new(),
-                node_kinds: crate::config::node_kinds(&CONFIG),
+                node_kinds: crate::config::node_kinds(cfg),
                 cycle_kinds: default_cycle_kinds(),
                 grouping: None,
             },
         ]
     }
 
-    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> Result<Graph> {
+        let c = cfamily::Cfg::from_config(cfg);
         cfamily::analyze(
             workspace,
             input.ignore_tests,
-            &CFG,
+            &c,
             &crate::walk::ignore_from(input),
         )
     }
 
-    fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
+    fn metrics(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(String, MetricInputs)> {
         file_metrics(graph)
     }
 
-    fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
+    fn function_units(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(Node, MetricInputs)> {
         function_nodes(graph)
     }
 
-    fn principles(&self, _input: &PluginInput) -> Vec<Principle> {
-        crate::config::resolved_principles(&CONFIG)
+    fn principles(&self, cfg: &toml::Table, _input: &PluginInput) -> Vec<Principle> {
+        crate::config::resolved_principles(cfg)
     }
 
-    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        code_ranker_plugin_api::list_override::report_override(&CONFIG)
+    fn report_overrides(
+        &self,
+        cfg: &toml::Table,
+    ) -> code_ranker_plugin_api::report::ReportOverride {
+        code_ranker_plugin_api::list_override::report_override(cfg)
     }
 
     fn metric_specs(
         &self,
+        cfg: &toml::Table,
         defaults: BTreeMap<String, AttributeSpec>,
     ) -> BTreeMap<String, AttributeSpec> {
-        crate::config::apply_spec_overrides(defaults, &CONFIG)
+        crate::config::apply_spec_overrides(defaults, cfg)
     }
 }
 

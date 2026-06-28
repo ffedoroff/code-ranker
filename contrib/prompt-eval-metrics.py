@@ -159,7 +159,7 @@ def from_transcript(path, focus):
 
     # adherence
     m["used_generated_prompt"] = 1 if any(
-        ("--output.prompt" in c) or ("--prompt " in c) or ("--prompt=" in c) for _, c in cmds
+        ("--prompt " in c) or ("--prompt=" in c) for _, c in cmds
     ) else 0
     framing = []
     if any("--focus cycle" in c for _, c in cmds):
@@ -221,10 +221,15 @@ def node_metric(path, key):
     the snapshot's node_attributes schema (`lower_better` / `higher_better` / None)."""
     with open(path) as fh:
         d = json.load(fh)
-    files = (d.get("graphs") or {}).get("files") or {}
-    vals = [n[key] for n in files.get("nodes") or []
-            if not n.get("external") and isinstance(n.get(key), (int, float))]
-    direction = ((files.get("node_attributes") or {}).get(key) or {}).get("direction")
+    # The snapshot nests graphs under languages.<lang>, so aggregate the metric
+    # across every language's files graph (a run can cover several at once).
+    vals, direction = [], None
+    for lang in (d.get("languages") or {}).values():
+        files = (lang.get("graphs") or {}).get("files") or {}
+        vals += [n[key] for n in files.get("nodes") or []
+                 if not n.get("external") and isinstance(n.get(key), (int, float))]
+        if direction is None:
+            direction = ((files.get("node_attributes") or {}).get(key) or {}).get("direction")
     return vals, direction
 
 

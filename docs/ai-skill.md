@@ -25,18 +25,20 @@ platform notes): [installation.md](installation.md).
 - **`report`** — produces artifacts: a JSON snapshot, an HTML viewer, and the
   advisory **`scorecard`** (console triage) / **`prompt`** (LLM prompt). Always
   exits `0`.
-- **`docs <subject>`** — prints a reference doc to the terminal (no analysis; always
-  exits `0`). Run `code-ranker docs ai` to bootstrap this playbook: with a language
-  plugin resolved it prints the full playbook + principle/metric catalog; with none
-  (no/ambiguous markers) it prints a brief intro and how to select one.
+- **`docs <lang> <subject>`** — prints a reference doc to the terminal (no analysis; always
+  exits `0`). Run `code-ranker docs <lang> ai` to bootstrap this playbook: with a language
+  specified it prints the full playbook + principle/metric catalog; bare `docs` lists
+  available languages.
 
 `[input]` is polymorphic: a directory is analyzed; a `.json` snapshot is read
 back with no re-analysis. Keep old `.code-ranker/` snapshots — they are baselines.
 
-`check` / `report` analyze one language, auto-detected from project markers. If a
-directory has markers for several (e.g. Rust + Markdown), they stop with *"ambiguous
-project … pass --plugin to choose"*: name the language with `--plugin <name>`, or set
-`plugin = "<name>"` in a `code-ranker.toml` at the project root. (`docs` never needs this.)
+`check` / `report` analyze **all** languages auto-detected from project markers and
+produce one report covering every language — a directory with markers for several
+(e.g. Rust + Markdown) just analyzes both, no error. To pin the set explicitly, pass
+`--plugins <a,b,...>` or set `[plugins] enabled = [...]` in a `code-ranker.toml` at the project
+root. When a `--prompt <ID>` or `--focus` resolves in two or more languages, add
+`--language <name>` to pick which one to focus.
 
 ## The two metrics that matter
 
@@ -47,7 +49,7 @@ Focus on these; treat everything else as secondary.
   module on a busy crossroads of incoming/outgoing dependencies. Full
   diagnose-and-split workflow (measure one file, list its fan_in/fan_out, find
   the mixed scenarios, split, verify with a before/after diff report): run
-  `code-ranker docs HK` (prints the full principle to the terminal, offline).
+  `code-ranker docs <lang> HK` (prints the full principle to the terminal, offline).
 
 **Strategy:** fix one thing at a time, worst-first. Cycles (ADP) are structural —
 clear them first; then coupling (HK). Focus on one metric or principle with `--focus` and inspect
@@ -63,10 +65,10 @@ code-ranker check .
 #    …or focus one metric or principle in the triage (cycle = ADP, then hk, sloc, cognitive, …):
 code-ranker report . --output.scorecard --focus cycle --top 1
 
-# 2. Get the actionable fix-prompt for the single worst module (auto-targeted):
-code-ranker report . --output.prompt.path=stdout --top 1
+# 2. Get the actionable fix-prompt for a named principle (pick it from the scorecard):
+code-ranker report . --prompt cycle --top 1
 #    …or get a focused fix-prompt directly (metric- or principle-framed):
-code-ranker report . --output.prompt.path=stdout --focus hk --top 1
+code-ranker report . --prompt hk --top 1
 
 # 3. Review it; propose the fix to the user and get agreement.
 
@@ -88,17 +90,14 @@ open .code-ranker/after.html          # macOS; xdg-open on Linux
 
 Notes:
 
-- `--output.prompt` **requires `--top 1`**. Without `--focus` it is **auto-targeted**
-  at the single worst module of the worst-violating principle; add `--focus` to pick
-  the focus yourself (see the next note).
+- `--prompt <ID>` names the principle or metric yourself — pick it from the scorecard.
+  It honors `--top N`, `--focus-path`, and `--language`.
 - To focus a specific metric or principle, narrow the triage with `--output.scorecard --focus <name>`:
   a **metric** (`cycle`, `hk`, `sloc`, `cognitive`, `cyclomatic`, `fan_in`, `fan_out`,
   `items` — also accepts the full rule id, e.g. `threshold.file.hk`) or a **principle** id
-  (`LSP`, `SRP`, `OCP`, …). `--focus` also applies to
-  `--output.prompt`: `--focus hk --output.prompt.path=stdout --top 1` emits a
+  (`LSP`, `SRP`, `OCP`, …). The same id goes to `--prompt`: `--prompt hk --top 1` emits a
   **metric-framed** fix-prompt directly (titled "HK — Henry–Kafura", no Liskov wrapper),
-  while `--focus <PRINCIPLE>` emits a **principle-framed** one. Without `--focus`, the
-  prompt auto-targets the worst-violating principle.
+  while `--prompt <PRINCIPLE>` emits a **principle-framed** one.
 - To scope the ranking to a subtree, add `--focus-path <dir>` (repeatable): the whole
   project is still analyzed, but only modules under those repo-relative paths are
   ranked/listed (a folder matches everything beneath it). Combine with `--focus` to
@@ -128,7 +127,7 @@ threshold mismatch.
 ```sh
 code-ranker report . --output.scorecard                       # triage: all principles
 code-ranker report . --output.scorecard --focus hk --top 1    # focus one metric or principle
-code-ranker report . --output.prompt.path=stdout --top 1      # LLM fix-prompt for the worst module
+code-ranker report . --prompt hk --top 1                      # LLM fix-prompt for a named principle/metric
 code-ranker check  . --baseline base.json --output-format json   # CI regression verdict
 ```
 
@@ -137,9 +136,9 @@ code-ranker check  . --baseline base.json --output-format json   # CI regression
 - Analysis is offline and fast. The Rust plugin needs a warm cargo cache
   (`cargo metadata --offline`); if it errors, run `cargo fetch` first.
 - `--focus` / `--focus-path` / `--severity` / `--top` are **report-only** — they
-  require a `--output.prompt` or `--output.scorecard`, else the run errors.
-- `--output.prompt` **requires `--top 1`** — it is auto-targeted at the single worst
-  module. For a broader view use `--output.scorecard`.
+  require a `--prompt <ID>` or `--output.scorecard`, else the run errors.
+- `--prompt <ID>` names the target yourself (pick it from the scorecard) and prints to
+  stdout; redirect to a file when you need an artifact. For a broader view use `--output.scorecard`.
 - `--top N` is a reporting limit (`--top 1` = the single worst); use it instead
   of a non-existent `--index`.
 - Don't delete `.code-ranker/` snapshots — they are your baselines for diffs.

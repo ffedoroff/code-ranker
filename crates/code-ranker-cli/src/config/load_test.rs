@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::model::{CycleRule, MetricThresholds};
 
 /// A config-file body prefixed with the required `version` line. Fixtures must not
 /// hardcode the number — it comes from the single `CONFIG_VERSION` constant.
@@ -17,19 +18,20 @@ fn load_merges_explicit_config_over_builtin_defaults() {
     let cfg = dir.path().join("ci.toml");
     std::fs::write(
         &cfg,
-        v("[ignore]\ntests = false\n[rules.thresholds.file]\nhk = \"1M\"\n"),
+        v("[plugins.base.ignore]\ntests = false\n[plugins.base.rules.thresholds.file]\nhk = \"1M\"\n"),
     )
     .unwrap();
 
     let loaded = load(dir.path(), &[cfg.display().to_string()], &[], &[], &[]).unwrap();
     let c = &loaded.config;
+    let lc = c.language_config("base").unwrap();
 
     // Overridden by the file:
-    assert!(!c.ignore.tests);
-    assert_eq!(c.rules.thresholds.file.get("hk"), Some(1_000_000.0));
+    assert!(!lc.ignore.tests);
+    assert_eq!(lc.rules.thresholds.file.get("hk"), Some(1_000_000.0));
     // Inherited from the built-in defaults (not in the file):
-    assert!(c.ignore.gitignore && c.ignore.hidden);
-    assert_eq!(c.rules.cycles.mutual, CycleRule::Max(0));
+    assert!(lc.ignore.gitignore && lc.ignore.hidden);
+    assert_eq!(lc.rules.cycles.mutual, CycleRule::Max(0));
     assert!(c.output.json.path.is_some());
     // The merged raw table is exposed for `--export-full-config`.
     assert!(loaded.merged.contains_key("output"));
@@ -48,7 +50,7 @@ fn load_requires_matching_schema_version() {
     let err = || format!("{:#}", run().err().unwrap());
 
     // Missing `version` → error naming the required value.
-    std::fs::write(&cfg, "[ignore]\ntests = false\n").unwrap();
+    std::fs::write(&cfg, "[plugins.base.ignore]\ntests = false\n").unwrap();
     assert!(err().contains("missing the required `version`"));
 
     // Older schema → migrate hint.
@@ -68,7 +70,7 @@ fn load_requires_matching_schema_version() {
     assert!(err().contains("migrate the config, or upgrade"));
 
     // Matching schema → ok.
-    std::fs::write(&cfg, v("[ignore]\ntests = false\n")).unwrap();
+    std::fs::write(&cfg, v("[plugins.base.ignore]\ntests = false\n")).unwrap();
     assert!(run().is_ok());
 }
 
@@ -78,8 +80,12 @@ fn load_layers_multiple_config_files_in_order_last_wins() {
     let dir = tempfile::tempdir().unwrap();
     let base = dir.path().join("base.toml");
     let over = dir.path().join("over.toml");
-    std::fs::write(&base, v("[rules.thresholds.file]\nhk = 100\nsloc = 800\n")).unwrap();
-    std::fs::write(&over, "[rules.thresholds.file]\nhk = 5\n").unwrap();
+    std::fs::write(
+        &base,
+        v("[plugins.base.rules.thresholds.file]\nhk = 100\nsloc = 800\n"),
+    )
+    .unwrap();
+    std::fs::write(&over, "[plugins.base.rules.thresholds.file]\nhk = 5\n").unwrap();
 
     let loaded = load(
         dir.path(),
@@ -93,7 +99,13 @@ fn load_layers_multiple_config_files_in_order_last_wins() {
         &[],
     )
     .unwrap();
-    let t = &loaded.config.rules.thresholds.file;
+    let t = &loaded
+        .config
+        .language_config("base")
+        .unwrap()
+        .rules
+        .thresholds
+        .file;
     // `over.toml` overrode `hk`; `base.toml`'s `sloc` then beaten by the inline.
     assert_eq!(t.get("hk"), Some(5.0));
     assert_eq!(t.get("sloc"), Some(1.0));
@@ -111,12 +123,22 @@ fn load_auto_discovers_code_ranker_toml_in_workspace() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(
         dir.path().join("code-ranker.toml"),
-        v("[rules.thresholds.file]\nhk = 42\n"),
+        v("[plugins.base.rules.thresholds.file]\nhk = 42\n"),
     )
     .unwrap();
 
     let loaded = load(dir.path(), &[], &[], &[], &[]).unwrap();
-    assert_eq!(loaded.config.rules.thresholds.file.get("hk"), Some(42.0));
+    assert_eq!(
+        loaded
+            .config
+            .language_config("base")
+            .unwrap()
+            .rules
+            .thresholds
+            .file
+            .get("hk"),
+        Some(42.0)
+    );
     let src = loaded.source_file.expect("discovered source file");
     assert!(src.ends_with("code-ranker.toml"), "{src}");
 }
@@ -129,14 +151,24 @@ fn load_auto_discovers_cargo_workspace_metadata() {
     std::fs::write(
         dir.path().join("Cargo.toml"),
         format!(
-            "[workspace]\nmembers = []\n[workspace.metadata.code-ranker]\nversion = \"{}\"\n[workspace.metadata.code-ranker.rules.thresholds.file]\nhk = 7\n",
+            "[workspace]\nmembers = []\n[workspace.metadata.code-ranker]\nversion = \"{}\"\n[workspace.metadata.code-ranker.plugins.base.rules.thresholds.file]\nhk = 7\n",
             code_ranker_graph::version::CONFIG_VERSION
         ),
     )
     .unwrap();
 
     let loaded = load(dir.path(), &[], &[], &[], &[]).unwrap();
-    assert_eq!(loaded.config.rules.thresholds.file.get("hk"), Some(7.0));
+    assert_eq!(
+        loaded
+            .config
+            .language_config("base")
+            .unwrap()
+            .rules
+            .thresholds
+            .file
+            .get("hk"),
+        Some(7.0)
+    );
     let src = loaded.source_file.expect("discovered source file");
     assert!(src.ends_with("#metadata.code-ranker"), "{src}");
 }
@@ -173,10 +205,11 @@ fn cli_override_sets_cycle_and_threshold() {
         &["file.cognitive=25".into(), "file.hk=1000".into()],
     )
     .unwrap();
-    assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(0));
-    assert_eq!(cfg.rules.cycles.mutual, CycleRule::Off);
-    assert_eq!(cfg.rules.thresholds.file.get("cognitive"), Some(25.0));
-    assert_eq!(cfg.rules.thresholds.file.get("hk"), Some(1000.0));
+    let lc = cfg.language_config("base").unwrap();
+    assert_eq!(lc.rules.cycles.chain, CycleRule::Max(0));
+    assert_eq!(lc.rules.cycles.mutual, CycleRule::Off);
+    assert_eq!(lc.rules.thresholds.file.get("cognitive"), Some(25.0));
+    assert_eq!(lc.rules.thresholds.file.get("hk"), Some(1000.0));
 }
 
 #[test]
@@ -185,7 +218,7 @@ fn inline_overrides_set_each_key() {
     apply_inline_overrides(
         &mut cfg,
         &[
-            "plugin=rust",
+            "plugins=rust,markdown",
             "ignore.tests=on",
             "ignore.dev_only_crates=true",
             "ignore.paths=a/**, b/**",
@@ -200,17 +233,18 @@ fn inline_overrides_set_each_key() {
         ],
     )
     .unwrap();
-    assert_eq!(cfg.plugin.as_deref(), Some("rust"));
-    assert!(cfg.ignore.tests && cfg.ignore.dev_only_crates);
-    assert_eq!(cfg.ignore.paths, ["a/**", "b/**"]);
+    assert_eq!(cfg.plugins.enabled, vec!["rust", "markdown"]);
+    let lc = cfg.language_config("base").unwrap();
+    assert!(lc.ignore.tests && lc.ignore.dev_only_crates);
+    assert_eq!(lc.ignore.paths, ["a/**", "b/**"]);
     assert_eq!(cfg.output.json.path.as_deref(), Some("out.json"));
     assert_eq!(cfg.output.html.path.as_deref(), Some("out.html"));
     assert_eq!(cfg.output.json.enabled, Some(false));
     assert_eq!(cfg.output.html.enabled, Some(true));
-    assert_eq!(cfg.rules.cycles.chain, CycleRule::Max(7));
-    assert_eq!(cfg.rules.thresholds.file.get("loc"), Some(800.0));
-    assert_eq!(cfg.rules.thresholds.file.get("sloc"), Some(1200.0));
-    assert!(cfg.levels.functions);
+    assert_eq!(lc.rules.cycles.chain, CycleRule::Max(7));
+    assert_eq!(lc.rules.thresholds.file.get("loc"), Some(800.0));
+    assert_eq!(lc.rules.thresholds.file.get("sloc"), Some(1200.0));
+    assert!(lc.levels.functions);
 }
 
 #[test]
@@ -229,10 +263,11 @@ fn inline_overrides_set_template_and_remaining_ignore_keys() {
         ],
     )
     .unwrap();
-    assert!(!cfg.ignore.tests);
-    assert!(!cfg.ignore.gitignore);
-    assert!(!cfg.ignore.ignore_files);
-    assert!(!cfg.ignore.hidden);
+    let lc = cfg.language_config("base").unwrap();
+    assert!(!lc.ignore.tests);
+    assert!(!lc.ignore.gitignore);
+    assert!(!lc.ignore.ignore_files);
+    assert!(!lc.ignore.hidden);
     assert_eq!(cfg.templates.prompt.as_deref(), Some("my-prompt.md"));
     let rust = cfg.templates.languages.get("rust").unwrap();
     assert_eq!(rust.get("SRP").map(String::as_str), Some("docs/srp.md"));
@@ -276,51 +311,292 @@ fn parse_threshold_path_shape() {
 
 #[test]
 fn set_metric_records_every_key() {
-    // `set_metric` only records the limit now — validity is checked later by
+    // `MetricThresholds::set` records the limit; validation is deferred to
     // `validate_thresholds` (which can see the project's custom metrics).
     let mut b = MetricThresholds::default();
     for m in ["hk", "cyclomatic", "sloc", "mi", "bugs", "bogus"] {
-        set_metric(&mut b, m, 1.0).unwrap();
+        b.set(m.into(), 1.0);
         assert_eq!(b.get(m), Some(1.0));
     }
 }
 
 #[test]
 fn validate_thresholds_accepts_registry_and_custom_keys() {
-    use code_ranker_graph::MetricDef;
-
     // A registry metric is always valid.
     let mut cfg = Config::default();
-    cfg.rules.thresholds.file.set("hk".into(), 1.0);
+    // Write `hk` threshold into the [plugins.base] raw table.
+    let base = cfg.plugins.languages.entry("base".to_string()).or_default();
+    let mut thr = toml::Table::new();
+    thr.insert("hk".to_string(), toml::Value::Integer(1));
+    let mut rules = toml::Table::new();
+    let mut thresholds = toml::Table::new();
+    thresholds.insert("file".to_string(), toml::Value::Table(thr));
+    rules.insert("thresholds".to_string(), toml::Value::Table(thresholds));
+    base.insert("rules".to_string(), toml::Value::Table(rules));
     assert!(validate_thresholds(&cfg).is_ok());
 
     // An unknown key with no matching custom metric is rejected, named.
-    cfg.rules.thresholds.file.set("tsr".into(), 1.0);
+    let base = cfg.plugins.languages.get_mut("base").unwrap();
+    let thr_table = base
+        .get_mut("rules")
+        .and_then(|v| v.as_table_mut())
+        .and_then(|t| t.get_mut("thresholds"))
+        .and_then(|v| v.as_table_mut())
+        .and_then(|t| t.get_mut("file"))
+        .and_then(|v| v.as_table_mut())
+        .unwrap();
+    thr_table.insert("tsr".to_string(), toml::Value::Integer(1));
     let err = validate_thresholds(&cfg).unwrap_err().to_string();
     assert!(err.contains("tsr"), "names the bad key: {err}");
 
-    // …but once `[metrics.tsr]` exists, the same threshold is accepted.
-    cfg.metrics.insert(
-        "tsr".into(),
-        MetricDef {
-            formula_cel: "1.0".into(),
-            ..Default::default()
-        },
+    // Once `[plugins.base.metrics.tsr]` exists, the same threshold is accepted.
+    let base = cfg.plugins.languages.get_mut("base").unwrap();
+    // Build a minimal MetricDef raw table (only formula_cel is required).
+    let mut def_table = toml::Table::new();
+    def_table.insert(
+        "formula_cel".to_string(),
+        toml::Value::String("1.0".to_string()),
     );
+    let metrics = base
+        .entry("metrics".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .unwrap();
+    metrics.insert("tsr".to_string(), toml::Value::Table(def_table));
     assert!(validate_thresholds(&cfg).is_ok());
 }
 
 #[test]
 fn set_threshold_and_cycle_reject_unknowns() {
+    // `parse_threshold_path` rejects an unknown scope.
+    assert!(parse_threshold_path("function.loc").is_err());
+    assert!(parse_threshold_path("file.hk").is_ok());
+
+    // `apply_cli_overrides` rejects an unknown cycle kind.
     let mut cfg = Config::default();
-    assert!(set_threshold(&mut cfg, "function", "loc", 1.0).is_err());
-    set_threshold(&mut cfg, "file", "hk", 5.0).unwrap();
-    assert_eq!(cfg.rules.thresholds.file.get("hk"), Some(5.0));
-    assert!(set_cycle(&mut cfg, "weird", CycleRule::Off).is_err());
+    assert!(apply_cli_overrides(&mut cfg, &[], &["weird=off".into()], &[]).is_err());
+
+    // A valid threshold override round-trips through the raw table.
+    let mut cfg2 = Config::default();
+    apply_cli_overrides(&mut cfg2, &[], &[], &["file.hk=5".into()]).unwrap();
+    assert_eq!(
+        cfg2.language_config("base")
+            .unwrap()
+            .rules
+            .thresholds
+            .file
+            .get("hk"),
+        Some(5.0)
+    );
 }
 
 #[test]
 fn split_kv_requires_equals() {
     assert_eq!(split_kv("a=b", "x").unwrap(), ("a", "b"));
     assert!(split_kv("noeq", "x").is_err());
+}
+
+/// The legacy `plugin = "x"` key must hard-error with a migration message.
+#[test]
+fn load_hard_errors_on_legacy_plugin_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg_path = dir.path().join("code-ranker.toml");
+    std::fs::write(&cfg_path, v("plugin = \"rust\"\n")).unwrap();
+    let err = load(dir.path(), &[cfg_path.display().to_string()], &[], &[], &[])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("plugins = [") || err.contains("plugin = "),
+        "should mention migration to plugins = [...]: {err}"
+    );
+}
+
+/// `--config plugins.<lang>.<key>=value` writes into Config.plugins.languages.
+#[test]
+fn inline_override_sets_language_key() {
+    let mut cfg = Config::default();
+    apply_inline_overrides(
+        &mut cfg,
+        &[
+            "plugins.rust.skip_dirs=target,vendor",
+            "plugins.base.tests=false",
+        ],
+    )
+    .unwrap();
+    // rust entry should have skip_dirs as an array.
+    let rust = cfg.plugins.languages.get("rust").expect("rust entry");
+    let skip = rust.get("skip_dirs").and_then(|v| v.as_array()).unwrap();
+    assert!(skip.iter().any(|v| v.as_str() == Some("target")));
+    assert!(skip.iter().any(|v| v.as_str() == Some("vendor")));
+    // base entry has a boolean for tests (scalar after parse_leaf_value).
+    let base = cfg.plugins.languages.get("base").expect("base entry");
+    assert!(base.contains_key("tests"));
+}
+
+/// An alias-named block (`[plugins.javascript]`) is folded into its canonical
+/// block (`[plugins.js]`) by deep-merge, so keys from both survive under the
+/// canonical key.
+#[test]
+fn load_deep_merges_alias_block_into_canonical() {
+    let dir = tempfile::tempdir().unwrap();
+    let cfg_path = dir.path().join("code-ranker.toml");
+    std::fs::write(
+        &cfg_path,
+        v("[plugins.js]\nlevels.functions = true\n[plugins.javascript]\nignore.tests = false\n"),
+    )
+    .unwrap();
+    let loaded = load(dir.path(), &[cfg_path.display().to_string()], &[], &[], &[]).unwrap();
+    assert!(
+        loaded.config.plugins.languages.contains_key("js")
+            && !loaded.config.plugins.languages.contains_key("javascript"),
+        "both blocks live under the canonical key"
+    );
+    let lc = loaded.config.language_config("js").unwrap();
+    assert!(lc.levels.functions, "key from the canonical block kept");
+    assert!(!lc.ignore.tests, "key from the alias block merged in");
+}
+
+/// `--ignore <glob>` extends the base layer's ignore globs (the `ensure_array`
+/// path that creates `[plugins.base].ignore.paths` on first use).
+#[test]
+fn cli_override_extends_ignore_paths() {
+    let mut cfg = Config::default();
+    apply_cli_overrides(&mut cfg, &["foo/**".into(), "bar/**".into()], &[], &[]).unwrap();
+    let lc = cfg.language_config("base").unwrap();
+    assert_eq!(lc.ignore.paths, ["foo/**", "bar/**"]);
+}
+
+/// `--ignore` coerces a pre-existing conflicting base value into the array it
+/// needs: a scalar `ignore.paths` leaf, or a scalar `ignore` standing where the
+/// table belongs (the defensive replace arms of `ensure_array`).
+#[test]
+fn cli_ignore_coerces_conflicting_base_values() {
+    // Leaf conflict: base already holds `ignore.paths` as a string.
+    let mut cfg = Config::default();
+    {
+        let mut ignore = toml::Table::new();
+        ignore.insert("paths".into(), toml::Value::String("oops".into()));
+        cfg.plugins
+            .languages
+            .entry("base".into())
+            .or_default()
+            .insert("ignore".into(), toml::Value::Table(ignore));
+    }
+    apply_cli_overrides(&mut cfg, &["a/**".into()], &[], &[]).unwrap();
+    assert_eq!(
+        cfg.language_config("base").unwrap().ignore.paths,
+        ["a/**"],
+        "scalar leaf replaced by an array"
+    );
+
+    // Intermediate conflict: base holds `ignore` itself as a scalar.
+    let mut cfg = Config::default();
+    cfg.plugins
+        .languages
+        .entry("base".into())
+        .or_default()
+        .insert("ignore".into(), toml::Value::Integer(5));
+    apply_cli_overrides(&mut cfg, &["b/**".into()], &[], &[]).unwrap();
+    assert_eq!(
+        cfg.language_config("base").unwrap().ignore.paths,
+        ["b/**"],
+        "scalar `ignore` replaced by a table"
+    );
+}
+
+/// A non-zero cycle budget is stored as a raw integer (`cycle_value`'s `Max(n)`
+/// arm), and a fractional threshold as a raw float (`number_value`'s float arm).
+#[test]
+fn cli_override_cycle_budget_and_fractional_threshold() {
+    let mut cfg = Config::default();
+    apply_cli_overrides(&mut cfg, &[], &["chain=5".into()], &["file.hk=2.5".into()]).unwrap();
+    let lc = cfg.language_config("base").unwrap();
+    assert_eq!(
+        lc.rules.cycles.chain,
+        CycleRule::Max(5),
+        "integer budget kept"
+    );
+    assert_eq!(lc.rules.thresholds.file.get("hk"), Some(2.5), "float kept");
+}
+
+/// `parse_leaf_value` coerces leaf scalars by shape: a bare float → TOML float, and
+/// a suffixed/garbage scalar (no decimal, not an int) → TOML string.
+#[test]
+fn inline_leaf_value_float_and_string_fallback() {
+    let mut cfg = Config::default();
+    apply_inline_overrides(
+        &mut cfg,
+        &["plugins.rust.ratio=1.5", "plugins.rust.budget=8K"],
+    )
+    .unwrap();
+    let rust = cfg.plugins.languages.get("rust").unwrap();
+    assert_eq!(rust.get("ratio").and_then(|v| v.as_float()), Some(1.5));
+    assert_eq!(
+        rust.get("budget").and_then(|v| v.as_str()),
+        Some("8K"),
+        "suffixed scalar stays a string for the threshold deserializer"
+    );
+}
+
+/// A `plugins.<lang>` key with no `.<path>` segment is a fatal, actionable error.
+#[test]
+fn inline_plugins_key_requires_path_segment() {
+    let mut cfg = Config::default();
+    let err = apply_inline_overrides(&mut cfg, &["plugins.rust=x"])
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("plugins.<lang>.<path>"), "{err}");
+}
+
+/// `set_path` replaces a scalar standing where a sub-table is needed: writing
+/// `a.b` after `a` already holds an integer turns `a` into a table.
+#[test]
+fn inline_leaf_override_replaces_scalar_with_table() {
+    let mut cfg = Config::default();
+    apply_inline_overrides(&mut cfg, &["plugins.rust.a=1", "plugins.rust.a.b=2"]).unwrap();
+    let rust = cfg.plugins.languages.get("rust").unwrap();
+    let a = rust
+        .get("a")
+        .and_then(|v| v.as_table())
+        .expect("a is now a table");
+    assert_eq!(a.get("b").and_then(|v| v.as_integer()), Some(2));
+}
+
+/// `validate_thresholds` accepts a metric defined in the same language block.
+#[test]
+fn validate_thresholds_accepts_language_metrics_key() {
+    let mut cfg = Config::default();
+    // Write the threshold for `custom_lang_metric` into [plugins.rust].
+    let rust = cfg.plugins.languages.entry("rust".to_string()).or_default();
+    let mut thr = toml::Table::new();
+    thr.insert("custom_lang_metric".to_string(), toml::Value::Integer(1));
+    let mut rules = toml::Table::new();
+    let mut thresholds = toml::Table::new();
+    thresholds.insert("file".to_string(), toml::Value::Table(thr));
+    rules.insert("thresholds".to_string(), toml::Value::Table(thresholds));
+    rust.insert("rules".to_string(), toml::Value::Table(rules));
+    // Not in any metrics yet → rejected when validating the `rust` language.
+    assert!(validate_thresholds(&cfg).is_err());
+    // Add `custom_lang_metric` to [plugins.rust].metrics → accepted because
+    // `language_config("rust")` merges [plugins.base] ⊕ [plugins.rust] and
+    // therefore sees both the threshold and the metric definition.
+    let mut metrics_table = toml::Table::new();
+    let mut metric_def = toml::Table::new();
+    metric_def.insert(
+        "formula_cel".to_string(),
+        toml::Value::String("1.0".to_string()),
+    );
+    metrics_table.insert(
+        "custom_lang_metric".to_string(),
+        toml::Value::Table(metric_def),
+    );
+    cfg.plugins
+        .languages
+        .get_mut("rust")
+        .unwrap()
+        .insert("metrics".to_string(), toml::Value::Table(metrics_table));
+    assert!(
+        validate_thresholds(&cfg).is_ok(),
+        "metric in [plugins.rust].metrics should be a valid threshold key"
+    );
 }

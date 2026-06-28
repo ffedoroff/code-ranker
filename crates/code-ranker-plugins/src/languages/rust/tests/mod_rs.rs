@@ -31,8 +31,9 @@ fn function_units_extracts_fns_and_methods() {
     };
     // The plugin now returns (node, inputs) pairs (the orchestrator writes the
     // metrics); this test only checks the node structure.
+    let cfg = RustPlugin.config();
     let units: Vec<_> = RustPlugin
-        .function_units(&graph)
+        .function_units(&cfg, &graph)
         .into_iter()
         .map(|(n, _)| n)
         .collect();
@@ -469,12 +470,12 @@ fn rust_trigger_set_documented_in_spec() {
     // in Rust's metrics spec, so the trigger list and the spec's "Keyword
     // look-alike guard set" cannot drift apart.
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let path = format!("{root}/languages/rust/metrics.md");
+    let path = format!("{root}/plugins/rust/metrics.md");
     let spec = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     for kw in RUST_TRIGGERS {
         assert!(
             spec.contains(&format!("`{kw}`")),
-            "trigger `{kw}` is not documented in languages/rust/metrics.md — spec and FP test drifted"
+            "trigger `{kw}` is not documented in plugins/rust/metrics.md — spec and FP test drifted"
         );
     }
 }
@@ -743,7 +744,8 @@ fn metric_specs_override_adds_rust_cfg_test_note() {
         "the shared default must stay language-neutral"
     );
 
-    let refined = RustPlugin.metric_specs(defaults);
+    let cfg = RustPlugin.config();
+    let refined = RustPlugin.metric_specs(&cfg, defaults);
     for key in ["sloc", "lloc", "cloc", "blank"] {
         let desc = refined[key].description.as_deref().unwrap_or("");
         assert!(
@@ -767,8 +769,9 @@ fn metrics_and_function_units_skip_unreadable_files() {
         }],
         edges: vec![],
     };
-    assert!(RustPlugin.metrics(&graph).is_empty());
-    assert!(RustPlugin.function_units(&graph).is_empty());
+    let cfg = RustPlugin.config();
+    assert!(RustPlugin.metrics(&cfg, &graph).is_empty());
+    assert!(RustPlugin.function_units(&cfg, &graph).is_empty());
 }
 
 #[test]

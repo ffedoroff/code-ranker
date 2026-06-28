@@ -15,7 +15,7 @@ Structural-analysis tool for **Rust** (production-ready) plus **Python, TypeScri
 
 **👉 Map your codebase's worst structural problems in 30 seconds — [jump to the Rust quick start](#rust-quick-start) and run it on your repo now.**
 
-**Status:** 4.0.0 — the Rust analyzer is production-ready; the other languages are beta, so their output shapes may still change.
+**Status:** 5.0.0 — the Rust analyzer is production-ready; the other languages are beta, so their output shapes may still change.
 
 ## Rust quick start
 
@@ -35,14 +35,14 @@ code-ranker always runs **entirely on your machine**. It makes **no network call
 
 ## AI agents friendly
 
-**Hand your codebase to an AI agent and let it fix the worst spot.** code-ranker is built to feed work straight to an AI coding agent (Claude Code, Cursor, …). Run **`code-ranker docs ai`** in your repo — it prints a short, offline playbook (no network) that teaches the agent which two metrics matter (dependency cycles `ADP`, coupling `HK`) and the exact fix loop (scorecard → snapshot → fix → re-check → before/after report), tailored to your project's language.
+**Hand your codebase to an AI agent and let it fix the worst spot.** code-ranker is built to feed work straight to an AI coding agent (Claude Code, Cursor, …). Run **`code-ranker docs <lang> ai`** in your repo (e.g. `code-ranker docs rust ai`) — it prints a short, offline playbook (no network) that teaches the agent which two metrics matter (dependency cycles `ADP`, coupling `HK`) and the exact fix loop (scorecard → snapshot → fix → re-check → before/after report), for your project's language.
 
 Then just ask, e.g.:
 
-- *"Run `code-ranker docs ai` and follow it: find the worst dependency cycle in this project and propose a refactor that breaks it — show me the plan before changing code."*
-- *"Run `code-ranker docs ai` for the playbook, then find the most complex / highest-HK file and analyze how to split it; explain what the split buys for me (lower coupling, smaller blast radius). Take a **before report**, apply the split, take an **after report**, and show me the **HTML diff**."*
+- *"Run `code-ranker docs rust ai` and follow it: find the worst dependency cycle in this project and propose a refactor that breaks it — show me the plan before changing code."*
+- *"Run `code-ranker docs rust ai` for the playbook, then find the most complex / highest-HK file and analyze how to split it; explain what the split buys for me (lower coupling, smaller blast radius). Take a **before report**, apply the split, take an **after report**, and show me the **HTML diff**."*
 
-The agent drives the CLI itself — `code-ranker docs ai` spells out the commands and the loop, so no glue is needed. (Prefer a file in context? The same playbook lives at [docs/ai-skill.md](docs/ai-skill.md).)
+The agent drives the CLI itself — `code-ranker docs <lang> ai` spells out the commands and the loop, so no glue is needed. (Prefer a file in context? The same playbook lives at [docs/ai-skill.md](docs/ai-skill.md).)
 
 ## What it finds
 
@@ -124,7 +124,7 @@ Built-in plugins for all nine supported languages (`rust` uses cargo + syn; Rust
 - [PRD](docs/PRD.md) — product requirements
 - [DESIGN](docs/DESIGN.md) — technical design
 - [Why structure matters](docs/why-structure-matters.md) — the empirical evidence (studies, books, statistics) behind the signals code-ranker measures
-- [Principles corpus](languages/) — Rust / Python / TypeScript principle catalogues used by the prompt generator
+- [Principles corpus](plugins/) — Rust / Python / TypeScript principle catalogues used by the prompt generator
 
 ## Try it now
 

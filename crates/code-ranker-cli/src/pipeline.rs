@@ -1,7 +1,8 @@
-//! Directory-analysis pipeline: run the plugin, the central complexity /
-//! coupling / cycle passes, assemble the `LevelGraph`, and build the `Snapshot`.
-//! Owns [`Analyzed`] (the shared result). Called only from `analyze::analyze_input`
-//! (fan-in 1), so its necessarily-high fan-out stays cheap under Henry-Kafura.
+//! Directory-analysis pipeline: run each active plugin, the central complexity /
+//! coupling / cycle passes, assemble the per-language `LevelGraph`s, and build
+//! the multi-language `Snapshot`. Owns [`Analyzed`] (the shared result). Called
+//! only from `analyze::analyze_input` (fan-in 1), so its necessarily-high
+//! fan-out stays cheap under Henry-Kafura.
 
 mod assemble;
 mod helpers;
@@ -10,9 +11,11 @@ use crate::cli::AnalyzeArgs;
 use crate::{config, git, logger, plugin};
 use anyhow::{Context, Result};
 use assemble::assemble_level;
-use code_ranker_graph::snapshot::Snapshot;
+use code_ranker_graph::snapshot::{LanguageSnapshot, Snapshot, SnapshotInit};
 use code_ranker_plugin_api::plugin::PluginInput;
-use helpers::{flow_kinds, numeric_attrs, prune_unused_roots};
+use helpers::{
+    flow_kinds, numeric_attrs, prune_unused_roots, prune_unused_roots_multi, registry_omit_at,
+};
 use std::collections::{BTreeMap, HashSet};
 
 /// Result of the shared analysis core, consumed by `check` and `report`. The
@@ -20,17 +23,271 @@ use std::collections::{BTreeMap, HashSet};
 pub(crate) struct Analyzed {
     pub(crate) snapshot: Snapshot,
     pub(crate) violations: Vec<config::Violation>,
-    /// Effective cycle-rule policy (for the current-values config dump).
-    pub(crate) cycles: config::CycleRules,
-    /// Effective rules (to recompute baseline violations for the regression gate).
-    pub(crate) rules: config::RulesConfig,
+    /// Effective per-language rules (to recompute baseline violations for the
+    /// regression gate and to dump current values), keyed by language.
+    pub(crate) rules_by_lang: BTreeMap<String, config::RulesConfig>,
     /// `[output.<fmt>]` config: per-format `path` template and `enabled` flag
     /// (CLI flags still win — resolved in `run_report`).
     pub(crate) output: config::OutputConfig,
 }
 
-/// Directory input: load config, run the plugin, annotate the graphs, collect
-/// violations, and assemble the snapshot. Writes nothing.
+/// The per-language analysis result before it is merged into the snapshot.
+struct AnalyzedLanguage {
+    graphs: BTreeMap<String, code_ranker_graph::level_graph::LevelGraph>,
+    principles: Vec<code_ranker_plugin_api::Principle>,
+    prompt: code_ranker_plugin_api::PromptTemplate,
+    roots: BTreeMap<String, String>,
+    versions: Vec<(String, String)>,
+    timings: Vec<code_ranker_graph::snapshot::StageTime>,
+    /// `true` when the graph produced at least one non-external node; languages
+    /// with `false` here are dropped from the active set.
+    had_nodes: bool,
+}
+
+/// Parse, enrich, and assemble one language's analysis output.
+///
+/// This is the per-language unit of work extracted from the old single-plugin
+/// `analyze_directory`. `eff_cfg` is the fully-built effective plugin config
+/// (static base ⊕ `[languages.base]` ⊕ `[languages.<name>]` ⊕ CLI overrides).
+#[allow(clippy::too_many_arguments)]
+fn analyze_one(
+    plugin_name: &str,
+    target: &std::path::Path,
+    input: &PluginInput,
+    eff_cfg: &toml::Table,
+    lang_cfg: &config::model::LangConfig,
+    prompt_override: Option<&str>,
+) -> Result<AnalyzedLanguage> {
+    let mut timings = Vec::new();
+
+    // 1. Parse structure (absolute file-path ids).
+    let t = logger::Timer::start(&format!("{plugin_name}: parse"));
+    let (mut graph, levels) = plugin::analyze(plugin_name, eff_cfg, target, input)
+        .with_context(|| format!("plugin '{plugin_name}' failed"))?;
+    let file_count = graph.nodes.iter().filter(|n| n.kind == "file").count();
+    timings.push(code_ranker_graph::snapshot::StageTime {
+        stage: format!("{plugin_name}: parse"),
+        ms: t.finish_quiet(),
+        detail: format!("{} nodes from {} files", graph.nodes.len(), file_count),
+    });
+
+    let had_nodes = graph.nodes.iter().any(|n| n.kind != "external");
+
+    // 2. Complexity: plugin annotates its own file nodes with per-language metrics.
+    let t = logger::Timer::start(&format!("{plugin_name}: complexity"));
+    let annotated = plugin::annotate_metrics(plugin_name, eff_cfg, &mut graph);
+    timings.push(code_ranker_graph::snapshot::StageTime {
+        stage: format!("{plugin_name}: complexity"),
+        ms: t.finish_quiet(),
+        detail: format!("{annotated} nodes annotated"),
+    });
+
+    // 3. Canonicalize structure, then relativize ids against detected roots.
+    let t = logger::Timer::start(&format!("{plugin_name}: projection"));
+    code_ranker_graph::finalize::finalize_graph(&mut graph);
+    let mut roots: BTreeMap<String, String> = plugin::roots(plugin_name, eff_cfg, target)
+        .into_iter()
+        .collect();
+    roots.insert("target".to_string(), target.display().to_string());
+
+    // Optional `functions` level: plugin builds sub-file metric nodes.
+    let want_functions = lang_cfg.levels.functions;
+    if want_functions {
+        let fns = plugin::function_units(plugin_name, eff_cfg, &graph);
+        graph.nodes.extend(fns);
+    }
+    code_ranker_graph::relativize::relativize_graph(&mut graph, target, &roots);
+    let mut fn_nodes: Vec<code_ranker_plugin_api::node::Node> = Vec::new();
+    if want_functions {
+        graph.nodes.retain(|n| {
+            if n.id.contains('#') {
+                fn_nodes.push(n.clone());
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    // 4. Apply ignore filters (tokenized ids), then compute derived data.
+    config::apply_ignore(&mut graph, &lang_cfg.ignore, target)?;
+
+    // Drop function nodes whose file was ignored above.
+    if want_functions {
+        let file_ids: HashSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
+        fn_nodes.retain(|n| n.parent.as_deref().is_some_and(|p| file_ids.contains(p)));
+    }
+
+    let mut levels = levels;
+    let fn_level_spec = levels
+        .iter()
+        .position(|l| l.name == "functions")
+        .map(|i| levels.remove(i));
+    let level_spec = levels.into_iter().find(|l| l.name == "files");
+    let flow_kinds = flow_kinds(level_spec.as_ref());
+
+    let mut cycles = code_ranker_graph::cycles::annotate_cycles(&mut graph, &flow_kinds);
+    config::apply_cycle_rules(&mut cycles, &mut graph.nodes, &lang_cfg.rules.cycles);
+    code_ranker_graph::annotate_coupling(&mut graph, &flow_kinds);
+
+    // Graph-derived built-in metrics (e.g. `hk`).
+    for node in &mut graph.nodes {
+        if node.kind != "external" {
+            code_ranker_graph::write_derived(node);
+        }
+    }
+
+    // User-defined declarative metrics.
+    let mut custom_specs: BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec> =
+        BTreeMap::new();
+    let engine = if lang_cfg.metrics.is_empty() {
+        None
+    } else {
+        let engine = code_ranker_graph::registry::Engine::compile(&lang_cfg.metrics)
+            .context("compiling [metrics] formulas")?;
+        for node in &mut graph.nodes {
+            if node.kind == "external" {
+                continue;
+            }
+            code_ranker_graph::apply_to_node(node, &lang_cfg.metrics, &engine);
+        }
+        custom_specs = lang_cfg
+            .metrics
+            .iter()
+            .filter(|(_, d)| d.scope == code_ranker_graph::Scope::Node)
+            .map(|(k, d)| (k.clone(), d.to_attribute_spec()))
+            .collect();
+        Some(engine)
+    };
+
+    let report_overrides = [
+        plugin::report_overrides(plugin_name, eff_cfg),
+        code_ranker_plugin_api::list_override::report_override_section(&lang_cfg.report),
+    ];
+
+    let mut stat_keys = code_ranker_graph::stat_keys();
+    stat_keys.extend([
+        "fan_in".to_string(),
+        "fan_out".to_string(),
+        "hk".to_string(),
+    ]);
+    let stat_keys = report_overrides
+        .iter()
+        .fold(stat_keys, |acc, ov| ov.stats.apply(&acc));
+    let mut stats = code_ranker_graph::stats::compute_stats(&graph, &stat_keys);
+
+    // Graph-scope aggregates.
+    if let Some(engine) = &engine
+        && engine.has_graph_metrics()
+    {
+        let omit_at = registry_omit_at(plugin_name, eff_cfg, &lang_cfg.metrics);
+        let rows: Vec<BTreeMap<String, f64>> = graph
+            .nodes
+            .iter()
+            .filter(|n| n.kind != "external")
+            .map(numeric_attrs)
+            .collect();
+        let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for r in &rows {
+            keys.extend(r.keys().cloned());
+        }
+        let keys: Vec<String> = keys.into_iter().collect();
+        let pops = code_ranker_graph::Populations::build(&rows, &keys, &omit_at);
+        for (k, v) in engine.eval_graph(&pops) {
+            stats.insert(k, code_ranker_graph::num_attr(v));
+        }
+    }
+
+    // Warn on declared metrics that produced no value.
+    for (key, def) in &lang_cfg.metrics {
+        let present = match def.scope {
+            code_ranker_graph::Scope::Graph => stats.contains_key(key),
+            code_ranker_graph::Scope::Node => graph
+                .nodes
+                .iter()
+                .any(|n| n.kind != "external" && n.attrs.contains_key(key)),
+        };
+        if !present {
+            logger::summary(&format!(
+                "⚠ metric `{key}` produced no value on any node — check its formula \
+                 (a misspelled input key?) or whether it is always at its no-signal value",
+            ));
+        }
+    }
+
+    let edge_count = graph.edges.len();
+    let node_count = graph.nodes.len();
+    let thresholds = gate_thresholds(lang_cfg);
+    let level = assemble_level(
+        level_spec,
+        graph,
+        cycles,
+        stats,
+        thresholds.clone(),
+        &custom_specs,
+        plugin_name,
+        eff_cfg,
+        &report_overrides,
+    );
+    prune_unused_roots(&level, &mut roots);
+    timings.push(code_ranker_graph::snapshot::StageTime {
+        stage: format!("{plugin_name}: projection"),
+        ms: t.finish_quiet(),
+        detail: format!("nodes={node_count} edges={edge_count}"),
+    });
+
+    let mut graphs = BTreeMap::new();
+    graphs.insert("files".to_string(), level);
+
+    if want_functions && !fn_nodes.is_empty() {
+        let fn_graph = code_ranker_plugin_api::graph::Graph {
+            nodes: fn_nodes,
+            edges: Vec::new(),
+        };
+        let fn_level = assemble_level(
+            fn_level_spec,
+            fn_graph,
+            Vec::new(),
+            BTreeMap::new(),
+            thresholds,
+            &custom_specs,
+            plugin_name,
+            eff_cfg,
+            &report_overrides,
+        );
+        graphs.insert("functions".to_string(), fn_level);
+    }
+
+    // Plugin catalog principles, then the project's `[principles.<ID>]` overrides.
+    let principles = config::merge_project_principles(
+        plugin::principles(plugin_name, eff_cfg, input),
+        &lang_cfg.principles,
+    );
+
+    // Prompt-Generator scaffolding.
+    let prompt = match prompt_override {
+        Some(path) => code_ranker_graph::prompt_template_from(
+            &std::fs::read_to_string(path)
+                .with_context(|| format!("reading [templates] prompt override {path}"))?,
+        ),
+        None => code_ranker_graph::prompt_template(),
+    };
+
+    let versions = plugin::versions(plugin_name, eff_cfg, target, input);
+
+    Ok(AnalyzedLanguage {
+        graphs,
+        principles,
+        prompt,
+        roots,
+        versions,
+        timings,
+        had_nodes,
+    })
+}
+
+/// Directory input: load config, resolve active plugins, run `analyze_one` for
+/// each, drop empty languages, assemble the multi-language snapshot.
 pub(crate) fn analyze_directory(
     args: &AnalyzeArgs,
     cycle_rules: &[String],
@@ -55,256 +312,123 @@ pub(crate) fn analyze_directory(
     .context("configuration error")?;
     let cfg = loaded.config;
 
-    let plugin_name = plugin::resolve_plugin(
-        args.plugin.as_deref(),
-        cfg.plugin.as_deref(),
-        &target,
-        loaded.source_file.as_deref(),
-    )?;
-
     let command = format!(
         "code-ranker {}",
         std::env::args().skip(1).collect::<Vec<_>>().join(" ")
     );
 
-    let input = PluginInput {
-        ignore: cfg.ignore.paths.clone(),
-        ignore_tests: cfg.ignore.tests,
-        gitignore: cfg.ignore.gitignore,
-        ignore_files: cfg.ignore.ignore_files,
-        hidden: cfg.ignore.hidden,
+    // A PluginInput (ignore filters) from a language's effective `[ignore]`.
+    let plugin_input = |lc: &config::model::LangConfig| PluginInput {
+        ignore: lc.ignore.paths.clone(),
+        ignore_tests: lc.ignore.tests,
+        gitignore: lc.ignore.gitignore,
+        ignore_files: lc.ignore.ignore_files,
+        hidden: lc.ignore.hidden,
     };
+    // Detection uses the base-language ignore (the active set is not yet known).
+    let input = plugin_input(&cfg.language_config("base")?);
 
-    // 1. Parse structure (absolute file-path ids).
-    let mut timings = Vec::new();
-    let t = logger::Timer::start("parse: structure");
-    let (mut graph, levels) = plugin::analyze(&plugin_name, &target, &input)
-        .with_context(|| format!("plugin '{plugin_name}' failed"))?;
-    let file_count = graph.nodes.iter().filter(|n| n.kind == "file").count();
-    timings.push(code_ranker_graph::snapshot::StageTime {
-        stage: plugin_name.clone(),
-        ms: t.finish_quiet(),
-        detail: format!("{} nodes from {} files", graph.nodes.len(), file_count),
-    });
-
-    // 2. Complexity pass: the active plugin annotates its own file nodes with
-    //    per-language metrics (behind the `LanguagePlugin` trait — no central
-    //    by-extension dispatcher). Reads files by their absolute id.
-    let t = logger::Timer::start("complexity");
-    let annotated = plugin::annotate_metrics(&plugin_name, &mut graph);
-    timings.push(code_ranker_graph::snapshot::StageTime {
-        stage: "complexity".into(),
-        ms: t.finish_quiet(),
-        detail: format!("{annotated} nodes annotated"),
-    });
-
-    // 3. Canonicalize structure, then relativize ids against detected roots.
-    //    The active plugin contributes its own language/toolchain roots (e.g. the
-    //    Rust plugin's cargo/registry/rustup/rust-src); the orchestrator only owns
-    //    the generic `target` root — no language leaks into this central step.
-    let t = logger::Timer::start("projection");
-    code_ranker_graph::finalize::finalize_graph(&mut graph);
-    let mut roots: BTreeMap<String, String> =
-        plugin::roots(&plugin_name, &target).into_iter().collect();
-    roots.insert("target".to_string(), target.display().to_string());
-
-    // Optional `functions` level (off by default): the plugin builds sub-file
-    // metric nodes (absolute ids) which we merge in so relativization rewrites
-    // their ids/parents alongside the files, then split back out — the `files`
-    // graph and its goldens stay untouched.
-    let want_functions = cfg.levels.functions;
-    if want_functions {
-        let fns = plugin::function_units(&plugin_name, &graph);
-        graph.nodes.extend(fns);
-    }
-    code_ranker_graph::relativize::relativize_graph(&mut graph, &target, &roots);
-    let mut fn_nodes: Vec<code_ranker_plugin_api::node::Node> = Vec::new();
-    if want_functions {
-        graph.nodes.retain(|n| {
-            if n.id.contains('#') {
-                fn_nodes.push(n.clone());
-                false
-            } else {
-                true
-            }
-        });
-    }
-
-    // 4. Apply ignore filters (tokenized ids), then compute the derived data.
-    config::apply_ignore(&mut graph, &cfg.ignore, &target)?;
-
-    // Drop function nodes whose file was ignored above (keep the two in step).
-    if want_functions {
-        let file_ids: HashSet<&str> = graph.nodes.iter().map(|n| n.id.as_str()).collect();
-        fn_nodes.retain(|n| n.parent.as_deref().is_some_and(|p| file_ids.contains(p)));
-    }
-
-    let mut levels = levels;
-    let fn_level_spec = levels
+    // Build effective configs for EVERY registered plugin (needed for detect_all
+    // to use the user's overrides when matching markers and extensions).
+    let all_names: Vec<String> = plugin::registry()
         .iter()
-        .position(|l| l.name == "functions")
-        .map(|i| levels.remove(i));
-    let level_spec = levels.into_iter().find(|l| l.name == "files");
-    let flow_kinds = flow_kinds(level_spec.as_ref());
-    // Cycles, fan-in/fan-out and the drawn map all run on the same flow edges. A
-    // `pub use` re-export is a facade, not a dependency, so the Rust plugin marks
-    // `reexports` non-flow (`EdgeKindSpec.flow = false`) — it never reaches any of
-    // these and re-export hubs (lib.rs / mod.rs) cannot fabricate cycles.
-    let mut cycles = code_ranker_graph::cycles::annotate_cycles(&mut graph, &flow_kinds);
-    config::apply_cycle_rules(&mut cycles, &mut graph.nodes, &cfg.rules.cycles);
-    code_ranker_graph::annotate_coupling(&mut graph, &flow_kinds);
-
-    // Graph-derived built-in metrics (e.g. `hk`): now that the coupling pass has
-    // written `fan_in`/`fan_out` onto the nodes, evaluate the `[fields.*]` formulas
-    // that read them — the TIER1 → graph → TIER2 order. Pre-graph fields
-    // (volume/mi/…) were already written from the raw tier-1 counts above.
-    for node in &mut graph.nodes {
-        if node.kind != "external" {
-            code_ranker_graph::write_derived(node);
-        }
-    }
-
-    // User-defined declarative metrics: evaluate each `[metrics.<key>]` CEL
-    // formula. Node-scope metrics are written onto every internal node (built-in
-    // attributes — including the just-computed coupling — are inputs); graph-scope
-    // (aggregate) metrics are reduced over the whole node set into `stats` below.
-    // Empty registry → no-op, so the default output (and its goldens) is unchanged.
-    let mut custom_specs: BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec> =
-        BTreeMap::new();
-    let engine = if cfg.metrics.is_empty() {
-        None
-    } else {
-        let engine = code_ranker_graph::registry::Engine::compile(&cfg.metrics)
-            .context("compiling [metrics] formulas")?;
-        for node in &mut graph.nodes {
-            if node.kind == "external" {
-                continue;
-            }
-            code_ranker_graph::apply_to_node(node, &cfg.metrics, &engine);
-        }
-        // Only node-scope metrics become node-attribute columns; graph-scope keys
-        // never sit on a node, so they would be pruned anyway.
-        custom_specs = cfg
-            .metrics
-            .iter()
-            .filter(|(_, d)| d.scope == code_ranker_graph::Scope::Node)
-            .map(|(k, d)| (k.clone(), d.to_attribute_spec()))
-            .collect();
-        Some(engine)
-    };
-
-    // The active plugin's report-list patches (table columns / card / JSON
-    // stats), applied over the global catalog lists below.
-    // The report-list patches applied over the catalog lists, in order: the
-    // language's `[report]` (from `<lang>.toml`), then the project's `[report]`
-    // (from `code-ranker.toml`) — so a project can surface its own metrics.
-    let report_overrides = [
-        plugin::report_overrides(&plugin_name),
-        code_ranker_plugin_api::list_override::report_override_section(&cfg.report),
-    ];
-
-    // Stat keys are data-driven: tier-2 metrics from the registry plus the
-    // coupling metrics (computed by the graph passes above), then patched by the
-    // language's `[report].stats` (e.g. Rust adds `unsafe`).
-    let mut stat_keys = code_ranker_graph::stat_keys();
-    stat_keys.extend([
-        "fan_in".to_string(),
-        "fan_out".to_string(),
-        "hk".to_string(),
-    ]);
-    let stat_keys = report_overrides
+        .map(|p| p.name().to_string())
+        .collect();
+    let all_eff_cfgs: BTreeMap<String, toml::Table> = all_names
         .iter()
-        .fold(stat_keys, |acc, ov| ov.stats.apply(&acc));
-    let mut stats = code_ranker_graph::stats::compute_stats(&graph, &stat_keys);
+        .map(|name| {
+            let eff = plugin::effective_plugin_config(name, &cfg.plugins.languages);
+            (name.clone(), eff)
+        })
+        .collect();
 
-    // Graph-scope aggregates → merged into the stats block (e.g. a user's
-    // `cyclomatic_p90 = agg('cyclomatic','p90','not_empty')`).
-    if let Some(engine) = &engine
-        && engine.has_graph_metrics()
-    {
-        let omit_at = registry_omit_at(&plugin_name, &cfg.metrics);
-        let rows: Vec<BTreeMap<String, f64>> = graph
-            .nodes
-            .iter()
-            .filter(|n| n.kind != "external")
-            .map(numeric_attrs)
-            .collect();
-        let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-        for r in &rows {
-            keys.extend(r.keys().cloned());
-        }
-        let keys: Vec<String> = keys.into_iter().collect();
-        let pops = code_ranker_graph::Populations::build(&rows, &keys, &omit_at);
-        for (k, v) in engine.eval_graph(&pops) {
-            stats.insert(k, code_ranker_graph::num_attr(v));
-        }
-    }
+    // Resolve the active plugin list (console > config > auto-detect).
+    let active_plugins = plugin::resolve_plugins(
+        &args.plugins,
+        &cfg.plugins.enabled,
+        &all_eff_cfgs,
+        &target,
+        &input,
+        loaded.source_file.as_deref(),
+    )?;
 
-    // Warn on any declared metric that produced no value across the whole
-    // project. Catches the otherwise-silent failure mode — a formula that errors
-    // on every node (e.g. a misspelled input key resolves to nothing) — so a
-    // typo'd metric doesn't just vanish without a trace.
-    for (key, def) in &cfg.metrics {
-        let present = match def.scope {
-            code_ranker_graph::Scope::Graph => stats.contains_key(key),
-            code_ranker_graph::Scope::Node => graph
-                .nodes
-                .iter()
-                .any(|n| n.kind != "external" && n.attrs.contains_key(key)),
-        };
-        if !present {
-            logger::summary(&format!(
-                "⚠ metric `{key}` produced no value on any node — check its formula \
-                 (a misspelled input key?) or whether it is always at its no-signal value",
-            ));
-        }
-    }
+    // Guard: no two active plugins may claim the same file extension.
+    let active_eff_cfgs: BTreeMap<String, toml::Table> = active_plugins
+        .iter()
+        .filter_map(|name| all_eff_cfgs.get(name).map(|t| (name.clone(), t.clone())))
+        .collect();
+    plugin::validate_extension_uniqueness(&active_plugins, &active_eff_cfgs)?;
 
-    let edge_count = graph.edges.len();
-    let node_count = graph.nodes.len();
-    let thresholds = gate_thresholds(&cfg);
-    let level = assemble_level(
-        level_spec,
-        graph,
-        cycles,
-        stats,
-        thresholds.clone(),
-        &custom_specs,
-        &plugin_name,
-        &report_overrides,
+    // Run each active plugin through analyze_one.
+    let mut languages: BTreeMap<String, LanguageSnapshot> = BTreeMap::new();
+    let mut combined_roots: BTreeMap<String, String> = BTreeMap::new();
+    combined_roots.insert("target".to_string(), target.display().to_string());
+    let mut combined_versions: BTreeMap<String, String> = BTreeMap::new();
+    combined_versions.insert(
+        "code-ranker".to_string(),
+        env!("CARGO_PKG_VERSION").to_string(),
     );
-    prune_unused_roots(&level, &mut roots);
-    timings.push(code_ranker_graph::snapshot::StageTime {
-        stage: "projection".into(),
-        ms: t.finish_quiet(),
-        detail: format!("nodes={node_count} edges={edge_count}"),
-    });
+    let mut combined_timings: Vec<code_ranker_graph::snapshot::StageTime> = Vec::new();
+    let mut active_final: Vec<String> = Vec::new();
 
-    let mut graphs = BTreeMap::new();
-    graphs.insert("files".to_string(), level);
+    // Per-language effective orchestrator config (rules/ignore/metrics/levels/
+    // report/principles), resolved once per active language and reused for the gate.
+    let mut rules_by_lang: BTreeMap<String, config::RulesConfig> = BTreeMap::new();
 
-    // Assemble the optional `functions` level from the split-out sub-file nodes.
-    // Reuses the same assembler: metric specs are merged and pruned to the keys
-    // present on function nodes (coupling specs drop out — functions carry none).
-    if want_functions && !fn_nodes.is_empty() {
-        let fn_graph = code_ranker_plugin_api::graph::Graph {
-            nodes: fn_nodes,
-            edges: Vec::new(),
-        };
-        let fn_level = assemble_level(
-            fn_level_spec,
-            fn_graph,
-            Vec::new(),
-            BTreeMap::new(),
-            thresholds,
-            &custom_specs,
-            &plugin_name,
-            &report_overrides,
+    for name in &active_plugins {
+        let eff_cfg = active_eff_cfgs.get(name).cloned().unwrap_or_default();
+        let lang_cfg = cfg.language_config(name)?;
+        let lang_input = plugin_input(&lang_cfg);
+        let result = analyze_one(
+            name,
+            &target,
+            &lang_input,
+            &eff_cfg,
+            &lang_cfg,
+            cfg.templates.prompt.as_deref(),
+        )?;
+
+        if !result.had_nodes {
+            logger::summary(&format!(
+                "⚠ plugin '{name}' produced no nodes — skipping (no source files found?)"
+            ));
+            continue;
+        }
+
+        // Merge roots and versions (last-writer-wins for collisions).
+        combined_roots.extend(result.roots);
+        for (k, v) in result.versions {
+            combined_versions.insert(k, v);
+        }
+        combined_timings.extend(result.timings);
+        active_final.push(name.clone());
+        rules_by_lang.insert(name.clone(), lang_cfg.rules);
+
+        languages.insert(
+            name.clone(),
+            LanguageSnapshot {
+                graphs: result.graphs,
+                principles: result.principles,
+                prompt: result.prompt,
+            },
         );
-        graphs.insert("functions".to_string(), fn_level);
     }
 
-    let violations = config::check_violations(&graphs, &cfg.rules);
+    if languages.is_empty() {
+        anyhow::bail!(
+            "all detected languages produced empty graphs in {} — \
+             no source files were analysed",
+            target.display()
+        );
+    }
+
+    // Runtime guarantee of the one-file-one-language invariant (see helper).
+    helpers::assert_disjoint_languages(&languages)?;
+
+    // Prune roots that are not referenced by any node across all languages.
+    prune_unused_roots_multi(&languages, &mut combined_roots);
+
+    let violations = config::check_violations_all(&languages, &rules_by_lang);
 
     let git = git::collect(
         &target,
@@ -316,52 +440,24 @@ pub(crate) fn analyze_directory(
         },
     );
 
-    let mut versions = BTreeMap::new();
-    versions.insert(
-        "code-ranker".to_string(),
-        env!("CARGO_PKG_VERSION").to_string(),
-    );
-    for (k, v) in plugin::versions(&plugin_name, &target, &input) {
-        versions.insert(k, v);
-    }
-
-    // Plugin catalog principles, then the project's own (`[principles.<ID>]`): a
-    // same-id project principle overrides the plugin's, a new id appends. So a
-    // project can recommend / scorecard on its custom metric.
-    let principles =
-        config::merge_project_principles(plugin::principles(&plugin_name, &input), &cfg.principles);
-
-    // Prompt-Generator scaffolding: the built-in `metrics/prompt.md`, or a
-    // `[templates] prompt = "<path>"` override read from disk (same `## <field>`
-    // Markdown shape).
-    let prompt = match &cfg.templates.prompt {
-        Some(path) => code_ranker_graph::prompt_template_from(
-            &std::fs::read_to_string(path)
-                .with_context(|| format!("reading [templates] prompt override {path}"))?,
-        ),
-        None => code_ranker_graph::prompt_template(),
-    };
-
-    let snapshot = Snapshot::new(
+    active_final.sort();
+    let snapshot = Snapshot::new(SnapshotInit {
         command,
-        cwd.display().to_string(),
-        target.display().to_string(),
-        plugin_name,
-        loaded.source_file,
-        versions,
-        roots,
+        workspace: cwd.display().to_string(),
+        target: target.display().to_string(),
+        plugins: active_final,
+        config_file: loaded.source_file,
+        versions: combined_versions,
+        roots: combined_roots,
         git,
-        timings,
-        graphs,
-        principles,
-        prompt,
-    );
+        timings: combined_timings,
+        languages,
+    });
 
     Ok(Analyzed {
         snapshot,
         violations,
-        cycles: cfg.rules.cycles,
-        rules: cfg.rules,
+        rules_by_lang,
         output: cfg.output,
     })
 }
@@ -373,15 +469,16 @@ pub(crate) fn analyze_directory(
 /// `[metrics.<key>]` spec) is kept only when it sits strictly below the gate,
 /// otherwise it is meaningless and collapses to the gate (one effective tier).
 fn gate_thresholds(
-    cfg: &config::model::Config,
+    lang_cfg: &config::model::LangConfig,
 ) -> BTreeMap<String, code_ranker_plugin_api::level::Thresholds> {
-    cfg.rules
+    lang_cfg
+        .rules
         .thresholds
         .file
         .limits
         .iter()
         .map(|(key, &warning)| {
-            let declared_info = cfg.metrics.get(key).and_then(|d| d.info);
+            let declared_info = lang_cfg.metrics.get(key).and_then(|d| d.info);
             let info = match declared_info {
                 Some(i) if i < warning => i,
                 Some(i) => {
@@ -399,29 +496,6 @@ fn gate_thresholds(
             )
         })
         .collect()
-}
-
-/// The `omit_at` (no-signal floor) of every metric key, so an aggregate's `all`
-/// population counts a missing value at the right floor (`0` for most, `1` for
-/// `cyclomatic`). Built from the central + plugin-refined + coupling specs, then
-/// the user's own metric defs.
-fn registry_omit_at(
-    plugin_name: &str,
-    custom: &BTreeMap<String, code_ranker_graph::MetricDef>,
-) -> BTreeMap<String, f64> {
-    let mut m = BTreeMap::new();
-    let (specs, _) = code_ranker_graph::metric_specs();
-    for (k, s) in plugin::metric_specs(plugin_name, specs) {
-        m.insert(k, s.omit_at);
-    }
-    let (coupling, _) = code_ranker_graph::coupling_specs();
-    for (k, s) in coupling {
-        m.insert(k, s.omit_at);
-    }
-    for (k, d) in custom {
-        m.insert(k.clone(), d.omit_at);
-    }
-    m
 }
 
 #[cfg(test)]

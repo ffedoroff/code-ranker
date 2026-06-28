@@ -21,7 +21,7 @@
             "text": "{target}/src/chain/one.rs: chain cycle: {target}/src/chain/one.rs → {target}/src/chain/three.rs → {target}/src/chain/two.rs → (back to start)"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "cycle.chain:{target}/src/chain/one.rs"
+            "codeRankerRuleLocation/v1": "rust:cycle.chain:{target}/src/chain/one.rs"
           },
           "properties": {
             "graph": "files",
@@ -48,7 +48,7 @@
             "text": "{target}/src/a.rs: mutual cycle between {target}/src/a.rs ↔ {target}/src/b.rs"
           },
           "partialFingerprints": {
-            "codeRankerRuleLocation/v1": "cycle.mutual:{target}/src/a.rs"
+            "codeRankerRuleLocation/v1": "rust:cycle.mutual:{target}/src/a.rs"
           },
           "properties": {
             "graph": "files",
@@ -90,7 +90,7 @@
               }
             }
           ],
-          "version": "3.0.0-alpha.1"
+          "version": "4.0.0"
         }
       }
     }

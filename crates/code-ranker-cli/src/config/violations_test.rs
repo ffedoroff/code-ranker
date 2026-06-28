@@ -6,7 +6,10 @@ use code_ranker_graph::level_graph::CycleGroup;
 /// trivial `RulesConfig::default()` is now an empty serde filler, so tests that
 /// exercise the *shipped* default behaviour build it from `Config::default()`.
 fn strict_rules() -> RulesConfig {
-    crate::config::model::Config::default().rules
+    crate::config::model::Config::default()
+        .language_config("base")
+        .unwrap()
+        .rules
 }
 
 fn file_node(id: &str, attrs: &[(&str, AttrValue)]) -> Node {

@@ -268,7 +268,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "code-ranker"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -286,7 +286,7 @@ dependencies = [
 
 [[package]]
 name = "code-ranker-graph"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "cel",
  "chrono",
@@ -298,7 +298,7 @@ dependencies = [
 
 [[package]]
 name = "code-ranker-plugin-api"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -309,7 +309,7 @@ dependencies = [
 
 [[package]]
 name = "code-ranker-plugins"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -336,7 +336,7 @@ dependencies = [
 
 [[package]]
 name = "code-ranker-viewer"
-version = "4.0.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "code-ranker-graph",

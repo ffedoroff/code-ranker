@@ -40,16 +40,16 @@ impl LanguagePlugin for CsharpPlugin {
         "csharp"
     }
 
-    fn detect(&self, workspace: &Path, input: &PluginInput) -> bool {
+    fn detect(&self, _cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> bool {
         structure::detect(workspace, &crate::walk::ignore_from(input))
     }
 
-    fn levels(&self) -> Vec<Level> {
+    fn levels(&self, cfg: &toml::Table) -> Vec<Level> {
         vec![
             Level {
                 name: "files".into(),
-                edge_kinds: crate::config::edge_kinds(&CONFIG),
-                node_attributes: crate::config::node_attributes(&CONFIG),
+                edge_kinds: crate::config::edge_kinds(cfg),
+                node_attributes: crate::config::node_attributes(cfg),
                 edge_attributes: BTreeMap::new(),
                 attribute_groups: BTreeMap::new(),
                 node_kinds: default_node_kinds(),
@@ -62,14 +62,14 @@ impl LanguagePlugin for CsharpPlugin {
                 node_attributes: BTreeMap::new(),
                 edge_attributes: BTreeMap::new(),
                 attribute_groups: BTreeMap::new(),
-                node_kinds: crate::config::node_kinds(&CONFIG),
+                node_kinds: crate::config::node_kinds(cfg),
                 cycle_kinds: default_cycle_kinds(),
                 grouping: None,
             },
         ]
     }
 
-    fn analyze(&self, workspace: &Path, input: &PluginInput) -> Result<Graph> {
+    fn analyze(&self, _cfg: &toml::Table, workspace: &Path, input: &PluginInput) -> Result<Graph> {
         structure::analyze(
             workspace,
             input.ignore_tests,
@@ -77,27 +77,31 @@ impl LanguagePlugin for CsharpPlugin {
         )
     }
 
-    fn metrics(&self, graph: &Graph) -> Vec<(String, MetricInputs)> {
+    fn metrics(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(String, MetricInputs)> {
         file_metrics(graph)
     }
 
-    fn function_units(&self, graph: &Graph) -> Vec<(Node, MetricInputs)> {
+    fn function_units(&self, _cfg: &toml::Table, graph: &Graph) -> Vec<(Node, MetricInputs)> {
         function_nodes(graph)
     }
 
-    fn principles(&self, _input: &PluginInput) -> Vec<Principle> {
-        crate::config::resolved_principles(&CONFIG)
+    fn principles(&self, cfg: &toml::Table, _input: &PluginInput) -> Vec<Principle> {
+        crate::config::resolved_principles(cfg)
     }
 
-    fn report_overrides(&self) -> code_ranker_plugin_api::report::ReportOverride {
-        code_ranker_plugin_api::list_override::report_override(&CONFIG)
+    fn report_overrides(
+        &self,
+        cfg: &toml::Table,
+    ) -> code_ranker_plugin_api::report::ReportOverride {
+        code_ranker_plugin_api::list_override::report_override(cfg)
     }
 
     fn metric_specs(
         &self,
+        cfg: &toml::Table,
         defaults: BTreeMap<String, AttributeSpec>,
     ) -> BTreeMap<String, AttributeSpec> {
-        crate::config::apply_spec_overrides(defaults, &CONFIG)
+        crate::config::apply_spec_overrides(defaults, cfg)
     }
 }
 

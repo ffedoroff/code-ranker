@@ -19,6 +19,9 @@ fn attr_num(node: &Node, key: &str) -> Option<f64> {
 
 #[derive(Debug, serde::Serialize)]
 pub struct Violation {
+    /// The language (plugin name) this violation belongs to. Stamped by
+    /// `check_violations_all`; empty when produced directly by `check_violations`.
+    pub language: String,
     pub rule: String,
     /// Concern-group code (`SIZ` / `CPL` / `CPX` / `CYC`, or a custom check's
     /// free-form label). A `String` because custom `[rules.checks]` carry their
@@ -60,6 +63,27 @@ pub fn check_violations(
         check_level_violations("files", level, rules, &mut vs);
     }
     vs
+}
+
+/// Aggregate violations across all languages in the snapshot. Each language is
+/// gated with ITS OWN rules (`rules_by_lang[lang]`, falling back to a default when
+/// absent), and `language` is stamped on every returned violation so downstream
+/// code can distinguish per-language findings.
+pub fn check_violations_all(
+    languages: &std::collections::BTreeMap<String, code_ranker_graph::snapshot::LanguageSnapshot>,
+    rules_by_lang: &std::collections::BTreeMap<String, RulesConfig>,
+) -> Vec<Violation> {
+    let mut all = Vec::new();
+    let fallback = RulesConfig::default();
+    for (lang, ls) in languages {
+        let rules = rules_by_lang.get(lang).unwrap_or(&fallback);
+        let mut vs = check_violations(&ls.graphs, rules);
+        for v in &mut vs {
+            v.language = lang.clone();
+        }
+        all.extend(vs);
+    }
+    all
 }
 
 fn check_level_violations(
@@ -142,6 +166,7 @@ fn check_level_violations(
 /// metric breaches by `check`'s worst-first sort).
 fn push_check(vs: &mut Vec<Violation>, graph: &'static str, location: String, hit: CheckHit) {
     vs.push(Violation {
+        language: String::new(),
         rule: format!("check.{}", hit.id),
         group: hit.group,
         graph,
@@ -292,6 +317,7 @@ fn push(
     group: &str,
 ) {
     vs.push(Violation {
+        language: String::new(),
         rule: id.to_string(),
         group: group.to_string(),
         graph,

@@ -17,7 +17,8 @@ This is the project's line of defense for correctness. Every test is a synchrono
 
 Every test must pass all three:
 
-1. **Does it verify deterministic logic?** Parsing, rule evaluation, plugin resolution,
+1. **Does it verify deterministic logic?** Parsing, rule evaluation, plugin resolution
+   (which languages a workspace yields),
    name templating — all deterministic, all testable.
 2. **Is it atomic and fast?** One `#[test]` = one behavior. No `sleep`, no `timeout`.
    The whole suite runs in well under 5 seconds.
@@ -46,8 +47,8 @@ Every test must pass all three:
 | Area | What to cover | Where |
 |---|---|---|
 | Config parsing | `--cycle-rule KIND=on\|off`, `--threshold SCOPE.METRIC=N`, defaults, rejection of bad input | `code-ranker-cli/src/config.rs` |
-| Rule evaluation | `check_violations` (cycles + thresholds); `apply_cycle_rules` strips disabled kinds | `code-ranker-cli/src/config.rs` |
-| Plugin resolution | `resolve_plugin` precedence; `detect_plugin` markers / ambiguity / none | `code-ranker-cli/src/main.rs` |
+| Rule evaluation | `check_violations_all(languages, rules)` (cycles + thresholds across every language); `apply_cycle_rules` strips disabled kinds | `code-ranker-cli/src/config.rs` |
+| Plugin resolution | `resolve_plugins` precedence; `detect_all` markers / multi-detect / none | `code-ranker-cli/src/main.rs` |
 | Name templating | `render_name` — `{project-dir}` slug, `{ts}` stamp, `{git-hash}` / `{git-hash-N}`; `[output]` name resolution | `code-ranker-cli/src/main.rs`, `config.rs` |
 | Snapshot & graph types | serde round-trip of the snapshot (the public artifact); builder / projection invariants; cycle and HK annotation | `code-ranker-core/src/*` |
 | Graph extraction | module / file graph shape on small in-source inputs | `code-ranker-syn/src/*` |
@@ -75,12 +76,13 @@ applies:
 
 ```rust
 // BAD — only checks it didn't error
-let v = check_violations(&graphs, &rules);
+let v = check_violations_all(&languages, &rules);
 assert!(!v.is_empty());
 
-// GOOD — checks the count, which graph, the message, AND that the
-// in-budget node did NOT contribute a violation
+// GOOD — checks the count, which language + graph, the message, AND that
+// the in-budget node did NOT contribute a violation
 assert_eq!(v.len(), 1, "only the over-budget node violates");
+assert_eq!(v[0].language, "rust");
 assert_eq!(v[0].graph, "functions");
 assert!(v[0].message.contains("cognitive"), "got {:?}", v[0].message);
 ```
@@ -118,7 +120,7 @@ fn node_with_cognitive(id: &str, cognitive: f64) -> Node { /* … */ }
 ```rust
 let d = tempfile::tempdir().unwrap();
 std::fs::write(d.path().join("Cargo.toml"), "").unwrap();
-assert_eq!(detect_plugin(d.path()).unwrap(), "rust");
+assert_eq!(detect_all(d.path()).unwrap(), ["rust"]);
 ```
 
 ## Naming
@@ -130,8 +132,9 @@ parse_on_off_accepts_on_off_true_false
 cycle_rules_default_test_embed_off_others_on
 check_reports_enabled_cycle_group
 apply_cycle_rules_strips_disabled_kind
-detect_plugin_errors_on_ambiguous_or_empty
-resolve_plugin_precedence_explicit_then_config_then_auto
+detect_all_returns_every_matching_language
+detect_all_errors_on_zero_detect
+resolve_plugins_precedence_explicit_then_config_then_auto
 ```
 
 ## Organization

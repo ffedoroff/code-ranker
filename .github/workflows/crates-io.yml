@@ -37,12 +37,12 @@ jobs:
           # right before publishing; cargo auto-detects a package-root README.md
           # when no `readme` field is set. `--allow-dirty` tolerates the copy.
           for d in crates/*/; do cp README.md "$d/README.md"; done
-          # Same trick for the `--doc` corpus: the languages/ tree lives at the
+          # Same trick for the `--doc` corpus: the plugins/ tree lives at the
           # repo root (outside the crate, so not in the published tarball by
           # default). Copy it into the CLI crate so `cargo publish` packs it and
           # `cargo install code-ranker` embeds the full corpus; build.rs prefers
           # this package-local copy over the repo-root tree. `--allow-dirty` covers it.
-          cp -R languages crates/code-ranker-cli/languages
+          cp -R plugins crates/code-ranker-cli/plugins
           for c in code-ranker-plugin-api code-ranker-graph code-ranker-plugins code-ranker-viewer code-ranker; do
             echo "==> publishing $c"
             attempt=0

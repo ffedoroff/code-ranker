@@ -18,7 +18,7 @@ and overrides them, and the CLI surface that prints a prompt or a doc directly.
 
 | Family | What it is | Source today | Rendered by |
 |---|---|---|---|
-| **Docs corpus** | per-principle / per-metric Markdown (`SRP.md`, `HK.md`, …) | `languages/<lang>/<ID>.md` | embedded in the binary (§3) and addressed by `doc_url`; no longer served live (§5) |
+| **Docs corpus** | per-principle / per-metric Markdown (`SRP.md`, `HK.md`, …) | `plugins/<lang>/<ID>.md` | embedded in the binary (§3) and addressed by `doc_url`; no longer served live (§5) |
 | **Prompt scaffolding** | the framing prose around a principle in an AI prompt (intro, task protocol, …) | `code-ranker-graph/metrics/prompt.md` → `PromptTemplate` | `compose_prompt` (CLI), `composePrompt` (viewer) |
 
 They are converging on **one composition engine** (§4) and one override mechanism
@@ -52,7 +52,7 @@ A language doc avoids duplicating `base/`'s language-neutral content (theory,
 algorithm, history, references) by being a **manifest** rather than a full copy:
 
 ```
-languages/
+plugins/
   base/<ID>.md     SOURCE — language-neutral content as `## ` sections; also the
                    served fallback for languages with no own corpus.
   <lang>/<ID>.md   Either a MANIFEST (assembled from base) or a full standalone doc.
@@ -84,7 +84,7 @@ absent — the language owns the full structure); the H1 + preamble is inherited
 to a line start; a `doc:base` naming a missing section — or a `from`/`to` phrase not
 found — is a hard error.
 
-Worked example — `languages/rust/ADP.md`:
+Worked example — `plugins/rust/ADP.md`:
 
 ```markdown
 <!-- doc:base "The principle" -->
@@ -97,14 +97,14 @@ Cargo models crates as a DAG; a dependency cycle between crates does not compile
 <!-- doc:base "References" -->
 ```
 
-`compose(rust/ADP.md manifest, base/ADP.md)` → the served `languages/rust/ADP.md`.
+`compose(rust/ADP.md manifest, base/ADP.md)` → the served `plugins/rust/ADP.md`.
 
 ---
 
 ## 3. Embedding in the binary ✅
 
 The corpus is embedded into the binary at build time (dependency-free — a
-[`build.rs`](../crates/code-ranker-cli/build.rs) walks `languages/**/*.md` and
+[`build.rs`](../crates/code-ranker-cli/build.rs) walks `plugins/**/*.md` and
 generates an `include_str!`-backed `CORPUS` slice; see
 [`templates.rs`](../crates/code-ranker-cli/src/templates.rs)), so the tool can
 **use the doc text itself**, not only link a URL:
@@ -141,7 +141,7 @@ substitution primitive already in the tree.
 Corpus publishing to GitHub Pages (and the `code-ranker docs` subcommand that
 composed the corpus to disk) has been **removed**. The corpus is no longer served
 over a URL; it lives only **embedded in the binary** (§3) and is reached through
-the `docs <ID>` command / inline prompt text. The Pages workflow still publishes the HTML
+the `docs <lang> <ID>` command / inline prompt text. The Pages workflow still publishes the HTML
 *report* (`report . → site/index.html`), but not the doc corpus, so a finding's
 `doc_url` no longer resolves to a live page.
 
@@ -150,11 +150,11 @@ the `docs <ID>` command / inline prompt text. The Pages workflow still publishes
 ## 6. Per-file override — `[templates.…]` ✅
 
 A user can substitute any single corpus fragment with their own file, and the binary
-treats it **as if it were that file in `languages/`**:
+treats it **as if it were that file in `plugins/`**:
 
 ```toml
 [templates.languages.base]
-HK = "custom-hk.md"          # use ./custom-hk.md as languages/base/HK.md
+HK = "custom-hk.md"          # use ./custom-hk.md as plugins/base/HK.md
 ```
 
 or inline on the command line:
@@ -206,25 +206,25 @@ code-ranker report . --prompt HK --top 5 --focus-path src/engine
   `--focus-path` refine the module list.
 - With embedded docs (§3) it can inline the full principle text rather than only the
   link.
+- It is the explicit, name-it-yourself, print-to-stdout path — the quick "show me HK"
+  path — and (being a standalone dump) accepts any `--top N` to widen the ranked module
+  list. Redirect to a file when you need an artifact: `code-ranker report . --prompt HK > prompt.md`.
 
-**How it differs from the existing `--output.prompt`**: `--output.prompt`
-*auto-targets the single worst principle*, requires `--top 1`, and writes a
-`…-{principle}.md` file. `--prompt <ID>` is the explicit, name-it-yourself, print-to-
-stdout counterpart — the quick "show me HK" path — and (being a standalone dump)
-accepts any `--top N` to widen the ranked module list.
+### 7.2 `docs <lang> <subject>` — print the raw principle doc ✅
 
-### 7.2 `docs <ID>` — print the raw principle doc ✅
-
-The `docs` command dumps the embedded principle/metric Markdown itself (composed for the
-active `--plugin`, with any `[templates.…]` override applied), no analysis and no `[input]`:
+The `docs` command dumps the embedded principle/metric Markdown (composed for one
+language, with any `[templates.…]` override applied), no analysis and no `[input]`. The
+language is the **first positional argument** — there is no `--plugin` flag. Bare `docs`
+lists available languages; `docs <lang>` lists that language's subject catalog:
 
 ```bash
-code-ranker docs HK        # the resolved languages/<lang>/HK.md
+code-ranker docs rust HK   # the resolved plugins/rust/HK.md
+code-ranker docs base HK   # the language-agnostic base doc
 ```
 
 ### 7.3 Existing prompt surfaces ✅
 
-- `report --output.prompt[.path]` — write the auto-targeted worst-principle prompt.
+- `report --prompt <ID>` — print the named principle/metric prompt to stdout.
 - `check --output-format prompt` — build a prompt from the gate's own violations
   (`render_prompt`).
 - HTML viewer Prompt Generator — interactive, builds the prompt around the user's
@@ -245,12 +245,12 @@ project may substitute its own via `prompt_template_from()`), and is carried in 
 snapshot as [`PromptTemplate`](../crates/code-ranker-plugin-api/src/principle.rs) so the
 CLI and the viewer render identical text from one source. Unlike the principle/metric
 corpus, `prompt.md` is **internal template prose**: it sits next to `builtin.toml`
-(not under `languages/`) and is not a `<lang>/<ID>` doc.
+(not under `plugins/`) and is not a `<lang>/<ID>` doc.
 
 | Field | Role |
 |---|---|
 | `intro` | one-line intent under the title |
-| `doc_note` | how to read the full principle — points at the offline `code-ranker docs <id>` command (`{id}` substituted), not a network URL |
+| `doc_note` | how to read the full principle — points at the offline `code-ranker docs <lang> <id>` command (`{id}` substituted), not a network URL |
 | `task` | the task-protocol bullets (`{id}` → active principle id) |
 | `focus` | closing emphasis line |
 | `cycle_note` | note prepended to a single dependency-cycle's module list |
@@ -279,14 +279,14 @@ and JS.
 | Piece | State |
 |---|---|
 | `doc_url` base-fallback resolution (`doc_overrides`) | ✅ |
-| `base/` corpus + `doc_base = .../languages` | ✅ |
+| `base/` corpus + `doc_base = .../plugins` | ✅ |
 | `PromptTemplate` prose in `metrics/prompt.md` (internal; parsed by `prompt_template`) | ✅ |
 | `compose_prompt` / `render_prompt` / viewer `composePrompt` | ✅ |
-| `report --output.prompt`, `check --output-format prompt` | ✅ |
+| `check --output-format prompt` | ✅ |
 | Embedding the corpus in the binary (`build.rs` → `CORPUS`) | ✅ |
 | `[templates.languages.<lang>.<ID>]` per-file override | ✅ |
 | `report --prompt <ID>` | ✅ |
-| `docs <ID>` | ✅ |
+| `docs <lang> <subject>` | ✅ |
 | Manifest composer (`compose.rs`: `doc:base` + `from`/`to`) + `resolve_doc` wiring | ✅ |
 | `code-ranker docs` build subcommand + corpus Pages publishing (Variant B) | ✗ removed — corpus is binary-embedded only, not served over a URL |
 | `base/` + per-language manifest migration | ◐ all `rust/` docs migrated; `python`/`typescript` 🔜 |

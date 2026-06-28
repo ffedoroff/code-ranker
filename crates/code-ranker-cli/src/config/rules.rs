@@ -47,6 +47,7 @@ pub struct RuleDoc {
 /// spec for its trailing metric key. `None` when no spec matches.
 pub fn rule_doc(
     id: &str,
+    lang: &str,
     node_attributes: &BTreeMap<String, AttributeSpec>,
     cycle_kinds: &BTreeMap<String, CycleKindSpec>,
 ) -> Option<RuleDoc> {
@@ -61,12 +62,13 @@ pub fn rule_doc(
     let metric = id.rsplit('.').next().unwrap_or(id);
     let s = node_attributes.get(metric)?;
     // A metric's `fix` is its own `remediation` when one is authored (a project
-    // `[metrics.<key>]` may set a custom fix); otherwise auto-derive the pointer to
-    // its doc from the key, so the built-in catalog carries no duplicated boilerplate
-    // and the command always names the correct subject (`docs <key>`).
+    // `[metrics.<key>]` may set a custom fix); otherwise auto-derive a command that
+    // generates the AI fix-prompt for this metric, so the built-in catalog carries no
+    // duplicated boilerplate and the command always names the correct subject
+    // (`report --plugins <lang> --prompt <key>`).
     let fix = s.remediation.clone().or_else(|| {
         Some(format!(
-            "Run `code-ranker docs {metric}` and follow its instructions."
+            "Run `code-ranker report --plugins {lang} --prompt {metric}` to generate an AI fix-prompt."
         ))
     });
     Some(RuleDoc {
@@ -89,13 +91,19 @@ pub fn rule_group(id: &str) -> &'static str {
         .unwrap_or("?")
 }
 
-pub fn rule_tuning(id: &str) -> String {
+pub fn rule_tuning(id: &str, lang: &str) -> String {
+    // Rules are per-language: tune one language under `[plugins.<lang>]`, or the
+    // shared `[plugins.base]` layer to affect every language at once.
     if let Some(kind) = id.strip_prefix("cycle.") {
         format!(
-            "disable with --cycle-rule {kind}=off   ·   rules.cycles.{kind} in code-ranker.toml"
+            "set with --config plugins.{lang}.rules.cycles.{kind}=off   ·   \
+             plugins.{lang}.rules.cycles.{kind} in code-ranker.toml (or plugins.base for all)"
         )
     } else if let Some(rest) = id.strip_prefix("threshold.") {
-        format!("set with --threshold {rest}=N   ·   rules.thresholds.{rest} in code-ranker.toml")
+        format!(
+            "set with --config plugins.{lang}.rules.thresholds.{rest}=N   ·   \
+             plugins.{lang}.rules.thresholds.{rest} in code-ranker.toml (or plugins.base for all)"
+        )
     } else {
         String::new()
     }

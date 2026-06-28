@@ -34,6 +34,7 @@ function gitSourceUrl(git, relPath, line) {
 // elsewhere). The node id IS its relativized path; strip the leading `{...}/`
 // root token to get the repo-relative path. Returns null for external nodes.
 // An optional `line` adds a `#L<n>` anchor to the blob URL.
+// Git info lives at the snapshot root (activeHeader), not inside a language.
 function nodeSourceUrl(node, level, line) {
   if (!node) return null;
   if (level != null && isExternalNode(node, level)) return null;
@@ -42,7 +43,7 @@ function nodeSourceUrl(node, level, line) {
   // Use node.id as the path (strip the root token).
   const rel = (node.id || '').replace(/^\{[^}]+\}\//, '');
   if (!rel) return null;
-  return gitSourceUrl(activeSnap()?.git, rel, line);
+  return gitSourceUrl(activeHeader()?.git, rel, line);
 }
 // Expose on window so modal.js can use it from click handlers.
 window.nodeSourceUrl = nodeSourceUrl;
@@ -70,9 +71,10 @@ window.connSourceLine = connSourceLine;
 // unchanged when there is no token or the root is unknown. Used for the path
 // tooltip in the node popup.
 function absPath(idOrPath) {
-  const snap = activeSnap();
+  // target/roots are top-level header fields, not inside a language sub-object.
+  const hdr = (typeof activeHeader === 'function') ? activeHeader() : null;
   const m = /^\{([^}]+)\}\/(.*)$/.exec(idOrPath || '');
-  if (!snap || !m) return idOrPath || '';
-  const base = m[1] === 'target' ? (snap.target ?? snap.roots?.target) : snap.roots?.[m[1]];
+  if (!hdr || !m) return idOrPath || '';
+  const base = m[1] === 'target' ? (hdr.target ?? hdr.roots?.target) : hdr.roots?.[m[1]];
   return base ? `${base}/${m[2]}` : (idOrPath || '');
 }

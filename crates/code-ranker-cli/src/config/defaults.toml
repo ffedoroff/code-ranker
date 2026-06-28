@@ -6,11 +6,15 @@
 # it. The merge reuses the plugins' `deep_merge`, so op-table list overrides
 # (`{add,remove,replace,clear,prepend}`) work for arrays here too.
 
-# Default plugin: unset → `auto` (marker detection). A project pins one with
-# `plugin = "rust"`; `--plugin` overrides both.
+# Active plugins: empty / omitted → auto-detect all languages whose markers are
+# present. A project pins specific ones with `[plugins] enabled = ["rust"]`;
+# `--plugins` overrides. Per-language config lives under `[plugins.<lang>]`, with
+# the shared base under `[plugins.base]` (inherited by every language).
+# [plugins]
+# enabled = ["rust"]
 
-# ── Ignore filters (applied before cycles/metrics) ───────────────────────────
-[ignore]
+# ── Ignore filters (applied before cycles/metrics) — per-language base ────────
+[plugins.base.ignore]
 # Glob patterns (repo-relative) dropped from the graph. None by default.
 paths = []
 # Skip the language's test files — metrics and cycles describe production code.
@@ -22,16 +26,24 @@ gitignore = true
 ignore_files = true
 hidden = true
 
-# ── Gate rules (`check`) ─────────────────────────────────────────────────────
+# ── Gate rules (`check`) — per-language base ──────────────────────────────────
 # Cycle checks per kind: `true`/0 = strict, `false` = off, N = allow up to N.
-[rules.cycles]
+[plugins.base.rules.cycles]
 mutual = true
 chain = true
 
 # Per-file metric thresholds (`file` is the only scope). No limits by default —
 # a project adds its own (e.g. `sloc = 800`). Values accept `_` separators and
 # K/M/G suffixes.
-[rules.thresholds.file]
+[plugins.base.rules.thresholds.file]
+
+# Markdown is documentation, not code: it ships NO gate by default — cross-document
+# link cycles are perfectly normal, and there are no per-file thresholds. So `md`
+# turns the strict base cycle rules OFF (a project can still opt back in under
+# `[plugins.md]`). Thresholds inherit the empty base set (no limits).
+[plugins.md.rules.cycles]
+mutual = false
+chain = false
 
 # ── Output artifacts (`report`) ──────────────────────────────────────────────
 # One section per format: `path` is a filename template; `enabled` forces the
@@ -54,16 +66,12 @@ enabled = false
 path = ".code-ranker/{ts}-{git-hash-3}.codequality.json"
 enabled = false
 
-# The prompt defaults to a per-principle Markdown file; the scorecard is a console
-# overview defaulting to the stdout stream. Both stay OFF unless requested via
-# `--output.prompt` / `--output.scorecard`; these just supply the default path.
-[output.prompt]
-path = ".code-ranker/{ts}-{git-hash-3}-{principle}.md"
-
+# The scorecard is a console overview defaulting to the stdout stream. It stays
+# OFF unless requested via `--output.scorecard`; this just supplies the default path.
 [output.scorecard]
 path = "stdout"
 
-# ── Optional extra analysis levels ───────────────────────────────────────────
+# ── Optional extra analysis levels — per-language base ───────────────────────
 # Off by default → only the `files` level is emitted (default output unchanged).
-[levels]
+[plugins.base.levels]
 functions = false

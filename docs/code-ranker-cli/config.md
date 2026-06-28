@@ -5,7 +5,7 @@
 Every `code-ranker.toml` MUST declare the config-schema version it targets:
 
 ```toml
-version = "4.0"
+version = "5.0"
 ```
 
 It is the **config + CLI** format version (app `major.minor`). The loader rejects a
@@ -20,8 +20,8 @@ Settings are merged from multiple sources. **Higher priority wins** for the same
 
 | Priority | Source | Example |
 |---|---|---|
-| 1 | CLI flags | `--ignore '**/tests/**'` |
-| 2 | `--config KEY=VALUE` inline override | `--config rules.thresholds.file.hk=200000` |
+| 1 | CLI flags | `--ignore '**/tests/**'`, `--plugins rust,markdown` |
+| 2 | `--config KEY=VALUE` inline override | `--config plugins.base.rules.thresholds.file.hk=200000`, `--config plugins.rust.metrics.unsafe.warning=5` |
 | 3 | `--config <file>` (**repeatable** — see below) | `--config base.toml --config over.toml` |
 | 4 | `code-ranker.toml` in cwd | `./code-ranker.toml` |
 | 5 | `code-ranker.toml` in the analyzed target directory | `<target>/code-ranker.toml` |
@@ -52,7 +52,7 @@ everywhere, list keys can be **patched** across layers, not just replaced
 The **built-in defaults are the merge base, always** — they ship inside the binary
 (`config/defaults.toml`) and are **deep-merged** with your config, so a partial
 `code-ranker.toml` need only spell out what it changes and inherits every other key
-(e.g. omit `[rules.cycles]` and you still get strict mutual/chain). A discovered file
+(e.g. omit `[plugins.base.rules.cycles]` and you still get strict mutual/chain). A discovered file
 overrides per key; arrays can also be patched in place with an op-table
 (`paths = { add = ["x/**"], remove = ["y/**"] }`) instead of replaced wholesale.
 Run [`--export-full-config`](#--export-full-config-path) to see every effective value.
@@ -61,25 +61,38 @@ Run [`--export-full-config`](#--export-full-config-path) to see every effective 
 
 Config arrives in **two independent stacks**, both compiled into the binary as the
 base and then overridable. `--export-full-config` dumps the effective result of
-both (`[plugin]` = the language stack, `[project]` = the project stack).
+both (one `[plugins.<lang>]` section per active language = the language stacks,
+`[project]` = the project stack).
 
 **1. Language stack** — the node-kind vocabulary, per-language metric specs,
-default thresholds, and `[report]` view overrides. Selected by `--plugin` (or
-auto-detected). Built by `config::load_chain` as
-`base ⊕ [family] ⊕ <lang>`, each layer deep-merged over the last:
+default thresholds, and `[report]` view overrides. Built **per active language**
+(every language `code-ranker` runs in a multi-language run gets its own stack), then
+overlaid with the user's `[plugins.<lang>]` blocks. The built-in chain is
+`base ⊕ [family] ⊕ <lang>`, each layer deep-merged over the last, with the user
+layers on top:
 
 | Layer | Applies to | Source (GitHub `main`) |
 |---|---|---|
 | **base** — common vocabulary & defaults | every language | [`crates/code-ranker-plugins/src/defaults.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/defaults.toml) |
 | **family** (optional middle layer) | JS/TS → [`ecmascript/config.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/ecmascript/config.toml) · C/C++ → [`cfamily/config.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/cfamily/config.toml) | the shared engine vocab |
-| **`<lang>`** — only what differs | the chosen plugin | [`languages/<lang>/config.toml`](https://github.com/ffedoroff/code-ranker/tree/main/crates/code-ranker-plugins/src/languages) — e.g. [`rust`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/rust/config.toml), [`python`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/python/config.toml), [`go`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/go/config.toml) |
+| **`<lang>`** — only what differs | one plugin | [`languages/<lang>/config.toml`](https://github.com/ffedoroff/code-ranker/tree/main/crates/code-ranker-plugins/src/languages) — e.g. [`rust`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/rust/config.toml), [`python`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/python/config.toml), [`go`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-plugins/src/languages/go/config.toml) |
+| **`[plugins.base]`** (user) — shared overrides for every language | every language | your `code-ranker.toml` / `--config` |
+| **`[plugins.<lang>]`** (user) — overrides for one language | that plugin | your `code-ranker.toml` / `--config` |
+
+A `[plugins.<lang>]` block (and the virtual `[plugins.base]`) overrides **any**
+key of that language's built-in config — not just metrics and levels but
+`extensions`, `detect_markers`, `skip_dirs`, `edge_kinds`, `node_attributes`,
+`[[principles]]`, `metrics`, `levels`, … — deep-merged onto the effective config.
+See [`[plugins.<lang>]`](#pluginslang--per-language-plugin-overrides).
 
 The shared **metric catalog** (built-in derived metrics, aggregates, the default
 `[report]` columns/card/size/filter) is layered under the language `[report]`:
 [`crates/code-ranker-graph/metrics/builtin.toml`](https://github.com/ffedoroff/code-ranker/blob/main/crates/code-ranker-graph/metrics/builtin.toml).
 
-**2. Project stack** — `[rules]`, `[metrics]`, `[principles]`, `[ignore]`,
-`[levels]`, output, and a project `[report]` patch. This is what `--config` and
+**2. Language stack (rules/metrics/etc)** — `rules`, `metrics`, `principles`, `ignore`,
+`levels`, `report`, and all plugin-config keys live under `[plugins.<lang>]` /
+`[plugins.base]` (per-language, **not** at the top level). Only `[output]` and
+`[templates]` remain global (one report per run). This is what `--config` and
 `code-ranker.toml` set:
 
 | Order | Layer | Source |
@@ -90,11 +103,13 @@ The shared **metric catalog** (built-in derived metrics, aggregates, the default
 | ⊕ | `--config KEY=VALUE` inline | after all files |
 | ⊕ | CLI flags (`--threshold`, `--cycle-rule`, `--ignore`) | last |
 
-So the **complete order**, base → most-specific: language `base` ⊕ `[family]` ⊕
-`<lang>` for the plugin side; project `defaults.toml` ⊕ discovered/`--config`
-files (in order) ⊕ inline ⊕ CLI flags for the rules side. A project `[report]`
-patch layers on top of the language `[report]`, which layers on the catalog — so
-the three `[report]` sources compose (catalog → language → project).
+So the **complete order**, base → most-specific: per language `base` ⊕ `[family]` ⊕
+`<lang>` ⊕ user `[plugins.base]` ⊕ user `[plugins.<lang>]` ⊕
+`--config plugins.base.*` ⊕ `--config plugins.<lang>.*` for the plugin and
+orchestrator sides (rules/metrics/etc). `[output]` and `[templates]` are the only
+global sections — one per run, not per language. A `[plugins.<lang>.report]` patch
+layers on top of the language `[report]`, which layers on the catalog — so the three
+`[report]` sources compose (catalog → language → `[plugins.<lang>]`).
 
 ---
 
@@ -114,10 +129,35 @@ the three `[report]` sources compose (catalog → language → project).
 >   the options — you would never write all of it.
 
 ```toml
-# Default plugin. Overridden by --plugin.
-plugin = "rust"
+version = "5.0"          # required config-schema version
 
-[ignore]
+# Active languages. Overridden by --plugins. Omit (or leave empty) to auto-detect
+# every language present in the workspace. Each entry (and every `[plugins.<lang>]`
+# block key) may be a canonical name or an alias (`js`, `py`, `rs`, …).
+[plugins]
+enabled = ["rust", "md"]
+
+[output.json]                # `report` JSON snapshot artifact — GLOBAL
+path = "{project-dir}-{ts}.json"   # default if unset: .code-ranker/{ts}-{git-hash-3}.json
+# enabled = false            # keep the path but don't write JSON unless re-selected
+
+[output.html]                # `report` HTML viewer artifact — GLOBAL
+path = "{project-dir}-{ts}.html"   # default if unset: .code-ranker/{ts}-{git-hash-3}.html
+
+[output.sarif]               # `report` SARIF 2.1.0 artifact (GitHub code scanning / GitLab >=18.11) — GLOBAL
+path = "{project-dir}-{ts}.sarif"  # default if unset: .code-ranker/{ts}-{git-hash-3}.sarif
+# enabled = true             # write SARIF on every report run (opt-in; not in the default set)
+
+[output.codequality]         # `report` GitLab Code Quality (CodeClimate) artifact — GLOBAL
+path = "gl-code-quality-report.json"  # default if unset: .code-ranker/{ts}-{git-hash-3}.codequality.json
+# enabled = true             # write Code Quality on every report run (opt-in)
+
+# ── Per-language config (rules/ignore/metrics/levels/report/principles all live here) ──
+
+[plugins.base]               # shared overrides applied to EVERY active language
+skip_dirs = ["vendor"]       # deep-merged onto each language's built-in config
+
+[plugins.base.ignore]
 paths = [
   "**/generated/**",
   "crates/*/benches/**",
@@ -133,69 +173,59 @@ gitignore = true         # honour .gitignore (+ global gitignore + .git/info/exc
 ignore_files = true      # honour .ignore files — ON BY DEFAULT
 hidden = true            # skip hidden files/dirs (dotfiles) — ON BY DEFAULT; set false to include them
 
-[rules.cycles]
+[plugins.base.rules.cycles]
 # each kind: false = off, true = strict (any cycle fails, same as 0),
 # or an integer N = allow up to N cycles of that kind (the N+1-th fails).
 mutual     = true    # default — strict
 chain      = 7       # allow up to 7 chain cycles; pin today's count as a baseline
 
-[rules.thresholds.file]      # a single file (files graph)
+[plugins.base.rules.thresholds.file]      # a single file (files graph)
 loc        = 800
 sloc       = 600             # any per-file metric the engine emits is accepted
 cognitive  = 25
 hk         = 500_000         # `_` separators; or a suffix: hk = 5M (bare or "5M")
 fan_out    = 50
 
-[rules.defs]                 # reusable named CEL helpers (expanded into checks)
+[plugins.base.rules.defs]                 # reusable named CEL helpers (expanded into checks)
 is_test_file = 'name.endsWith("_tests.rs") || path.contains("/tests/")'
 
-[rules.checks.de1101]        # a custom linter: CEL bool predicate per file node
+[plugins.base.rules.checks.de1101]        # a custom linter: CEL bool predicate per file node
 when    = "tloc > 100 && !is_test_file"   # node values + path/deps/files + helpers
 message = "{tloc} lines of inline test code in a production file"
 group   = "TST"              # free-form concern label (default "LNT")
 # why / fix / title          # optional diagnostic copy; {key} interpolated
 
-[output.json]                # `report` JSON snapshot artifact
-path = "{project-dir}-{ts}.json"   # default if unset: .code-ranker/{ts}-{git-hash-3}.json
-# enabled = false            # keep the path but don't write JSON unless re-selected
-
-[output.html]                # `report` HTML viewer artifact
-path = "{project-dir}-{ts}.html"   # default if unset: .code-ranker/{ts}-{git-hash-3}.html
-
-[output.sarif]               # `report` SARIF 2.1.0 artifact (GitHub code scanning / GitLab >=18.11)
-path = "{project-dir}-{ts}.sarif"  # default if unset: .code-ranker/{ts}-{git-hash-3}.sarif
-# enabled = true             # write SARIF on every report run (opt-in; not in the default set)
-
-[output.codequality]         # `report` GitLab Code Quality (CodeClimate) artifact
-path = "gl-code-quality-report.json"  # default if unset: .code-ranker/{ts}-{git-hash-3}.codequality.json
-# enabled = true             # write Code Quality on every report run (opt-in)
-
-[levels]                     # opt-in extra graph levels beyond `files`
+[plugins.base.levels]                     # opt-in extra graph levels beyond `files`
 # functions = true           # emit a `functions` level with per-function metrics
-#                            # (or inline, no file: --config levels.functions=true)
+#                            # (or inline, no file: --config plugins.base.levels.functions=true)
 
-[metrics.comment_ratio]      # user-defined metric (CEL formula + spec)
+[plugins.base.metrics.comment_ratio]      # user-defined metric (CEL formula + spec)
 formula_cel = "sloc > 0.0 ? cloc / sloc * 100.0 : 0.0"
 label       = "Comments %"
 direction   = "higher_better"  # lower_better | higher_better
 group       = "loc"
 # scope     = "node"           # node (per file/function, default) | graph (aggregate)
 
-[metrics.cyclomatic_p90]     # a graph-scope aggregate → lands in the `stats` block
+[plugins.base.metrics.cyclomatic_p90]     # a graph-scope aggregate → lands in the `stats` block
 scope       = "graph"
 formula_cel = "agg('cyclomatic', 'p90', 'not_empty')"
+
+[plugins.rust]               # overrides for ONE language (deep-merged, base wins under it)
+extensions = ["rs"]          # any plugin-config key is overridable here, not just metrics
+[plugins.rust.metrics.unsafe]
+warning = 5                  # tune a language-specific metric's advisory tier
 ```
 
 The threshold scope is always `file` — a single source file on the one graph
 code-ranker builds.
 
-### `[rules.checks.<id>]` — custom checks (config-only linters)
+### `[plugins.<lang>.rules.checks.<id>]` — custom checks (config-only linters)
 
 A custom check is the general form of a `check` rule: a CEL **boolean** `when`
 predicate evaluated per file node (a second pass over the fully-built graph). When
 it is true, `check` reports a `check.<id>` violation pinned to that file — like a
 threshold or cycle violation, in every output format, counting toward the exit
-code. Where `[rules.thresholds.file]` only does `metric > limit`, a check is any
+code. Where `[plugins.<lang>.rules.thresholds.file]` only does `metric > limit`, a check is any
 boolean expression over a rich context:
 
 - **node values** — any attribute key (`tloc`, `sloc`, `loc`, `unsafe`, `cyclomatic`, …);
@@ -216,7 +246,7 @@ concern label, default `LNT`) / `why` / `fix` / `title` diagnostic copy — all 
 which interpolate `{key}` from the node's values. A `when` that fails to compile
 becomes a loud `check.<id>` violation (a typo can't pass silently).
 
-### `[rules.defs]` — reusable named helpers
+### `[plugins.<lang>.rules.defs]` — reusable named helpers
 
 `name = "<cel expr>"` entries expanded into a check's `when` before compilation (a
 helper may reference an earlier one; a reference cycle is a hard error). They add
@@ -224,7 +254,7 @@ reuse/readability, not new power. See **`docs/customization/README.md` §1.8** f
 the full walkthrough and **`docs/customization/cel-reference.md`** for the complete
 CEL reference (language, built-in functions, what is in scope in checks vs metrics).
 
-### `[levels]` — opt-in graph levels
+### `[plugins.<lang>.levels]` — opt-in graph levels
 
 `functions = true` adds a second graph level, `functions`, with one node per
 sub-file unit (function / method / closure / …) carrying the same per-unit
@@ -233,9 +263,11 @@ the `files` level is always emitted. Function nodes have `parent` = their file
 node id and a per-language `kind` (e.g. `fn`/`method`/`closure`,
 `function`/`arrow`/`generator`). No call graph is built (no `Calls` edges). The
 HTML viewer surfaces the extra level through a **level switcher** (Files /
-Functions tabs); the JSON snapshot carries it under `graphs.functions`.
+Functions tabs); the JSON snapshot carries it under
+`languages.<lang>.graphs.functions`. Use `[plugins.base.levels]` to enable it for
+all languages, or `[plugins.<lang>.levels]` for one.
 
-### `[metrics.<key>]` — declarative metrics
+### `[plugins.<lang>.metrics.<key>]` — declarative metrics
 
 Every tier-2 metric is **data**: a CEL `formula_cel` plus display spec. The built-in
 set ships in `code-ranker-graph/metrics/builtin.toml`; you add or override metrics
@@ -260,23 +292,23 @@ here with no code change. Fields:
   CEL `formula_cel`, so plain-arithmetic metrics get the line for free.
 - `warning` / `info` — optional two-tier advisory severity thresholds the scorecard
   and viewer badge against (a missing tier mirrors the other). If the metric is also
-  gated in `[rules.thresholds.file]`, the gate limit overrides `warning` (the gate
+  gated in `[plugins.<lang>.rules.thresholds.file]`, the gate limit overrides `warning` (the gate
   wins) and `info` is kept only when it stays below it.
 
 A node-scope metric is computed for every file (and function, when that level is
-on) and is usable as a `[rules.thresholds.file]` limit like any built-in (the key
+on) and is usable as a `[plugins.<lang>.rules.thresholds.file]` limit like any built-in (the key
 is validated at load — a typo, or a metric you never defined, is a hard error).
 
-### `[principles.<ID>]` — project Prompt-Generator principles
+### `[plugins.<lang>.principles.<ID>]` — project Prompt-Generator principles
 
 A principle ranks files by one metric and ships a
-ready-to-paste AI prompt, surfaced by the `scorecard` / `prompt` outputs and the
+ready-to-paste AI prompt, surfaced by the `scorecard` output, `--prompt <ID>`, and the
 viewer's Prompt-Generator buttons. The plugin catalog ships the SOLID/complexity principles;
 a project adds its own (e.g. over a custom metric) here. The table key is the id;
 a same-id project principle overrides the plugin's, a new id appends.
 
 ```toml
-[principles.TSR]
+[plugins.base.principles.TSR]
 title       = "TSR — Trim inline test bulk"  # prompt heading (defaults to id)
 sort_metric = "tsr"                          # the metric the worst-first list ranks by
 prompt      = "Move inline test modules into sibling test files…"
@@ -285,6 +317,47 @@ prompt      = "Move inline test modules into sibling test files…"
 
 Only `sort_metric` is essential. See the worked example in
 [`docs/customization/`](../customization/README.md#17-prompt-generator-principles--principlesid).
+
+### `[plugins.<lang>]` — per-language plugin overrides
+
+A `[plugins.<lang>]` block overrides the **effective plugin config** for one
+language. It can set **any** key the language's built-in config defines — not just
+`metrics` and `levels`, but `extensions`, `detect_markers`, `skip_dirs`,
+`edge_kinds`, `node_attributes`, `[[principles]]`, `rules`, `ignore`, `report`, and
+so on. The block is **deep-merged** onto the language's built-in chain, so it need
+only spell out what it changes; list keys can be patched with the same op-tables
+(`add`/`remove`/…) as everywhere else.
+
+```toml
+[plugins.rust]
+extensions   = ["rs"]                     # which files the rust plugin claims
+detect_markers = ["Cargo.toml"]           # what makes auto-detect pick rust
+skip_dirs    = ["target", "vendor"]
+
+[plugins.rust.metrics.unsafe]
+warning      = 5                           # a language-specific metric's tiers
+
+[plugins.rust.rules.thresholds.file]
+hk           = 400000                      # rust-specific override of the base threshold
+```
+
+`[plugins.base]` is a **virtual base language**: it is not a real plugin, and its
+overrides apply to **every** active language as a shared base. A specific
+`[plugins.<lang>]` block then wins over `[plugins.base]` per key. Reserved language
+names: `enabled` and `base` (cannot be a real language plugin). The full
+per-language precedence is:
+
+```
+defaults ⊕ plugin-base ⊕ <lang>.toml          (built-in, embedded)
+  ⊕ [plugins.base] ⊕ [plugins.<lang>]          (user TOML)
+  ⊕ --config plugins.base.* ⊕ --config plugins.<lang>.*   (CLI, highest)
+```
+
+Because `detect_markers` / `extensions` participate in this merge, overriding them
+changes **auto-detection** too: a plugin is auto-selected when its *effective*
+`detect()` matches. Scalars and comma-lists can also be set inline with
+`--config plugins.<lang>.<key>=value`; deep nested tables and arrays-of-tables go
+through the `[plugins.<lang>]` TOML block.
 
 ### `[output.json]` / `[output.html]` / `[output.sarif]` / `[output.codequality]` — report artifacts
 
@@ -304,7 +377,7 @@ set). `path` accepts these placeholders:
 
 **Values** accept `_` digit separators and `K`/`M`/`G` suffixes (×10³/10⁶/10⁹):
 `5_123_000`, a bare `5M`, or a quoted `"5M"`. The bare suffix works both on the
-CLI (`--threshold file.hk=5M`) and inside a `[rules.thresholds.*]` table
+CLI (`--threshold file.hk=5M`) and inside a `[plugins.<lang>.rules.thresholds.*]` table
 (`hk = 5M`) — code-ranker quotes the value before parsing, since raw TOML would
 otherwise reject it. See [ERRORS.md](ERRORS.md#threshold-scopes).
 
@@ -317,13 +390,13 @@ Useful when you don't want an extra file. Supports the same keys under
 (single crate).
 
 ```toml
-[workspace.metadata.code-ranker.ignore]
+[workspace.metadata.code-ranker.plugins.base.ignore]
 paths = ["**/tests/**"]
 
-[workspace.metadata.code-ranker.rules.cycles]
+[workspace.metadata.code-ranker.plugins.base.rules.cycles]
 mutual     = true
 
-[workspace.metadata.code-ranker.rules.thresholds.file]
+[workspace.metadata.code-ranker.plugins.base.rules.thresholds.file]
 hk = 500_000
 ```
 
@@ -333,16 +406,46 @@ hk = 500_000
 
 All config values can be set or overridden from the command line.
 
-### `--plugin <NAME|auto>`
+### `--plugins <a,b,…>`
 
-Select the built-in plugin (`rust`, `python`, or `javascript`).
-Default is `auto`: resolved from `plugin` in the config file, then by project
-markers (`Cargo.toml`→rust, `pyproject.toml`/`setup.py`→python,
-`package.json`/`tsconfig.json`→javascript). Ambiguous or no marker → error.
+Select the active languages (`rust`, `python`, `js`, …) — comma-separated
+and/or repeatable. A canonical name **or an alias** (`javascript`, `py`, `rs`, `typescript`, `markdown`,
+`golang`, `c++`/`cxx`, `cs`/`c#`) — aliases resolve to the canonical name. It
+overrides the `[plugins].enabled` list. With neither set anywhere, `code-ranker`
+auto-detects **every** language present in the workspace and analyzes them all in
+one run. See [Plugin resolution](CLI.md#plugin-resolution).
 
 ```bash
-code-ranker check .                   # auto-detect (or config.plugin)
-code-ranker check . --plugin python   # always uses python
+code-ranker check .                          # auto-detect every language present
+code-ranker check . --plugins python         # only python
+code-ranker check . --plugins javascript,py  # aliases → js, python
+code-ranker check . --plugins rust,markdown  # exactly these two
+```
+
+### `--language <name>`
+
+For `report` / `recommend` (the scorecard + prompt): focus the scorecard and
+fix-prompt on **one** language (canonical name or alias, e.g. `--language js`).
+Not required when only one language is present. If a
+`--prompt <ID>` or `--focus <METRIC|PRINCIPLE>` resolves in two or more languages
+and `--language` is omitted, the command errors and lists the languages to choose
+from.
+
+```bash
+code-ranker report . --language rust --output.scorecard
+```
+
+### `--config plugins.<lang>.<key>=value`
+
+The generic inline override of any plugin-config key, for scalars and comma-lists
+(deep nested tables / arrays-of-tables go through a `[plugins.<lang>]` TOML
+block). `plugins.base.*` targets the virtual base language shared by all.
+`plugins.enabled=a,b` overrides the active language list.
+
+```bash
+code-ranker check . --config plugins.rust.metrics.unsafe.warning=5
+code-ranker check . --config plugins.base.skip_dirs=vendor,build
+code-ranker check . --config plugins.enabled=rust,markdown
 ```
 
 ### `--config <FILE>`
@@ -357,12 +460,14 @@ code-ranker check . --config ci/strict.toml
 ### `--export-full-config <PATH>`
 
 A `report` flag: instead of analyzing, write the **full effective configuration**
-to `PATH` and exit. The file has two sections — `[project]` (built-in defaults ⊕
-your `--config`) and `[plugin]` (the `--plugin` language's merged config: principles,
-thresholds, vocab). A diagnostic view of every value you can override.
+to `PATH` and exit. The file has a `[project]` section (built-in defaults ⊕ your
+`--config`) plus one `[plugins.<lang>]` section for **every registered language**
+(not only the active ones) — each language's merged config: principles, thresholds,
+vocab, with your `[plugins.base]` / `[plugins.<lang>]` overrides folded in. A
+diagnostic view of every value you can override, for every language the tool knows.
 
 ```bash
-code-ranker report . --plugin python --config ci/strict.toml \
+code-ranker report . --plugins python --config ci/strict.toml \
   --export-full-config /tmp/effective.toml
 ```
 
@@ -379,7 +484,9 @@ code-ranker check . --ignore '**/tests/**' --ignore '**/generated/**'
 Configure a cycle check. `KIND`: `mutual` | `chain`. Value: `on`
 (strict — any cycle fails), `off` (ignored), or an integer `N` (allow up to `N`
 cycles of that kind, fail on the `N+1`-th). Defaults: `mutual` and `chain` on
-(= strict). Repeatable.
+(= strict) for every language **except `md`**, which ships them **off** by default
+(cross-document link cycles are normal for documentation, not a defect — re-enable
+under `[plugins.md.rules.cycles]` if you want them gated). Repeatable.
 
 ```bash
 # allow up to 7 chain cycles (forbid an 8th); keep mutual strict

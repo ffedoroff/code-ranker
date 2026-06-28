@@ -71,7 +71,11 @@ function buildDOT(nodes, edges, level, viewport) {
   // by the zoom that was active when the user drilled in.
   const activeDig  = drillGroup === null ? (window.dig || 0) : (window.drillDig ?? 0);
   const gOf        = grouperForDig(level, activeDig);
-  const cycleOf    = window.CYCLES?.[level]?.nodeCycleStatus;
+  // CYCLES is keyed [lang][level]; resolve active language before indexing.
+  const _langForCycles = (typeof currentLang === 'function' ? currentLang() : null)
+                      || Object.keys(window.CYCLES || {})[0];
+  const _langCycles    = _langForCycles ? window.CYCLES?.[_langForCycles] : null;
+  const cycleOf    = _langCycles?.[level]?.nodeCycleStatus;
   // Node filter (data-driven from `ui.filter`): when a key is active keep
   // only nodes where that metric has signal. `cycle` is special (uses the cycle
   // membership set); any other key keeps nodes whose attribute value is non-zero.
@@ -292,7 +296,7 @@ function buildDOT(nodes, edges, level, viewport) {
     return Math.max(db, da) || metricNodeDiam(n, sizeMode);
   };
 
-  const edgeCycleOf = window.CYCLES?.[level]?.edgeCycleStatus;
+  const edgeCycleOf = _langCycles?.[level]?.edgeCycleStatus;
   // Non-flow edges (contains / reexports) render DASHED and tagged `edge-nonflow`
   // so CSS keeps them hidden until a node hover reveals the connected ones; flow
   // edges stay solid and always visible.

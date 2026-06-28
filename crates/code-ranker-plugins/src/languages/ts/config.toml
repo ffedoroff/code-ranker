@@ -1,0 +1,31 @@
+# TypeScript language config — inherits `../defaults.toml` (see `../config.rs`).
+#
+# The TypeScript metric engine's tree-sitter node-kind tables are shared with
+# JavaScript and live in `../ecmascript/config.toml` (both dialects reuse the
+# same engine). This file therefore carries only what is TypeScript-specific to
+# the language-neutral config layer: its principle-corpus language for doc links.
+#
+# TypeScript adds NO metric-lens principles of its own — it inherits the common
+# catalog from `defaults.toml`. `doc_url` = `{doc_base}/typescript/<slug>.md`.
+
+# Principle-corpus language for doc links (`doc_base` inherited from defaults).
+# TypeScript ships a full own corpus, so `doc_overrides = "*"` routes every
+# principle to `typescript/` instead of the shared `base/` fallback.
+doc_lang = "ts"
+doc_overrides = "*"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# File-collection extensions, import-resolution order and project-detect markers
+# — DATA, not code (see `../README.md` §3). `extensions` are the TS file
+# extensions the walker collects. `resolution_order` is the ORDER candidate
+# extensions are tried when resolving an extensionless import (`./foo`): TS-first,
+# then JS fallbacks — order is significant and transcribed verbatim.
+# `detect_markers` are the project-root marker filenames `detect()` looks for.
+# The `ext → grammar` match in `mod.rs` (string → grammar TYPE) stays in Rust.
+# ──────────────────────────────────────────────────────────────────────────────
+
+extensions = ["ts", "tsx", "mts", "cts"]
+resolution_order = ["ts", "tsx", "mts", "cts", "js", "jsx"]
+detect_markers = ["tsconfig.json"]
+# Short aliases accepted anywhere a language is named. Unique across languages.
+aliases = ["typescript"]

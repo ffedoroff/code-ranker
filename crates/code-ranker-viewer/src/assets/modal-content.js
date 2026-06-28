@@ -33,7 +33,10 @@ function nodeCrumbsHtml(node, level) {
 }
 
 function buildModalContent(node, level) {
-  const cycles  = window.CYCLES?.[level];
+  // CYCLES is keyed [lang][level]; resolve the active language first.
+  const _lang   = (typeof currentLang === 'function' ? currentLang() : null)
+               || Object.keys(window.CYCLES || {})[0];
+  const cycles  = (_lang ? window.CYCLES?.[_lang] : null)?.[level];
   const cs      = cycles?.nodeCycleStatus?.get(node.id);
   const mnExt   = isExternalNode(node, level);
   // Displayed path: external keeps its compact `{registry}`/`{cargo}` token

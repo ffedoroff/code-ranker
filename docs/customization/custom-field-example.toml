@@ -16,7 +16,7 @@
 # That live line is driven by `formula_js`; when omitted it defaults to the CEL
 # `formula_cel` (valid JS here), so a plain-arithmetic metric needs nothing extra.
 # Set `formula_js` explicitly only if the formula uses CEL-only functions (log2/pow/…).
-[metrics.tsr]
+[plugins.base.metrics.tsr]
 formula_cel    = "sloc > 0.0 ? tloc / sloc : 0.0"
 formula_pretty = "tloc / sloc"
 label          = "TLOC/SLOC"
@@ -26,14 +26,14 @@ description    = "Test lines (tloc) per source line (sloc). High values flag fil
 direction      = "lower_better"
 group          = "loc"
 # Two-tier severity thresholds — what the scorecard and viewer badge against
-# (distinct from the single-tier `[rules.thresholds.file]` check gate below).
+# (distinct from the single-tier `[plugins.base.rules.thresholds.file]` check gate below).
 warning        = 1.5
 info           = 0.8
 
 # The same ratio but only on large files — zero elsewhere, so the `not_empty`
 # aggregate population drops the small files automatically (the "where loc > 300"
 # filter, expressed with primitives that exist today).
-[metrics.tsr_big]
+[plugins.base.metrics.tsr_big]
 formula_cel    = "loc > 300.0 ? (sloc > 0.0 ? tloc / sloc : 0.0) : 0.0"
 formula_pretty = "loc > 300 ? tloc / sloc : 0"
 label          = "TLOC/SLOC (loc>300)"
@@ -45,7 +45,7 @@ group          = "loc"
 
 # Aggregate: the worst ratio among the TOP 10 large files (highest ratio among the
 # loc>300 files). `top10_max` = keep the 10 largest values, then take their max.
-[metrics.tsr_big_avg]
+[plugins.base.metrics.tsr_big_avg]
 scope          = "graph"
 formula_cel    = "agg('tsr_big', 'top10_max', 'not_empty')"
 formula_pretty = "max( top10( tsr_big where loc > 300 ) )"
@@ -54,15 +54,16 @@ name           = "Test-to-source — worst of the 10 largest files"
 description    = "A single-number health signal: the worst test-to-source ratio among the ten largest files (loc > 300)."
 
 # Gate `check` on the custom metric: any file whose test-to-source ratio exceeds
-# 1.5 is a violation. A custom [metrics.<key>] is thresholdable exactly like a
+# 1.5 is a violation. A custom metric is thresholdable exactly like a
 # built-in (sloc / hk / cyclomatic / …).
-[rules.thresholds.file]
+[plugins.base.rules.thresholds.file]
 tsr = 1.5
 
-# Surface the custom metrics in the HTML table / card (project-level [report]
-# override, applied over the language's). `after` puts the columns right after
-# `hk` instead of at the end; without [report] they'd only show in the node popup.
-[report]
+# Surface the custom metrics in the HTML table / card (per-language [report]
+# override, applied over the language's built-in). `after` puts the columns right
+# after `hk` instead of at the end; without [plugins.base.report] they'd only show
+# in the node popup.
+[plugins.base.report]
 columns = { after = { hk = ["tsr", "tsr_big"] } }
 card    = { add = ["tsr"] }
 stats   = { add = ["tsr_big_avg"] }
@@ -75,7 +76,7 @@ filter  = { add = ["tsr_big"] }
 # A project-defined Prompt-Generator principle (ranks files by the custom
 # metric). Makes `--focus tsr` / the scorecard rank files by `tsr`. The id is the
 # table key; `label` / `title` default to it.
-[principles.TSR]
+[plugins.base.principles.TSR]
 title       = "TSR — Trim inline test bulk"
 sort_metric = "tsr"
 prompt      = """

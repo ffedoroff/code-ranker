@@ -48,7 +48,7 @@ pub(crate) fn sarif_document(
     let rules: Vec<serde_json::Value> = seen
         .iter()
         .map(|v| {
-            let doc = config::rule_doc(&v.rule, node_attributes, cycle_kinds);
+            let doc = config::rule_doc(&v.rule, &v.language, node_attributes, cycle_kinds);
             let title = doc
                 .as_ref()
                 .and_then(|d| d.title.clone())
@@ -84,7 +84,7 @@ pub(crate) fn sarif_document(
                 // as "new". The value is the readable composite key (no hashing) — a
                 // metric finding has at most one `(rule, location)`, so it is unique.
                 "partialFingerprints": {
-                    "codeRankerRuleLocation/v1": format!("{}:{}", v.rule, v.location),
+                    "codeRankerRuleLocation/v1": format!("{}:{}:{}", v.language, v.rule, v.location),
                 },
                 "properties": { "group": v.group, "graph": v.graph, "weight": v.weight },
             });
@@ -135,7 +135,7 @@ pub(crate) fn codequality_document(violations: &[config::Violation]) -> String {
                 // Readable composite identity (no hashing) — a finding has at most
                 // one (rule, location), so it is unique; line excluded so a shift
                 // does not reopen it.
-                "fingerprint": format!("{}:{}", v.rule, v.location),
+                "fingerprint": format!("{}:{}:{}", v.language, v.rule, v.location),
                 "severity": "major",
                 "location": {
                     "path": violation_rel_path(&v.location).unwrap_or(v.location.as_str()),

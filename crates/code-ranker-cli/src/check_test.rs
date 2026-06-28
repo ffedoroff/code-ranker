@@ -2,6 +2,7 @@ use super::*;
 
 fn viol(location: &str, line: Option<u32>) -> config::Violation {
     config::Violation {
+        language: "rust".into(),
         rule: "threshold.file.loc".into(),
         group: "SIZ".into(),
         graph: "files",
@@ -40,6 +41,7 @@ fn path_matches_ignores_leading_dot_slash_and_trailing_slash() {
 #[test]
 fn rule_matches_full_id_bare_id_and_group() {
     let v = config::Violation {
+        language: "rust".into(),
         rule: "check.inline_tests_too_large".into(),
         group: "TST".into(),
         graph: "files",
@@ -152,8 +154,11 @@ fn codequality_issue_has_fingerprint_path_and_line() {
     assert_eq!(issue["severity"], "major");
     assert_eq!(issue["location"]["path"], "src/x.rs");
     assert_eq!(issue["location"]["lines"]["begin"], 7);
-    // Stable identity = rule:location, no line (so a shift does not reopen it).
-    assert_eq!(issue["fingerprint"], "threshold.file.loc:{target}/src/x.rs");
+    // Stable identity = language:rule:location, no line (so a shift does not reopen it).
+    assert_eq!(
+        issue["fingerprint"],
+        "rust:threshold.file.loc:{target}/src/x.rs"
+    );
 }
 
 #[test]
@@ -175,7 +180,7 @@ fn sarif_partial_fingerprint_is_rule_and_location() {
     let fp = &v["runs"][0]["results"][0]["partialFingerprints"];
     assert_eq!(
         fp["codeRankerRuleLocation/v1"],
-        "threshold.file.loc:{target}/src/x.rs"
+        "rust:threshold.file.loc:{target}/src/x.rs"
     );
 }
 

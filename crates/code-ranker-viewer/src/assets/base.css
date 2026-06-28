@@ -30,6 +30,22 @@ header code { color: #1abc9c; }
 /* Big mode word, now a toggle button — "toggle" between the two controls (click /
    hotkey `t` to switch baseline⇄current), "view" after the single control in
    review (disabled). Sized to match the header title; flex `order` reseats it. */
+/* Language switcher (rust / ts / …) — a header dropdown, shown only for
+   multi-language reports. Styled to match the active snapshot control
+   (`.snap-group.snap-active`): same height/padding/radius and the teal
+   "active" highlight, since it marks the active language. */
+.lang-select { font: inherit; font-size: 13px; font-weight: 600; color: #fff;
+               background-color: rgba(26,188,156,.20); border: 1px solid #1abc9c;
+               border-radius: 6px; box-shadow: 0 0 0 1px rgba(26,188,156,.5) inset;
+               padding: 6px 28px 6px 11px; cursor: pointer;
+               appearance: none; -webkit-appearance: none; -moz-appearance: none;
+               background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath fill='none' stroke='%23fff' stroke-width='1.5' d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+               background-repeat: no-repeat; background-position: right 9px center;
+               transition: border-color .15s, box-shadow .15s; }
+.lang-select[hidden] { display: none; }
+.lang-select:hover { border-color: #1abc9c; box-shadow: 0 0 0 1px rgba(26,188,156,.8) inset; }
+.lang-select:focus { outline: none; }
+
 /* Level switcher (Files / Functions / …) — shown only for multi-level reports. */
 .report-switch { display: flex; gap: 6px; padding: 10px 16px 0; align-items: flex-end; }
 .report-switch[hidden] { display: none; }
@@ -42,7 +58,8 @@ header code { color: #1abc9c; }
 
 .meta-mode { font: inherit; font-size: 13px; color: #ecf0f1; white-space: nowrap;
              text-transform: lowercase; margin: 0 4px; order: 2; user-select: none;
-             background: #455a73; border: 0; border-radius: 4px; padding: 6px 14px;
+             background: #455a73; border: 0; border-radius: 4px; padding: 0 14px;
+             height: 30px; box-sizing: border-box; display: inline-flex; align-items: center;
              cursor: pointer; transition: background .15s; }
 .meta-mode:hover:not(:disabled) { background: #5d7593; }
 .meta-mode:disabled { cursor: default; background: #3a4a5e; color: #8ba6c0; }
@@ -52,7 +69,8 @@ body.mode-review #meta-mode { order: 4; }   /* review: place "view" after the co
 /* Snapshot controls (branch + commit): clicking the body switches the shown side;
    the ✎ pencil opens the detail/actions popup. No hover trigger. */
 .snap-group { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-              border: 1px solid rgba(255,255,255,.18); border-radius: 6px; padding: 6px 11px;
+              border: 1px solid rgba(255,255,255,.18); border-radius: 6px; padding: 0 11px;
+              height: 30px; box-sizing: border-box;
               transition: border-color .15s, box-shadow .15s; }
 /* In review mode there is only one snapshot — clicking the body is a no-op. */
 body.mode-review .snap-group { cursor: default; }

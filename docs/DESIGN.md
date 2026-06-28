@@ -58,8 +58,8 @@ At P1 the platform ships three components:
   via `include_str!`. With `--baseline <snapshot>` the HTML becomes a
   baseline↔current diff with a verdict (one shared union layout where the
   Baseline/Current toggle is a CSS visibility flip so common nodes never move),
-  named `…-diff.html`. It also emits two refactoring-guidance formats
-  (`--output.prompt` / `--output.scorecard`) — the console counterpart of the
+  named `…-diff.html`. It also emits refactoring-guidance formats
+  (`--prompt <ID>` / `--output.scorecard`) — the console counterpart of the
   viewer's Prompt Generator, computed by the `recommend` module
 
 The three pillars of the design are:
@@ -85,7 +85,7 @@ The three pillars of the design are:
 | `cpt-code-ranker-fr-file-graph` | All plugins emit a single file graph: `File` nodes with `uses` / `reexports` edges between files, plus `External` library nodes at depth 1 reached by `uses` edges flagged `external: true`. The Rust plugin derives it by collapsing its module graph; Python/JS/TS build it directly from import resolution. |
 | `cpt-code-ranker-fr-html-report` | Built-in Rust renderer in `code-ranker-cli`: `report` analyzes (or reads) the input, then renders an HTML template with inline assets alongside the JSON snapshot. |
 | `cpt-code-ranker-fr-node-sorting` | Node weight (fan-in + fan-out) is computed at render time and embedded in the HTML; client-side JavaScript sorts the table on user interaction. |
-| `cpt-code-ranker-fr-ai-prompts` | HTML: the viewer's Prompt Generator (`export-popup.js`). CLI: the `recommend` module (`code-ranker-cli/src/recommend.rs`) drives the `report --output.prompt` (LLM Markdown for one principle) and `--output.scorecard` (console triage) formats from the snapshot's gate-derived thresholds — advisory, no exit code. |
+| `cpt-code-ranker-fr-ai-prompts` | HTML: the viewer's Prompt Generator (`export-popup.js`). CLI: the `recommend` module (`code-ranker-cli/src/recommend.rs`) drives the `report --prompt <ID>` AI fix-prompt (LLM Markdown for one named principle/metric, to stdout) and the `--output.scorecard` console-triage format, both from the snapshot's gate-derived thresholds — advisory, no exit code. |
 | `cpt-code-ranker-fr-graph-diff` | Browser-side diff in the HTML viewer (`diff.js` `computeDiff`/`computeCycles`): node/edge set difference on the file graph and `affected` propagation, from the two embedded snapshots. The `check --baseline` regression gate is rule-based (re-evaluates rules on the baseline), not a structured graph diff. |
 | `cpt-code-ranker-fr-diff-html-report` | With `report --baseline <snapshot>` the viewer becomes a self-contained diff with color-coded baseline/current views and a verdict; all assets inlined; the file is named `…-diff.html`. |
 | `cpt-code-ranker-fr-diff-text-report` | `check --baseline <snapshot> --output-format json` emits the machine-readable verdict (`improved` / `degraded` / `neutral`) and the list of new violations for CI parsing. |
@@ -154,7 +154,7 @@ flowchart TD
 
 - [x] `p1` - **ID**: `cpt-code-ranker-principle-json-contract`
 
-The single JSON snapshot (one `files` graph plus metadata) is the
+The single JSON snapshot (per-language `files` graphs plus metadata) is the
 ONLY handoff between the plugin layer and the consumer layer. No
 in-process coupling between the analysis crates and the report
 rendering code is permitted. This contract is versioned via
@@ -231,7 +231,7 @@ as external nodes — are defined scope, kept out by design rather than missed.
 **Changing a metric — adding one or fixing a bug — follow the runbook
 [`docs/metric-correctness.md`](metric-correctness.md):** it maps where
 each metric is computed (which crate), the per-task checklist, the normative spec
-to define "correct" against (`languages/<lang>/metrics.md`), and which tests
+to define "correct" against (`plugins/<lang>/metrics.md`), and which tests
 prove it where (the metamorphic / generative / anchor / differential / mutation
 layers and the ≤ 20 s budget). Do not change a detector without going through it —
 that runbook is how this principle and the Metric Accuracy NFR stay enforced
@@ -277,17 +277,17 @@ keys it understands, described per level by the semantics dictionaries.
 | Attributes | `BTreeMap<String, AttrValue>` (alphabetical → byte-stable). Plugins fill **structural** keys (`path`, `loc`, `visibility`, `version`, `items`, `unsafe` — the Rust plugin's per-file count of `unsafe` usages, `external`, `crate` — the Rust plugin's per-target owning crate, e.g. `bat` / `bat (bin)`, …); the orchestrator adds **computed** keys (`cyclomatic`, `cognitive`, `sloc`, `lloc`, `cloc`, `blank`, `mi`, `mi_sei`, `length`, `vocabulary`, `volume`, `effort`, `time`, `bugs`, `fan_in`, `fan_out`, `fan_out_external`, `hk`, `cycle`) into the same map by node id. All flat — no nesting. Zero-valued metrics are omitted. | `crates/code-ranker-plugin-api/src/attrs.rs` |
 | AttrValue | Untagged scalar: `Bool` / `Int` / `Float` / `Str` (serialized to its natural JSON form). Metric producers round to 3 significant digits and store an integral value as `Int` so e.g. `1.0` serializes as `1`. | `crates/code-ranker-plugin-api/src/attrs.rs` |
 | NodeId | Stable string key. A **file node's id IS its relativized path** — `{target}/src/a.rs` (no `file:` prefix); an external node is `ext:{name}` (`ext:serde`). During analysis a file id is its absolute path; the orchestrator relativizes it against the named roots. | `crates/code-ranker-plugin-api/src/node.rs` |
-| Level | What a plugin can produce, with its semantics dictionaries: `name`, `edge_kinds`, `node_attributes` / `edge_attributes`, `attribute_groups`, plus `node_kinds: BTreeMap<String, NodeKindSpec>` and `cycle_kinds: BTreeMap<String, CycleKindSpec>` (seeded from `default_node_kinds()` / `default_cycle_kinds()`, overridable), plus an optional `grouping: Grouping` telling the viewer how to cluster nodes — `{ key }` (group by a node attribute's value, e.g. `crate`) or `{ function }` (a named viewer grouper, e.g. `dir`). The orchestrator merges the plugin's structural attribute specs with the central complexity + coupling specs, overlays the gate-derived advisory thresholds (from `[rules.thresholds.file]`), computes the `ui` block, then prunes everything to what is actually present. The `node_attributes` dictionary keeps every key carried by *any* node (external included, so the viewer can still label e.g. an external node's `path`), while the `ui` render lists are filtered more tightly to keys present on at least one **internal** (non-external) node — those surfaces (table, summary, sort) never show external rows. | `crates/code-ranker-plugin-api/src/level.rs` |
+| Level | What a plugin can produce, with its semantics dictionaries: `name`, `edge_kinds`, `node_attributes` / `edge_attributes`, `attribute_groups`, plus `node_kinds: BTreeMap<String, NodeKindSpec>` and `cycle_kinds: BTreeMap<String, CycleKindSpec>` (seeded from `default_node_kinds()` / `default_cycle_kinds()`, overridable), plus an optional `grouping: Grouping` telling the viewer how to cluster nodes — `{ key }` (group by a node attribute's value, e.g. `crate`) or `{ function }` (a named viewer grouper, e.g. `dir`). The orchestrator merges the plugin's structural attribute specs with the central complexity + coupling specs, overlays the gate-derived advisory thresholds (from `[plugins.base.rules.thresholds.file]`), computes the `ui` block, then prunes everything to what is actually present. The `node_attributes` dictionary keeps every key carried by *any* node (external included, so the viewer can still label e.g. an external node's `path`), while the `ui` render lists are filtered more tightly to keys present on at least one **internal** (non-external) node — those surfaces (table, summary, sort) never show external rows. | `crates/code-ranker-plugin-api/src/level.rs` |
 | EdgeKindSpec | `flow: bool` (single source of truth — counted/drawn when `true`; structural like `contains` when `false`), plus optional `label` / `description`. | `crates/code-ranker-plugin-api/src/level.rs` |
 | AttributeSpec | Everything the UI needs to render a metric from data: `value_type`, `label`, `name` (tooltip title), `short` (table header), `description` (the diagnostic *why*), `remediation` (the diagnostic *fix* — both shown by `check`, data not Rust), `formula` (display), `calc` (an `eval`-able JS expression over sibling attrs — the live derivation), `direction` (`higher_better`/`lower_better`, for delta colour; **absent → the Δ stays neutral / uncoloured** — used for raw sizes like `sloc`/`lloc`/`blank` and for `fan_in`/`fan_out` (high coupling is dual — a tangled unit or a legitimate coordinator — so the directional signal lives in `hk` only), which have no agreed "good" way to move), `abbreviate` (K/M — **viewer-only**: the CLI scorecard/prompt always print exact integers), `group`, `thresholds {info, warning}`. All optional but `value_type`. | `crates/code-ranker-plugin-api/src/level.rs` |
 | NodeKindSpec / CycleKindSpec | Per-kind UI semantics. `NodeKindSpec`: `label`/`plural`/`fill`/`stroke`/`external`. `CycleKindSpec`: `label`/`description` (the cycle *why*)/`remediation` (the *fix*). `default_node_kinds()` seeds node kinds; `default_cycle_kinds()` seeds only the cycle *keys* (`mutual`/`chain`) — the orchestrator overlays the vocabulary centrally from `code-ranker-graph`'s `cycle_specs()` (the `builtin.toml [cycles.*]` catalog), so no cycle prose lives in Rust. | `crates/code-ranker-plugin-api/src/level.rs` |
-| Thresholds | `{ info: f64, warning: f64 }` — two-tier per-metric advisory thresholds overlaid onto the matching `AttributeSpec`; `warning` is the `[rules.thresholds.file]` gate limit, `info` an optional softer line below it (so the report mirrors the gate). | `crates/code-ranker-plugin-api/src/level.rs` |
-| Principle | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-ranker-cli/src/principles.rs`) and a plugin's `principles(input)` hook may pass through / edit / extend it. Stored top-level in the snapshot. Prompt-generator domain data — lives in its own module, not the parser contract. | `crates/code-ranker-plugin-api/src/principle.rs` |
-| PromptTemplate | The language-neutral prompt **scaffolding** the Prompt-Generator wraps a `Principle` in: `intro`, `doc_note`, `task` (bullet lines), `focus`, `cycle_note` (`{id}` substituted at render). Data, not code — sourced from `code-ranker-graph/metrics/prompt.md` (`code-ranker-graph`'s `prompt_template()`), carried top-level in the snapshot so the CLI `prompt` format and the viewer's Prompt Generator render the same text from one source. | `crates/code-ranker-plugin-api/src/principle.rs` |
+| Thresholds | `{ info: f64, warning: f64 }` — two-tier per-metric advisory thresholds overlaid onto the matching `AttributeSpec`; `warning` is the `[plugins.base.rules.thresholds.file]` gate limit, `info` an optional softer line below it (so the report mirrors the gate). | `crates/code-ranker-plugin-api/src/level.rs` |
+| Principle | A Prompt-Generator principle: `id`, `label`, `title`, `prompt`, `doc_url?`, `sort_metric`, `connections`. The orchestrator builds a generic default catalog (`code-ranker-cli/src/principles.rs`) and a plugin's `principles(input)` hook may pass through / edit / extend it. Stored per language in the snapshot (`languages.<lang>.principles`). Prompt-generator domain data — lives in its own module, not the parser contract. | `crates/code-ranker-plugin-api/src/principle.rs` |
+| PromptTemplate | The language-neutral prompt **scaffolding** the Prompt-Generator wraps a `Principle` in: `intro`, `doc_note`, `task` (bullet lines), `focus`, `cycle_note` (`{id}` substituted at render). Data, not code — sourced from `code-ranker-graph/metrics/prompt.md` (`code-ranker-graph`'s `prompt_template()`), carried per language in the snapshot (`languages.<lang>.prompt`) so the CLI `--prompt <ID>` output and the viewer's Prompt Generator render the same text from one source. | `crates/code-ranker-plugin-api/src/principle.rs` |
 | CycleGroup | SCC with ≥ 2 nodes: `kind: String` (`"mutual"` for a 2-node SCC, `"chain"` for 3+), `nodes: Vec<NodeId>`. Each member node also carries a `cycle` attribute. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelUi | Computed UI hints: `default_sort`, `sort`, `size`, `card`, `columns`, `summary` — each a curated metric order filtered to the attributes present on internal nodes, so the viewer renders them verbatim and hardcodes none of it — plus an optional `grouping` (carried through from the level spec, pruned to a usable attribute) telling the viewer how to cluster diagram nodes. | `crates/code-ranker-graph/src/level_graph.rs` |
 | LevelGraph | One analysis level in the snapshot: the semantics dictionaries (`edge_kinds`/`node_attributes`/`edge_attributes`/`attribute_groups`/`node_kinds`/`cycle_kinds`) + `nodes` + `edges` + `cycles: Vec<CycleGroup>` + `stats: BTreeMap<String, AttrValue>` (flat averages) + `ui: LevelUi`. | `crates/code-ranker-graph/src/level_graph.rs` |
-| Snapshot | The `.json` artifact: `schema_version: "4.0"`, `generated_at`, `command`, `workspace`, `target`, `plugin`, `config_file?`, `versions`, `roots`, `git?`, `timings`, `graphs: BTreeMap<String, LevelGraph>`, top-level `principles: Vec<Principle>`, and `prompt: PromptTemplate` (the Prompt-Generator scaffolding prose, read by both the CLI and the viewer). Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-ranker-graph/src/snapshot.rs` |
+| Snapshot | The `.json` artifact: `schema_version: "5.0"`, `generated_at`, `command`, `workspace`, `target`, `plugins: Vec<String>`, `config_file?`, `versions`, `roots`, `git?`, `timings`, and `languages: BTreeMap<String, LanguageSnapshot>` — one entry per analyzed language, each carrying `graphs: BTreeMap<String, LevelGraph>`, `principles: Vec<Principle>`, and `prompt: PromptTemplate` (the Prompt-Generator scaffolding prose, read by both the CLI and the viewer). Serialized via `to_canonical_string_pretty` — **canonical JSON** (alphabetical keys; `nodes`/`edges` sorted). | `crates/code-ranker-graph/src/snapshot.rs` |
 | StageTime | Per-stage timing entry: `stage`, `ms`, `detail`. Stored in `Snapshot.timings` in execution order. | `crates/code-ranker-graph/src/snapshot.rs` |
 
 **Relationships**:
@@ -341,7 +341,8 @@ Modules:
 - **`finalize.rs`** — `finalize_graph`: drop self-loops, dedup edges on
   `(source, target, kind)`, prune unreferenced external nodes, sort.
 - **`snapshot.rs`** — the top-level `Snapshot` artifact (`schema_version`,
-  header, `graphs` map, `principles`) plus its header types `GitInfo` / `StageTime`.
+  header, `languages` map — each a `LanguageSnapshot` of `graphs` + `principles` +
+  `prompt`) plus its header types `GitInfo` / `StageTime`.
 - **`level_graph.rs`** — the widely-imported per-level payload types: `LevelGraph`
   (graph + semantics dictionaries + computed cycles/stats/UI), `LevelUi`, and
   `CycleGroup`. Split out from `snapshot.rs` so their fan-in lands here, not on
@@ -400,7 +401,7 @@ tier-2 is data**:
 
 The registry runs per **unit**: the same `MetricInputs` → metrics path serves the
 file node and (with the `functions` level on) each function node. User metrics
-(`[metrics.<key>]`) run through the same registry — node-scope per-unit formulas,
+(`[plugins.base.metrics.<key>]`) run through the same registry — node-scope per-unit formulas,
 or graph-scope `agg(key, reducer, population)` aggregates emitted into `stats`.
 
 Each metric is dropped at its **no-signal value** (`AttributeSpec.omit_at`,
@@ -455,11 +456,12 @@ language. Plugins **self-register**: each module in `code-ranker-plugins` submit
 itself with `inventory::submit! { PluginRegistration(&XPlugin) }`, and the binary
 collects them via `code_ranker_plugin_api::registry() -> Vec<&'static dyn
 LanguagePlugin>` (the `inventory` crate's distributed slice). Dispatch (`analyze`),
-`detect`, `resolve_plugin`, and `versions` all iterate that array. Adding a language
+`detect`, `resolve_plugins`, and `versions` all iterate that array. Adding a language
 is: implement the trait in a module and add one `inventory::submit!` — **no central
 list to edit** anywhere (the CLI, `plugin::registry()`, and `lib.rs` are untouched).
-Link order is not significant: auto-detect errors on multiple matches rather than
-picking by position. A `LanguagePlugin::config() -> toml::Table` accessor surfaces a
+Link order is not significant: `resolve_plugins` runs **every** plugin whose
+`detect()` matches — multiple matches is the normal multi-language case, not an
+error. A `LanguagePlugin::config() -> toml::Table` accessor surfaces a
 plugin's fully-merged config for `--export-full-config`.
 
 #### code-ranker-plugins · rust module
@@ -574,7 +576,7 @@ Uses `tree-sitter-python` (a direct dependency) for AST traversal and the shared
 
 1. **Scan** — walk all `.py` files under the workspace, skipping `.venv`,
    `__pycache__`, `node_modules`, hidden directories, and (by default) anything
-   matched by `.gitignore` / `.ignore` — see the `[ignore]` config.
+   matched by `.gitignore` / `.ignore` — see the `[plugins.base.ignore]` config.
 2. **Module index** — derive dotted module paths from file paths:
    `parser/shops/amazon/pdp.py` → `parser.shops.amazon.pdp`;
    `parser/shops/amazon/__init__.py` → `parser.shops.amazon`.
@@ -637,7 +639,7 @@ dev-dependency, so the enrichment crate never leaks into the plugin library.
 
 A **thin adapter** implemented in the `javascript` module of the
 `code-ranker-plugins` crate (`code-ranker-plugins/src/javascript/mod.rs`,
-`name = "javascript"`, `detect` = a `package.json` marker). It binds the
+`name = "js"`, `detect` = a `package.json` marker). It binds the
 `tree-sitter-javascript` grammar to `.js`/`.jsx`/`.mjs`/`.cjs` and delegates all
 real work to the shared **`ecmascript`** module's engine (the walker /
 import-specifier extractor / resolver / `ecmascript_level` / metric helper). The
@@ -660,7 +662,7 @@ follow the `src/` layout convention.
 1. **Scan** — walk `.ts`, `.tsx`, `.js`, `.jsx` files from source root (via the
    shared `crate::walk`), skipping `node_modules`, `dist`, `.venv`, hidden
    directories, `.gen.ts`, `.config.ts/js`, and (by default) anything matched by
-   `.gitignore` / `.ignore` — see the `[ignore]` config.
+   `.gitignore` / `.ignore` — see the `[plugins.base.ignore]` config.
 2. **File index** — map each file's relative path to its absolute path.
 3. **Per-file node** — emit one `File` node per source file.
 4. **Import resolution** — resolve ES `import` statements and CommonJS
@@ -691,7 +693,7 @@ ECMAScript `Dialect` + `code_ranker_graph::write_metrics`) for each
 - [x] `p3` - **ID**: `cpt-code-ranker-component-ts-plugin`
 
 In-process TypeScript plugin (the `typescript` module of the
-`code-ranker-plugins` crate; `name = "typescript"`, scans
+`code-ranker-plugins` crate; `name = "ts"`, scans
 `.ts`/`.tsx`/`.mts`/`.cts`, `detect` = a `tsconfig.json` marker). Like the JS
 plugin, it is a thin adapter over the shared **`ecmascript`** module's
 engine: it drives `analyze_ecmascript`, passing the `tree-sitter-typescript`
@@ -753,7 +755,7 @@ See [§3.7 Plugin System](#37-plugin-system).
 
 - **Location**: defined by `Snapshot`, `Node`, `Edge` structs in
   `crates/code-ranker-graph/src/`
-- **Versioning**: `schema_version: "4.0"`; additive fields are minor;
+- **Versioning**: `schema_version: "5.0"`; additive fields are minor;
   breaking changes require a major-version bump
 
 ### 3.4 Internal Dependencies
@@ -769,8 +771,8 @@ See [§3.7 Plugin System](#37-plugin-system).
 | `code-ranker-plugins` (`javascript`/`typescript` modules) | `code-ranker-plugins` (`ecmascript` module) | shared ECMAScript walker/resolver + ECMAScript `Dialect` + `ecmascript_level` + `ecmascript_metrics`; each injects its own grammar. **Neither plugin depends on the other.** |
 | `code-ranker-graph` | `code-ranker-plugin-api` | the generic model it operates on; the metric scaffolding (modules `metrics` + `builtin`) builds `MetricInputs`/`metric_specs` on its `AttributeSpec` / `AttrValue` types |
 | `code-ranker-viewer` | `code-ranker-graph` | `Snapshot`, `to_canonical_string` |
-| `code-ranker-cli` (`run_report`) | the analyzed snapshot (+ optional `--baseline`) | top-level metadata + `graphs` map; rendered via `code-ranker-viewer` |
-| `code-ranker-cli` (`run_check`) | the analyzed snapshot | `graphs` map; per-rule violation evaluation (relative gate re-evaluates the baseline's rules) |
+| `code-ranker-cli` (`run_report`) | the analyzed snapshot (+ optional `--baseline`) | top-level metadata + the `languages.<lang>.graphs` maps; rendered via `code-ranker-viewer` |
+| `code-ranker-cli` (`run_check`) | the analyzed snapshot | the `languages.<lang>.graphs` maps; per-rule violation evaluation (relative gate re-evaluates the baseline's rules) |
 
 **Rules**:
 
@@ -855,7 +857,7 @@ sequenceDiagram
     participant G as code-ranker-graph (graph ops + metric scaffolding)
     participant FS as Filesystem
 
-    User ->> CLI: code-ranker report . --plugin rust --output.json
+    User ->> CLI: code-ranker report . --plugins rust --output.json
     CLI ->> Plugin: analyze(ws, "files", input)  (input.ignore_tests → plugin drops test files)
     Note over Plugin: syn + cargo metadata → collapse to files (STRUCTURE ONLY)
     Plugin -->> CLI: api::Graph (abs-path file ids, ext:* nodes) + Level specs
@@ -934,34 +936,43 @@ sequenceDiagram
 #### Plugin Resolution
 
 All plugins are built into the `code-ranker` binary; there is no external
-or dynamic plugin loading. Resolution only selects which built-in plugin
-to run.
+or dynamic plugin loading. Resolution selects the **set** of built-in plugins
+to run — a run analyzes every active language and produces one report covering
+all of them.
 
-The plugin defaults to `auto`. When `--plugin auto`, the analysis core
-(behind `check` / `report`) resolves the plugin *name* in this order,
-stopping at the first match:
+`resolve_plugins` produces the active set via three levels, each fully
+**replacing** the lower (no merge), highest wins:
 
 ```
-1. Explicit flag    --plugin <name> (≠ auto) on the command line
-                    → use that built-in plugin
+1. Auto-detect (lowest)  run every plugin whose detect(ws, input) matches
+                         against its EFFECTIVE config (overridden
+                         detect_markers / extensions influence detection).
+                         Multiple matches is NORMAL — there is no ambiguity.
 
-2. Config           the `plugin` key in code-ranker.toml /
-                    Cargo.toml metadata (if set and ≠ auto)
-                    → use that built-in plugin
+2. Config plugins        `[plugins] enabled = [...]` in code-ranker.toml /
+                         Cargo.toml metadata → that list verbatim
 
-3. Auto-detect      each plugin's `detect(ws, input)` over `registry()`:
-                    Cargo.toml → rust;
-                    pyproject.toml / setup.py / setup.cfg → python;
-                    package.json → javascript;
-                    tsconfig.json → typescript
+3. Console --plugins     --plugins <a,b,...> on the command line (highest)
+                         → that list verbatim
 ```
 
-The resolved name must be one of the four compiled-in plugins — `rust`,
-`python`, `javascript`, or `typescript` — which is then invoked in-process. JS
-and TS are now **separate** plugins (no aliases): `detect` auto-selects, and a
-project carrying both a `package.json` and a `tsconfig.json` is ambiguous → error
-asking for an explicit `--plugin`. Multiple matching markers or none → the same
-error.
+So a list set in config or on the console is used as-is; auto-detect runs only
+when no list is set anywhere, and the console wins when both are set. Each name
+must be one of the compiled-in plugins (`rust`, `python`, `javascript`,
+`typescript`, `go`, `c`, `cpp`, `csharp`, `markdown`); each is invoked in-process.
+A language whose graph comes out empty is dropped from the report.
+
+**Invariant: one file ↔ exactly one language** — plugin file sets are disjoint.
+Two active plugins that claim the same extension is a startup error (before
+analysis), e.g. "extension `.h` is claimed by both `c` and `cpp` — adjust
+`extensions`/`plugins`".
+
+**Errors:**
+
+- Zero languages detected → "could not determine any language in `<workspace>`;
+  specify `[plugins] enabled = ["<name>"]` in code-ranker.toml or `--plugins <name>`".
+- The scalar `plugin` config key is not recognized → error pointing to
+  `[plugins].enabled`.
 
 #### Snapshot File Format
 
@@ -977,48 +988,55 @@ The name template is resolved as **`--output.json.path` flag › `[output.json]
 path` in config › built-in default**, with placeholders `{project-dir}`
 (slugified workspace name), `{ts}`, `{git-hash}` (12-char short commit) and
 `{git-hash-N}` (first N chars). Example: `code-ranker report /path/to/axum-api
---plugin rust --output.json.path=.code-ranker/{ts}-{git-hash-3}.json` →
+--plugins rust --output.json.path=.code-ranker/{ts}-{git-hash-3}.json` →
 `.code-ranker/20260522-112233-a3f.json` (or `axum-api-20260522-112233.json` if
 `[output.json] path = "{project-dir}-{ts}.json"`).
 
-The file combines metadata and the `graphs` map (one entry per analysis level;
-today only `files`) in one document. Each level bundles its semantics
-dictionaries with the structural graph and the computed cycles/stats:
+The file combines metadata with a `languages` map — one entry per analyzed
+language. Each language carries its own `graphs` map (one entry per analysis
+level; today only `files`), its `principles`, and its `prompt` scaffolding. Each
+level bundles its semantics dictionaries with the structural graph and the
+computed cycles/stats:
 
 ```json
 {
-  "schema_version": "4.0",
+  "schema_version": "5.0",
   "generated_at":   "2026-05-22T11:22:33Z",
-  "command":        "code-ranker report /path/to/axum-api --plugin rust",
+  "command":        "code-ranker report /path/to/axum-api --plugins rust",
   "workspace":      "/Users/alice/projects/code-ranker",
   "target":         "/Users/alice/projects/axum-api",
-  "plugin":         "rust",
-  "versions": { "code-ranker": "4.0.0", "rustc": "1.78.0" },
+  "plugins":        ["rust"],
+  "versions": { "code-ranker": "5.0.0", "rustc": "1.78.0" },
   "roots": {
     "registry": "/Users/alice/.cargo/registry/src/index.crates.io-abc123",
     "target":   "/Users/alice/projects/axum-api"
   },
   "git": { "branch": "…", "commit": "a3f9c21b4d5e", "dirty_files": 4, "origin": "git@…:team/axum-api.git" },
   "timings": [ { "stage": "rust", "ms": 0, "detail": "17 nodes from 8 files" }, … ],
-  "graphs": {
-    "files": {
-      "edge_kinds":       { "uses": { "flow": true, "label": "uses", "description": "…" }, "contains": { "flow": false, … } },
-      "node_attributes":  { "cyclomatic": { "value_type": "int", "label": "Cyclomatic", "name": "Cyclomatic complexity", "short": "Cyclomatic", "formula": "branches + 1", "direction": "lower_better", "group": "complexity" }, "hk": { "value_type": "float", "calc": "sloc * (fan_in * fan_out) ** 2", "thresholds": { "info": 150000, "warning": 10000000 }, … }, … },
-      "edge_attributes":  { "visibility": { "value_type": "str", "label": "Visibility" } },
-      "attribute_groups": { "complexity": { "label": "Complexity", "description": "…" }, … },
-      "node_kinds":       { "file": { "label": "File", "fill": "#dbe9f4", "stroke": "#4d6f9c" }, "external": { "external": true, … } },
-      "cycle_kinds":      { "mutual": { "label": "Mutual", "description": "…" } },
-      "ui":               { "default_sort": "hk", "columns": [...], "summary": [...], "sort": [...], "size": [...], "card": [...] },
-      "nodes": [
-        { "id": "{target}/src/a.rs", "kind": "file", "name": "a.rs", "sloc": 30, "cyclomatic": 1, "hk": 480, "cycle": "mutual", "visibility": "public", … },
-        { "id": "ext:serde", "kind": "external", "name": "serde", "external": true, "version": "1.0.228", "path": "{registry}/serde-1.0.228" }
-      ],
-      "edges": [ { "source": "{target}/src/a.rs", "kind": "uses", "target": "ext:serde", "line": 15 }, … ],
-      "cycles": [ { "kind": "mutual", "nodes": ["{target}/src/a.rs", "{target}/src/b.rs"] } ],
-      "stats": { "cyclomatic": 1, "hk": 240, "sloc": 26, … }
+  "languages": {
+    "rust": {
+      "graphs": {
+        "files": {
+          "edge_kinds":       { "uses": { "flow": true, "label": "uses", "description": "…" }, "contains": { "flow": false, … } },
+          "node_attributes":  { "cyclomatic": { "value_type": "int", "label": "Cyclomatic", "name": "Cyclomatic complexity", "short": "Cyclomatic", "formula": "branches + 1", "direction": "lower_better", "group": "complexity" }, "hk": { "value_type": "float", "calc": "sloc * (fan_in * fan_out) ** 2", "thresholds": { "info": 150000, "warning": 10000000 }, … }, … },
+          "edge_attributes":  { "visibility": { "value_type": "str", "label": "Visibility" } },
+          "attribute_groups": { "complexity": { "label": "Complexity", "description": "…" }, … },
+          "node_kinds":       { "file": { "label": "File", "fill": "#dbe9f4", "stroke": "#4d6f9c" }, "external": { "external": true, … } },
+          "cycle_kinds":      { "mutual": { "label": "Mutual", "description": "…" } },
+          "ui":               { "default_sort": "hk", "columns": [...], "summary": [...], "sort": [...], "size": [...], "card": [...] },
+          "nodes": [
+            { "id": "{target}/src/a.rs", "kind": "file", "name": "a.rs", "sloc": 30, "cyclomatic": 1, "hk": 480, "cycle": "mutual", "visibility": "public", … },
+            { "id": "ext:serde", "kind": "external", "name": "serde", "external": true, "version": "1.0.228", "path": "{registry}/serde-1.0.228" }
+          ],
+          "edges": [ { "source": "{target}/src/a.rs", "kind": "uses", "target": "ext:serde", "line": 15 }, … ],
+          "cycles": [ { "kind": "mutual", "nodes": ["{target}/src/a.rs", "{target}/src/b.rs"] } ],
+          "stats": { "cyclomatic": 1, "hk": 240, "sloc": 26, … }
+        }
+      },
+      "principles": [ { "id": "ADP", "title": "…", "prompt": "…", "doc_url": "…", "sort_metric": "cycle", "connections": ["common","out"] }, … ],
+      "prompt": { "intro": "…", "task": "…", … }
     }
-  },
-  "principles": [ { "id": "ADP", "title": "…", "prompt": "…", "doc_url": "…", "sort_metric": "cycle", "connections": ["common","out"] }, … ]
+  }
 }
 ```
 
@@ -1027,7 +1045,7 @@ objects); a file node carries no `path` (its id IS its path); an edge is
 external iff its `target` is an `ext:` node (no `edge.external`). Every metric's
 label/name/formula/`calc`/direction/threshold is in `node_attributes`, node/cycle
 kinds in `node_kinds`/`cycle_kinds`, column/sort ordering in `ui`, and the
-Prompt-Generator principles in top-level `principles` — so the viewer renders
+Prompt-Generator principles in each language's `principles` — so the viewer renders
 entirely from this data and hardcodes none of it.
 
 `workspace` is the directory where `code-ranker` was invoked (cwd). `target`
@@ -1120,7 +1138,7 @@ emits an actionable error telling you to warm it (e.g. `cargo fetch`).
 ##### Full Mode — Step-by-Step
 
 ```
-code-ranker report /path/to/my-crate --plugin rust
+code-ranker report /path/to/my-crate --plugins rust
 ```
 
 1. `code-ranker-cli` resolves the output path(s) from `--output.<fmt>[.path]` /
@@ -1233,13 +1251,13 @@ code-ranker/
   crates/
     code-ranker-graph/             # Rust — graph types, JSON schema, StageTime, cycles/hk/stats + language-neutral metric scaffolding (write_metrics, metric_specs; metrics/builtin.toml catalog)
     code-ranker-plugin-api/        # Rust — the LanguagePlugin trait (+ PluginInput) & its self-registering plugin registry (PluginRegistration/registry, inventory) in plugin.rs, the Principle DTO (principle.rs), the detect_with_marker helper (detection.rs), MetricInputs/FunctionUnit; shared TOML config utilities (toml_merge deep-merge, list_override DSL)
-    code-ranker-plugins/           # Rust — all language plugins: languages/{rust,python,javascript,typescript,go,c,cpp,csharp,markdown} (+ shared languages/ecmascript & languages/cfamily) over one generic engine/ (tree-sitter metric walker); src/config/ (parse/views/specs/lookup facade) + src/defaults.toml; #[cfg(test)] test_support helpers
+    code-ranker-plugins/           # Rust — all language plugins: languages/{rust,python,js,ts,go,c,cpp,csharp,md} (+ shared languages/ecmascript & languages/cfamily) over one generic engine/ (tree-sitter metric walker); src/config/ (parse/views/specs/lookup facade) + src/defaults.toml; #[cfg(test)] test_support helpers
     code-ranker-viewer/            # Rust — HTML viewer: assets + render_html_viewer
     code-ranker-cli/               # Rust — orchestrator, plugin dispatch (over the plugin-api self-registered registry), check linter, report
       src/
         plugin/            # Built-in plugins: rust.rs (incl. module→file collapse), python.rs, javascript.rs, finalize.rs (file-graph normalizer for Python/JS), mod.rs
         principles.rs         # Generic Prompt-Generator principle catalog (principles)
-        recommend.rs       # Recommendation engine: scorecard + prompt formats (CLI counterpart of the viewer's Prompt Generator)
+        recommend.rs       # Recommendation engine: scorecard + --prompt <ID> outputs (CLI counterpart of the viewer's Prompt Generator)
         assets/            # HTML/CSS/JS assets embedded via include_str! (see code-ranker-viewer/DESIGN.md for the full layer breakdown)
           index.html       # Shell template (single Files view); cs-baseline / cs-current JSON script tags embedded inline at render time
           base.css map.css modal.css tables.css export.css snap.css map-svg.css  # Concern-split stylesheet, concatenated in lib.rs in source order
@@ -1271,15 +1289,15 @@ code-ranker/
     DESIGN.md              # Product technical design (architecture, domain model, plugins)
     code-ranker-cli/        # CLI component docs: PRD, DESIGN, CLI.md, config.md, ERRORS.md
     code-ranker-viewer/     # HTML viewer component docs: PRD, DESIGN
-  languages/              # Principle corpus (used at P3 for prompt generation)
-    base/                  # Language-neutral fallback corpus (inherited when a language has no own doc)
+  plugins/                # Principle corpus (used at P3 for prompt generation)
+    base/                  # Language-neutral fallback corpus (inherited when a language has no own corpus)
     rust/                  # Rust-specific principle docs
     python/                # Python-specific principle docs
-    typescript/            # TypeScript/JavaScript principle docs
+    ts/                    # TypeScript/JavaScript principle docs
 ```
 
-A principle's `doc_url` resolves to `languages/<doc_lang>/<id>.md` for the principles
-a language overrides (its `doc_overrides`), and to `languages/base/<id>.md`
+A principle's `doc_url` resolves to `plugins/<doc_lang>/<id>.md` for the principles
+a language overrides (its `doc_overrides`), and to `plugins/base/<id>.md`
 otherwise — so a language without its own corpus inherits `base/`.
 
 **Out of scope for this revision (deferred to P2/P3)**:

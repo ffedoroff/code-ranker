@@ -60,8 +60,3 @@ comment_kinds.named = ["comment"]
 # The generic, dialect-independent Halstead totals wording. The distinct-count
 # η₁/η₂ descriptions (which enumerate each dialect's exact tokens) differ and
 # live in each `<lang>/config.toml`.
-[specs.n1]
-description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
-
-[specs.n2]
-description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

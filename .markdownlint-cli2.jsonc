@@ -18,13 +18,13 @@
   "globs": [
     "docs/**/*.md",
     "contrib/**/*.md",
-    "languages/**/*.md",
+    "plugins/**/*.md",
     "AGENTS.md",
     "CLAUDE.md"
   ],
   "ignores": [
     "node_modules/**",
     "target/**",
-    "languages/_overlay/**"
+    "plugins/_overlay/**"
   ]
 }

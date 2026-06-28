@@ -12,6 +12,8 @@ doc_lang = "csharp"
 # no single universal manifest, so there are no `detect_markers`.
 extensions = ["cs"]
 skip_dirs = ["bin", "obj", "node_modules"]
+# Short aliases accepted anywhere a language is named. Unique across languages.
+aliases = ["cs", "c#"]
 
 test_dirs = ["test", "tests"]
 test_suffixes = ["Tests.cs", "Test.cs"]
@@ -98,11 +100,5 @@ statement_kinds.named = [
 [specs.eta1]
 description = "Distinct operators (η₁): the count of unique operator token kinds. C# counts arithmetic / logical / comparison / assignment operators (`+ - * / % ++ -- && || ! == != < > <= >= = += … ?? ?. =>`), bitwise (`& | ^ << >> ~`), and the keywords `class struct interface record enum namespace using new is as async await yield return throw try catch finally if else switch case for foreach while do break continue goto var const static public private protected internal virtual override abstract sealed readonly ref out params lock`."
 
-[specs.n1]
-description = "Total operators (N₁): every operator occurrence counted with repetition (the η₁ tokens, not deduplicated)."
-
 [specs.eta2]
 description = "Distinct operands (η₂): the count of unique operand texts. C# counts identifiers, literals (integer, real, string, verbatim-string, char, boolean), `null`, and the predefined type names (`int` / `string` / `bool` / …)."
-
-[specs.n2]
-description = "Total operands (N₂): every operand occurrence counted with repetition (the η₂ texts, not deduplicated)."

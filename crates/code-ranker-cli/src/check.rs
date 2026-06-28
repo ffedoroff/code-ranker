@@ -41,7 +41,7 @@ pub(crate) fn run_check(
 ) -> Result<()> {
     let a = analyze_input(args, cycle_rules, thresholds)?;
     let project = project_name(&a.snapshot.target);
-    let plugin = a.snapshot.plugin.clone();
+    let plugins = a.snapshot.plugins.join(", ");
 
     // Without --baseline the gate is absolute: every violation counts. With
     // --baseline it is relative: only violations not already present in the
@@ -50,14 +50,25 @@ pub(crate) fn run_check(
         None => (a.violations, None),
         Some(bpath) => {
             let base = load_snapshot_any(bpath)?;
-            let mut bgraphs = base.graphs.clone();
-            if let Some(level) = bgraphs.get_mut("files") {
-                config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &a.rules.cycles);
+            let mut blanguages = base.languages.clone();
+            for (lang, ls) in blanguages.iter_mut() {
+                if let Some(level) = ls.graphs.get_mut("files") {
+                    let cycles = a
+                        .rules_by_lang
+                        .get(lang)
+                        .map(|r| r.cycles)
+                        .unwrap_or_default();
+                    config::apply_cycle_rules(&mut level.cycles, &mut level.nodes, &cycles);
+                }
             }
-            let base_v = config::check_violations(&bgraphs, &a.rules);
-            let sig = |v: &config::Violation| (v.rule.clone(), v.location.clone());
-            let base_sigs: HashSet<(String, String)> = base_v.iter().map(sig).collect();
-            let cur_sigs: HashSet<(String, String)> = a.violations.iter().map(sig).collect();
+            let base_v = config::check_violations_all(&blanguages, &a.rules_by_lang);
+            // Dedup key includes language so violations from different languages
+            // with identical rule+location don't collide.
+            let sig =
+                |v: &config::Violation| (v.language.clone(), v.rule.clone(), v.location.clone());
+            let base_sigs: HashSet<(String, String, String)> = base_v.iter().map(sig).collect();
+            let cur_sigs: HashSet<(String, String, String)> =
+                a.violations.iter().map(sig).collect();
             let resolved = base_sigs.iter().filter(|s| !cur_sigs.contains(*s)).count();
             let new_v: Vec<config::Violation> = a
                 .violations
@@ -100,31 +111,44 @@ pub(crate) fn run_check(
         None => &findings[..],
     };
 
-    // Diagnostic copy (why / fix / title) is resolved from the active snapshot's
+    // Diagnostic copy (why / fix / title) is resolved from the snapshot's
     // `files`-level specs — the metric `description`/`remediation` and cycle-kind
-    // vocab — so no rule prose lives in the CLI.
-    let files = a.snapshot.graphs.get("files");
-    let empty_na: BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec> = BTreeMap::new();
-    let empty_ck: BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec> = BTreeMap::new();
-    let node_attributes = files.map(|g| &g.node_attributes).unwrap_or(&empty_na);
-    let cycle_kinds = files.map(|g| &g.cycle_kinds).unwrap_or(&empty_ck);
+    // vocab — so no rule prose lives in the CLI. Merge specs across all languages
+    // (last-wins) so diagnostics work regardless of which language a violation
+    // comes from.
+    let (node_attributes, cycle_kinds) = merged_specs_pub(&a.snapshot.languages);
 
     emit_diagnostics(
         shown,
         total,
-        &plugin,
+        &plugins,
         &project,
         output_format,
         verdict,
         &scope_note,
-        node_attributes,
-        cycle_kinds,
+        &node_attributes,
+        &cycle_kinds,
     );
 
     // Surface the current measured values as ready-to-paste config blocks only on
     // request (`--suggest-config`), human output only — machine formats stay pure.
     if suggest_config && matches!(output_format, OutputFormat::Human) {
-        print_current_values(&a.snapshot.graphs, &a.cycles);
+        // Union the `files` graphs across all languages for the values dump.
+        let all_graphs: BTreeMap<String, code_ranker_graph::level_graph::LevelGraph> = a
+            .snapshot
+            .languages
+            .values()
+            .flat_map(|ls| ls.graphs.iter().map(|(k, v)| (k.clone(), v.clone())))
+            .collect();
+        // The suggested `[rules.cycles]` block uses the first language's cycle
+        // policy (the values dump is an aggregate convenience across languages).
+        let cycles = a
+            .rules_by_lang
+            .values()
+            .next()
+            .map(|r| r.cycles)
+            .unwrap_or_default();
+        print_current_values(&all_graphs, &cycles);
     }
 
     if total > 0 && !exit_zero {
@@ -230,7 +254,7 @@ fn render_prompt(
          one, keeping existing behavior and public APIs intact.\n"
     );
     for v in violations {
-        let doc = config::rule_doc(&v.rule, node_attributes, cycle_kinds);
+        let doc = config::rule_doc(&v.rule, &v.language, node_attributes, cycle_kinds);
         let title = doc
             .as_ref()
             .and_then(|d| d.title.clone())
@@ -279,6 +303,27 @@ fn render_prompt(
          gate passes."
     );
     s
+}
+
+/// Merge `node_attributes` and `cycle_kinds` specs across all languages for use
+/// in diagnostic copy resolution. Last-wins per key is fine: the same metric
+/// name carries the same description across languages by convention, and a
+/// language-specific refinement is preferable to nothing.
+pub(crate) fn merged_specs_pub(
+    languages: &std::collections::BTreeMap<String, code_ranker_graph::snapshot::LanguageSnapshot>,
+) -> (
+    BTreeMap<String, code_ranker_plugin_api::level::AttributeSpec>,
+    BTreeMap<String, code_ranker_plugin_api::level::CycleKindSpec>,
+) {
+    let mut na = BTreeMap::new();
+    let mut ck = BTreeMap::new();
+    for ls in languages.values() {
+        if let Some(files) = ls.graphs.get("files") {
+            na.extend(files.node_attributes.clone());
+            ck.extend(files.cycle_kinds.clone());
+        }
+    }
+    (na, ck)
 }
 
 /// Whether a violation's repo-relative path falls under one of the `--focus-path`
@@ -360,8 +405,11 @@ fn print_human_diagnostics(
     println!("Full rule reference: {DOCS_URL}/code-ranker-cli/ERRORS.md\n");
 
     for v in violations {
-        let doc = config::rule_doc(&v.rule, node_attributes, cycle_kinds);
-        println!("{}  ·  {}  ·  {} graph", v.rule, v.group, v.graph);
+        let doc = config::rule_doc(&v.rule, &v.language, node_attributes, cycle_kinds);
+        println!(
+            "{}  ·  {}  ·  {}  ·  {} graph",
+            v.rule, v.language, v.group, v.graph
+        );
         if !v.location.is_empty() {
             println!("  where  {}", v.location);
         }
@@ -382,7 +430,7 @@ fn print_human_diagnostics(
         if let Some(fix) = fix {
             println!("  fix    {fix}");
         }
-        let tune = config::rule_tuning(&v.rule);
+        let tune = config::rule_tuning(&v.rule, &v.language);
         if !tune.is_empty() {
             println!("  tune   {tune}");
         }

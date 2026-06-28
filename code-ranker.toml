@@ -1,4 +1,4 @@
-version = "4.0"
+version = "5.0"
 # code-ranker.toml — project-level configuration for code-ranker.
 # Discovery order: --config PATH > ./code-ranker.toml > <target>/code-ranker.toml >
 # Cargo.toml [workspace.metadata.code-ranker]. CLI flags always win over the file.
@@ -8,8 +8,12 @@ version = "4.0"
 # this project overrides — every unset key inherits the built-in default (e.g.
 # `[ignore]` tests/gitignore on, `[rules.cycles]` strict). CLI flags still win.
 
-# Default plugin; overridden by --plugin. `auto` (or unset) → marker detection.
-plugin = "rust"
+# Languages are auto-detected (no `[plugins] enabled`), so the repo gates its Rust
+# product, its Markdown docs, and any other language present. Exclude dev tooling
+# from that self-analysis: `contrib/` holds one-off helper scripts (the prompt-eval
+# harness) and notes, not product code.
+[plugins.base.ignore]
+paths = ["contrib/**"]
 
 # ── Output artifacts (`report`) ──────────────────────────────────────────────
 # Override only the path template (the built-in default is
@@ -29,34 +33,39 @@ path = ".code-ranker/{project-dir}.html"
 #
 # `hk` (`sloc × (fan_in × fan_out)²`) is a *regression ratchet*, not an active
 # shortlist: the worst module is the `LanguagePlugin` trait
-# `code-ranker-plugin-api/src/plugin.rs` (~0.30M, fan_in 12 × fan_out 6) — an
-# irreducible hub whose `fan_in` grows with each new language, so HK climbs
-# quadratically (+1 language ≈ 0.35M, +2 ≈ 0.40M). Reducing it would be
-# metric-gaming, so it is accepted by design. The orchestrator
-# `code-ranker-cli/src/pipeline.rs` (~0.18M, high fan_out) is likewise accepted.
+# `code-ranker-plugin-api/src/plugin.rs` (~0.44M, fan_in 14 × fan_out 6) — an
+# irreducible hub whose `fan_in` grows with each new language and each subsystem
+# that talks to the trait, so HK climbs quadratically (+1 in-edge ≈ 0.51M). The
+# v5.0 multi-language work raised it from ~0.33M (fan_in 12): the per-language
+# effective-config injection added one in-edge, and splitting the CLI plugin facade
+# into method-dispatch (`plugin/mod.rs`) + selection-policy (`plugin/resolve.rs`)
+# added another (both now import `PluginInput`). Reducing the trait's own coupling
+# would be metric-gaming, so it is accepted by design. The orchestrator
+# `code-ranker-cli/src/pipeline.rs` (~0.27M, high fan_out) is likewise accepted.
 # Because plugin.rs is BOTH the largest and accepted, no ceiling can flag a
 # smaller file without also failing it — so this gate is green by design and only
 # trips on a genuinely new/worse hub. (`builtin.rs` ~0.25M, sloc 248, is the one
 # real split candidate, but it sits below plugin.rs — chase it via the scorecard
-# ranking, not the gate.) The 350K ceiling sits just above plugin.rs with ~1
+# ranking, not the gate.) The 500K ceiling sits just above plugin.rs with ~1
 # language of growth headroom; when a new language legitimately pushes plugin.rs
-# past it, bump deliberately (or split a genuinely-too-big module, as the former
-# ~1.15M `config.rs` hub was split into the `config/` concern facade).
-[rules.thresholds.file]
-hk = 350000
+# past it, bump deliberately (or split a genuinely-too-big module — as the former
+# ~1.15M `config.rs` hub became the `config/` facade, and the v5.0 multi-language
+# `plugin/mod.rs` facade was split into `mod.rs` + `resolve.rs`).
+[plugins.base.rules.thresholds.file]
+hk = 500000
 cyclomatic = 100
 cognitive = 70
 sloc = 400
 
 # ── Custom checks (config-only linters) ──────────────────────────────────────
 # Reusable CEL helper: is this file already a dedicated test file?
-[rules.defs]
+[plugins.base.rules.defs]
 is_test_file = 'name.endsWith("_test.rs") || name.endsWith("_tests.rs") || path.contains("/tests/")'
 
 # Flag production files with a large inline `#[cfg(test)]` block — split the tests
 # into a sibling `{stem}_test.rs` so they don't bloat the production file's
 # size/coupling metrics. `tloc` is the file's inline test lines.
-[rules.checks.inline_tests_too_large]
+[plugins.base.rules.checks.inline_tests_too_large]
 when    = "tloc > 100 && !is_test_file"
 message = "{tloc} inline test lines — split them into a sibling `{stem}_test.rs`"
 group   = "TST"

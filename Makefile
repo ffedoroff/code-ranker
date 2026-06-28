@@ -25,7 +25,7 @@ fmt-check:
 	cargo fmt --all --check
 
 lint-md:
-	lychee --offline --no-progress --exclude-path languages/_overlay 'docs/**/*.md' 'contrib/**/*.md' 'languages/**/*.md' 'AGENTS.md' 'CLAUDE.md'
+	lychee --offline --no-progress --exclude-path plugins/_overlay 'docs/**/*.md' 'contrib/**/*.md' 'plugins/**/*.md' 'AGENTS.md' 'CLAUDE.md'
 	npx --yes markdownlint-cli2
 
 # Unused-dependency check (fast, stable toolchain). FAILS the build on any unused
@@ -86,6 +86,24 @@ clean:
 #   make publish  (phase 2) is the single Release button: after Verify is green it
 #                 dispatches publish.yml to release everywhere
 #                 (crates.io / PyPI / Docker / GitHub Release + npm).
+#
+# GitHub-ONLY prerelease (an alpha for testing — GitHub Release + binaries, and
+# NOTHING on any registry). The registries are SEPARATE workflows that run only
+# from publish.yml, so do NOT use `make publish` here — dispatch release.yml
+# directly and it publishes a GitHub Release + binaries and nothing else. The one
+# registry job baked into release.yml is npm; set `publish-prereleases = false` in
+# dist-workspace.toml and it (and any other publish-job) is SKIPPED for a
+# prerelease tag. Cut it from a THROWAWAY branch so the alpha version bump never
+# lands on main:
+#     git checkout -b release/vX.Y.Z-alpha
+#     # in dist-workspace.toml: publish-prereleases = false
+#     make bump VERSION=X.Y.Z-alpha && git commit -am 'release vX.Y.Z-alpha'
+#     git push -u origin release/vX.Y.Z-alpha
+#     git tag -a vX.Y.Z-alpha -m vX.Y.Z-alpha && git push origin vX.Y.Z-alpha
+#     gh workflow run release.yml --ref release/vX.Y.Z-alpha -f tag=vX.Y.Z-alpha
+# Verify goes RED on the PyPI job for a non-PEP-440 suffix like `-pre-alpha` —
+# expected and harmless: a direct release.yml dispatch is not gated by Verify and
+# never runs the PyPI/crates/Docker workflows. Delete the branch + tag when done.
 
 bump:
 	@if [ -z "$(VERSION)" ]; then echo "usage: make bump VERSION=0.1.0-alpha.12"; exit 1; fi
@@ -96,13 +114,13 @@ bump:
 	  echo "bumping $$CURRENT -> $(VERSION)"; \
 	  LC_ALL=C sed -i '' "s/$$CURRENT/$(VERSION)/g" Cargo.toml README.md; \
 	  RE=$$(printf '%s' "$$CURRENT" | sed 's/[.]/\\./g'); \
-	  for f in $$(grep -rlF "$$CURRENT" docs AGENTS.md CLAUDE.md languages 2>/dev/null || true); do \
+	  for f in $$(grep -rlF "$$CURRENT" docs AGENTS.md CLAUDE.md plugins 2>/dev/null || true); do \
 	    LC_ALL=C sed -i '' -E "/code-ranker|--version/ s/$$RE/$(VERSION)/g" "$$f" && echo "  ✓ fixed doc version refs in $$f"; \
 	  done
 	cargo build --workspace
 	@echo
 	@echo "  remaining stale version mentions in docs (auto-fix only touches code-ranker/--version lines):"
-	@hits=$$(grep -rnE -- '--version[ =]+v?[0-9]+\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)|code-ranker[@:" ]+v?[0-9]+\.[0-9]+\.[0-9]+' docs README.md AGENTS.md CLAUDE.md languages 2>/dev/null | grep -vF "$(VERSION)" || true); \
+	@hits=$$(grep -rnE -- '--version[ =]+v?[0-9]+\.[0-9]+\.[0-9]+|[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)|code-ranker[@:" ]+v?[0-9]+\.[0-9]+\.[0-9]+' docs README.md AGENTS.md CLAUDE.md plugins 2>/dev/null | grep -vF "$(VERSION)" || true); \
 	  if [ -n "$$hits" ]; then echo "$$hits" | sed 's/^/      /'; echo "      ^ not at $(VERSION) — review (bare numbers off code-ranker/--version lines are left alone on purpose)"; else echo "      (none — all at $(VERSION))"; fi
 	@echo
 	@echo "  ✓ bumped to $(VERSION) — review and commit:"

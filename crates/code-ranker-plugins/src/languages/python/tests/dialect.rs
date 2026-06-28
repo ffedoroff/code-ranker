@@ -149,12 +149,12 @@ fn python_trigger_set_documented_in_spec() {
     // the Python metrics spec, so the trigger list and the spec's "Keyword
     // look-alike guard set" cannot drift apart.
     let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-    let path = format!("{root}/languages/python/metrics.md");
+    let path = format!("{root}/plugins/python/metrics.md");
     let spec = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
     for kw in PY_TRIGGERS {
         assert!(
             spec.contains(&format!("`{kw}`")),
-            "trigger `{kw}` is not documented in languages/python/metrics.md \
+            "trigger `{kw}` is not documented in plugins/python/metrics.md \
              — spec and FP test drifted"
         );
     }
