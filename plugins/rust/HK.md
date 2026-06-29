@@ -36,13 +36,55 @@ dependencies — **both `fan_in` and `fan_out` drop for real**, and each piece
 becomes independently testable and changeable. Find the seams (distinct
 responsibilities, distinct dependency sets) and cut along them.
 
-**3. Do not shave `sloc` by mechanical splitting.** Moving a type declaration
-away from its `impl`, or hoisting a trait into a sibling file, splits **one
-cohesive role** across two files. It lowers the HK *number* (less `sloc`) without
-separating any responsibility — and can even *raise* coupling by widening
-visibility to make the move compile. That is metric-gaming, not decoupling; see
-"When a hub is legitimate" below. The test: if your split does not leave each
-new module owning a **distinct role**, it is not a real HK fix.
+**3. Do NOT spread one struct's `impl` across `mod` submodules — in Rust this
+*raises* HK.** This is the single most common wrong move. Splitting
+`impl Service` into `service/create.rs`, `service/query.rs`, … makes every
+submodule write `use super::{Service, …}` — and each of those is a **new
+`fan_in` edge** to the module that *defines* the struct. Because
+`HK = sloc × (fan_in × fan_out)²`, the squared `fan_in` bump typically outweighs
+the `sloc` you moved out, so the defining module's HK goes **up**. A struct's HK
+is driven by who **calls** it and what it **depends on** — never by how many
+files its `impl` is scattered across. The same applies to hoisting a type away
+from its `impl` (it then needs wider `pub` visibility to compile, *adding*
+edges). Shaving the HK *number* this way separates no responsibility: it is
+metric-gaming, see "When a hub is legitimate" below.
+
+**The moves that actually lower a Rust hub's HK:**
+- **Move a leaf out so a caller stops importing the hub (`fan_in` ↓).** If a
+  dependant reaches the hub only for one pure helper / DTO / `const`, relocate
+  that item to its own module; the dependant now imports *that* module and its
+  edge to the hub disappears. (A pure data type with no deps has `fan_out = 0`,
+  so its own HK is ~0 — the safest win.)
+- **Extract a genuinely separate responsibility into its own type (`fan_out` ↓).**
+  Not the same struct's `impl` in another file — a *new* struct with its *own*
+  fields and dependencies (e.g. pull an I/O / streaming concern out of a
+  coordinator into its own worker type). The unrelated imports leave the hub with
+  that responsibility, and the new type carries its own, lower HK.
+- **Fold several same-concern edges behind one facade (`fan_out` ↓ — usually the
+  biggest win for a service/orchestrator hub).** A service hub often spends most
+  of its `fan_out` on a *single* concern that is split across several edges.
+  The classic case is persistence: the hub holds the database handle/pool, opens
+  connections and runs transactions itself (e.g. `sqlx` / a `DBRunner`-style
+  trait / the DB-driver crate), **and** also imports several repositories.
+  **Trace those edges at depth 2:** the repos already sit on the DB driver, so
+  the hub's *direct* driver edge is redundant with what its repos encapsulate.
+  Move the DB handle + the repositories + the connection/transaction management
+  into one repository / unit-of-work facade that exposes intent-level operations
+  (`store.get_x(…)`, `store.commit_y(…)`), keeping connections and transactions
+  *inside* it. The hub then depends on that **one** facade instead of the driver
+  crate plus each repo — N edges collapse to 1. This is the [DIP](DIP.md) remedy
+  and it genuinely *dissolves* `fan_out` (the orchestrator stops knowing about the
+  database at all), because connection/transaction lifecycle belongs in the
+  persistence layer, not in the coordinator. The same shape applies to any concern
+  that arrives as a cluster of edges (an HTTP/client stack, a serialization stack):
+  one cohesive facade per concern, the hub depends on the facade.
+
+**Predict the edge change before you touch code, then verify it (Step 5).** Ask:
+does this make a dependant stop importing the hub, or the hub stop importing a
+collaborator? If neither — if the new module still references the hub or the hub
+still references it — you are *adding* an edge and the square will punish you.
+Re-measure with a before/after `--focus-path` scorecard and revert if the hub's
+HK did not drop.
 <!-- doc:base "Reducing it" -->
 
 ## When a hub is legitimate (accept, don't game)
