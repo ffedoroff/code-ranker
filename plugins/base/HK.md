@@ -52,13 +52,31 @@ You lower HK by attacking whichever factor dominates:
   sibling modules. The split halves the size and usually the coupling too.
 - **Cut fan_out**: depend on fewer, more abstract collaborators — invert a
   dependency (see [DIP](DIP.md)), or move a
-  responsibility that drags in unrelated imports elsewhere.
+  responsibility that drags in unrelated imports elsewhere. **Group the
+  out-edges by concern and trace them at depth 2:** a hub often spends much of
+  its `fan_out` on one concern split across several edges (e.g. a database handle
+  *plus* several repositories, where the repos already sit on that same driver —
+  so the hub's direct driver edge is redundant). Fold that cluster behind a
+  single facade that owns the concern and exposes intent-level operations; the
+  hub then depends on the one facade instead of N collaborators. Done right this
+  *dissolves* the edges (the hub stops knowing about the underlying machinery),
+  it does not relocate them.
 - **Cut fan_in**: narrow the public surface so fewer modules need this one;
   if different callers use disjoint parts, split it
   (see [ISP](ISP.md)).
 
 Because the coupling term is squared, even a modest reduction in fan_in or
 fan_out moves HK a lot — prefer those over chasing line count.
+
+**Predict the new edges before you split — a split that *adds* an edge raises
+HK.** This is the most common mistake. A split only lowers a hub's HK if it lets
+a **dependant stop importing the hub** (`fan_in` ↓) or the **hub stop importing a
+collaborator** (`fan_out` ↓). If instead your split creates a new module that
+imports the hub — or that the hub must import — you have *added* an edge, and the
+squared coupling term usually makes the hub's HK go **up**, not down. Carving one
+component into several files that all still reference the original is
+re-arrangement, not decoupling. When in doubt, measure before/after (Step 5) and
+revert if the hub's HK did not actually drop.
 
 ## When a hub is legitimate (accept, don't game)
 
@@ -108,7 +126,15 @@ a budget (worst-first; `--top 1` for just the single worst), each finding a
 self-contained where/issue/why/fix block you can paste into an AI assistant:
 
 ```bash
-code-ranker report --output.scorecard --focus hk
+code-ranker report --plugins <lang> --output.scorecard --focus hk
+```
+
+In a monorepo / workspace, scope the ranking to the crate or package you own with
+`--focus-path <dir>` (repeatable) — the graph is still built from the whole project
+so cross-module edges stay correct, but only that subtree is listed:
+
+```bash
+code-ranker report --plugins <lang> --output.scorecard --focus hk --focus-path <dir> --top 10
 ```
 
 HK is `sloc × (fan_in × fan_out)²`: the coupling term is squared, so a unit dropped
@@ -193,20 +219,20 @@ baseline and render the HTML report:
 
 ```bash
 # BEFORE — baseline snapshot (keep .code-ranker/ snapshots; they are baselines):
-code-ranker report --output.json.path=.code-ranker/before.json
+code-ranker report --plugins <lang> --output.json.path=.code-ranker/before.json
 
 #   …apply the split, then run the full test suite…
 
 # AFTER — diff against the baseline + render the HTML diff report:
-code-ranker report \
+code-ranker report --plugins <lang> \
   --baseline .code-ranker/before.json \
   --output.json.path=.code-ranker/after.json \
   --output.html.path=.code-ranker/after.html
 
 # Confirm the hotspot's HK actually dropped (and no sibling rose past it) —
 # re-rank with the scorecard, or let the gate decide (exit 0 = no breach):
-code-ranker report --output.scorecard --focus hk
-code-ranker check --threshold file.hk=100000
+code-ranker report --plugins <lang> --output.scorecard --focus hk
+code-ranker check --plugins <lang> --threshold file.hk=100000
 ```
 
 Then **surface the report to the user**: print its absolute path and offer to

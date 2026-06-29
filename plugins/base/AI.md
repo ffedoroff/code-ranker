@@ -33,6 +33,36 @@ This is the short guide for driving it — the commands below operate the tool.
 snapshot is read back with no re-analysis. Keep old `.code-ranker/` snapshots — they
 are baselines for a before/after diff (`--baseline <snapshot>`).
 
+## Read the tool's output — don't parse its files, don't truncate it
+
+code-ranker **is** the query layer. You never need to parse the JSON snapshot
+(`jq`, ad-hoc greps over the report) — everything is available directly from the
+console, already ranked and labelled:
+
+- `--output.scorecard` — the worst-first ranking.
+- `--focus <metric|principle>` (e.g. `--focus hk`, `--focus ADP`) — frame the ranking by one metric/principle.
+- `--focus-path <dir>` (repeatable) — restrict the ranking / `--prompt` to modules **under a path**. The whole project is still analyzed (the graph needs it), but only that subtree is listed. **This is how you scope to one crate / package / folder** — reach for it instead of post-filtering output yourself.
+- `--prompt <ID>` — the fix-prompt, with each hotspot's incoming/outgoing connections (the `fan_in` / `fan_out` edges) already listed.
+- `--top N` — how many rows the scorecard / prompt shows (`--top 1` = the single worst).
+
+**Always name the language on the same line.** Those are all `report` flags, and
+every `report` / `check` run must resolve a plugin first — so pass
+`--plugins <lang>` alongside `--prompt` /
+`--output.scorecard` / `--focus`. A run that omits it can't pick a language and
+stops at the language picker instead of producing the prompt:
+`code-ranker report --plugins <lang> --prompt HK --top 1`.
+
+The `.json` / `.html` artifacts exist for the HTML viewer and for `--baseline`
+diffs — not for you to read or parse. If you find yourself writing `jq` against a
+report, stop and use a flag above instead.
+
+**Never pipe code-ranker output through `head` / `tail` / `sed` / `cut` /
+`awk`.** The scorecard puts the metric value in a right-hand column and the
+prompt emits multi-line connection blocks — line-truncating tools cut off
+exactly the numbers and edges you need and silently drop rows, which leads you
+to wrong conclusions. Bound the output **at the source** with `--focus-path` and
+`--top N`, then read it whole.
+
 <!-- ai:select-start -->
 ## Select a language
 
@@ -86,7 +116,10 @@ one, or drop tests. Read it first; then fix.
 
 `--focus` takes any catalog id below (a principle like `ADP`, or a metric like
 `hk` / `loc`): focusing on a metric frames the output by that metric; on a
-principle, by that design principle.
+principle, by that design principle. In a large repo or workspace, add
+`--focus-path <dir>` to rank only the crate/package/folder you are working on
+(the graph is still built from the whole project, so cross-module edges stay
+correct).
 
 ## Principles & metrics
 
